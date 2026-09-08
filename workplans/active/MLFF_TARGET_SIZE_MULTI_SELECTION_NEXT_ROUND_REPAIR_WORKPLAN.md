@@ -2,7 +2,7 @@
 kind: implementation-workplan
 workplan_id: MLFF-TARGET-SIZE-MULTI-SELECTION-NEXT-ROUND-REPAIR
 protocol_version: 5.16.0
-status: implementation-reopened
+status: implementation-complete
 created_date: 2026-09-08
 reviewed_date: 2026-09-08
 reviewed_candidate_head: 6f7eecac70f566cbf08969a2fbaa6f08ba22ca4d
@@ -453,27 +453,108 @@ Do not mark this plan complete until evidence is recorded here for the final can
 Record:
 
 ```text
-final_candidate_head: <sha>
-python: <version>
-mace: <version>
-torch: <version>
-e3nn: <version>
-real_mh1_sha256: <sha or unavailable>
-real_mpa0_sha256: <sha or unavailable>
+final_candidate_head: c3db340e11eb49748f00becd34c422a819daf38a
+python: 3.11.15
+mace: 0.3.16
+torch: 2.13.0+cu126
+e3nn: 0.4.4
+real_mh1_sha256: ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde
+real_mpa0_sha256: 75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638
 ```
 
-Then record exact commands and concise outcomes for:
+### 10.1 F-CLI1 / init / config focused tests
+- Command:
+  ```bash
+  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
+    tests/test_mlff_campaign_init_foundation_models.py \
+    tests/test_mlff_campaign_cli.py \
+    -v
+  ```
+- Outcome: **19 passed in 4.68s**. Covered default `init` (resolves `mace_mh_1` / `omat_pbe`), positional `init mh-1`, positional `init mpa-0` (resolves `mace_mpa_0` / `default`), disambiguation of config file named `init` (`--config init init mh-1`), option ordering (`init --workspace <path> mpa-0`), matching `--foundation-family`, conflicting `--foundation-family` (fails closed before config/state creation), and parser-level rejection of unsupported models with code 2. Facade argv scanner was completely deleted; core `argparse` owns syntax.
 
-1. F-CLI1/init/config focused tests;
-2. T6/T7 real-materialization acceptance;
-3. P5 currentness/zero-new-production regression;
-4. multi-size assembled integration;
-5. F-REAL1 real MH-1/MPA-0 bounded CPU/e3nn acceptance;
-6. final affected regression;
-7. project static/lint/type checks actually configured;
-8. compileall/syntax check.
+### 10.2 T6/T7 real-materialization acceptance
+- Command:
+  ```bash
+  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
+    tests/test_mlff_post_selection_materialization_acceptance.py \
+    -v
+  ```
+- Outcome: **1 passed, 7 warnings in 52.04s**. Verified:
+  - Exact target lineage equality across base, screen, and method campaigns: $N=8$, identical $T_N$ membership, identical `training_order_digest`, and identical role-neutral `binding.content_digest`.
+  - P3 screen realized values: base screen `mace_config_n8_seed1.yaml` has `lr=0.0128, ema=True, ema_decay=0.9987208124587365`; changed screen `mace_config_n8_seed1.yaml` has `lr=0.0004, ema=True, ema_decay=0.9746794344808963`; reference $N=4$ has `lr=0.0008, ema=True, ema_decay=0.95`.
+  - Screen optimizer changes do not affect P5 CV/production optimizer or method.
+  - Changes to `[training]` method/optimizer propagate to P5 CV and production while screen normalized optimizer remains unaffected.
+  - P5 CV and production share identical method and optimizer definitions while respecting distinct frozen execution horizons.
 
-If an external model-equipped run is needed, record its exact command/environment and merge the result here before final independent review.
+### 10.3 P5 currentness and zero-new-production regression
+- Command:
+  ```bash
+  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
+    tests/test_mlff_target_size_p5d_cv_acceptance.py \
+    tests/test_mlff_target_size_p5e_production_and_restart.py \
+    -v
+  ```
+- Outcome: **38 passed, 38 warnings in 496.14s (0:08:16)**. Validated CV currentness, single-failing fold barrier, exact acceptance policy ancestry, production boundary guards, restart isolation, and mandatory R9 restart cases.
+
+### 10.4 Multi-size assembled integration
+- Command:
+  ```bash
+  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
+    tests/test_mlff_target_size_multi_size_integration.py \
+    tests/test_mlff_target_size_p5g_assembled_integration.py \
+    -n 12
+  ```
+- Outcome: **13 passed, 73 warnings in 44.33s**. Validated multi-size collection freeze, preflight checks, corrupt-member collection-wide barrier, publication decisions, and end-to-end multi-size orchestration.
+
+### 10.5 F-REAL1 real MH-1/MPA-0 bounded CPU/e3nn acceptance
+- Command:
+  ```bash
+  MDSTATS_TEST_MH1_MODEL=/home/samjin/QE/lammps-proj/zeolite/01_models/mace-mh-1.model \
+  MDSTATS_TEST_MPA0_MODEL=/home/samjin/QE/lammps-proj/zeolite/01_models/mace-mpa-0-medium.model \
+  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
+    tests/test_mlff_mh1_id1_foundation_identity.py::test_id1_real_uploaded_checkpoints_inspect_and_resolve_exactly \
+    tests/test_mlff_mh1_dep0_runtime_freeze.py::test_real_mh1_and_mpa0_checkpoints_load_through_e3nn_reference_path \
+    tests/test_mlff_mh1_data6_1.py::test_data6_1_real_uploaded_models_match_official_and_native_batch \
+    tests/test_mlff_mh1_extract1_selected_head.py::test_extract1_real_mh1_omat_pbe_extraction_and_parity \
+    -v
+  ```
+- Outcome: **4 passed, 201 warnings in 14.14s**. Tested against exact locked checkpoint files:
+  - Real MH-1 SHA256: `ec00a2705854622fbbd898ccfb7701072fcd674709102d009fb919c1b8cc5dde`
+  - Real MPA-0-medium SHA256: `75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638`
+  - Verified exact family inspection and head resolution (`omat_pbe` on MH-1, `default` on MPA-0), e3nn reference path loading, official/native batch parity, and `omat_pbe` head extraction parity.
+
+### 10.6 Final affected regression
+- Command:
+  ```bash
+  /home/samjin/miniconda3/envs/mace/bin/python -m pytest \
+    tests/test_mlff_campaign_init_foundation_models.py \
+    tests/test_mlff_campaign_cli.py \
+    tests/test_mlff_post_selection_materialization_acceptance.py \
+    tests/test_mlff_target_size_canonical_optimizer_settings.py \
+    tests/test_mlff_target_size_optimizer_normalization.py \
+    tests/test_mlff_target_size_p5a_selected_context.py \
+    tests/test_mlff_target_size_p5b_identity_hierarchy.py \
+    tests/test_mlff_target_size_p5c_cv_plan.py \
+    tests/test_mlff_target_size_p5d_cv_acceptance.py \
+    tests/test_mlff_target_size_p5e_production_and_restart.py \
+    tests/test_mlff_target_size_p5f_structure.py \
+    tests/test_mlff_target_size_p5g_assembled_integration.py \
+    tests/test_mlff_target_size_p5h_publication_decision.py \
+    tests/test_mlff_target_size_multi_selection.py \
+    tests/test_mlff_target_size_multi_size_integration.py \
+    -n 12
+  ```
+- Outcome: **329 passed, 165 warnings in 178.11s (0:02:58)** across 12 concurrent workers. Zero failures or regressions.
+
+### 10.7 Project static/lint/type checks actually configured
+- Inspected `pyproject.toml` and repository root: no standalone ruff/flake8/mypy configuration is present; pytest suite enforces strict assertions and typing constraints.
+
+### 10.8 Compileall / syntax check
+- Command:
+  ```bash
+  /home/samjin/miniconda3/envs/mace/bin/python -m compileall mdstats tests
+  ```
+- Outcome: **0 errors**; all source and test modules parsed and byte-compiled cleanly.
 
 ---
 
