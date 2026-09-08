@@ -27,7 +27,7 @@ def test_doc_arch1_release_and_current_authority_are_synchronized():
         "optional paired optimizer-seed automatic diagnostic over candidate sizes"
         in text
     )
-    assert "post-selection cross-validation on exactly T_selected" in text
+    assert "post-selection cross-validation on the frozen collection" in text
     assert not (ROOT / "mlff_training_data_architecture.md").exists()
     assert not (ROOT / "mlff_training_data_dependency_graph.json").exists()
 
@@ -122,6 +122,24 @@ def test_doc_arch1_graph_and_directory_ownership_are_current():
     forbidden = "\n".join(graph["forbidden_current_paths"])
     assert "retired target-size migration" in forbidden
     assert "post-selection cross-validation -> target-size decision" in forbidden
+    assert "one selected binding" not in graph["description"]
+    assert "ordered collection of selected bindings" in graph["description"]
+    nodes_by_id = {node["id"]: node for node in graph["nodes"]}
+    cv_summary = nodes_by_id["POST_SELECTION_CV_ACCEPTANCE"].get("summary", "")
+    assert "on exactly T_selected" not in cv_summary
+    assert "per frozen size" in cv_summary
+    prod_summary = nodes_by_id["FRESH_FINAL_PRODUCTION"].get("summary", "")
+    assert "on the complete exact T_selected" not in prod_summary
+    assert "per frozen size" in prod_summary
+
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "fresh final production on the complete T_selected" not in readme
+    assert "a failure never changes the selected target size," not in readme
+    runbook = (ROOT / "docs/guides/mlff_final_gpu1_workstation_runbook.md").read_text(
+        encoding="utf-8"
+    )
+    assert "fresh final production on the complete T_selected" not in runbook
+
     root_names = {p.name for p in ROOT.iterdir() if p.is_file()}
     assert not any(name.startswith("ARCHITECTURE_NOTES_") for name in root_names)
     assert not any(name.startswith("PATCH_NOTES_") for name in root_names)
@@ -132,3 +150,20 @@ def test_doc_arch1_graph_and_directory_ownership_are_current():
 def test_doc_arch1_manual_hash_is_stable_under_current_bytes():
     digest = hashlib.sha256(MANUAL.read_bytes()).hexdigest()
     assert len(digest) == 64
+
+
+def test_doc_arch1_no_campaign_global_scalar_selection_claims():
+    manual = MANUAL.read_text(encoding="utf-8")
+    stage = (ROOT / "docs/specs/training_data/mlff_data_stage_plan_spec.md").read_text(encoding="utf-8")
+    for stale in (
+        "the current target-size choice is global",
+        "one protocol-global target-size decision with one exact global selected membership",
+        "cannot change global T_selected",
+        "final T_selected -> final-training fitted products",
+        "one pi_train and exact T_selected membership after the target-size freeze",
+        "paired-seed candidate screen\n  -> selected binding",
+        "one selected size or typed scientific failure",
+        "alter `T_selected`",
+    ):
+        assert stale not in manual, f"stale scalar claim found in manual: {stale}"
+        assert stale not in stage, f"stale scalar claim found in stage plan: {stale}"

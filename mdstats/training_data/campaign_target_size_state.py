@@ -59,8 +59,10 @@ TARGET_SIZE_CAMPAIGN_STATE_V2_SCHEMA = "mdstats.target-size-campaign-state.v2"
 #: read, because the persisted chain is append-only and a campaign that cannot
 #: read its own head cannot even advance to a fresh generation.  What a legacy
 #: row cannot do is carry a proposal or a frozen selection: those fields do not
-#: exist in it, so a pre-rework "terminal selected" row is structurally
-#: incapable of authorizing post-selection work under the current contract.
+#: exist in it, so a pre-rework "terminal selected" row cannot create a
+#: current-V3 freeze or new current binding.  Supported historical P5A6 workspaces
+#: can reopen historical descendants through native historical identity (P1/P2
+#: authority and V1 bindings), but cannot authorize new current post-selection work.
 TARGET_SIZE_CAMPAIGN_STATE_LEGACY_SCHEMA = "mdstats.target-size-campaign-state.v1"
 #: Every campaign-state schema this runtime can read, newest first.  Only the
 #: first is ever written: a retired schema is history, not a target.

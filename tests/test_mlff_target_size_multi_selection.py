@@ -1038,27 +1038,96 @@ def test_both_current_sibling_bindings_are_retained_and_never_collide(
 # --- A23: structural closure of the retired scalar semantics ---------------
 
 
-def _state_attribute_offenders(root: Path, names: set[str]) -> list[str]:
-    """Every ``<expr>.state.<name>`` access under *root*.
+def _state_attribute_offenders(
+    root: Path,
+    names: set[str],
+    *,
+    ignored_functions: set[str] | None = None,
+    exempt_targets: set[tuple[str, str]] | None = None,
+) -> list[str]:
+    """Every access to retired scalar selection attributes on campaign state under *root*.
 
     A structural rule, not a text search: ``context.frozen`` and
     ``admitted.frozen`` are legitimate *per-size* records, and only the campaign
     *state*'s retired scalar selection attributes are the offence.
+    Both direct accesses (``revision.state.frozen``, ``state.frozen``) and local
+    aliases to campaign state (``campaign = revision.state; campaign.frozen``) are detected.
+    Historical baseline producers running against older schemas can be exempted
+    via *ignored_functions* or precisely via *exempt_targets* as ``(filename, function_name)``.
     """
 
     import ast
 
+    ignored = ignored_functions or set()
+    exempt = exempt_targets or set()
     offenders: list[str] = []
+
+    def _extract_name_targets(target: ast.AST) -> list[str]:
+        if isinstance(target, ast.Name):
+            return [target.id]
+        if isinstance(target, (ast.Tuple, ast.List)):
+            res: list[str] = []
+            for elt in target.elts:
+                res.extend(_extract_name_targets(elt))
+            return res
+        return []
+
+    def _is_state_expr(expr: ast.AST, aliases: set[str]) -> bool:
+        if isinstance(expr, ast.Attribute) and expr.attr == "state":
+            return True
+        if isinstance(expr, ast.Name) and (expr.id == "state" or expr.id in aliases):
+            return True
+        return False
+
+    class Visitor(ast.NodeVisitor):
+        def __init__(self) -> None:
+            self._stack: list[str] = []
+            self._alias_stack: list[set[str]] = [set()]
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            self._stack.append(node.name)
+            self._alias_stack.append(set())
+            self.generic_visit(node)
+            self._alias_stack.pop()
+            self._stack.pop()
+
+        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+            self._stack.append(node.name)
+            self._alias_stack.append(set())
+            self.generic_visit(node)
+            self._alias_stack.pop()
+            self._stack.pop()
+
+        def visit_Assign(self, node: ast.Assign) -> None:
+            current_aliases = self._alias_stack[-1]
+            if _is_state_expr(node.value, current_aliases):
+                for target in node.targets:
+                    for name in _extract_name_targets(target):
+                        current_aliases.add(name)
+            self.generic_visit(node)
+
+        def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+            current_aliases = self._alias_stack[-1]
+            if node.value is not None and _is_state_expr(node.value, current_aliases):
+                for name in _extract_name_targets(node.target):
+                    current_aliases.add(name)
+            self.generic_visit(node)
+
+        def visit_Attribute(self, node: ast.Attribute) -> None:
+            current_func = self._stack[-1] if self._stack else None
+            is_exempt = (current_func in ignored) or ((path.name, current_func) in exempt)
+            if node.attr in names and not is_exempt:
+                inner = node.value
+                current_aliases = self._alias_stack[-1]
+                if isinstance(inner, ast.Attribute) and inner.attr == "state":
+                    offenders.append(f"{path.name}:{node.lineno}:{node.attr}")
+                elif isinstance(inner, ast.Name) and (inner.id == "state" or inner.id in current_aliases):
+                    offenders.append(f"{path.name}:{node.lineno}:{node.attr}")
+            self.generic_visit(node)
+
     for path in sorted(root.rglob("*.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Attribute) or node.attr not in names:
-                continue
-            inner = node.value
-            if isinstance(inner, ast.Attribute) and inner.attr == "state":
-                offenders.append(f"{path.name}:{node.lineno}:{node.attr}")
-            elif isinstance(inner, ast.Name) and inner.id == "state":
-                offenders.append(f"{path.name}:{node.lineno}:{node.attr}")
+        Visitor().visit(tree)
     return offenders
 
 
@@ -1070,11 +1139,48 @@ def test_the_structural_rule_discriminates_before_it_is_trusted(tmp_path: Path):
         "def f(revision, state):\n"
         "    a = revision.state.frozen\n"
         "    b = state.proposal\n"
-        "    return a, b\n",
+        "    campaign = revision.state\n"
+        "    c = campaign.frozen\n"
+        "    s = state\n"
+        "    d = s.proposal\n"
+        "    return a, b, c, d\n",
         encoding="utf-8",
     )
     offenders = _state_attribute_offenders(tmp_path, {"frozen", "proposal"})
-    assert len(offenders) == 2, offenders
+    assert len(offenders) == 4, offenders
+
+    # Exempting function f ignores its accesses
+    assert (
+        _state_attribute_offenders(
+            tmp_path, {"frozen", "proposal"}, ignored_functions={"f"}
+        )
+        == []
+    )
+    # Scoped exempt_targets also ignores its accesses
+    assert (
+        _state_attribute_offenders(
+            tmp_path,
+            {"frozen", "proposal"},
+            exempt_targets={("positive.py", "f")},
+        )
+        == []
+    )
+
+    # An unexempted function g is still flagged while f is ignored
+    positive.write_text(
+        "def f(revision):\n"
+        "    return revision.state.frozen\n"
+        "def g(state):\n"
+        "    campaign = state\n"
+        "    return campaign.proposal\n",
+        encoding="utf-8",
+    )
+    offenders_exempt = _state_attribute_offenders(
+        tmp_path,
+        {"frozen", "proposal"},
+        exempt_targets={("positive.py", "f")},
+    )
+    assert len(offenders_exempt) == 1 and offenders_exempt[0].endswith(":proposal")
 
     positive.unlink()
     negative = tmp_path / "negative.py"
@@ -1094,6 +1200,17 @@ def test_no_current_surface_retains_the_scalar_selection_authority():
     training_data = Path(cli.__file__).resolve().parent
 
     assert _state_attribute_offenders(training_data, {"frozen", "proposal"}) == []
+
+    qualification_dir = training_data.parents[1] / "qualification"
+    assert qualification_dir.is_dir()
+    assert (
+        _state_attribute_offenders(
+            qualification_dir,
+            {"frozen", "proposal"},
+            exempt_targets={("qualify_p5a6_to_p6.py", "_phase_produce")},
+        )
+        == []
+    )
 
     from mdstats.training_data.campaign_post_selection import PostSelectionBinding
     from mdstats.training_data.campaign_target_size_state import (
@@ -1188,3 +1305,223 @@ def test_outer_size_execution_is_serial_and_adds_no_scheduler():
     source = module.read_text(encoding="utf-8")
     for token in ("concurrent.futures", "multiprocessing", "threading"):
         assert token not in source, token
+
+
+# --- R1/R2: manual selection efficiency and view decoupling -----------------
+
+
+def test_manual_selection_does_not_load_frame_data_or_build_array_index(
+    tmp_path: Path, monkeypatch
+):
+    """Manual selection authenticates N without loading frames or building indices."""
+
+    config, workspace = _prepared(tmp_path)
+
+    def _poison_frame_loader(*args, **kwargs):
+        raise AssertionError("Manual selection must not load prepared frame data")
+
+    def _poison_array_indexer(*args, **kwargs):
+        raise AssertionError("Manual selection must not build frame array index")
+
+    def _poison_screen_context(*args, **kwargs):
+        raise AssertionError("Manual selection must not build screen context")
+
+    import mdstats.training_data.campaign_prepared_generation as cpg
+    import mdstats.training_data._frame_access as cfa
+    import mdstats.training_data.campaign_target_size_runtime as ctsr
+
+    monkeypatch.setattr(cpg, "load_prepared_frame_data", _poison_frame_loader)
+    monkeypatch.setattr(cfa, "build_frame_array_index", _poison_array_indexer)
+    monkeypatch.setattr(ctsr, "build_screen_context", _poison_screen_context)
+
+    # 1. Manual selection succeeds and records the proposal
+    assert _select(config, "4") == 0
+    assert _provisional(config) == [4]
+
+    # 2. Append another size without touching frames
+    assert _select(config, "8") == 0
+    assert _provisional(config) == [4, 8]
+
+
+def test_manual_selection_rejects_unqualified_and_corrupt_definition(
+    tmp_path: Path,
+):
+    """Rejection occurs purely over definition/manifest without frame loading."""
+
+    config, workspace = _prepared(tmp_path)
+
+    # 1. Size not in candidate ladder [2, 4, 8, 16] is rejected
+    with pytest.raises((CampaignCliError, TargetSizeSelectionError)) as excinfo:
+        _select(config, "5")
+    assert "not a configured qualified candidate" in str(excinfo.value)
+
+    # 2. Corrupted aggregate component in prepared generation fails closed
+    from mdstats.training_data.campaign_prepared_generation import (
+        PreparedGenerationError,
+        prepared_generation_root,
+        read_prepared_generation_manifest,
+    )
+    from mdstats.training_data.campaign_target_size_state import (
+        load_target_size_campaign_revision,
+    )
+
+    cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        revision = load_target_size_campaign_revision(store)
+    finally:
+        store.close()
+
+    prep_root = prepared_generation_root(paths)
+    manifest = read_prepared_generation_manifest(
+        paths, revision.state.prepared_manifest_digest
+    )
+    aggregate_digest = manifest.component_digests["aggregate"]
+    obj_path = prep_root / "objects" / f"{aggregate_digest}.json"
+    assert obj_path.is_file()
+    obj_path.write_bytes(b"corrupted bytes")
+
+    with pytest.raises((CampaignCliError, PreparedGenerationError)) as excinfo2:
+        _select(config, "4")
+    assert "Prepared" in str(excinfo2.value) or "corrupt" in str(excinfo2.value)
+
+
+def test_view_projection_and_refresh_decoupled_from_p3_diagnostic(
+    tmp_path: Path, monkeypatch
+):
+    """View refresh after manual selection never invokes P3 diagnostic validation."""
+
+    config, workspace = _prepared(tmp_path)
+    cfg, paths = cli._load_config(config)
+
+    def _poison_exposure(*args, **kwargs):
+        raise AssertionError(
+            "Selection view projection must not execute expose_current_target_size_auto_diagnostic"
+        )
+
+    import mdstats.training_data.campaign_target_size_view as ctsv
+
+    # 1. Cold manual selection writes valid result view without diagnostic validation
+    monkeypatch.setattr(
+        ctsv, "expose_current_target_size_auto_diagnostic", _poison_exposure
+    )
+    try:
+        assert _select(config, "4") == 0
+    finally:
+        monkeypatch.undo()
+
+    view_path = paths.results / "target-size-state.json"
+    assert view_path.is_file()
+    import json
+
+    view = json.loads(view_path.read_text(encoding="utf-8"))
+    assert view["schema"] == ctsv.TARGET_SIZE_RESULT_VIEW_SCHEMA
+    assert len(view["provisional_entries"]) == 1
+    assert view["provisional_entries"][0]["n_provisional"] == 4
+    assert view["auto_diagnostic"] is None
+
+    # 2. Run real bounded auto diagnostic through production owner reaching DIAGNOSTIC_COMPLETE
+    screen = fx._SelectedSizeScreenHarness()
+    assert (
+        p4d._run(
+            config,
+            "select-target-size",
+            "--auto",
+            _external_boundary_trainer=screen.train,
+            _external_inference_evaluator=screen.evaluate,
+        )
+        == 0
+    )
+    state_after_auto = _state(config)
+    assert state_after_auto.lifecycle.value == "diagnostic_complete"
+    assert state_after_auto.auto_diagnostic is not None
+    auto_diag_before = state_after_auto.auto_diagnostic
+
+    # 3. Poison strict diagnostic exposure, P3, and full-frame owners
+    def _poison_p3_owner(*args, **kwargs):
+        raise AssertionError("Manual selection must not invoke strict P3 or full-frame owners")
+
+    import mdstats.training_data.campaign_prepared_generation as cpg
+    import mdstats.training_data._frame_access as cfa
+    import mdstats.training_data.campaign_target_size_runtime as ctsr
+
+    monkeypatch.setattr(ctsv, "expose_current_target_size_auto_diagnostic", _poison_p3_owner)
+    monkeypatch.setattr(ctsv, "write_current_target_size_result_view", _poison_p3_owner)
+    monkeypatch.setattr(cpg, "load_prepared_frame_data", _poison_p3_owner)
+    monkeypatch.setattr(cfa, "build_frame_array_index", _poison_p3_owner)
+    monkeypatch.setattr(ctsr, "build_screen_context", _poison_p3_owner)
+
+    # 4. Execute manual selection through real runtime with poison active
+    assert _select(config, "16") == 0
+    state_after_manual = _state(config)
+    assert [e.n_provisional for e in state_after_manual.provisional_entries] == [
+        4,
+        auto_diag_before.recommended_target_size,
+        16,
+    ]
+    # Assert prior auto_diagnostic record is byte/identity equivalent
+    assert state_after_manual.auto_diagnostic == auto_diag_before
+    assert state_after_manual.auto_diagnostic.content_digest == auto_diag_before.content_digest
+
+    view2 = json.loads(view_path.read_text(encoding="utf-8"))
+    assert view2["lifecycle"] == "diagnostic_complete"
+    assert [e["n_provisional"] for e in view2["provisional_entries"]] == [
+        4,
+        auto_diag_before.recommended_target_size,
+        16,
+    ]
+    assert view2["recommended_target_size"] == auto_diag_before.recommended_target_size
+    assert view2["recommended_membership_digest"] == auto_diag_before.recommended_membership_digest
+
+
+def test_selection_view_projection_rejects_forged_old_view(tmp_path: Path):
+    """After real auto diagnostic, forged fields in target-size-state.json do not survive manual selection."""
+
+    config, workspace = _prepared(tmp_path)
+    cfg, paths = cli._load_config(config)
+
+    # 1. Real auto diagnostic reaching DIAGNOSTIC_COMPLETE
+    screen = fx._SelectedSizeScreenHarness()
+    assert (
+        p4d._run(
+            config,
+            "select-target-size",
+            "--auto",
+            _external_boundary_trainer=screen.train,
+            _external_inference_evaluator=screen.evaluate,
+        )
+        == 0
+    )
+    view_path = paths.results / "target-size-state.json"
+    assert view_path.is_file()
+
+    import json
+    view_before = json.loads(view_path.read_text(encoding="utf-8"))
+    real_recommended = view_before["recommended_target_size"]
+    real_digest = view_before["recommended_membership_digest"]
+
+    # 2. Forge diagnostic fields in existing view file while leaving generation/attempt plausible
+    forged_view = dict(view_before)
+    forged_view["recommended_target_size"] = 9999
+    forged_view["recommended_membership_digest"] = "forged_digest_9999"
+    forged_view["reducer_status"] = "forged_status"
+    forged_view["terminal_reason_codes"] = ["forged_reason_code"]
+    forged_view["active_candidate_sizes"] = [9999]
+    forged_view["completed_boundary_epochs"] = 999
+    forged_view["nonconverged_at_configured_ceiling"] = True
+    view_path.write_text(json.dumps(forged_view, indent=2), encoding="utf-8")
+
+    # 3. Execute manual selection through real runtime
+    assert _select(config, "16") == 0
+
+    # 4. Assert rewritten view derives strictly from committed state and forged fields are erased
+    view_after = json.loads(view_path.read_text(encoding="utf-8"))
+    assert view_after["recommended_target_size"] == real_recommended
+    assert view_after["recommended_target_size"] != 9999
+    assert view_after["recommended_membership_digest"] == real_digest
+    assert view_after["recommended_membership_digest"] != "forged_digest_9999"
+    assert view_after["reducer_status"] == view_before["reducer_status"]
+    assert view_after["reducer_status"] != "forged_status"
+    assert "forged_reason_code" not in view_after["terminal_reason_codes"]
+    assert "active_candidate_sizes" not in view_after
+    assert "completed_boundary_epochs" not in view_after

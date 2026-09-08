@@ -1,7 +1,7 @@
 {
   "pdf": {
     "name": "mlff_training_data_architecture.pdf",
-    "sha256": "a400317f6feaf1dab55aaeb7476150e8489dcf2c5dec6e2f32cb22112b02c627"
+    "sha256": "0807928323e4bbc67c44fbd210ba40649b0b0b451308f838b9a82bf938c091b2"
   },
   "renderer": {
     "config": {
@@ -22,6 +22,6 @@
   "schema_version": 1,
   "source": {
     "name": "mlff_training_data_architecture.md",
-    "sha256": "9979cfde623c1190503388428faf32aced9cccf6817311601e6ec75595107af8"
+    "sha256": "25258574040902aa9865d9d776e9f390be411ef142ceafcc8ceed61e0a0ca307"
   }
 }

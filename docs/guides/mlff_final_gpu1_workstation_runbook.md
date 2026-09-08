@@ -142,10 +142,10 @@ The campaign itself owns the configured target-size ladder and fidelity path:
 pi_train -> configured candidate ladder
         -> optional diagnostic screen(n1/M1 -> n2/M2 -> n3/M3) -> recommended N
         -> operator's provisional design
-        -> cross-validate admission freezes N_selected,
-           T_selected = pi_train[:N_selected], and both role horizons
-        -> post-selection cross-validation on exactly T_selected
-        -> fresh final production on the complete T_selected
+        -> cross-validate admission freezes the selected design (ordered collection
+           of sizes N, their exact memberships T_N = pi_train[:N], and role horizons)
+        -> post-selection cross-validation on the frozen collection
+        -> fresh final production per frozen size on its complete T_N
 ```
 
 `select-target-size --auto` adopts the diagnostic's recommendation; substitute

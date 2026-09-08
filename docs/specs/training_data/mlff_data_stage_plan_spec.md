@@ -26,7 +26,7 @@ Narrow specifications own exact module schemas, numerical constants, algorithms,
 7. Current DATA6/DATA7 preparation publishes fitted inputs and evidence for the common target-size owner and SHALL NOT publish target membership or target size.
 8. One canonical training order `pi_train` is the sole current target-membership authority; every candidate is the exact prefix `T_N = pi_train[:N]`.
 9. The one target-size reducer is the sole owner of the *automatic* target-size diagnostic, which recommends a size and freezes nothing. The operator owns the provisional choice, restricted to the configured qualified candidate set. Monitor/replay/batch/pool cardinalities are different semantic types.
-10. Target membership, the selected target size, and both effective role training horizons are protocol-global and are frozen together, once, at `cross-validate` admission.
+10. Exact target membership, the ordered collection of provisional target sizes, and their per-size effective role training horizons are frozen together, once, at `cross-validate` admission.
 11. Target-size screening uses only authorized development/model-selection evidence. Held-out CV, calibration, and locked tests are forbidden inputs.
 12. Locked tests cannot affect fitting, membership, size, protocol choice, stopping, checkpointing, calibration-policy choice, or acquisition and are activated only after protocol/committee freeze.
 13. Replay training, replay monitoring, target monitoring, and target training preserve separate source/role identities.
@@ -54,8 +54,8 @@ Narrow specifications own exact module schemas, numerical constants, algorithms,
 | canonical evaluation ladder `pi_eval` | nested direct populations `M1 subset M2 subset M3` | training membership or size choice |
 | common target-size preparation | one preparation identity shared by every candidate size and optimizer seed | any per-size or per-seed variation |
 | target-size policy / reducer decision | configured candidate ladder, fidelity funnel, a recommended target size or a typed no-recommendation outcome | freezing a size; monitor construction; post-selection cross-validation |
-| `CampaignStore` provisional proposal | one mutable `(N, T_N identity, selection source, H_cv, H_prod)` | immutable ancestry; running screen work |
-| `CampaignStore` frozen selection | `N_selected` bound to the exact `T_selected` membership digest, plus both effective role horizons | re-deciding the size or accepting the method |
+| `CampaignStore` provisional proposal | ordered collection of mutable `(N, T_N identity, selection source, H_cv, H_prod)` | immutable ancestry; running screen work |
+| `CampaignStore` frozen selection | ordered collection of selected sizes $\{N_i\}$ bound to exact $T_{N_i}$ membership digests, plus per-size role horizons | re-deciding the size or accepting the method |
 | `OnlineTargetMonitorPolicy` | common target-monitor evidence set | target-training size |
 | `ReplayMonitorPolicy` | replay-monitor evidence set | target-training size or replay-training membership |
 | `TrainingProtocolIdentity` | complete frozen model/data/replay/membership/size/objective/exposure/checkpoint/runtime protocol | mutable runtime observations or test results |
@@ -85,20 +85,19 @@ One target MACE bundle contains one compatible target label domain plus a separa
 
 Raw physical/structural/event facts may be constructed before partitioning when the owning provider is partition-independent. Any learned/fitted transform—including scaling, PCA/whitening, fitted metrics, E0 corrections, or label-derived residual difficulty—is bound to a specific authorized gradient-training domain.
 
-Before selection, the common preparation is global. After selection, a
-post-selection fold `k` may have a fold-local fitted view. The allowed
-directions are:
+Before selection, the common preparation is global. After admission of the
+ordered frozen collection, fold-local and final fitted domains branch over
+each frozen size's exact membership `T_N`:
 
 ```text
 P_train / common target-size preparation
-  -> one pi_train and exact T_selected membership after the target-size freeze
-  -> post-selection fold_training_partition_k
-  -> fold-local fitted products and checkpoint choice using its authorized monitor
-  -> held_out_evaluation_fold_k only after checkpoint freeze
-
-final T_selected
-  -> final-training fitted products
-  -> fresh final production
+  -> one pi_train and ordered collection of frozen sizes {N_selected}
+  -> for each frozen size N_selected, exact membership T_N = pi_train[:N_selected]:
+       |-> post-selection fold_training_partition_k(N)
+       |     -> fold-local fitted products and checkpoint choice using its authorized monitor
+       |     -> held_out_evaluation_fold_k(N) only after checkpoint freeze
+       |-> final-training fitted products for T_N
+             -> fresh final production for T_N
 ```
 
 A reverse dependency from held-out evaluation into fitted products, target size, or checkpoint selection is prohibited.
@@ -114,9 +113,9 @@ neutral statistical substrate
   -> one canonical evaluation ladder M1 subset M2 subset M3
   -> one common target-size preparation
   -> optional paired optimizer-seed automatic diagnostic (recommends only)
-  -> operator-owned provisional design (N, H_cv, H_prod)
+  -> operator-owned provisional design (ordered collection of (N, H_cv, H_prod))
   -> cross-validate admission
-  -> N_selected, T_selected = pi_train[:N_selected], and both role horizons
+  -> ordered collection of frozen entries (N_selected, T_selected = pi_train[:N_selected], and role horizons)
 ```
 
 No current alternate, migration, or rescue branch exists. Retired derived
@@ -126,10 +125,10 @@ The configured candidate ladder, the screen `(n1,n2,n3)`, and the independent
 production-horizon policy are owned by the architecture manual's Part V and the
 campaign configuration; they are not duplicated here.
 
-Candidate membership at size `N` is the exact prefix `pi_train[:N]`. The selected
-`N`, its exact membership `T_selected`, and the effective CV and production
-horizons are frozen together at `cross-validate` admission into the complete
-training protocol. Identity projection stays role-specific: CV depends on the
+Candidate membership at size `N` is the exact prefix `pi_train[:N]`. `cross-validate`
+admission freezes the ordered collection of selected sizes, each with its exact
+membership `T_selected = pi_train[:N]` and its effective CV and production
+horizons. Identity projection stays role-specific: CV depends on the
 frozen CV horizon and never on the production horizon, and vice versa.
 
 Because every candidate is a prefix of one order, increasing `N` only adds
@@ -156,7 +155,7 @@ back into target-size or method selection.
 
 ```text
 foundation/model/head identity
-selected target size and exact global membership identity
+applicable selected target size and exact per-size membership identity
 post-selection fold partition identity where the protocol is a CV fold
 replay source/training/monitor identities
 common target-monitor identity

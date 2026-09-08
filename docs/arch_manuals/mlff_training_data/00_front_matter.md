@@ -39,11 +39,11 @@ source evidence and labels
   -> one common deterministic target-size preparation
   -> optional paired optimizer-seed automatic diagnostic over candidate sizes
      (one target-size reducer -> a *recommended* size)
-  -> operator-owned provisional design (N, CV horizon, production horizon)
+  -> operator-owned provisional design (ordered collection of (N, CV horizon, production horizon))
   -> cross-validate admission
-  -> frozen N_selected, T_selected = pi_train[:N_selected], and both horizons
-  -> post-selection cross-validation on exactly T_selected
-  -> fresh final production on the complete T_selected
+  -> frozen design: every selected size N_selected, its exact T_selected = pi_train[:N_selected], and role horizons
+  -> post-selection cross-validation on the frozen collection
+  -> fresh final production on the selected dataset(s)
   -> currentness-fenced final-production publication
 ```
 
@@ -86,7 +86,7 @@ For targeted human or AI loading, use the smallest current source containing the
 
 ## Stable terminology
 
-- **training domain** — an authorized gradient-training evidence partition. The current target-size choice is global; post-selection CV may derive fold-local partitions only inside `T_selected`.
+- **training domain** — an authorized gradient-training evidence partition. The target-size design is an ordered frozen collection; for each frozen size, post-selection CV may derive fold-local partitions only inside its exact membership `T_N = pi_train[:N]`.
 - **target membership** — frame membership in a target-training subset; an exact prefix of the one canonical training order `pi_train`.
 - **target size** — the protocol-level scientific target-training cardinality the operator chooses, restricted to the configured qualified candidate set.
 - **recommended size** — the size the optional automatic diagnostic's reducer ranks best under its short-horizon protocol. It is evidence, never authority.
@@ -94,7 +94,7 @@ For targeted human or AI loading, use the smallest current source containing the
 - **training order** — the one canonical deterministic ordering `pi_train` of the target-training pool whose prefixes define candidate target subsets.
 - **qualified size** — a candidate size admitted by the configured target-size policy for the current experiment definition.
 - **provisional design** — the ordered, unique-by-`N` collection of per-size entries `(N_provisional, its exact membership, selection source, CV horizon, production horizon)` the operator owns until admission. Empty is its canonical unselected state.
-- **selected size** — the one target size `N_selected` frozen at `cross-validate` admission together with the exact membership `T_selected` and both effective role horizons.
+- **selected size** — a target size `N_selected` in the ordered frozen design admitted at `cross-validate`, bound to its exact membership `T_selected = pi_train[:N_selected]` and its effective role horizons.
 - **authoritative evidence** — persisted information that defines or independently proves a scientific decision.
 - **reconstructible execution cache** — discardable state derivable exactly from authoritative inputs.
 - **unsupported generation** — an old campaign/artifact generation that current architecture does not interpret or migrate; it requires re-preparation.

@@ -16,14 +16,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from mdstats.training_data import _campaign_cli_core as cli
 from mdstats.training_data._campaign_cli_core import CampaignStore
+from mdstats.training_data._common import digest
 from mdstats.training_data.campaign_post_selection import (
+    PostSelectionError,
     load_current_selected_training_context,
 )
 from mdstats.training_data.campaign_post_selection_runtime import (
@@ -136,7 +140,9 @@ def test_p6_fixture_provenance_is_recorded_and_bound_to_the_p5a6_baseline():
 
 
 @pytest.mark.skipif(not _WORKSPACE.is_dir(), reason=_MISSING)
-def test_p6_reopens_the_preserved_p5a6_workspace_through_real_owners():
+def test_p6_reopens_the_preserved_p5a6_workspace_through_real_owners(
+    monkeypatch: pytest.MonkeyPatch,
+):
     identity = json.loads(_IDENTITY.read_text(encoding="utf-8"))
 
     # 1. The workspace on disk is byte-for-byte what P5A6 produced.  This runs
@@ -153,6 +159,9 @@ def test_p6_reopens_the_preserved_p5a6_workspace_through_real_owners():
     ), "the preserved P5A6 campaign state was rewritten before the first P6 load"
 
     config = _WORKSPACE / "campaign.toml"
+
+    def _poison_p5_descendants(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("P5 descendant accessed during selection resolution")
 
     # 2. Open it through the real production config loader and CampaignStore.
     cfg, paths = cli._load_config(config)
@@ -173,13 +182,26 @@ def test_p6_reopens_the_preserved_p5a6_workspace_through_real_owners():
             assert getattr(revision.state, field) == identity[field], field
 
         # 3. The P4 terminal selection and the exact selected-frame binding.
+        # Selection resolution re-establishes true P1/P2 authority and must
+        # never consult downstream P5 CV or final-production stores or pointers.
         terminal = revision.state.auto_diagnostic
         assert terminal is not None
         assert terminal.recommended_target_size == identity["n_selected"]
-        assert terminal.selected_membership_digest == identity[
+        assert terminal.recommended_membership_digest == identity[
             "selected_membership_digest"
         ]
-        selected = load_current_selected_training_context(cfg, paths, store)
+        monkeypatch.setattr(
+            "mdstats.training_data.post_selection_store.open_post_selection_store",
+            _poison_p5_descendants,
+        )
+        monkeypatch.setattr(
+            "mdstats.training_data.post_selection_store.read_current_post_selection_pointer",
+            _poison_p5_descendants,
+        )
+        try:
+            selected = load_current_selected_training_context(cfg, paths, store)
+        finally:
+            monkeypatch.undo()
         assert list(selected.selected_membership) == identity["selected_membership"]
         assert selected.binding.content_digest == identity["selected_binding_digest"]
 
@@ -205,7 +227,18 @@ def test_p6_reopens_the_preserved_p5a6_workspace_through_real_owners():
     try:
         again = require_current_target_size_runtime(store2)
         assert again.state.content_digest == revision.state.content_digest
-        selected2 = load_current_selected_training_context(cfg2, paths2, store2)
+        monkeypatch.setattr(
+            "mdstats.training_data.post_selection_store.open_post_selection_store",
+            _poison_p5_descendants,
+        )
+        monkeypatch.setattr(
+            "mdstats.training_data.post_selection_store.read_current_post_selection_pointer",
+            _poison_p5_descendants,
+        )
+        try:
+            selected2 = load_current_selected_training_context(cfg2, paths2, store2)
+        finally:
+            monkeypatch.undo()
         assert selected2.binding.content_digest == identity["selected_binding_digest"]
         context2 = build_post_selection_context(cfg2, paths2, store2, trainer=None)
         assert (
@@ -234,3 +267,100 @@ def test_p6_reopens_the_preserved_p5a6_workspace_through_real_owners():
         and not name.endswith(_DERIVED_SUFFIXES)
     )
     assert not unexpected, f"the reopen wrote unexpected persisted files: {unexpected}"
+
+
+@pytest.mark.skipif(not _WORKSPACE.is_dir(), reason=_MISSING)
+def test_corrupted_final_production_plan_m3_is_rejected_by_p2_oracle(
+    tmp_path: Path,
+):
+    """Counterfactual: M3 development lineage is authenticated from P2, not descendant records."""
+
+    disposable = tmp_path / "workspace"
+    shutil.copytree(_WORKSPACE, disposable)
+
+    toml_path = disposable / "campaign.toml"
+    toml_text = toml_path.read_text(encoding="utf-8").replace(
+        str(_WORKSPACE),
+        str(disposable),
+    )
+    toml_path.write_text(toml_text, encoding="utf-8")
+
+    identity = json.loads(_IDENTITY.read_text(encoding="utf-8"))
+    final_plan_digest = identity["final_plan_digest"]
+    plan_obj_path = (
+        disposable
+        / "campaign"
+        / ".mdstats"
+        / "post-selection"
+        / f"g{identity['generation']}"
+        / "objects"
+        / final_plan_digest[:2]
+        / f"{final_plan_digest}.json"
+    )
+    data = json.loads(plan_obj_path.read_text(encoding="utf-8"))
+    data["m3_membership_digest"] = "0" * 64
+    payload = {k: v for k, v in data.items() if k != "content_digest"}
+    corrupted_digest = digest(payload)
+    payload["content_digest"] = corrupted_digest
+    corrupted_obj_path = (
+        disposable
+        / "campaign"
+        / ".mdstats"
+        / "post-selection"
+        / f"g{identity['generation']}"
+        / "objects"
+        / corrupted_digest[:2]
+        / f"{corrupted_digest}.json"
+    )
+    corrupted_obj_path.parent.mkdir(parents=True, exist_ok=True)
+    corrupted_obj_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    db_path = disposable / "campaign" / ".mdstats" / "campaign.sqlite3"
+    binding_digest = data["binding"]["content_digest"]
+    key = f"post_selection:{binding_digest}:final_production_plan"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE meta SET value=? WHERE key=?", (corrupted_digest, key))
+
+    cfg, paths = cli._load_config(toml_path)
+    store = CampaignStore(paths.state_db)
+    try:
+        context = build_post_selection_context(cfg, paths, store, trainer=None)
+        with pytest.raises(
+            PostSelectionError,
+            match="The stored final-production plan binds retired M3 development lineage",
+        ):
+            resolve_current_final_production_plan(context)
+    finally:
+        store.close()
+
+
+@pytest.mark.skipif(not _WORKSPACE.is_dir(), reason=_MISSING)
+def test_corrupted_or_missing_cv_plan_does_not_affect_selection_resolution(
+    tmp_path: Path,
+):
+    """Counterfactual: selection resolution derives strictly from P1/P2 authority, never CV descendants."""
+
+    disposable = tmp_path / "workspace"
+    shutil.copytree(_WORKSPACE, disposable)
+
+    toml_path = disposable / "campaign.toml"
+    toml_text = toml_path.read_text(encoding="utf-8").replace(
+        str(_WORKSPACE),
+        str(disposable),
+    )
+    toml_path.write_text(toml_text, encoding="utf-8")
+
+    # Completely wipe the entire post-selection directory tree
+    ps_root = disposable / "campaign" / ".mdstats" / "post-selection"
+    if ps_root.is_dir():
+        shutil.rmtree(ps_root)
+
+    identity = json.loads(_IDENTITY.read_text(encoding="utf-8"))
+    cfg, paths = cli._load_config(toml_path)
+    store = CampaignStore(paths.state_db)
+    try:
+        selected = load_current_selected_training_context(cfg, paths, store)
+        assert list(selected.selected_membership) == identity["selected_membership"]
+        assert selected.binding.content_digest == identity["selected_binding_digest"]
+    finally:
+        store.close()

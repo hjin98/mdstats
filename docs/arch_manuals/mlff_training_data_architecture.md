@@ -39,11 +39,11 @@ source evidence and labels
   -> one common deterministic target-size preparation
   -> optional paired optimizer-seed automatic diagnostic over candidate sizes
      (one target-size reducer -> a *recommended* size)
-  -> operator-owned provisional design (N, CV horizon, production horizon)
+  -> operator-owned provisional design (ordered collection of (N, CV horizon, production horizon))
   -> cross-validate admission
-  -> frozen N_selected, T_selected = pi_train[:N_selected], and both horizons
-  -> post-selection cross-validation on exactly T_selected
-  -> fresh final production on the complete T_selected
+  -> frozen design: every selected size N_selected, its exact T_selected = pi_train[:N_selected], and role horizons
+  -> post-selection cross-validation on the frozen collection
+  -> fresh final production on the selected dataset(s)
   -> currentness-fenced final-production publication
 ```
 
@@ -86,7 +86,7 @@ For targeted human or AI loading, use the smallest current source containing the
 
 ## Stable terminology
 
-- **training domain** — an authorized gradient-training evidence partition. The current target-size choice is global; post-selection CV may derive fold-local partitions only inside `T_selected`.
+- **training domain** — an authorized gradient-training evidence partition. The target-size design is an ordered frozen collection; for each frozen size, post-selection CV may derive fold-local partitions only inside its exact membership `T_N = pi_train[:N]`.
 - **target membership** — frame membership in a target-training subset; an exact prefix of the one canonical training order `pi_train`.
 - **target size** — the protocol-level scientific target-training cardinality the operator chooses, restricted to the configured qualified candidate set.
 - **recommended size** — the size the optional automatic diagnostic's reducer ranks best under its short-horizon protocol. It is evidence, never authority.
@@ -94,7 +94,7 @@ For targeted human or AI loading, use the smallest current source containing the
 - **training order** — the one canonical deterministic ordering `pi_train` of the target-training pool whose prefixes define candidate target subsets.
 - **qualified size** — a candidate size admitted by the configured target-size policy for the current experiment definition.
 - **provisional design** — the ordered, unique-by-`N` collection of per-size entries `(N_provisional, its exact membership, selection source, CV horizon, production horizon)` the operator owns until admission. Empty is its canonical unselected state.
-- **selected size** — the one target size `N_selected` frozen at `cross-validate` admission together with the exact membership `T_selected` and both effective role horizons.
+- **selected size** — a target size `N_selected` in the ordered frozen design admitted at `cross-validate`, bound to its exact membership `T_selected = pi_train[:N_selected]` and its effective role horizons.
 - **authoritative evidence** — persisted information that defines or independently proves a scientific decision.
 - **reconstructible execution cache** — discardable state derivable exactly from authoritative inputs.
 - **unsupported generation** — an old campaign/artifact generation that current architecture does not interpret or migrate; it requires re-preparation.
@@ -189,7 +189,7 @@ Its current responsibilities include:
 - fixed outer roles and independent CV job families;
 - neutral and authorized fold-local fitted descriptors, transforms, metrics, E0, objective/weight, and difficulty evidence;
 - the target-size development split, the canonical training/evaluation orders, the common preparation, and the paired optimizer-seed screen;
-- one protocol-global target-size decision with one exact global selected membership;
+- the ordered frozen target-size collection, its exact per-size prefix memberships, and role horizons;
 - MACE target/replay artifacts and explicit exposure realization;
 - replay-retention and checkpoint admissibility;
 - post-selection protocol-matched CV and fresh final training; downstream committee, calibration, sealed evaluation, and deployment verification are separate consumer boundaries;
@@ -239,8 +239,8 @@ source bytes / controls / trajectory collections
   -> target-size study using authorized development/model-selection evidence,
      yielding a recommendation rather than a decision
   -> operator-owned provisional design, frozen at cross-validate admission
-  -> one frozen N_selected, exact global T_selected, and both role horizons
-  -> protocol-matched CV partitions inside T_selected, with held-out folds inaccessible to size/checkpoint choice
+  -> ordered collection of frozen entries (N_selected, exact T_N = pi_train[:N_selected], and role horizons)
+  -> for each frozen size, protocol-matched CV partitions inside its exact T_N, with held-out folds inaccessible to size/checkpoint choice
   -> accepted frozen protocol
   -> independent final seeds and checkpoint admission
   -> current final-production publication
@@ -508,8 +508,8 @@ and later validation roles.
 
 It does **not** own target membership or target size. The Part V owners derive
 one `P_train`/`M3` split, one canonical `pi_train`, and one target-size result.
-After selection, the Part V/P5 owners may partition the already frozen
-`T_selected` for cross-validation; that operation cannot choose a new size or
+After admission, the Part V/P5 owners may partition each frozen size's exact
+membership `T_N` for cross-validation; that operation cannot choose a new size or
 membership.
 
 ## Independence and evidence roles
@@ -568,23 +568,23 @@ membership map, or alternate ordering may change the universe.
 
 Protected relations remain intact wherever the current owner assigns roles.
 An inseparable duplicate/correlation component cannot be split merely to
-obtain a requested fold count. A frame outside `T_selected` cannot enter
-post-selection CV because it is convenient or because it belongs to a related
-source cohort.
+obtain a requested fold count. For any frozen size, a frame outside its exact
+membership `T_N` cannot enter post-selection CV because it is convenient or because
+it belongs to a related source cohort.
 
 ## Cross-validation validates a frozen protocol
 
 Target size is frozen before protocol-matched cross-validation is interpreted.
-For each required post-selection fold (k), the owner keeps distinct:
+For each required post-selection fold (k) of a frozen size N, the owner keeps distinct:
 
 ```text
-fold_training_partition_k within T_selected
+fold_training_partition_k within T_N
 fold_checkpoint_monitor_k
-held_out_evaluation_partition_k within T_selected
+held_out_evaluation_partition_k within T_N
 ```
 
-The selected cardinality and the exact global membership remain unchanged for
-every fold. Fold assignment may be local to `T_selected`, and fold-local
+For each frozen size, its cardinality `N` and exact membership `T_N` remain unchanged
+across folds. Fold assignment is local to `T_N`, and fold-local
 fitted preparation may use only that fold's training partition and authorized
 monitor. It may not inspect the held-out partition, outer protected evidence,
 or locked evidence before checkpoint choice. The final fold evaluation occurs
@@ -593,12 +593,12 @@ only after the fold representative is frozen.
 This gives the required distinction:
 
 ```text
-global target-size choice -> one N_selected and one T_selected
-post-selection CV        -> method validation on partitions of T_selected
+target-size admission    -> ordered frozen design of selected sizes N and exact memberships T_N
+post-selection CV        -> method validation on the frozen design
 ```
 
 Held-out CV error, calibration evidence, and locked-test evidence therefore
-cannot select `N_selected`, alter `T_selected`, or tune the target-size policy.
+cannot select or alter the frozen target design, or tune the target-size policy.
 
 ## Fitted preparation
 
@@ -620,8 +620,9 @@ downstream held-out result.
 For post-selection CV, a fold-local transform or metric is valid only when the
 CV owner explicitly records the fold training partition, protected relations,
 and protocol identity. A fold-local product can change the fold's evaluation
-realization; it cannot change the global target membership or target-size
-decision. Final production uses the accepted method and complete `T_selected`.
+realization; it cannot change the frozen target collection or any member's exact
+membership. For each frozen size, final production uses the accepted method and its
+complete `T_N`.
 
 ## Selection inputs are not a second selector
 
@@ -640,7 +641,7 @@ difficulty and correlation identities
 The target-size policy combines these inputs into the one deterministic
 `pi_train`. There is no competing quota/FPS plan whose prefixes can disagree
 with that order. A materialization or export record may describe a consumer
-view of `T_selected`, but it is not an independent membership authority.
+view of a frozen `T_N`, but it is not an independent membership authority.
 
 ## Objective, weighting, and exposure
 
@@ -702,7 +703,7 @@ raw source / label / feature / event evidence
     -> common fitted preparation
     -> optional target-size diagnostic screen and reducer (recommends only)
     -> operator-owned provisional design
-    -> frozen N_selected/T_selected and role horizons at cross-validate admission
+    -> frozen design (selected sizes, memberships, role horizons) at cross-validate admission
     -> post-selection fold partitions and method acceptance
     -> fresh final production
     -> downstream qualification roles when separately implemented and activated
@@ -748,7 +749,7 @@ applicable:
 
 ```text
 foundation checkpoint / model family / selected foundation head
-protocol-global frozen N_selected and exact T_selected binding
+protocol-global frozen target design and exact membership bindings
 replay source, split, and replay-monitor identity
 training objective and configuration/property weights
 executable loss family
@@ -1055,12 +1056,11 @@ canonical frame authority (Part II)
     |   |
     |   +-> operator-owned provisional design
     |         N_provisional, H_cv, H_prod   (mutable, freezes nothing)
-    |
     -> cross-validate admission
-         -> frozen N_selected, T_selected = pi_train[:N_selected],
+         -> frozen design: every selected size N_selected, its exact T_selected = pi_train[:N_selected],
             and both effective role horizons
-    -> post-selection cross-validation on exactly T_selected
-    -> fresh final production on the complete T_selected
+    -> post-selection cross-validation on the frozen collection
+    -> fresh final production on the selected dataset(s)
     -> currentness-fenced publication
 ```
 
@@ -1396,15 +1396,17 @@ source/frame/label authorities
   -> neutral statistical substrate and protected relations
   -> one P_train/M3 split and pi_train/pi_eval
   -> one common target-size preparation
-  -> paired-seed candidate screen
-  -> selected binding
-  -> selected-only CV and fresh final production
+  -> optional paired-seed diagnostic (recommendation or typed no-recommendation)
+  -> operator-owned provisional ordered collection
+  -> cross-validate atomic collection freeze
+  -> per-frozen-size CV and fresh final production
 ```
 
 The common preparation is a single authenticated authority, not one independent
 copy per candidate or fold. A post-selection CV fold may create a fold-local
 fitted view from its own training partition when its owner requires it, but it
-cannot create a target-size ladder or alter `T_selected`.
+cannot create a target-size ladder or alter the frozen collection or that
+size's exact membership `T_N`.
 
 Foundation-model providers and large accelerator references are released as
 soon as their final preparation consumer completes. Derived file
@@ -1422,7 +1424,7 @@ qualified candidates
   -> coarse n1/M1
   -> at most four short n2/M2 continuations
   -> two final n3/M3 continuations
-  -> one selected size or typed scientific failure
+  -> one recommended size or typed no-recommendation outcome
 ```
 
 Each `(candidate size, optimizer seed)` cell runs through the accepted TRAIN2
@@ -1818,11 +1820,11 @@ source evidence and labels
     -> one pi_train and nested pi_eval ladder M1 subset M2 subset M3
     -> one common target-size preparation
     -> optional paired optimizer-seed automatic diagnostic (recommends only)
-    -> operator-owned provisional design (N, H_cv, H_prod)
+    -> operator-owned provisional design (ordered collection of (N, CV horizon, production horizon))
     -> cross-validate admission
-    -> frozen N_selected, exact global T_selected, and both role horizons
-    -> post-selection cross-validation on exactly T_selected
-    -> fresh final production on the complete T_selected
+    -> frozen design: every selected size N_selected, its exact T_N = pi_train[:N_selected], and role horizons
+    -> post-selection cross-validation on the frozen collection
+    -> fresh final production on the complete selected dataset(s)
     -> currentness-fenced publication
 ```
 
@@ -1845,9 +1847,9 @@ quarantined/reprepared rather than translated.
 | common target-size preparation | `TargetSizeCommonPreparation` | `P_train` and foundation/training protocol | one shared preparation identity | per-size or per-seed scientific variation |
 | automatic target-size diagnostic | one target-size reducer | paired target-side screen evidence | a *recommended* size, or a typed no-recommendation outcome | freezing a size, monitor cardinality, CV evidence |
 | provisional downstream design | operator, through `select-target-size` | qualified candidate set, `pi_train`, configured/overridden horizons | one mutable ordered collection of per-size entries `(N, T_N identity, H_cv, H_prod)`, unique by `N` | immutable ancestry; running screen work; choosing a release product among sizes |
-| frozen downstream design | `cross-validate` admission | the current proposal and authenticated P2 order | exact `N_selected`/`T_selected` binding plus both effective role horizons | re-deciding size afterwards |
-| post-selection method acceptance | post-selection CV owner | exactly `T_selected`, protected relations, `K >= 2`, CV seeds | all-required-fold target-only verdict | changing `N_selected` |
-| fresh final production | final-production owner | accepted method, complete `T_selected`, required final seeds | complete executed run evidence / model artifacts | target-size or CV authority (publication is P7) |
+| frozen downstream design | `cross-validate` admission | the current proposal and authenticated P2 order | frozen ordered collection of per-size bindings (`N_selected`, exact `T_N`, role horizons) | re-deciding size afterwards |
+| post-selection method acceptance | post-selection CV owner | frozen target collection, protected relations, `K >= 2`, CV seeds | all-required-fold target-only verdict across each admitted size | changing selected sizes |
+| fresh final production | final-production owner | accepted method, complete selected dataset(s), required final seeds | complete executed run evidence / model artifacts | target-size or CV authority (publication is P7) |
 | target monitor | current monitor policy | authorized development role | deterministic monitor | target membership |
 | replay monitor | replay policy | authorized replay evidence | deterministic replay monitor | target ranking or method acceptance credit |
 | execution/provider lifetime | current stage owners | authenticated plans and resource budgets | bounded task/cache/provider state | scientific decisions |
@@ -1870,7 +1872,8 @@ The current fitted-preparation owner may publish:
 These are inputs to the one canonical order. They are not an independent
 quota, FPS, membership, target-size, or CV selector. A fold-local transform is
 allowed only after selection and only when the post-selection CV owner binds it
-to that fold's training partition; it cannot change global `T_selected`.
+to that fold's training partition; it cannot change the frozen target collection or
+that size's exact membership `T_N`.
 
 This boundary preserves useful fitted/statistical information without
 reintroducing a domain-specific target-size authority. Materialization and
@@ -1902,10 +1905,10 @@ $$
 T_N=\pi_{\mathrm{train}}[:N].
 $$
 
-Thus frame membership is global, candidate sets are nested, and
-`N_selected`/`T_selected` are frozen together. Increasing `N` only adds frames;
-a pass/fail/pass result under a monotone prefix policy is an invariant failure,
-not a reason to choose a different order.
+Thus candidate sets are nested prefixes of the canonical training order, and for every
+admitted size `N_selected`, its exact prefix `T_N = pi_train[:N_selected]` is frozen together with its role horizons.
+Increasing `N` only adds frames; a pass/fail/pass result under a monotone prefix policy
+is an invariant failure, not a reason to choose a different order.
 
 The reducer consumes only authorized target-side development/model-selection
 evidence. Replay metrics, post-selection CV, calibration, physical-observable,
@@ -1962,10 +1965,10 @@ current selected binding
     -> final-production publication decision
 ```
 
-Cross-validation uses exactly `T_selected`, preserves P1 protected relations,
+Cross-validation evaluates the frozen selected collection, preserves P1 protected relations,
 requires every configured fold and seed, and accepts or rejects the method.
-It cannot alter `N_selected`. Final production starts fresh from the accepted
-foundation and trains the complete selected set under
+It cannot alter the frozen target design. Final production starts fresh from the accepted
+foundation and trains the complete selected dataset(s) under
 `[training].max_num_epochs`; it cannot continue a screen or CV run.
 
 ### The final-production publication decision
@@ -2154,8 +2157,8 @@ coerced to fully periodic or fully open, and minimum-image reductions wrap only
 the axes that genuinely have images.
 
 Downstream evidence has pass, reject, and waiting authority for the exact
-frozen product and nothing else. A failure never changes `N_selected`,
-`T_selected`, CV acceptance, a production checkpoint or seed, publication
+frozen product and nothing else. A failure never changes the frozen target design,
+CV acceptance, a production checkpoint or seed, publication
 membership, or an upstream threshold. A missing external reference is
 `waiting_for_reference` with an actionable request on disk, never a fabricated
 pass. An absent supported deployment runtime is reported as unavailable and
@@ -2230,8 +2233,8 @@ The durable rules are:
 1. independent evidence remains independent;
 2. fitted preparation and target membership are separate authorities;
 3. one canonical order and one common preparation define every candidate;
-4. `N_selected`, exact global `T_selected`, and both effective role horizons are
-   frozen together, once, at `cross-validate` admission;
+4. the ordered collection of `(N_selected, T_N, H_cv, H_prod)` bindings is
+   frozen once at `cross-validate` admission;
 5. the automatic screen recommends and the operator decides; post-selection
    cross-validation accepts the method and can never re-choose the size;
 6. final production is fresh full-selected-set training;

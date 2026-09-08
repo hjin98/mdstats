@@ -113,6 +113,7 @@ from .post_selection_store import (
     post_selection_publication_barrier,
     post_selection_root,
     publish_current_post_selection_pointer,
+    read_current_post_selection_pointer,
     resolve_current_post_selection_record,
 )
 
@@ -340,26 +341,48 @@ def build_post_selection_contexts(
         )
     policies = resolve_post_selection_method_policies(cfg)
     method = resolve_post_selection_method_identity(cfg, policies=policies)
-    return tuple(
-        PostSelectionContext(
-            cfg=cfg,
-            paths=paths,
-            store=store,
-            selected=selected,
-            method=method,
-            method_policies=policies,
-            cv_policy=resolve_cv_validation_policy_identity(
-                cfg, max_num_epochs=selected.frozen.cv_max_num_epochs
-            ),
-            production_policy=resolve_final_production_policy_identity(
-                cfg, max_num_epochs=selected.frozen.production_max_num_epochs
-            ),
-            trainer=resolved_trainer,
-            inference_evaluator=inference_evaluator,
-            qualification_case_workers=max(1, int(qualification_case_workers)),
+    contexts = []
+    for selected in selected_contexts:
+        selected_method = method
+        cv_max_num_epochs = None
+        production_max_num_epochs = None
+        if selected.frozen is not None:
+            cv_max_num_epochs = selected.frozen.cv_max_num_epochs
+            production_max_num_epochs = selected.frozen.production_max_num_epochs
+        if selected.binding.is_legacy_schema:
+            evidence_store = open_post_selection_store(
+                paths, selected.binding, create=False
+            )
+            cv_plan_digest = read_current_post_selection_pointer(
+                store, binding=selected.binding, kind=POINTER_CV_PLAN
+            )
+            if cv_plan_digest is not None and evidence_store.has(cv_plan_digest):
+                plan = evidence_store.get(cv_plan_digest, PostSelectionCvPlan.from_dict)
+                if evidence_store.has(plan.method_identity_digest):
+                    selected_method = evidence_store.get(
+                        plan.method_identity_digest,
+                        PostSelectionMethodIdentity.from_dict,
+                    )
+        contexts.append(
+            PostSelectionContext(
+                cfg=cfg,
+                paths=paths,
+                store=store,
+                selected=selected,
+                method=selected_method,
+                method_policies=policies,
+                cv_policy=resolve_cv_validation_policy_identity(
+                    cfg, max_num_epochs=cv_max_num_epochs
+                ),
+                production_policy=resolve_final_production_policy_identity(
+                    cfg, max_num_epochs=production_max_num_epochs
+                ),
+                trainer=resolved_trainer,
+                inference_evaluator=inference_evaluator,
+                qualification_case_workers=max(1, int(qualification_case_workers)),
+            )
         )
-        for selected in selected_contexts
-    )
+    return tuple(contexts)
 
 
 def _component_block_ids(

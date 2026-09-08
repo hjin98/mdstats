@@ -275,11 +275,93 @@ def write_current_target_size_result_view(
     return _write_diagnostic_target_size_result_view(destination, validated)
 
 
+def build_selection_target_size_result_view(
+    revision: TargetSizeCampaignRevision,
+) -> dict[str, Any]:
+    """Render a derived target-size result view after a selection change.
+
+    This helper derives purely from committed ``revision.state`` without executing
+    P3 diagnostic validation, loading frames, or requiring execution contexts.
+    If diagnostic metadata was already established or committed, it is preserved.
+    """
+    from .target_size_experiment import (
+        CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE,
+    )
+
+    state = revision.state
+    payload: dict[str, Any] = {
+        "schema": TARGET_SIZE_RESULT_VIEW_SCHEMA,
+        "authoritative": False,
+        "authority": "campaign store plus authenticated P3 immutable evidence",
+        "regime": state.regime.value,
+        "canonical_generation": state.generation,
+        "execution_attempt": state.attempt,
+        "lifecycle": state.lifecycle.value,
+        "campaign_state_revision": revision.state_revision,
+        "campaign_state_sequence": revision.sequence,
+        "experiment_definition_digest": state.experiment_definition_digest,
+        "execution_context_digest": state.execution_context_digest,
+        "execution_root": state.execution_root,
+        "adopted_execution_head_digest": state.adopted_execution_head_digest,
+        "adopted_reducer_state_digest": state.adopted_reducer_state_digest,
+        "auto_diagnostic": (
+            None if state.auto_diagnostic is None else state.auto_diagnostic.to_dict()
+        ),
+        "provisional_entries": [
+            entry.to_dict() for entry in state.provisional_entries
+        ],
+        "frozen_entries": (
+            None
+            if state.frozen_entries is None
+            else [entry.to_dict() for entry in state.frozen_entries]
+        ),
+    }
+
+    if state.auto_diagnostic is not None:
+        diag = state.auto_diagnostic
+        reason_codes = tuple(diag.terminal_reason_codes)
+        payload["reducer_status"] = diag.reducer_status
+        payload["recommended_target_size"] = diag.recommended_target_size
+        payload["recommended_membership_digest"] = diag.recommended_membership_digest
+        payload["terminal_reason_codes"] = list(reason_codes)
+        payload["nonconverged_at_configured_ceiling"] = (
+            CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE in reason_codes
+        )
+
+    return payload
+
+
+def write_selection_target_size_result_view(
+    path: str | os.PathLike[str],
+    revision: TargetSizeCampaignRevision,
+) -> dict[str, Any]:
+    """Atomically write a derived view for selection/freeze changes without P3 validation."""
+    destination = Path(path)
+    payload = build_selection_target_size_result_view(revision)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    handle, temporary_name = tempfile.mkstemp(
+        prefix=destination.name, suffix=".tmp", dir=destination.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, sort_keys=True, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, destination)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    return payload
+
+
 __all__ = [
     "TARGET_SIZE_RESULT_VIEW_SCHEMA",
+    "build_selection_target_size_result_view",
     "build_target_size_result_view",
     "expose_current_target_size_auto_diagnostic",
     "write_current_target_size_result_view",
     "write_nonterminal_target_size_result_view",
+    "write_selection_target_size_result_view",
     "write_target_size_result_view",
 ]

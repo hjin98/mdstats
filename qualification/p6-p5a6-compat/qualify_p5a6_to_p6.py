@@ -33,6 +33,7 @@ ALLOWED_DERIVED_PREFIXES = (
     "campaign/.mdstats/bin/",
     "campaign/.mdstats/frame-cache/",
 )
+ALLOWED_DERIVED_SUFFIXES = (".writer-lock",)
 ALLOWED_DERIVED_DATABASE_NAMES = {"hash-receipts.sqlite3"}
 
 
@@ -183,10 +184,10 @@ def _phase_produce(args: argparse.Namespace) -> int:
     store = CampaignStore(paths.state_db)
     try:
         revision = load_target_size_campaign_revision(store)
-        frozen = revision.state.frozen
-        if frozen is None:
+        terminal = revision.state.terminal
+        if terminal is None:
             raise QualificationError(
-                "baseline producer did not publish a frozen target selection"
+                "baseline producer did not publish terminal selection"
             )
         selected = load_current_selected_training_context(cfg, paths, store)
         context = build_post_selection_context(cfg, paths, store, trainer=object())
@@ -209,8 +210,8 @@ def _phase_produce(args: argparse.Namespace) -> int:
             "experiment_definition_digest": revision.state.experiment_definition_digest,
             "common_preparation_digest": revision.state.common_preparation_digest,
             "adopted_execution_head_digest": revision.state.adopted_execution_head_digest,
-            "n_selected": frozen.n_selected,
-            "selected_membership_digest": frozen.selected_membership_digest,
+            "n_selected": terminal.selected_target_size,
+            "selected_membership_digest": terminal.selected_membership_digest,
             "selected_membership": list(selected.selected_membership),
             "selected_binding_digest": selected.binding.content_digest,
             "method_identity_digest": context.method.content_digest,
@@ -265,7 +266,9 @@ def _assert_preserved_content(
         unexpected = sorted(
             name
             for name in set(entries) - set(recorded_entries)
-            if not name.endswith(".sqlite3") and not name.startswith(ALLOWED_DERIVED_PREFIXES)
+            if not name.endswith(".sqlite3")
+            and not name.startswith(ALLOWED_DERIVED_PREFIXES)
+            and not name.endswith(ALLOWED_DERIVED_SUFFIXES)
         )
         if unexpected:
             raise QualificationError(f"P6 wrote unexpected preserved files: {unexpected}")
@@ -309,8 +312,9 @@ def _phase_reopen(args: argparse.Namespace) -> int:
         revision = require_current_target_size_runtime(store)
         if revision.state.regime is not TargetSizeRegime.CURRENT:
             raise QualificationError("P5A6 workspace did not reopen as current")
-        if revision.state.frozen is None:
-            raise QualificationError("P5A6 workspace lost its frozen selection on reopen")
+        terminal = revision.state.auto_diagnostic
+        if terminal is None:
+            raise QualificationError("P5A6 workspace lost its auto_diagnostic on reopen")
         if revision.state.generation != identity["generation"]:
             raise QualificationError("P5A6 generation changed on first P6 load")
         for field in (
@@ -323,10 +327,9 @@ def _phase_reopen(args: argparse.Namespace) -> int:
         ):
             if getattr(revision.state, field) != identity[field]:
                 raise QualificationError(f"P5A6 {field} failed currentness authentication")
-        frozen = revision.state.frozen
-        if frozen is None or frozen.n_selected != identity["n_selected"]:
+        if terminal.recommended_target_size != identity["n_selected"]:
             raise QualificationError("P5A6 selected target failed authentication")
-        if frozen.selected_membership_digest != identity["selected_membership_digest"]:
+        if terminal.recommended_membership_digest != identity["selected_membership_digest"]:
             raise QualificationError("P5A6 selected membership digest changed")
         selected = load_current_selected_training_context(cfg, paths, store)
         if list(selected.selected_membership) != identity["selected_membership"]:
@@ -376,6 +379,7 @@ def _phase_reopen(args: argparse.Namespace) -> int:
         store2.close()
 
     _assert_preserved_content(root, recorded_manifest["files"], recorded_database)
+    evidence_root.mkdir(parents=True, exist_ok=True)
     (evidence_root / "reopen_result.json").write_text(
         json.dumps(
             {
@@ -434,11 +438,12 @@ def _phase_produce_p6(args: argparse.Namespace) -> int:
     store = CampaignStore(paths.state_db)
     try:
         revision = load_target_size_campaign_revision(store)
-        frozen = revision.state.frozen
-        if frozen is None:
+        frozen_entries = revision.state.frozen_entries
+        if not frozen_entries:
             raise QualificationError(
                 "fresh P6 producer did not publish a frozen target selection"
             )
+        frozen = frozen_entries[0]
         selected = load_current_selected_training_context(cfg, paths, store)
         context = build_post_selection_context(cfg, paths, store, trainer=object())
         plan = resolve_current_cv_plan(context)
@@ -540,7 +545,7 @@ def _phase_reopen_p6(args: argparse.Namespace) -> int:
         revision = require_current_target_size_runtime(store)
         if revision.state.regime is not TargetSizeRegime.CURRENT:
             raise QualificationError("P6 workspace did not reopen as current")
-        if revision.state.frozen is None:
+        if not revision.state.frozen_entries:
             raise QualificationError("P6 workspace lost its frozen selection on reopen")
         if revision.state.generation != identity["generation"]:
             raise QualificationError("P6 generation changed on reopen")
@@ -554,7 +559,7 @@ def _phase_reopen_p6(args: argparse.Namespace) -> int:
         ):
             if getattr(revision.state, field) != identity[field]:
                 raise QualificationError(f"P6 {field} failed currentness authentication")
-        frozen = revision.state.frozen
+        frozen = revision.state.frozen_entries[0]
         if frozen is None or frozen.n_selected != identity["n_selected"]:
             raise QualificationError("P6 selected target failed authentication")
         if frozen.selected_membership_digest != identity["selected_membership_digest"]:

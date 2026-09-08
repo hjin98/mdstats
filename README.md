@@ -24,16 +24,16 @@ canonical frames -> neutral statistical substrate
   -> one canonical training order pi_train and evaluation ladder M1 subset M2 subset M3
   -> one common target-size preparation
   -> optional paired optimizer-seed diagnostic -> a *recommended* target size
-  -> operator's provisional design (N, CV horizon, production horizon)
-  -> cross-validate admission freezes N_selected, T_selected = pi_train[:N_selected],
-     and both role horizons
-  -> post-selection cross-validation on exactly T_selected
-  -> fresh final production on the complete T_selected
+  -> operator's provisional design (ordered collection of (N, CV horizon, production horizon))
+  -> cross-validate admission freezes the selected design: every N_selected,
+     its exact T_N = pi_train[:N_selected], and both role horizons
+  -> post-selection cross-validation on the frozen collection
+  -> fresh final production per frozen size on its complete T_N
 ```
 
 The candidate ladder and its ceiling are configuration (`[target_data.size_convergence]`), not a frozen constant. The generated default screen is `(n1, n2, n3) = (1, 3, 10)` with an independent production horizon `[training].max_num_epochs = 30`; screen `n3` must be strictly less than the production horizon. Fewer than three qualified sizes yields no recommendation without a rescue size, and a configured-ceiling nonconvergence is a typed outcome rather than a synthesized larger size.
 
-How much data to train on is an experimental-design decision, and the software treats it as one. The automatic screen measures target-force RMSE at three short epoch boundaries under one configured protocol; that is useful evidence, not proof of asymptotic convergence, long-horizon training quality, or MD stability. So `select-target-size <N>` sets the provisional design directly and trains nothing, `select-target-size --auto` runs (or cheaply reuses) the diagnostic and adopts its recommendation, and `--select-horizon-cv` / `--select-horizon` steer the two independent training horizons. Nothing is frozen until `cross-validate` admits the design; after that the selected size, its exact membership, and both horizons are immutable, and post-selection cross-validation accepts or rejects the *training method* without ever re-choosing the size.
+How much data to train on is an experimental-design decision, and the software treats it as one. The automatic screen measures target-force RMSE at three short epoch boundaries under one configured protocol; that is useful evidence, not proof of asymptotic convergence, long-horizon training quality, or MD stability. So `select-target-size <N>` sets the provisional design directly and trains nothing, `select-target-size --auto` runs (or cheaply reuses) the diagnostic and adopts its recommendation, and `--horizon-cv` / `--horizon` steer the two independent training horizons. Nothing is frozen until `cross-validate` admits the design; after that the selected size(s), exact membership(s), and role horizons are immutable, and post-selection cross-validation accepts or rejects the *training method* without ever re-choosing the size.
 
 The public campaign lifecycle is `init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production`.
 Post-production qualification of the finished product is a separate downstream
@@ -51,7 +51,7 @@ matched external references, relaxation topology and geometry fidelity,
 finite-temperature dynamics stability, uncertainty calibration, and - only after
 an explicit one-shot activation - the reserved locked interpolation test. It has
 pass, reject, and waiting authority for that exact product and no selection
-authority whatsoever: a failure never changes the selected target size, the
+authority whatsoever: a failure never changes the selected target sizes, the
 accepted method, a production member, or publication membership. Long
 target-machine GPU/real-production qualification remains a separate release
 activity and is not claimed by CPU or proxy evidence.

@@ -1,7 +1,7 @@
 {
   "authority_model": "single_generation_current_dependency_architecture",
   "schema_version": 3,
-  "description": "Conceptual current MLFF dependency and ownership graph for the P1-P5 campaign lifecycle. It contains one global target-size authority, one selected binding, selected-only method validation, and fresh final production; downstream qualification is reserved for a separate activated consumer.",
+  "description": "Conceptual current MLFF dependency and ownership graph for the P1-P5 campaign lifecycle. It contains one global target-size authority, an ordered collection of selected bindings, per-size method cross-validation, and fresh final production; downstream qualification is reserved for a separate activated consumer.",
   "node_classes": {
     "evidence": "Immutable physical or model-derived evidence with an explicit statistical role.",
     "policy": "Normative scientific/statistical policy owned by one current specification family.",
@@ -95,17 +95,17 @@
     {
       "id": "CURRENT_SELECTED_SET",
       "class": "scientific_product",
-      "summary": "The CampaignStore terminal projection binding N_selected to the exact T_selected membership digest."
+      "summary": "The CampaignStore projection binding each selected size N to its exact T_N membership digest in the frozen design."
     },
     {
       "id": "POST_SELECTION_CV_ACCEPTANCE",
       "class": "validation_product",
-      "summary": "All-required-fold, all-required-seed target-only acceptance of the training method on exactly T_selected."
+      "summary": "All-required-fold, all-required-seed target-only acceptance of the training method per frozen size on its exact T_N."
     },
     {
       "id": "FRESH_FINAL_PRODUCTION",
       "class": "execution_product",
-      "summary": "Fresh production training on the complete exact T_selected under the accepted method and an independent production horizon."
+      "summary": "Fresh production training per frozen size on its complete exact T_N under the accepted method and its independent production horizon."
     },
     {
       "id": "TARGET_SIZE_POLICY",

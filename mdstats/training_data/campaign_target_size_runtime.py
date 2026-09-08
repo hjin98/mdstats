@@ -493,6 +493,68 @@ def load_prepared_target_size_generation(
     return authorities
 
 
+def load_prepared_target_size_definition(
+    cfg: Mapping[str, Any], paths: Any, store: Any, revision: Any
+) -> Any:
+    """Read and authenticate only the P2 experiment definition for ``revision``.
+
+    Manual selection needs only this definition to authenticate qualified candidate
+    sizes and exact T_N membership identity. It performs zero frame-data loading,
+    zero index construction, and zero P3 preparation.
+    """
+
+    from .campaign_prepared_generation import (
+        PreparedGenerationConfigurationError,
+        PreparedGenerationError,
+        PreparedGenerationMissingError,
+        load_prepared_target_size_definition as _load_prepared_definition,
+        read_prepared_generation_manifest,
+    )
+
+    state = revision.state
+    manifest_digest = state.prepared_manifest_digest
+    if manifest_digest is None:
+        raise PreparedGenerationMissingError(
+            f"Canonical target-size generation {state.generation} was prepared by an "
+            "earlier implementation that persisted only scientific identities and no "
+            "immutable prepared substrate. It is not reinterpreted or retrofitted "
+            "from live sources. Run `prepare` once to bind a fresh generation; the "
+            "existing screen evidence stays historical under its own generation."
+        )
+    manifest = read_prepared_generation_manifest(paths, manifest_digest)
+    changed = manifest.changed_preparation_configuration(cfg)
+    if changed:
+        raise PreparedGenerationConfigurationError(
+            "The preparation-owned configuration changed after canonical generation "
+            f"{state.generation} was prepared ({', '.join(changed)}). Run `prepare` to "
+            "bind a fresh canonical generation; prior evidence is never reinterpreted "
+            "under a changed preparation policy."
+        )
+    aggregate_digest = manifest.component_digests.get("aggregate")
+    if aggregate_digest is None:
+        raise PreparedGenerationError("Manifest missing 'aggregate' component digest.")
+    expected_aggregate = manifest.scientific_identity.get("aggregate_digest")
+    if (
+        state.aggregate_digest is not None
+        and expected_aggregate is not None
+        and expected_aggregate != state.aggregate_digest
+    ):
+        raise PreparedGenerationError(
+            "The prepared aggregate component does not match the digest the campaign "
+            "store binds for this canonical generation."
+        )
+    definition = _load_prepared_definition(paths, manifest)
+    if (
+        state.experiment_definition_digest is not None
+        and definition.content_digest != state.experiment_definition_digest
+    ):
+        raise PreparedGenerationError(
+            "The prepared experiment definition does not match the digest the "
+            "campaign store binds for this canonical generation."
+        )
+    return definition
+
+
 current_target_size_execution_root = target_size_execution_root
 current_target_size_execution_root_locator = target_size_execution_root_locator
 
@@ -1572,20 +1634,11 @@ def execute_current_select_target_size(
 def _refresh_target_size_view(cfg: Any, paths: Any, store: Any, revision: Any) -> None:
     """Rebuild the derived result view after a proposal/freeze change."""
 
-    from .campaign_target_size_state import TargetSizeLifecycle
-    from .campaign_target_size_view import (
-        write_current_target_size_result_view,
-        write_nonterminal_target_size_result_view,
-    )
+    from .campaign_target_size_view import write_selection_target_size_result_view
 
-    if revision.state.lifecycle is TargetSizeLifecycle.DIAGNOSTIC_COMPLETE:
-        write_current_target_size_result_view(
-            cfg, paths, store, expected_revision=revision
-        )
-    else:
-        write_nonterminal_target_size_result_view(
-            paths.results / "target-size-state.json", revision
-        )
+    write_selection_target_size_result_view(
+        paths.results / "target-size-state.json", revision
+    )
 
 
 def _selection_baseline(state: Any) -> tuple[Any, ...]:
@@ -1686,9 +1739,9 @@ def _execute_manual_target_size_proposal(
 
     _print_header("Target-size selection - provisional downstream design")
     revision = require_current_target_size_runtime(store)
-    authorities = load_prepared_target_size_generation(cfg, paths, store, revision)
+    definition = load_prepared_target_size_definition(cfg, paths, store, revision)
     proposal = build_target_size_proposal(
-        authorities.aggregate.definition,
+        definition,
         target_size=int(target_size),
         selection_source=SELECTION_SOURCE_MANUAL,
         horizons=horizons,
@@ -2126,6 +2179,7 @@ __all__ = [
     "TargetSizeRungRequest",
     "build_prepared_target_size_substrate",
     "load_prepared_target_size_generation",
+    "load_prepared_target_size_definition",
     "build_screen_context",
     "execute_current_prepare",
     "execute_current_select_target_size",
