@@ -145,7 +145,7 @@ pi_train -> configured candidate ladder
         -> cross-validate admission freezes the selected design (ordered collection
            of sizes N, their exact memberships T_N = pi_train[:N], and role horizons)
         -> post-selection cross-validation on the frozen collection
-        -> fresh final production on the complete T_selected
+        -> fresh final production per frozen size on its complete T_N
 ```
 
 `select-target-size --auto` adopts the diagnostic's recommendation; substitute

@@ -55,6 +55,15 @@ def test_data9b3_architecture_and_stage_plan_integration() -> None:
     assert "post-selection cross-validation on the frozen collection" in manual
     assert "init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production" in stage
     assert "downstream qualification" in stage
+    assert (
+        "the selected target size, and both effective role training horizons are protocol-global"
+        not in stage
+    )
+    assert (
+        "Exact target membership, the ordered collection of provisional target sizes"
+        in stage
+    )
+    assert "selected target size and exact global membership identity" not in stage
     assert "does not redefine RDF, MSD, VACF, VDOS" in manual
     assert "checkpoint" in manual
 

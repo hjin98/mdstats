@@ -15,7 +15,7 @@ so a view can never drift into a second result manifest.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 import json
 import os
 import tempfile
@@ -277,8 +277,6 @@ def write_current_target_size_result_view(
 
 def build_selection_target_size_result_view(
     revision: TargetSizeCampaignRevision,
-    *,
-    existing_view: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Render a derived target-size result view after a selection change.
 
@@ -319,23 +317,7 @@ def build_selection_target_size_result_view(
         ),
     }
 
-    if (
-        isinstance(existing_view, Mapping)
-        and existing_view.get("canonical_generation") == state.generation
-        and existing_view.get("execution_attempt") == state.attempt
-    ):
-        for key in (
-            "reducer_status",
-            "active_candidate_sizes",
-            "completed_boundary_epochs",
-            "recommended_target_size",
-            "recommended_membership_digest",
-            "terminal_reason_codes",
-            "nonconverged_at_configured_ceiling",
-        ):
-            if key in existing_view:
-                payload[key] = existing_view[key]
-    elif state.auto_diagnostic is not None:
+    if state.auto_diagnostic is not None:
         diag = state.auto_diagnostic
         reason_codes = tuple(diag.terminal_reason_codes)
         payload["reducer_status"] = diag.reducer_status
@@ -355,22 +337,7 @@ def write_selection_target_size_result_view(
 ) -> dict[str, Any]:
     """Atomically write a derived view for selection/freeze changes without P3 validation."""
     destination = Path(path)
-    existing_view: dict[str, Any] | None = None
-    if destination.is_file():
-        try:
-            with open(destination, "r", encoding="utf-8") as stream:
-                loaded = json.load(stream)
-            if (
-                isinstance(loaded, dict)
-                and loaded.get("schema") == TARGET_SIZE_RESULT_VIEW_SCHEMA
-            ):
-                existing_view = loaded
-        except Exception:
-            existing_view = None
-
-    payload = build_selection_target_size_result_view(
-        revision, existing_view=existing_view
-    )
+    payload = build_selection_target_size_result_view(revision)
     destination.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary_name = tempfile.mkstemp(
         prefix=destination.name, suffix=".tmp", dir=destination.parent

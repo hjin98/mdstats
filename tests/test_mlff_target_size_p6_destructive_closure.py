@@ -408,8 +408,8 @@ def test_p6_authenticated_compatibility_driver_is_mandatory_and_pinned():
     driver = (
         _REPO / "qualification" / "p6-p5a6-compat" / "qualify_p5a6_to_p6.py"
     ).read_text(encoding="utf-8")
-    assert 'BASELINE_COMMIT = "1670275487d29bbcde4c59efafdef9d1f8b0ced7"' in driver
-    assert 'BASELINE_TREE = "17e2c5609974712bda1efd3375f09f42da830f68"' in driver
+    assert 'BASELINE_COMMIT = "fc69a3d397b7f7f40e905fa6a3a63cc1e038ea85"' in driver
+    assert 'BASELINE_TREE = "67cf5f27db7b0f40670236e365fe45d54a522ef4"' in driver
     assert '"git", "worktree", "add", "--detach"' in driver
     assert '"rev-parse", "HEAD^{tree}"' in driver
     assert "_assert_import_roots" in driver

@@ -1,7 +1,7 @@
 {
   "adopted_execution_head_digest": "9638877d223bbadee13b896f1e46806afc8e6879e83786327d633be63d471ba1",
-  "baseline_commit": "1670275487d29bbcde4c59efafdef9d1f8b0ced7",
-  "baseline_tree": "17e2c5609974712bda1efd3375f09f42da830f68",
+  "baseline_commit": "fc69a3d397b7f7f40e905fa6a3a63cc1e038ea85",
+  "baseline_tree": "67cf5f27db7b0f40670236e365fe45d54a522ef4",
   "common_preparation_digest": "caf18499536ae4d7caebb64db990d8155abffdcac98a661e89839fdf65c720b7",
   "content_manifest_digest": "79833746e8a24e8b27fc41a504e494fa579faad5768e52c753375b5e4cc3ca28",
   "cv_acceptance_digest": "8cf95a90aaa6dd33eed1df37c24103ca2d6a7c112ee1aac560df41cf89d19f68",

@@ -25,8 +25,8 @@ import tempfile
 from typing import Any, Iterable, Mapping
 
 
-BASELINE_COMMIT = "1670275487d29bbcde4c59efafdef9d1f8b0ced7"
-BASELINE_TREE = "17e2c5609974712bda1efd3375f09f42da830f68"
+BASELINE_COMMIT = "fc69a3d397b7f7f40e905fa6a3a63cc1e038ea85"
+BASELINE_TREE = "67cf5f27db7b0f40670236e365fe45d54a522ef4"
 SCRIPT = Path(__file__).resolve()
 FINAL_REPOSITORY = SCRIPT.parents[2]
 ALLOWED_DERIVED_PREFIXES = (

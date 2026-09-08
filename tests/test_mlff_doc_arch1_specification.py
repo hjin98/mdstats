@@ -122,6 +122,24 @@ def test_doc_arch1_graph_and_directory_ownership_are_current():
     forbidden = "\n".join(graph["forbidden_current_paths"])
     assert "retired target-size migration" in forbidden
     assert "post-selection cross-validation -> target-size decision" in forbidden
+    assert "one selected binding" not in graph["description"]
+    assert "ordered collection of selected bindings" in graph["description"]
+    nodes_by_id = {node["id"]: node for node in graph["nodes"]}
+    cv_summary = nodes_by_id["POST_SELECTION_CV_ACCEPTANCE"].get("summary", "")
+    assert "on exactly T_selected" not in cv_summary
+    assert "per frozen size" in cv_summary
+    prod_summary = nodes_by_id["FRESH_FINAL_PRODUCTION"].get("summary", "")
+    assert "on the complete exact T_selected" not in prod_summary
+    assert "per frozen size" in prod_summary
+
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "fresh final production on the complete T_selected" not in readme
+    assert "a failure never changes the selected target size," not in readme
+    runbook = (ROOT / "docs/guides/mlff_final_gpu1_workstation_runbook.md").read_text(
+        encoding="utf-8"
+    )
+    assert "fresh final production on the complete T_selected" not in runbook
+
     root_names = {p.name for p in ROOT.iterdir() if p.is_file()}
     assert not any(name.startswith("ARCHITECTURE_NOTES_") for name in root_names)
     assert not any(name.startswith("PATCH_NOTES_") for name in root_names)

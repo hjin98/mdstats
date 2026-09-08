@@ -118,8 +118,8 @@ def test_p6_fixture_provenance_is_recorded_and_bound_to_the_p5a6_baseline():
     """The recorded identity always exists, whether or not the workspace does."""
 
     identity = json.loads(_IDENTITY.read_text(encoding="utf-8"))
-    assert identity["baseline_commit"] == "1670275487d29bbcde4c59efafdef9d1f8b0ced7"
-    assert identity["baseline_tree"] == "17e2c5609974712bda1efd3375f09f42da830f68"
+    assert identity["baseline_commit"] == "fc69a3d397b7f7f40e905fa6a3a63cc1e038ea85"
+    assert identity["baseline_tree"] == "67cf5f27db7b0f40670236e365fe45d54a522ef4"
     assert identity["regime"] == "current"
     assert identity["lifecycle"] == "terminal_selected"
     assert int(identity["n_selected"]) > 0

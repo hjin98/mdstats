@@ -26,7 +26,7 @@ Narrow specifications own exact module schemas, numerical constants, algorithms,
 7. Current DATA6/DATA7 preparation publishes fitted inputs and evidence for the common target-size owner and SHALL NOT publish target membership or target size.
 8. One canonical training order `pi_train` is the sole current target-membership authority; every candidate is the exact prefix `T_N = pi_train[:N]`.
 9. The one target-size reducer is the sole owner of the *automatic* target-size diagnostic, which recommends a size and freezes nothing. The operator owns the provisional choice, restricted to the configured qualified candidate set. Monitor/replay/batch/pool cardinalities are different semantic types.
-10. Target membership, the selected target size, and both effective role training horizons are protocol-global and are frozen together, once, at `cross-validate` admission.
+10. Exact target membership, the ordered collection of provisional target sizes, and their per-size effective role training horizons are frozen together, once, at `cross-validate` admission.
 11. Target-size screening uses only authorized development/model-selection evidence. Held-out CV, calibration, and locked tests are forbidden inputs.
 12. Locked tests cannot affect fitting, membership, size, protocol choice, stopping, checkpointing, calibration-policy choice, or acquisition and are activated only after protocol/committee freeze.
 13. Replay training, replay monitoring, target monitoring, and target training preserve separate source/role identities.
@@ -156,7 +156,7 @@ back into target-size or method selection.
 
 ```text
 foundation/model/head identity
-selected target size and exact global membership identity
+applicable selected target size and exact per-size membership identity
 post-selection fold partition identity where the protocol is a CV fold
 replay source/training/monitor identities
 common target-monitor identity
