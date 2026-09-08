@@ -11,6 +11,8 @@ reviewed_candidate_head: 2199bbd4bffc3a950a6b63b010c48e32c829c5b3
 reviewed_executable_head: 07bdd51f6857eb052aa05e7e23a1ec89a53e0e6c
 branch: plan/mlff-target-size-integration-closure-repair
 implementation_base_head: 32bd59d12de334a2e5c29d80d6c1cf5cceb4506c
+candidate_head: 4385cf5866fd5b2c1c552ba3a4892001a129cec4
+executable_head: 3935c9d0f19d309cbe1191792884680d68336c62
 predecessor_workplan: workplans/archive/MLFF_TARGET_SIZE_MULTI_SELECTION_NEXT_ROUND_REPAIR_WORKPLAN.md
 ---
 
@@ -265,3 +267,74 @@ Reconcile every obligation, re-derive the affected surface, execute the complete
 ### Simplicity trigger
 
 If repair begins adding caches, persisted summaries, wrapper loaders, duplicate view-state objects, compatibility adapters, or special-case flags around the existing owners, stop and simplify. The remaining defects are over-broad or wrong dependency direction, weak acceptance, and stale documentation; solve them by removal, narrowing, or rewiring unless evidence establishes a genuinely missing capability.
+
+---
+
+## Final implementation closure evidence
+
+### Stage 1 (F1 / R1) - Preserve accepted manual-path reduction
+The narrow loader in `mdstats/training_data/campaign_prepared_generation.py` (`load_qualified_target_size_manifest_and_definition`) was preserved intact. No cache, wrapper, or auxiliary persisted definition was introduced.
+
+### Stage 2 (F2, F3 / R2) - Pure state projection and real-owner acceptance
+1. **F2 Pure state projection**:
+   - `build_selection_target_size_result_view()` in `mdstats/training_data/campaign_target_size_view.py` was modified to remove the `existing_view` parameter and render solely as a pure projection of `TargetSizeCampaignRevision.state`.
+   - `write_selection_target_size_result_view()` was stripped of all file-reading logic on the destination path.
+   - Counterexample test `test_selection_view_projection_rejects_forged_old_view()` in `tests/test_mlff_target_size_multi_selection.py` verified that forged diagnostic fields injected into `target-size-state.json` do not survive manual selection and are erased.
+2. **F3 Real-owner acceptance**:
+   - `test_view_projection_and_refresh_decoupled_from_p3_diagnostic()` in `tests/test_mlff_target_size_multi_selection.py` was updated to execute a real bounded automatic screen to `DIAGNOSTIC_COMPLETE`, poison strict P3 and full-frame loaders (`expose_current_target_size_auto_diagnostic`, `write_current_target_size_result_view`, `load_prepared_frame_data`, `build_frame_array_index`, `build_screen_context`), execute manual selection via the real CLI runtime, and verify:
+     - Zero poisoned owners were reached.
+     - The manual selection tuple is committed.
+     - The existing `auto_diagnostic` record is byte/identity-identical.
+     - The resulting `target-size-state.json` view is cleanly derived.
+
+### Stage 3 (F4, F5 / R3, R4) - Structural and compatibility closure
+1. **F4 P5A6 Baseline compatibility qualification**:
+   - Baseline commit pinned to `fc69a3d397b7f7f40e905fa6a3a63cc1e038ea85` (tree `67cf5f27db7b0f40670236e365fe45d54a522ef4`) across `qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py`, `qualification/p6-p5a6-compat/P5A6_FIXTURE_IDENTITY.json`, `tests/test_mlff_target_size_p6_destructive_closure.py`, and `tests/test_mlff_target_size_p6_p5a6_compatibility.py`.
+   - Executed `conda run -n mace python qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py`:
+     ```text
+     P5A6 -> P6 authenticated current-generation compatibility: PASS
+     P6 -> P6 current-generation restart: PASS
+     V5/V6 -> reject-before-reuse: PASS
+     ```
+2. **F5 AST structural oracle**:
+   - Strengthened AST scanner `_state_attribute_offenders` in `tests/test_mlff_target_size_multi_selection.py` to recognize local aliases to campaign state (`campaign = revision.state; campaign.frozen`, `s = state; s.proposal`) while permitting legitimate per-size context accesses (`context.frozen`).
+   - Scoped baseline historical producer exemption strictly to `exempt_targets={("qualify_p5a6_to_p6.py", "_phase_produce")}`.
+   - Positive and negative discriminator test cases verified pass.
+
+### Stage 4 (F6 / R5) - Documentation reconciliation
+- Corrected authoritative documentation sources:
+  - `docs/specs/training_data/mlff_data_stage_plan_spec.md`: Reconciled Principle 10 and `TrainingProtocolIdentity` to multi-size / per-size wording.
+  - `docs/arch_manuals/mlff_training_data_dependency_graph.json`: Corrected top-level description and `POST_SELECTION_CV_ACCEPTANCE` / `FRESH_FINAL_PRODUCTION` summaries to per-frozen-size wording.
+  - `README.md`: Corrected target-size flowchart and qualification prose.
+  - `docs/guides/mlff_final_gpu1_workstation_runbook.md` & `docs/specs/training_data/FINAL_GPU1_WORKSTATION_RUNBOOK.md`: Corrected handoff flowchart.
+- Rebuilt architecture manual via `tools/build_mlff_architecture_manual.py`.
+- Added exact negative assertions in `tests/test_mlff_doc_arch1_specification.py` and `tests/test_mlff_data9b3_campaign_cli_specification.py` preventing regression to stale campaign-global scalar phrasing.
+
+### Stage 5 (F7 / R6) - Final assembled functional acceptance
+All required and affected test suites executed cleanly using single-threaded concurrency matching the system CPU cores (`nproc` = 1):
+
+1. `tests/test_mlff_target_size_multi_selection.py`:
+   - Command: `conda run -n mace pytest -q tests/test_mlff_target_size_multi_selection.py`
+   - Outcome: **36 passed, 31 warnings in 77.55s**
+2. `tests/test_mlff_target_size_provisional_selection.py`:
+   - Command: `conda run -n mace pytest -q tests/test_mlff_target_size_provisional_selection.py`
+   - Outcome: **20 passed, 22 warnings in 86.15s**
+3. `tests/test_mlff_target_size_p4d_runtime_cutover.py`:
+   - Command: `conda run -n mace pytest -q tests/test_mlff_target_size_p4d_runtime_cutover.py`
+   - Outcome: **18 passed, 18 warnings in 133.45s**
+4. `tests/test_mlff_doc_arch1_specification.py` & `tests/test_mlff_data9b3_campaign_cli_specification.py`:
+   - Command: `conda run -n mace pytest -q tests/test_mlff_doc_arch1_specification.py tests/test_mlff_data9b3_campaign_cli_specification.py`
+   - Outcome: **11 passed in 1.96s**
+5. `qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py`:
+   - Command: `conda run -n mace python qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py`
+   - Outcome: **3/3 PASS** (P5A6 -> P6 compatibility: PASS, P6 -> P6 restart: PASS, V5/V6 reject: PASS)
+6. `tests/test_mlff_target_size_p6_destructive_closure.py` & `tests/test_mlff_target_size_p6_p5a6_compatibility.py`:
+   - Command: `conda run -n mace pytest -q tests/test_mlff_target_size_p6_destructive_closure.py tests/test_mlff_target_size_p6_p5a6_compatibility.py`
+   - Outcome: **31 passed, 1 skipped (absent workspace), 15 warnings in 127.72s**
+7. `tests/test_mlff_target_size_multi_size_integration.py`:
+   - Command: `conda run -n mace pytest -q tests/test_mlff_target_size_multi_size_integration.py`
+   - Outcome: **10 passed, 15 warnings in 72.36s**
+8. Bytecode compilation across all affected surfaces:
+   - Command: `conda run -n mace python -m compileall mdstats tests qualification/p6-p5a6-compat`
+   - Outcome: **0 errors**, clean compilation across all modules.
+
