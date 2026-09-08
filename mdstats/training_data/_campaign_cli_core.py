@@ -5026,36 +5026,55 @@ def _terminate_process(process: subprocess.Popen[Any], *, grace_seconds: float) 
 def command_select_target_size(args: argparse.Namespace) -> int:
     """Establish or revise the current provisional target training design.
 
-    ``select-target-size <N>`` proposes a configured qualified candidate and
-    trains nothing. ``select-target-size --auto`` runs or reuses the optional
-    automatic diagnostic and adopts its recommendation. Neither freezes the
-    design: ``cross-validate`` is the freeze boundary.
+    ``select-target-size <N>`` merges a configured qualified candidate into the
+    ordered design - appending a new size, or replacing an existing size's
+    complete entry in place - and trains nothing. ``select-target-size --auto``
+    runs or reuses the optional automatic diagnostic and merges its
+    recommendation through the same owner. ``select-target-size --reset`` clears
+    the design. None of them freezes it: ``cross-validate`` is the freeze
+    boundary, and it freezes the complete collection at once.
     """
 
     target_size = getattr(args, "target_size", None)
     auto = bool(getattr(args, "auto", False))
-    if target_size is not None and auto:
-        raise CampaignCliError(
-            "`select-target-size <N>` and `select-target-size --auto` are mutually "
-            "exclusive: the first states an explicit choice, the second adopts the "
-            "automatic diagnostic's recommendation. Choose one."
+    reset = bool(getattr(args, "reset", False))
+    selectors = [
+        label
+        for label, present in (
+            ("<N>", target_size is not None),
+            ("--auto", auto),
+            ("--reset", reset),
         )
-    if target_size is None and not auto:
+        if present
+    ]
+    if len(selectors) > 1:
+        raise CampaignCliError(
+            f"`select-target-size` operations are mutually exclusive; got {selectors}. "
+            "`<N>` states an explicit choice, `--auto` adopts the automatic "
+            "diagnostic's recommendation, and `--reset` clears the provisional "
+            "design. Choose exactly one."
+        )
+    horizon_cv = getattr(args, "horizon_cv", None)
+    horizon = getattr(args, "horizon", None)
+    if reset and (horizon_cv is not None or horizon is not None):
+        raise CampaignCliError(
+            "`select-target-size --reset` clears the provisional design and "
+            "resolves no horizons; `--horizon-cv` and `--horizon` belong to a "
+            "selection, not to a reset."
+        )
+    if not selectors:
         raise CampaignCliError(
             "`select-target-size` requires an explicit decision. Run "
             "`select-target-size <N>` to choose a configured qualified candidate "
-            "size, or `select-target-size --auto` to run (or reuse) the optional "
-            "automatic target-size diagnostic and adopt its recommendation. "
+            "size, `select-target-size --auto` to run (or reuse) the optional "
+            "automatic target-size diagnostic and adopt its recommendation, or "
+            "`select-target-size --reset` to clear the provisional design. "
             "`prepare` reports this generation's qualified candidate ladder, and "
             "selecting an unqualified size lists it again."
         )
     if target_size is not None and int(target_size) <= 0:
         raise CampaignCliError("A selected target size must be a positive integer.")
-    for name, flag in (
-        ("select_horizon_cv", "--select-horizon-cv"),
-        ("select_horizon", "--select-horizon"),
-    ):
-        value = getattr(args, name, None)
+    for value, flag in ((horizon_cv, "--horizon-cv"), (horizon, "--horizon")):
         if value is not None and int(value) <= 0:
             raise CampaignCliError(f"{flag} must be a positive number of epochs.")
 
@@ -5627,11 +5646,29 @@ def command_status(args: argparse.Namespace) -> int:
         # There is no defensible default here, so status offers the two real
         # choices instead of printing a command that would be rejected.
         base = f"python tools/mdstats-mlff-campaign.py --config {paths.config}"
+        # The empty design has no concrete size to show, so status shows what a
+        # size selected right now would inherit instead. These are the *current*
+        # configured defaults, not a stored decision: nothing is selected yet.
+        try:
+            from .campaign_target_size_selection import resolve_provisional_horizons
+
+            defaults = resolve_provisional_horizons(cfg)
+            horizons = (
+                f"\nOmitted horizons would resolve now to H_cv="
+                f"{defaults.cv_max_num_epochs} and H_prod="
+                f"{defaults.production_max_num_epochs}."
+            )
+        except Exception:  # noqa: BLE001 - a broken horizon policy is not a status failure
+            horizons = ""
         print(
-            "\nNext decision - choose the provisional target size yourself:"
+            "\nNext decision - choose the provisional target size(s) yourself:"
             f"\n  {base} select-target-size <N>"
             "\nor run the optional automatic diagnostic and adopt its recommendation:"
             f"\n  {base} select-target-size --auto"
+            "\nAt least one size must be selected before `cross-validate`. Repeat "
+            "with further sizes to compare them from this one prepared generation; "
+            "`cross-validate` then freezes the complete design."
+            + horizons
         )
     elif next_command:
         print(
@@ -5691,7 +5728,11 @@ def command_advance(args: argparse.Namespace) -> int:
             "explicitly.\n"
             "  - `select-target-size --auto` runs (or reuses) the optional "
             "automatic diagnostic and adopts its recommendation.\n"
-            "Either choice stays provisional until `cross-validate` freezes it. "
+            "Repeat with further sizes to request several experiments from this "
+            "one prepared generation; reselecting a size revises it in place, and "
+            "`select-target-size --reset` clears the design.\n"
+            "Every choice stays provisional until `cross-validate` freezes the "
+            "complete design at once. "
             "Run `status` to see the qualified candidate ladder.",
             flush=True,
         )
@@ -6377,25 +6418,31 @@ per-size production dataset. The cutover rejects obsolete derived target-size
 records and quarantines them rather than migrating them; they are never
 translated.
 
-select-target-size owns the provisional downstream training design: how much
-target data to train on, and how much optimization budget each downstream role
-gets. It does not freeze anything.
+select-target-size owns the provisional downstream training design: which
+target sizes to train on, and how much optimization budget each downstream role
+gets for each of them. It does not freeze anything.
 
-  select-target-size <N>       choose a configured qualified candidate size
-  select-target-size --auto    run or reuse the automatic diagnostic and adopt
+  select-target-size <N>       add or revise one configured qualified candidate
+  select-target-size --auto    run or reuse the automatic diagnostic and merge
                                its recommendation
-  --select-horizon-cv <E>      provisional cross-validation max epochs
-  --select-horizon <E>         provisional final-production max epochs
+  select-target-size --reset   clear the provisional design (pre-freeze only)
+  --horizon-cv <E>             cross-validation max epochs for that size
+  --horizon <E>                final-production max epochs for that size
+
+The design is an ordered collection of distinct sizes, because one prepared
+generation is expensive and deliberately reusable: a new N is appended, and an
+N already selected has its complete entry replaced in place without moving. An
+empty design is the canonical unselected state.
 
 Candidate sizes are powers from target_size_power_min through
 target_size_power_max, bounded by the available population. T_N is always the
 exact prefix pi_train[:N]; there is no other membership constructor. A bare
-select-target-size is invalid, and <N> and --auto are mutually exclusive.
-Omitted horizons resolve on each proposal-setting invocation from
+select-target-size is invalid, and <N>, --auto and --reset are mutually
+exclusive. Omitted horizons resolve, for the size that invocation touches, from
 [post_selection.cv].max_num_epochs and [training].max_num_epochs; the resolved
-values are then persisted with the proposal, so a later configuration edit does
-not silently rewrite a decision that already exists. The CLI never rewrites
-campaign.toml.
+values are then persisted with that entry, so a later configuration edit does
+not silently rewrite a decision that already exists and untouched sibling
+entries never drift. The CLI never rewrites campaign.toml.
 
 The automatic diagnostic is optional evidence, not authority. It ranks
 candidates by target-force RMSE at the configured fidelity_epochs boundaries
@@ -6403,27 +6450,40 @@ using the ordered seeds from the sole enabled training method and the accepted
 n1/n2/n3 funnel over evaluation_size_powers populations. It recommends a size;
 it does not establish asymptotic convergence, long-horizon training quality, or
 MD behavior. A completed diagnostic that cannot make a valid comparison reports
-no recommendation, leaves any existing proposal untouched, and does not prevent
-choosing a qualified candidate explicitly. A repeated --auto on unchanged
+no recommendation, leaves the existing design untouched, and does not prevent
+choosing a qualified candidate explicitly. An adopted recommendation merges
+through the same unique-by-N owner as a manual choice and never clears,
+reorders, or overwrites a sibling the operator selected. A repeated --auto on unchanged
 scientific identity reuses the cached diagnostic and reruns no training. Every
 completed diagnostic also writes a portable Markdown report under results/.
 
 Post-selection owners
 ----------------------
-cross-validate is the freeze boundary. It admits the current provisional
-proposal, re-deriving T_selected = pi_train[:N] from the P2 training order, and
-fixes N_selected, that exact membership, and both effective role horizons as
-immutable ancestry before any numerical work. After that, select-target-size can
-no longer change the design. It then constructs the configured K-fold plan under
-post_selection.cv, with K at least two, uses target-only checkpoint and
-acceptance metrics, and requires every configured fold/seed to pass. Its
-universe is exactly T_selected; it cannot change N.
+cross-validate is the freeze boundary, and it freezes the complete design
+atomically. It admits every provisional entry, re-deriving each
+T_N = pi_train[:N] from the P2 training order, and fixes every selected size,
+its exact membership, and both effective role horizons as immutable ancestry
+before any numerical work. One unauthenticatable member rejects the whole
+admission; there is no partial freeze. After that, select-target-size can no
+longer change the design. It then runs, for every frozen size, the configured
+K-fold plan under post_selection.cv, with K at least two, target-only checkpoint
+and acceptance metrics, and every configured fold/seed required to pass. Each
+size's universe is exactly its own T_N; cross-validation cannot change any N and
+is accepted only when every selected size is accepted.
 
-train-production starts fresh from the canonical initialization, uses the
-method accepted by cross-validation, and trains the complete T_selected under
-the frozen production horizon. Screening and CV checkpoints are not production
-parents. The two role horizons stay independent: changing one never invalidates
-the other role's accepted evidence.
+train-production first requires current accepted cross-validation for every
+selected size and starts no run at all while any of them is missing, stale, or
+rejected. It then trains each size fresh from the canonical initialization,
+using the method accepted for that size, on its complete T_N under its own
+frozen production horizon, and publishes one final product per size. Screening
+and CV checkpoints are not production parents, and no size consumes another
+size's data, evidence, or publication. The two role horizons stay independent:
+changing one never invalidates the other role's accepted evidence.
+
+With more than one selected size the finished training experiment is complete
+but not release qualified: several products exist, nothing here is authorized to
+choose one, so advance stops and consequential qualification commands fail
+closed. Single-size campaigns keep the existing qualification route.
 
 Post-production qualification
 -----------------------------
@@ -6450,7 +6510,8 @@ the revealed cohort a fresh locked test again.
 
 qualification status reports publication, executable, environment,
 specification, component, activation, and verdict state without mutating
-anything.
+anything. For a multi-size frozen design it reports, read-only, that release
+qualification is unavailable and why.
 
 Configuration and reproducibility
 ---------------------------------
@@ -6597,40 +6658,55 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser(
         "select-target-size",
         help=(
-            "choose the provisional target size and the CV/production training "
-            "horizons; optionally run or reuse the automatic target-size diagnostic. "
-            "Freezes nothing - `cross-validate` is the freeze boundary"
+            "add or revise one target size and its CV/production training horizons "
+            "in the ordered provisional design; optionally run or reuse the "
+            "automatic target-size diagnostic, or clear the design. Freezes "
+            "nothing - `cross-validate` is the freeze boundary"
         ),
     )
     p.add_argument(
         "target_size",
         nargs="?",
         type=int,
-        help="a configured qualified candidate size to select explicitly",
+        help=(
+            "a configured qualified candidate size to select explicitly; a new "
+            "size is appended to the design, an already-selected size has its "
+            "complete entry replaced in place"
+        ),
     )
     p.add_argument(
         "--auto",
         action="store_true",
         help=(
-            "run or reuse the optional automatic target-size diagnostic and adopt "
-            "its recommendation as the provisional choice"
+            "run or reuse the optional automatic target-size diagnostic and merge "
+            "its recommendation into the design like any other size"
         ),
     )
     p.add_argument(
-        "--select-horizon-cv",
+        "--reset",
+        action="store_true",
+        help=(
+            "clear every provisional entry; the prepared generation and any "
+            "automatic diagnostic evidence are preserved. Pre-freeze only"
+        ),
+    )
+    p.add_argument(
+        "--horizon-cv",
+        dest="horizon_cv",
         type=int,
         default=None,
         help=(
-            "provisional cross-validation max epochs for this proposal "
+            "cross-validation max epochs for the selected size "
             "(default: [post_selection.cv].max_num_epochs)"
         ),
     )
     p.add_argument(
-        "--select-horizon",
+        "--horizon",
+        dest="horizon",
         type=int,
         default=None,
         help=(
-            "provisional final-production max epochs for this proposal "
+            "final-production max epochs for the selected size "
             "(default: [training].max_num_epochs)"
         ),
     )

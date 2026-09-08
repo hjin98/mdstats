@@ -325,7 +325,7 @@ def test_p4f_req3_parser_help_describes_the_current_commands():
     }
     assert "does not select a target size" in by_name["prepare"]
     assert (
-        "choose the provisional target size" in by_name["select-target-size"]
+        "ordered provisional design" in by_name["select-target-size"]
         and "Freezes nothing" in by_name["select-target-size"]
     )
     assert "post-selection cross-validation" in by_name["cross-validate"]

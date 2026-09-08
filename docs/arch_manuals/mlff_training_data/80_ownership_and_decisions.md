@@ -48,7 +48,7 @@ quarantined/reprepared rather than translated.
 | target-size split and orders | current target-size experiment owner | frame authority, neutral substrate, configured policy | `P_train`/`M3`, `pi_train`, `pi_eval`, `M1/M2/M3` | method acceptance |
 | common target-size preparation | `TargetSizeCommonPreparation` | `P_train` and foundation/training protocol | one shared preparation identity | per-size or per-seed scientific variation |
 | automatic target-size diagnostic | one target-size reducer | paired target-side screen evidence | a *recommended* size, or a typed no-recommendation outcome | freezing a size, monitor cardinality, CV evidence |
-| provisional downstream design | operator, through `select-target-size` | qualified candidate set, `pi_train`, configured/overridden horizons | one mutable proposal `(N, T_N identity, H_cv, H_prod)` | immutable ancestry; running screen work |
+| provisional downstream design | operator, through `select-target-size` | qualified candidate set, `pi_train`, configured/overridden horizons | one mutable ordered collection of per-size entries `(N, T_N identity, H_cv, H_prod)`, unique by `N` | immutable ancestry; running screen work; choosing a release product among sizes |
 | frozen downstream design | `cross-validate` admission | the current proposal and authenticated P2 order | exact `N_selected`/`T_selected` binding plus both effective role horizons | re-deciding size afterwards |
 | post-selection method acceptance | post-selection CV owner | exactly `T_selected`, protected relations, `K >= 2`, CV seeds | all-required-fold target-only verdict | changing `N_selected` |
 | fresh final production | final-production owner | accepted method, complete `T_selected`, required final seeds | complete executed run evidence / model artifacts | target-size or CV authority (publication is P7) |
@@ -222,12 +222,17 @@ init -> doctor -> prepare -> select-target-size -> cross-validate -> train-produ
 ```
 
 `prepare` builds the neutral/current substrate and common preparation but
-selects nothing. `select-target-size` owns the provisional downstream design:
-`<N>` chooses a qualified candidate and trains nothing, `--auto` runs or reuses
-the automatic diagnostic and adopts its recommendation, and `--select-horizon-cv`
-/ `--select-horizon` steer the two role horizons. It freezes nothing.
-`cross-validate` owns the freeze and then selected-only method acceptance. `train-production` owns
-fresh final publication. `status` and `advance` project these same owners;
+selects nothing. `select-target-size` owns the provisional downstream design,
+which is an ordered collection of distinct qualified sizes over that one
+prepared generation: `<N>` merges a qualified candidate into it - appending a
+new size, or replacing an existing size's complete entry in place - and trains
+nothing; `--auto` runs or reuses the automatic diagnostic and merges its
+recommendation through the same owner; `--reset` clears the design pre-freeze;
+and `--horizon-cv` / `--horizon` steer the two role horizons of the size the
+invocation touches. It freezes nothing. `cross-validate` owns the atomic
+whole-collection freeze and then selected-only method acceptance for every
+frozen size. `train-production` owns the collection-wide cross-validation
+barrier and then one fresh final publication per frozen size. `status` and `advance` project these same owners;
 they do not create another state machine. `storage` is orthogonal: it manages
 representation, retention, caching, archival, and admission, and it advances no
 scientific lifecycle.

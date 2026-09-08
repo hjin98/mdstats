@@ -107,7 +107,9 @@ def _binding(paths):
         revision = load_target_size_campaign_revision(store)
     finally:
         store.close()
-    return lifecycle_module._binding_for(revision), revision
+    bindings = lifecycle_module._bindings_for(revision)
+    assert bindings, "no current target-size bindings found"
+    return bindings[0], revision
 
 
 def _pointer(paths, namespace: str, kind: str) -> str:

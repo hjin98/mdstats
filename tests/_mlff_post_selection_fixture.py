@@ -24,7 +24,7 @@ import tests.test_mlff_target_size_p4d_runtime_cutover as p4d
 from mdstats.training_data import _campaign_cli_core as cli
 from mdstats.training_data._campaign_cli_core import CampaignStore
 from mdstats.training_data.campaign_target_size_selection import (
-    resolve_frozen_target_selection,
+    resolve_frozen_target_design,
 )
 from mdstats.training_data.campaign_target_size_state import (
     load_target_size_campaign_revision,
@@ -139,10 +139,10 @@ def build_selected_campaign(
             f"{revision.state.lifecycle}"
         )
         assert diagnostic.recommended_target_size == SELECTED_TARGET_SIZE
-        proposal = revision.state.proposal
-        assert proposal is not None and proposal.n_provisional == SELECTED_TARGET_SIZE
-        admitted = resolve_frozen_target_selection(cfg, paths, store, admit=True)
-        assert admitted.frozen.n_selected == SELECTED_TARGET_SIZE
+        entries = revision.state.provisional_entries
+        assert [entry.n_provisional for entry in entries] == [SELECTED_TARGET_SIZE]
+        design = resolve_frozen_target_design(cfg, paths, store, admit=True)
+        assert list(design.selected_sizes) == [SELECTED_TARGET_SIZE]
     finally:
         store.close()
     return config, workspace

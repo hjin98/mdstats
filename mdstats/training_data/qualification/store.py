@@ -37,6 +37,7 @@ from .._common import (
 from ..campaign_post_selection import (
     PostSelectionBinding,
     PostSelectionStaleBindingError,
+    current_target_size_bindings,
 )
 from ..post_selection_store import PostSelectionPublicationConflictError
 from .errors import QualificationError, QualificationLineageError
@@ -253,14 +254,15 @@ def publish_current_qualification_pointer(
                 "be published as current."
             )
         state = revision.state
-        # See ``post_selection_store``: the frozen selection is the ancestry
-        # token, so unrelated diagnostic publication cannot orphan a descendant.
-        current_frozen = (
-            None if state.frozen is None else state.frozen.content_digest
-        )
+        # See ``post_selection_store``: membership of the current frozen design
+        # is the ancestry token, so unrelated diagnostic publication cannot
+        # orphan a descendant.
+        current = {
+            item.content_digest for item in current_target_size_bindings(state)
+        }
         if (
             state.generation != binding.campaign_generation
-            or current_frozen != binding.frozen_selection_digest
+            or binding.content_digest not in current
         ):
             raise PostSelectionStaleBindingError(
                 "A newer frozen target selection became current while this "

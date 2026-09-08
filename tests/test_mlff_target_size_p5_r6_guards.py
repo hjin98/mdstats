@@ -371,7 +371,6 @@ def test_guard_p5_cross_campaign_authorization_rejected(tmp_path: Path):
         b = context.selected.binding
         fake_binding = PostSelectionBinding(
             campaign_generation=b.campaign_generation + 1,  # Different generation!
-            frozen_selection_digest=b.frozen_selection_digest,
             experiment_definition_digest=b.experiment_definition_digest,
             training_order_digest=b.training_order_digest,
             frame_authority_digest=b.frame_authority_digest,
@@ -414,7 +413,6 @@ def test_guard_p5_modified_selection_invalidates_authorization(tmp_path: Path):
         b = context.selected.binding
         fake_binding = PostSelectionBinding(
             campaign_generation=b.campaign_generation,
-            frozen_selection_digest=b.frozen_selection_digest,
             experiment_definition_digest=b.experiment_definition_digest,
             training_order_digest=b.training_order_digest,
             frame_authority_digest=b.frame_authority_digest,

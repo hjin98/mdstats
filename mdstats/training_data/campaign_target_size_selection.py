@@ -1,4 +1,4 @@
-"""The operator-owned target-size design: provisional proposal, then freeze.
+"""The operator-owned target-size design: provisional collection, then freeze.
 
 The automatic screen used to be the only thing allowed to decide how much target
 data downstream training would use.  It no longer is.  Its short-horizon
@@ -10,21 +10,31 @@ So the decision lives here instead, in two clearly separated phases:
 
 .. code-block:: text
 
-    select-target-size <N> | --auto     ->  one mutable provisional proposal
-                                            (N, T_N identity, H_cv, H_prod)
+    select-target-size <N> | --auto   ->  merge one complete per-size entry
+                                          (N, T_N identity, H_cv, H_prod) into
+                                          the ordered provisional design
 
-    cross-validate                      ->  freeze: exactly that proposal
-                                            becomes immutable downstream ancestry
+    select-target-size --reset        ->  clear the provisional design
 
-Between those two points the operator may change their mind freely; after the
-second, nothing here can change the design at all.  A proposal is complete when
-it is set: both role horizons are resolved to explicit values at that moment, so
-a later ``campaign.toml`` edit cannot silently rewrite a decision that already
-exists.
+    cross-validate                    ->  freeze: the *complete* ordered design
+                                          becomes immutable downstream ancestry
+
+The design is a collection, not a single choice, because one expensive prepared
+generation is deliberately reusable: an operator comparing behaviour across
+qualified sizes must be able to request several longer-horizon experiments from
+it without the newest command erasing the previous request.  A new ``N`` is
+appended; an ``N`` already in the design has its complete entry replaced in
+place, keeping its position.  Empty is the canonical unselected state.
+
+Between selection and freeze the operator may change their mind freely; after
+the freeze, nothing here can change the design at all.  Each entry is complete
+when it is set: both role horizons are resolved to explicit values at that
+moment, so a later ``campaign.toml`` edit cannot silently rewrite a decision
+that already exists, and reselecting one size never disturbs its siblings.
 
 ``T_provisional`` and ``T_selected`` are never stored as lists.  Both are
 ``pi_train[:N]``, and their identity is re-derived through the real P2 training
-order on every set and again at freeze.
+order on every set and again at freeze - for every member of the design.
 """
 from __future__ import annotations
 
@@ -42,6 +52,7 @@ from .campaign_target_size_state import (
     TargetSizeRegime,
     TargetSizeTransitionKind,
     commit_target_size_campaign_transition,
+    merge_provisional_entry,
 )
 
 
@@ -91,8 +102,8 @@ def resolve_provisional_horizons(
         )
     )
     for value, label in (
-        (resolved_cv, "--select-horizon-cv"),
-        (resolved_production, "--select-horizon"),
+        (resolved_cv, "--horizon-cv"),
+        (resolved_production, "--horizon"),
     ):
         if value <= 0:
             raise TargetSizeSelectionError(
@@ -123,24 +134,26 @@ def authenticate_candidate_membership(definition: Any, target_size: int) -> str:
 
 
 def require_unfrozen(state: TargetSizeCampaignState) -> None:
-    if state.frozen is not None:
+    if state.frozen_entries is not None:
+        sizes = ", ".join(
+            f"N={entry.n_selected} (CV horizon {entry.cv_max_num_epochs}, "
+            f"production horizon {entry.production_max_num_epochs})"
+            for entry in state.frozen_entries
+        )
         raise TargetSizeSelectionError(
             "The downstream target design is frozen: `cross-validate` already "
-            f"admitted N_selected={state.frozen.n_selected} with CV horizon "
-            f"{state.frozen.cv_max_num_epochs} and production horizon "
-            f"{state.frozen.production_max_num_epochs}. Frozen ancestry is never "
-            "edited in place; start another experiment with a fresh `prepare` "
-            "generation instead."
+            f"admitted {sizes}. Frozen ancestry is never edited in place; start "
+            "another experiment with a fresh `prepare` generation instead."
         )
 
 
 def _successor_with(
     state: TargetSizeCampaignState,
     *,
-    proposal: TargetSizeProposal | None = None,
-    frozen: FrozenTargetSelection | None = None,
+    provisional_entries: tuple[TargetSizeProposal, ...] = (),
+    frozen_entries: tuple[FrozenTargetSelection, ...] | None = None,
 ) -> TargetSizeCampaignState:
-    """Rewrite only the proposal/freeze axis of an otherwise identical state."""
+    """Rewrite only the selection axis of an otherwise identical state."""
 
     return TargetSizeCampaignState(
         regime=state.regime,
@@ -161,8 +174,8 @@ def _successor_with(
         adopted_execution_head_digest=state.adopted_execution_head_digest,
         adopted_reducer_state_digest=state.adopted_reducer_state_digest,
         auto_diagnostic=state.auto_diagnostic,
-        proposal=proposal,
-        frozen=frozen,
+        provisional_entries=provisional_entries,
+        frozen_entries=frozen_entries,
         disposition=state.disposition,
         disposition_detail=state.disposition_detail,
     )
@@ -201,29 +214,65 @@ def commit_target_size_proposal(
     revision: TargetSizeCampaignRevision,
     proposal: TargetSizeProposal,
 ) -> TargetSizeCampaignRevision:
-    """Publish one provisional proposal through the campaign CAS boundary."""
+    """Merge one per-size proposal into the provisional design, atomically.
+
+    A size that is not in the design is appended; a size that is already in it
+    has its complete entry replaced without moving its list position.  Both
+    manual selection and an adopted automatic recommendation come through here,
+    so neither can acquire collection authority the other lacks.
+    """
 
     state = revision.state
     if state.regime is not TargetSizeRegime.CURRENT:
         raise TargetSizeSelectionError(
-            "Only the current target-size runtime can hold a provisional proposal."
+            "Only the current target-size runtime can hold a provisional design."
         )
     require_unfrozen(state)
-    if state.proposal == proposal:
+    merged = merge_provisional_entry(state.provisional_entries, proposal)
+    if merged == state.provisional_entries:
         # The operator asked for the design they already have. Recording an
-        # identical proposal would add a revision that decides nothing.
+        # identical collection would add a revision that decides nothing.
         return revision
     return commit_target_size_campaign_transition(
         store,
         kind=TargetSizeTransitionKind.SET_PROPOSAL,
         expected=revision.expectation(),
-        successor=_successor_with(state, proposal=proposal),
+        successor=_successor_with(state, provisional_entries=merged),
+    ).revision
+
+
+def commit_target_size_reset(
+    store: Any, revision: TargetSizeCampaignRevision
+) -> TargetSizeCampaignRevision:
+    """Clear every provisional entry in one transition, pre-freeze only.
+
+    Reset owns exactly one axis.  The prepared generation, the adopted P3 head
+    and any valid automatic-diagnostic evidence are untouched, because none of
+    them is the operator's provisional choice; discarding expensive diagnostic
+    work to express "I have not chosen yet" would be a different, worse command.
+    """
+
+    state = revision.state
+    if state.regime is not TargetSizeRegime.CURRENT:
+        raise TargetSizeSelectionError(
+            "Only the current target-size runtime can hold a provisional design."
+        )
+    require_unfrozen(state)
+    if not state.provisional_entries:
+        # Already the canonical unselected state. A revision that decides
+        # nothing is not worth appending to an authenticated chain.
+        return revision
+    return commit_target_size_campaign_transition(
+        store,
+        kind=TargetSizeTransitionKind.RESET_PROPOSAL,
+        expected=revision.expectation(),
+        successor=_successor_with(state, provisional_entries=()),
     ).revision
 
 
 @dataclass(frozen=True, slots=True)
 class AdmittedTargetSelection:
-    """The frozen design plus the authenticated substrate that proves it."""
+    """One frozen per-size entry plus the authenticated substrate that proves it."""
 
     revision: TargetSizeCampaignRevision
     authorities: Any
@@ -234,26 +283,47 @@ class AdmittedTargetSelection:
         return self.authorities.aggregate.definition
 
 
-def resolve_frozen_target_selection(
+@dataclass(frozen=True, slots=True)
+class AdmittedTargetDesign:
+    """The complete frozen ordered design, authenticated as one collection."""
+
+    revision: TargetSizeCampaignRevision
+    authorities: Any
+    per_size: tuple[AdmittedTargetSelection, ...]
+
+    @property
+    def definition(self) -> Any:
+        return self.authorities.aggregate.definition
+
+    @property
+    def selected_sizes(self) -> tuple[int, ...]:
+        return tuple(item.frozen.n_selected for item in self.per_size)
+
+
+def resolve_frozen_target_design(
     cfg: Mapping[str, Any],
     paths: Any,
     store: Any,
     *,
     admit: bool = False,
-) -> AdmittedTargetSelection:
-    """Resolve the frozen downstream design, admitting the proposal when asked.
+) -> AdmittedTargetDesign:
+    """Resolve the frozen downstream design, admitting the whole collection when asked.
 
     ``admit`` is the freeze authority and belongs to ``cross-validate`` alone.
     Every other post-selection reader passes ``admit=False`` and therefore
     *requires* a freeze that already happened: describing or continuing
     downstream work must never be able to commit the experiment.
 
-    Admission is the first and only freeze point.  It re-establishes current campaign
-    state, reloads and authenticates the prepared generation, revalidates the
-    proposed ``N`` against the *current* qualified candidate set, re-derives the
-    exact ``pi_train[:N]`` identity from the P2 training order, and publishes the
-    frozen selection - target membership and both effective role horizons - in
-    one CAS transition before any numerical downstream work begins.
+    Admission is the first and only freeze point, and it is whole-collection.
+    It re-establishes current campaign state, reloads and authenticates the one
+    shared prepared generation, revalidates *every* proposed ``N`` against the
+    current qualified candidate set, re-derives each exact ``pi_train[:N]``
+    identity from the P2 training order, and publishes the complete ordered
+    frozen design - every membership and both effective role horizons per size -
+    in one CAS transition before any numerical downstream work begins.  One
+    unauthenticatable member rejects the entire admission: a requested
+    multi-size experiment is never quietly reduced to the subset that happened
+    to still validate.
 
     No automatic-screen execution head or reducer is required.  A campaign that
     never ran the diagnostic freezes exactly the same way as one that did.
@@ -267,27 +337,60 @@ def resolve_frozen_target_selection(
     authorities = load_prepared_target_size_generation(cfg, paths, store, revision)
     definition = authorities.aggregate.definition
 
-    if state.frozen is not None:
+    if state.frozen_entries is not None:
         # Freeze is idempotent for repeated/resumed post-selection invocations,
-        # but never trusted from campaign state alone: the frozen membership is
-        # re-derived from the current P2 training order before it is reused.
-        _authenticate_frozen(state.frozen, definition)
-        return AdmittedTargetSelection(revision, authorities, state.frozen)
+        # but never trusted from campaign state alone: every frozen membership
+        # is re-derived from the current P2 training order before it is reused.
+        for entry in state.frozen_entries:
+            _authenticate_frozen(entry, definition)
+        return _design(revision, authorities, state.frozen_entries)
 
     if not admit:
         raise TargetSizeSelectionError(
-            "No frozen target selection exists for this campaign generation. "
+            "No frozen target-size design exists for this campaign generation. "
             "`cross-validate` is the admission boundary that freezes the current "
             "provisional design; run it before any other post-selection work."
         )
-    proposal = state.proposal
-    if proposal is None:
+    if not state.provisional_entries:
         raise TargetSizeSelectionError(
             "No provisional target size has been chosen for this generation. Run "
             "`select-target-size <N>` to choose one explicitly, or "
             "`select-target-size --auto` to run the optional automatic diagnostic "
-            "and adopt its recommendation."
+            "and adopt its recommendation. Selecting further sizes appends them; "
+            "`cross-validate` then freezes the complete design at once."
         )
+    frozen_entries = tuple(
+        _admit_entry(proposal, definition) for proposal in state.provisional_entries
+    )
+    revision = commit_target_size_campaign_transition(
+        store,
+        kind=TargetSizeTransitionKind.FREEZE_SELECTION,
+        expected=revision.expectation(),
+        successor=_successor_with(state, frozen_entries=frozen_entries),
+    ).revision
+    # Per-size contexts are derived only from the committed frozen state, never
+    # from the proposals that produced it.
+    return _design(revision, authorities, revision.state.frozen_entries)
+
+
+def _design(
+    revision: TargetSizeCampaignRevision,
+    authorities: Any,
+    frozen_entries: Any,
+) -> AdmittedTargetDesign:
+    return AdmittedTargetDesign(
+        revision=revision,
+        authorities=authorities,
+        per_size=tuple(
+            AdmittedTargetSelection(revision, authorities, entry)
+            for entry in frozen_entries
+        ),
+    )
+
+
+def _admit_entry(
+    proposal: TargetSizeProposal, definition: Any
+) -> FrozenTargetSelection:
     membership_digest = authenticate_candidate_membership(
         definition, proposal.n_provisional
     )
@@ -296,11 +399,12 @@ def resolve_frozen_target_selection(
         or definition.training_order.content_digest != proposal.training_order_digest
     ):
         raise TargetSizeSelectionError(
-            "The provisional proposal names a target membership the current P2 "
-            "training order does not reproduce. The proposal is not admitted; run "
-            "`select-target-size` again against the current prepared generation."
+            f"The provisional entry for N={proposal.n_provisional} names a target "
+            "membership the current P2 training order does not reproduce. No part "
+            "of the design is admitted; run `select-target-size` again against the "
+            "current prepared generation."
         )
-    frozen = FrozenTargetSelection(
+    return FrozenTargetSelection(
         n_selected=proposal.n_provisional,
         selected_membership_digest=membership_digest,
         training_order_digest=proposal.training_order_digest,
@@ -309,13 +413,35 @@ def resolve_frozen_target_selection(
         selection_source=proposal.selection_source,
         auto_diagnostic_digest=proposal.auto_diagnostic_digest,
     )
-    revision = commit_target_size_campaign_transition(
-        store,
-        kind=TargetSizeTransitionKind.FREEZE_SELECTION,
-        expected=revision.expectation(),
-        successor=_successor_with(state, frozen=frozen),
-    ).revision
-    return AdmittedTargetSelection(revision, authorities, frozen)
+
+
+def resolve_frozen_target_selection(
+    cfg: Mapping[str, Any],
+    paths: Any,
+    store: Any,
+    *,
+    admit: bool = False,
+    n_selected: int | None = None,
+) -> AdmittedTargetSelection:
+    """Resolve exactly one admitted per-size entry of the frozen design."""
+
+    design = resolve_frozen_target_design(cfg, paths, store, admit=admit)
+    if n_selected is None:
+        if len(design.per_size) == 1:
+            return design.per_size[0]
+        raise TargetSizeSelectionError(
+            "The frozen target-size design contains "
+            f"{len(design.per_size)} selected sizes {list(design.selected_sizes)}; "
+            "name the size explicitly."
+        )
+    size = int(n_selected)
+    for item in design.per_size:
+        if item.frozen.n_selected == size:
+            return item
+    raise TargetSizeSelectionError(
+        f"Target size {size} is not part of the current frozen design "
+        f"{list(design.selected_sizes)}."
+    )
 
 
 def _authenticate_frozen(frozen: FrozenTargetSelection, definition: Any) -> None:
@@ -332,13 +458,16 @@ def _authenticate_frozen(frozen: FrozenTargetSelection, definition: Any) -> None
 
 
 __all__ = [
+    "AdmittedTargetDesign",
     "AdmittedTargetSelection",
     "ResolvedHorizons",
     "TargetSizeSelectionError",
-    "resolve_frozen_target_selection",
     "authenticate_candidate_membership",
     "build_target_size_proposal",
     "commit_target_size_proposal",
+    "commit_target_size_reset",
     "require_unfrozen",
+    "resolve_frozen_target_design",
+    "resolve_frozen_target_selection",
     "resolve_provisional_horizons",
 ]

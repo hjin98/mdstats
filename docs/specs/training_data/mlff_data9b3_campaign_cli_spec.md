@@ -45,6 +45,11 @@ their projection from the same current owners. The current campaign has no
 separate pre-screen gate or downstream physical-test command; downstream
 qualification is a later product boundary and is not dispatched by P6.
 
+The downstream design is an ordered collection of distinct qualified target
+sizes, so `select-target-size`, `cross-validate` and `train-production` each
+carry a size dimension over one shared prepared generation. That dimension adds
+no second campaign, no per-size subcampaign, and no cross-size winner rule.
+
 No command may silently skip a failed, stale, waiting, or incompatible current
 authority. An automatic target-size diagnostic that completes without a
 recommendation is reported as a successful diagnostic result: it leaves the
@@ -189,27 +194,50 @@ content caches are reusable only after current-owner revalidation.
 ```text
 select-target-size <N>
 select-target-size --auto
-[--select-horizon-cv <positive integer>] [--select-horizon <positive integer>]
+select-target-size --reset
+[--horizon-cv <positive integer>] [--horizon <positive integer>]
 ```
 
 This command owns the **provisional** downstream training design and freezes
 nothing. A bare invocation is invalid and must give actionable usage guidance;
-`<N>` and `--auto` are mutually exclusive.
+`<N>`, `--auto` and `--reset` are mutually exclusive, and exactly one of them is
+required.
+
+The provisional design is an **ordered collection of distinct qualified sizes**,
+not a single choice. One prepared generation is expensive and deliberately
+reusable, so requesting a second qualified size must add an experiment rather
+than replace the one already requested:
+
+- a size not yet in the design is **appended**;
+- a size already in the design has its **complete entry replaced in place**,
+  keeping its position;
+- duplicate `N` in authoritative state is corruption and is never silently
+  deduplicated;
+- the empty collection is the canonical unselected state; no placeholder record
+  exists, and `cross-validate` refuses zero selected sizes.
 
 `select-target-size <N>` loads the current prepared generation, establishes
 currentness, resolves the P2 qualified candidate set, requires `N` to be one of
 those configured qualified candidates, derives `T_N = pi_train[:N]`, validates
 that membership through the existing P2 training-order owner, resolves a
-complete provisional horizon snapshot, and CAS-publishes the new proposal. It
+complete per-size horizon snapshot, and CAS-publishes the merged collection. It
 performs **no** target-size candidate training and no EVAL2 work.
 
-`--select-horizon-cv` sets the provisional CV max epochs and `--select-horizon`
-the provisional final-production max epochs. Each successful proposal-setting
-invocation resolves a complete proposal: an omitted flag resolves from
+`--horizon-cv` sets the CV max epochs and `--horizon` the final-production max
+epochs **for the size this invocation touches**. Each successful invocation
+resolves a complete entry: an omitted flag resolves from
 `[post_selection.cv].max_num_epochs` (default 30) or `[training].max_num_epochs`
 (default 30) *at that moment*, and the resolved values are persisted, so later
-configuration edits do not mutate an existing proposal. An earlier override never
-becomes a sticky default. The CLI never rewrites `campaign.toml`.
+configuration edits do not mutate an entry that already exists and untouched
+sibling entries never drift. Reselecting an existing size deliberately
+re-resolves every omitted horizon for the new invocation. An earlier override
+never becomes a sticky default. The CLI never rewrites `campaign.toml`.
+
+`select-target-size --reset` atomically clears every provisional entry. It is
+pre-freeze only, performs no numerical work, preserves the prepared generation
+and any valid automatic-diagnostic evidence and report, and is mutually
+exclusive with `--horizon-cv` and `--horizon`. Resetting an already-empty design
+is idempotent and appends no revision.
 
 `select-target-size --auto` runs or reuses the optional automatic diagnostic. It
 runs the configurable ladder and direct evaluation populations through the
@@ -262,33 +290,64 @@ practical-equivalence band the smaller finalist is still preferred. Genuinely
 insufficient comparison remains a typed no-recommendation outcome, and no
 unconfigured intermediate or rescue size is ever synthesized.
 
+A valid recommendation is merged through the **same** unique-by-`N` collection
+owner as a manual choice. The automatic path has no collection authority of its
+own: it never clears, reorders, or replaces a sibling entry the operator chose,
+and installing it over an existing entry for the same `N` follows the ordinary
+replace-in-place rule.
+
 ### `cross-validate`
 
-This command is the freeze boundary. It requires a current provisional proposal,
-loads and authenticates the current prepared generation, revalidates the
-proposed `N` against the current qualified candidate set, derives exact
-`T_selected = pi_train[:N]`, reproduces its membership digest, and publishes the
-frozen target selection together with both effective role horizons through the
-existing currentness/CAS boundaries before any numerical CV work begins. No
-automatic-diagnostic execution head or reducer is required for this transition.
-After the freeze, `select-target-size` in either form must not mutate the
-design.
+This command is the freeze boundary, and it freezes the **complete collection
+atomically**. It requires at least one provisional entry, loads and
+authenticates the one current prepared generation, revalidates every proposed
+`N` against the current qualified candidate set, derives each exact
+`T_N = pi_train[:N]`, reproduces every membership digest, and publishes the
+whole ordered frozen design - every membership and both effective role horizons
+per size - in one CAS transition before any numerical CV work begins. One
+unauthenticatable member rejects the entire admission: there is no partial
+freeze, and a requested multi-size experiment is never quietly reduced to the
+subset that still validated. No automatic-diagnostic execution head or reducer
+is required for this transition. After the freeze, `select-target-size` in any
+form must not mutate the design.
 
-It then constructs the
-configured `K >= 2` post-selection folds inside exactly `T_selected`. It binds
+It then runs the existing post-selection cross-validation methodology **for
+every frozen size**, in frozen selection order: the configured `K >= 2`
+post-selection folds inside exactly that size's `T_N`, its own frozen `H_cv`,
 protected relations, fold/seed identities, target-only checkpoint choice, and
-the all-required-fold/all-required-seed acceptance predicate. It cannot alter
-the selected size or membership. Missing, stale, or failed fold evidence blocks
-final production while leaving the selected authority unchanged.
+the all-required-fold/all-required-seed acceptance predicate. Campaign
+cross-validation is accepted only when **every** frozen size is accepted; a
+rejected size stays visibly rejected and is never dropped from the design. The
+size dimension adds no new fold construction, acceptance predicate, cross-size
+reducer, or scheduler: outer iteration over sizes is serial and shares the
+existing effective resource allocation. Missing, stale, or failed fold evidence
+blocks final production while leaving the selected authority unchanged.
 
 ### `train-production`
 
-This command requires accepted current post-selection method evidence. It
-starts fresh from the accepted foundation and trains the complete exact
-`T_selected` under the frozen production horizon and the production policy. A
-screen or CV checkpoint is never a production parent. Publication rechecks
-currentness at commit time and cannot promote work from a superseded
-generation.
+Admission is a **collection-wide barrier**. Before any new production job
+starts, the complete frozen design is authenticated and every selected size must
+hold current accepted cross-validation ancestry under its own binding and its
+own `H_cv`. If any size is missing, stale, corrupt, incomplete, or rejected at
+that boundary, the invocation starts **no** production job for any size and
+reports every known blocking `N`. Immutable evidence published by an earlier
+attempt keeps whatever currentness its own identity earns; the barrier only
+prevents new admission from turning an all-sizes experiment into a successful
+subset.
+
+After preflight it runs the existing fresh final-production methodology for
+every frozen size: fresh start from the accepted foundation on that size's
+complete exact `T_N`, under **its own** frozen production horizon, its own
+accepted cross-validation ancestry, its existing M3 lineage, production seeds,
+representative selection and committee policy, publishing one binding-scoped
+final-production decision per size. A screen or CV checkpoint is never a
+production parent, and no size may consume another size's membership, horizons,
+evidence, pointers, or publication. Publication rechecks currentness at commit
+time and cannot promote work from a superseded generation. Campaign production
+is complete only when every selected size has its own current final publication.
+
+For a multi-size design, completing production is a **terminal training-experiment
+state**, not a release: see `qualification`.
 
 ### `status`, `advance`, and `guide`
 
@@ -297,18 +356,66 @@ generation.
 same six-command scientific lifecycle and current configuration/restart
 semantics. Neither command writes a second scientific authority.
 
+Every successful selection, automatic install, reset and `status` renders the
+**complete** design in selection order: before the freeze, each entry's `N`,
+`H_cv`, `H_prod` and provenance with `Frozen: no`; after it, the same ordered
+list with each size's own cross-validation and production state. An empty design
+shows no concrete size, the current default horizons, and the requirement to
+select at least one `N` before cross-validation. The per-size summary is
+presentation only: it never ranks sizes, sorts them by performance, flags a
+winner, or introduces any cross-size reducer.
+
+`advance` routes as follows: no provisional entries stops at the target-size
+decision and never invents an `N` or opts into `--auto`; a nonempty provisional
+design routes to `cross-validate`; a frozen design with any size not accepted
+keeps cross-validation as the relevant stage and never advances into production;
+all sizes accepted with any production incomplete routes to `train-production`;
+all production complete with `k == 1` routes to the existing qualification
+stage; all production complete with `k > 1` reports a complete, unqualified
+multi-size training experiment and offers no further consequential command.
+
 Observation is read-only, coherent, and authenticated. One lifecycle answer
-reads the target-size revision and every post-selection/qualification pointer
-row it depends on inside a single campaign-store read transaction, so the
-ancestry it reports is one that existed: pointer publication mutates campaign
-metadata without moving the target-size revision, and an answer may never
-combine a pre-publication view of one stage with a post-publication view of
-another. Each compact record a pointer names is loaded through its accepted
+reads the target-size revision, every current per-size binding derived from it,
+and every post-selection pointer row of every such binding - plus qualification
+pointer rows only where qualification is actually authorized - inside a single
+campaign-store read transaction, so the ancestry it reports is one that existed.
+Iterating sizes with independently timed authoritative reads is not permitted:
+pointer publication mutates campaign metadata without moving the target-size
+revision, and an answer may never combine a pre-publication view of one stage or
+size with a post-publication view of another. Each compact record a pointer names is loaded through its accepted
 read-only typed store and must reproduce the identity the pointer named before
 any of its fields -- a cross-validation acceptance, a release verdict --
 influences the report. A missing, unparseable, or misidentified record is
 reported as blocked. Observation creates no evidence root, opens no provider,
 and reconstructs no upstream authority.
+
+### `qualification`
+
+Post-production qualification is a single-product release boundary. For a
+one-size frozen design its methodology, identity, locked-activation semantics
+and lifecycle are unchanged.
+
+For a multi-size frozen design (`k > 1`) qualification is **unavailable**, and
+that is a safety boundary rather than a missing algorithm. Several final
+publications exist and this revision authorizes no rule for deciding which one
+is the release product; choosing implicitly - first, last, automatic
+recommendation, or best metric - would be a release decision made silently, and
+running one-shot locked evidence across sizes would turn reserved data into a
+target-size comparison. Therefore:
+
+- `qualification run` and `qualification activate-locked` (and every other
+  consequential qualification entrypoint) fail closed **before** any attempt,
+  session, evidence root, external-reference request, or locked-cohort access is
+  created or revealed;
+- `qualification status` succeeds observationally, writes nothing, and explains
+  the boundary;
+- no release-qualified verdict is set and no qualification completion is
+  synthesized;
+- the frozen design is never mutated down to one size.
+
+Qualifying one product from a multi-size experiment requires a separate
+experiment under a fresh prepared generation with exactly one selected size, or
+separate explicit design authority for multi-product release selection.
 
 ### `storage`
 

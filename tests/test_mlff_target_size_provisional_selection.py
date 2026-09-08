@@ -30,6 +30,7 @@ from mdstats.training_data.campaign_post_selection import (
 )
 from mdstats.training_data.campaign_target_size_selection import (
     TargetSizeSelectionError,
+    resolve_frozen_target_design,
     resolve_frozen_target_selection,
     resolve_provisional_horizons,
 )
@@ -75,6 +76,28 @@ def _revision(config: Path):
         store.close()
 
 
+def _entries(config: Path):
+    """The complete ordered provisional design, as authoritative state holds it."""
+
+    return _revision(config).state.provisional_entries
+
+
+def _sizes(config: Path) -> list[int]:
+    return [entry.n_provisional for entry in _entries(config)]
+
+
+def _only(config: Path):
+    """The single provisional entry, asserting the design really has one."""
+
+    entries = _entries(config)
+    assert len(entries) == 1, [entry.n_provisional for entry in entries]
+    return entries[0]
+
+
+def _frozen(config: Path):
+    return _revision(config).state.frozen_entries
+
+
 def _select(config: Path, *argv: str) -> int:
     return p4d._run(
         config,
@@ -103,7 +126,7 @@ def test_size_and_auto_are_mutually_exclusive(tmp_path: Path):
         _select(config, "8", "--auto")
 
 
-@pytest.mark.parametrize("flag", ["--select-horizon-cv", "--select-horizon"])
+@pytest.mark.parametrize("flag", ["--horizon-cv", "--horizon"])
 def test_nonpositive_horizons_are_rejected(tmp_path: Path, flag: str):
     config, _workspace = _prepared(tmp_path)
     with pytest.raises(CampaignCliError, match="positive number of epochs"):
@@ -114,7 +137,7 @@ def test_a_noncandidate_size_is_refused_by_the_p2_owner(tmp_path: Path):
     config, _workspace = _prepared(tmp_path)
     with pytest.raises(TargetSizeSelectionError, match="not a configured qualified"):
         _select(config, "7")
-    assert _revision(config).state.proposal is None
+    assert _entries(config) == ()
 
 
 # --- 19.2 the manual path, end to end, with no screening work at all --------
@@ -129,14 +152,13 @@ def test_manual_selection_trains_nothing_and_freezes_only_at_cross_validate(
     assert _select(config, str(fx.SELECTED_TARGET_SIZE)) == 0
 
     revision = _revision(config)
-    proposal = revision.state.proposal
-    assert proposal is not None
+    proposal = _only(config)
     assert proposal.n_provisional == fx.SELECTED_TARGET_SIZE
     assert proposal.selection_source == "manual"
     # No screen ran, so there is no diagnostic and no adopted P3 head at all.
     assert revision.state.auto_diagnostic is None
     assert revision.state.adopted_execution_head_digest is None
-    assert revision.state.frozen is None
+    assert revision.state.frozen_entries is None
 
     output = capsys.readouterr().out
     assert "Frozen: no" in output
@@ -155,11 +177,12 @@ def test_manual_selection_trains_nothing_and_freezes_only_at_cross_validate(
     post = fx.PostSelectionHarness()
     assert fx.run_cross_validate(config, post) == 0
 
-    frozen = _revision(config).state.frozen
-    assert frozen is not None
+    entries = _frozen(config)
+    assert entries is not None and len(entries) == 1
+    frozen = entries[0]
     assert frozen.n_selected == fx.SELECTED_TARGET_SIZE
     assert frozen.selection_source == "manual"
-    assert _revision(config).state.proposal is None
+    assert _entries(config) == ()
 
     # The real CV owner received the frozen horizon.
     cfg, paths = cli._load_config(config)
@@ -201,7 +224,7 @@ def test_status_offers_both_forms_and_never_prints_the_invalid_bare_command(
     assert p4d._run(config, "advance") == 0
     advanced = capsys.readouterr().out
     assert "does not decide it for you" in advanced
-    assert _revision(config).state.proposal is None
+    assert _entries(config) == ()
 
     assert _select(config, "8") == 0
     capsys.readouterr()
@@ -231,19 +254,21 @@ def test_a_corrupt_proposal_membership_is_never_admitted(tmp_path: Path):
     try:
         revision = load_target_size_campaign_revision(store)
         forged = replace(
-            revision.state.proposal,
+            revision.state.provisional_entries[0],
             membership_digest=digest({"forged": "membership"}),
         )
         revision = commit_target_size_campaign_transition(
             store,
             kind=TargetSizeTransitionKind.SET_PROPOSAL,
             expected=revision.expectation(),
-            successor=_successor_with(revision.state, proposal=forged),
+            successor=_successor_with(revision.state, provisional_entries=(forged,)),
         ).revision
         with pytest.raises(TargetSizeSelectionError, match="does not reproduce"):
-            resolve_frozen_target_selection(cfg, paths, store, admit=True)
+            resolve_frozen_target_design(cfg, paths, store, admit=True)
         # Nothing was frozen by the attempt.
-        assert load_target_size_campaign_revision(store).state.frozen is None
+        assert (
+            load_target_size_campaign_revision(store).state.frozen_entries is None
+        )
     finally:
         store.close()
 
@@ -252,18 +277,31 @@ def test_a_corrupt_proposal_membership_is_never_admitted(tmp_path: Path):
 
 
 def test_the_operator_may_steer_manual_and_automatic_choices_freely(tmp_path: Path):
+    """Steering is now collection steering: append, replace in place, override.
+
+    A second distinct N no longer erases the first.  One expensive prepared
+    generation is deliberately reusable, so requesting another size must be an
+    addition to the requested experiment, not a silent replacement of it.
+    """
+
     config, _workspace = _prepared(tmp_path)
-    sizes = _revision(config)
-    del sizes
 
     assert _select(config, "4") == 0
-    assert _revision(config).state.proposal.n_provisional == 4
+    assert _sizes(config) == [4]
 
-    # manual -> manual
+    # A distinct manual N appends rather than replacing.
     assert _select(config, "8") == 0
-    assert _revision(config).state.proposal.n_provisional == 8
+    assert _sizes(config) == [4, 8]
 
-    # manual -> auto: the diagnostic runs and its recommendation takes over.
+    # Reselecting an existing N replaces its complete entry in place, keeping
+    # its list position.
+    assert _select(config, "4", "--horizon-cv", "21") == 0
+    assert _sizes(config) == [4, 8]
+    assert _entries(config)[0].cv_max_num_epochs == 21
+    assert _entries(config)[1].cv_max_num_epochs != 21
+
+    # manual -> auto: the recommendation merges through the same owner. It is
+    # already in the design, so it replaces its own entry rather than appending.
     screen = fx._SelectedSizeScreenHarness()
     assert (
         p4d._run(
@@ -276,26 +314,40 @@ def test_the_operator_may_steer_manual_and_automatic_choices_freely(tmp_path: Pa
         == 0
     )
     state = _revision(config).state
-    assert state.proposal.selection_source == "auto_recommendation"
-    assert state.proposal.n_provisional == fx.SELECTED_TARGET_SIZE
-    assert state.proposal.auto_diagnostic_digest == state.auto_diagnostic.content_digest
+    assert [entry.n_provisional for entry in state.provisional_entries] == [4, 8]
+    recommended = next(
+        entry
+        for entry in state.provisional_entries
+        if entry.n_provisional == fx.SELECTED_TARGET_SIZE
+    )
+    assert recommended.selection_source == "auto_recommendation"
+    assert recommended.auto_diagnostic_digest == state.auto_diagnostic.content_digest
+    # The automatic recommendation received no collection authority: the
+    # sibling the operator chose by hand is untouched.
+    assert state.provisional_entries[0].n_provisional == 4
+    assert state.provisional_entries[0].selection_source == "manual"
 
-    # auto -> manual override. The diagnostic evidence is retained untouched;
-    # only the proposal's own provenance says the choice is now the operator's.
+    # auto -> manual override of the same N. The diagnostic evidence is
+    # retained untouched; only that entry's provenance says the choice is now
+    # the operator's, and the entry keeps its position.
     diagnostic = state.auto_diagnostic
-    assert _select(config, "4") == 0
-    state = _revision(config).state
-    assert state.proposal.n_provisional == 4
-    assert state.proposal.selection_source == "manual"
-    assert state.proposal.auto_diagnostic_digest is None
-    assert state.auto_diagnostic == diagnostic
-
-    # Selecting the recommended size by hand is the same experiment, differing
-    # only in provenance: same N, same membership.
     assert _select(config, str(fx.SELECTED_TARGET_SIZE)) == 0
-    manual = _revision(config).state.proposal
+    state = _revision(config).state
+    assert [entry.n_provisional for entry in state.provisional_entries] == [4, 8]
+    manual = state.provisional_entries[1]
     assert manual.selection_source == "manual"
+    assert manual.auto_diagnostic_digest is None
+    assert state.auto_diagnostic == diagnostic
+    # Same N, same substrate: choosing it by hand is the same membership.
     assert manual.membership_digest == diagnostic.recommended_membership_digest
+
+    # An automatic recommendation for a size that is *not* yet in the design
+    # appends it like any other size.
+    assert _select(config, "--reset") == 0
+    assert _sizes(config) == []
+    assert _select(config, "2") == 0
+    assert _select(config, "--auto") == 0
+    assert _sizes(config) == [2, fx.SELECTED_TARGET_SIZE]
 
 
 # --- 19.4 warm auto ---------------------------------------------------------
@@ -328,8 +380,8 @@ def test_a_second_auto_reuses_cached_evidence_and_runs_no_new_work(
 
     state = _revision(config).state
     assert state.auto_diagnostic == first
-    assert state.proposal.n_provisional == fx.SELECTED_TARGET_SIZE
-    assert state.proposal.selection_source == "auto_recommendation"
+    assert state.provisional_entries[0].n_provisional == fx.SELECTED_TARGET_SIZE
+    assert state.provisional_entries[0].selection_source == "auto_recommendation"
 
 
 # --- 19.7 horizons ----------------------------------------------------------
@@ -344,25 +396,25 @@ def test_horizons_resolve_once_and_do_not_drift_with_later_config_edits(
 
     # No flags: both roles resolve from their existing configuration owners.
     assert _select(config, "8") == 0
-    proposal = _revision(config).state.proposal
+    proposal = _only(config)
     assert proposal.cv_max_num_epochs == defaults.cv_max_num_epochs
     assert proposal.production_max_num_epochs == defaults.production_max_num_epochs
 
     # One-sided override touches exactly one role.
-    assert _select(config, "8", "--select-horizon-cv", "17") == 0
-    proposal = _revision(config).state.proposal
+    assert _select(config, "8", "--horizon-cv", "17") == 0
+    proposal = _only(config)
     assert proposal.cv_max_num_epochs == 17
     assert proposal.production_max_num_epochs == defaults.production_max_num_epochs
 
-    assert _select(config, "8", "--select-horizon", "23") == 0
-    proposal = _revision(config).state.proposal
+    assert _select(config, "8", "--horizon", "23") == 0
+    proposal = _only(config)
     # An earlier CLI override is not a sticky default for a later proposal.
     assert proposal.cv_max_num_epochs == defaults.cv_max_num_epochs
     assert proposal.production_max_num_epochs == 23
 
     # Both flags together.
-    assert _select(config, "8", "--select-horizon-cv", "5", "--select-horizon", "9") == 0
-    proposal = _revision(config).state.proposal
+    assert _select(config, "8", "--horizon-cv", "5", "--horizon", "9") == 0
+    proposal = _only(config)
     assert (proposal.cv_max_num_epochs, proposal.production_max_num_epochs) == (5, 9)
 
     # A later configuration edit does not rewrite the existing proposal.
@@ -373,12 +425,12 @@ def test_horizons_resolve_once_and_do_not_drift_with_later_config_edits(
         f"max_num_epochs = {fx.PRODUCTION_MAX_NUM_EPOCHS + 4}",
     )
     assert config.read_text(encoding="utf-8") != before
-    proposal = _revision(config).state.proposal
+    proposal = _only(config)
     assert (proposal.cv_max_num_epochs, proposal.production_max_num_epochs) == (5, 9)
 
     # ...but the next proposal-setting invocation resolves from current config.
     assert _select(config, "8") == 0
-    proposal = _revision(config).state.proposal
+    proposal = _only(config)
     assert proposal.production_max_num_epochs == fx.PRODUCTION_MAX_NUM_EPOCHS + 4
 
 
@@ -402,8 +454,8 @@ def test_horizons_do_not_participate_in_automatic_diagnostic_identity(
 
     # Steering both horizons, then asking for the recommendation again, must not
     # invalidate the screen: a poison trainer proves no rung is rerun.
-    assert _select(config, "8", "--select-horizon-cv", "13", "--select-horizon", "19") == 0
-    assert _select(config, "--auto", "--select-horizon-cv", "13") == 0
+    assert _select(config, "8", "--horizon-cv", "13", "--horizon", "19") == 0
+    assert _select(config, "--auto", "--horizon-cv", "13") == 0
     assert "no screening jobs were rerun" in capsys.readouterr().out
     assert _revision(config).state.auto_diagnostic == before
 
@@ -440,7 +492,7 @@ def test_role_horizons_are_independent_and_provenance_is_not_identity(
     )
 
     # Same N and same horizons, different provenance -> same target binding.
-    assert _select(config, "8", "--select-horizon-cv", "4", "--select-horizon", "6") == 0
+    assert _select(config, "8", "--horizon-cv", "4", "--horizon", "6") == 0
     _cfg, paths = cli._load_config(config)
     store = CampaignStore(paths.state_db)
     try:
@@ -465,8 +517,8 @@ def test_a_diagnostic_without_a_recommendation_changes_no_proposal_field(
     from mdstats.training_data.target_size_experiment import ReducerStatus
 
     config, _workspace = _prepared(tmp_path)
-    assert _select(config, "8", "--select-horizon-cv", "12") == 0
-    before = _revision(config).state.proposal
+    assert _select(config, "8", "--horizon-cv", "12") == 0
+    before = _only(config)
     capsys.readouterr()
 
     # A harness whose first boundary fails numerically for every candidate
@@ -512,15 +564,16 @@ def test_a_diagnostic_without_a_recommendation_changes_no_proposal_field(
         ReducerStatus.INSUFFICIENT_COMPARISON.value
     )
     # Not one proposal field moved.
-    assert state.proposal == before
+    assert _only(config) == before
 
-    # And a qualified candidate can still be proposed and frozen afterwards.
+    # And a qualified candidate can still be added and the design frozen.
     assert _select(config, "4") == 0
+    assert _sizes(config) == [8, 4]
     cfg, paths = cli._load_config(config)
     store = CampaignStore(paths.state_db)
     try:
-        admitted = resolve_frozen_target_selection(cfg, paths, store, admit=True)
-        assert admitted.frozen.n_selected == 4
+        design = resolve_frozen_target_design(cfg, paths, store, admit=True)
+        assert list(design.selected_sizes) == [8, 4]
     finally:
         store.close()
 
@@ -670,10 +723,25 @@ def test_a_stale_recommendation_never_overwrites_a_newer_decision(
     assert "not installed" in output
 
     current = _revision(config).state
-    # The newer human decision stands; the evidence and report are still there.
-    assert current.proposal.n_provisional == 2
-    assert current.proposal.selection_source == "manual"
+    # The newer human decision stands untouched: the stale recommendation did
+    # not append itself, replace an entry, or reorder the design. The evidence
+    # and its report are still committed and reusable.
+    assert [entry.n_provisional for entry in current.provisional_entries] == [4, 2]
+    assert all(
+        entry.selection_source == "manual" for entry in current.provisional_entries
+    )
     assert current.auto_diagnostic is not None
+
+    # Rerunning warm `--auto` against the current revision installs it with no
+    # retraining at all, through the same unique-by-N merge owner.
+    assert _select(config, "--auto") == 0
+    installed = _revision(config).state
+    assert [entry.n_provisional for entry in installed.provisional_entries] == [
+        4,
+        2,
+        fx.SELECTED_TARGET_SIZE,
+    ]
+    assert installed.provisional_entries[2].selection_source == "auto_recommendation"
 
 
 def test_a_manual_update_and_a_freeze_serialize_at_the_campaign_boundary(
@@ -720,7 +788,7 @@ def test_a_manual_update_and_a_freeze_serialize_at_the_campaign_boundary(
                 ),
             )
         current = load_target_size_campaign_revision(store).state
-        assert current.frozen is not None and current.proposal is None
+        assert current.frozen_entries is not None and current.provisional_entries == ()
     finally:
         store.close()
 
@@ -786,7 +854,7 @@ def test_a_pre_rework_terminal_row_is_diagnostic_evidence_and_not_a_freeze():
     assert restored.lifecycle is TargetSizeLifecycle.DIAGNOSTIC_COMPLETE
     assert restored.auto_diagnostic.recommended_target_size == 8
     # And nothing more. It cannot be a frozen operator-approved selection.
-    assert restored.proposal is None and restored.frozen is None
+    assert restored.provisional_entries == () and restored.frozen_entries is None
 
     # It still authenticates byte-for-byte, so an existing campaign can read its
     # own head and advance from it.

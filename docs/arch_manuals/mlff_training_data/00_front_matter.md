@@ -93,7 +93,7 @@ For targeted human or AI loading, use the smallest current source containing the
 - **monitor size** — the cardinality of a monitoring/evaluation evidence set; never target-size authority.
 - **training order** — the one canonical deterministic ordering `pi_train` of the target-training pool whose prefixes define candidate target subsets.
 - **qualified size** — a candidate size admitted by the configured target-size policy for the current experiment definition.
-- **provisional design** — the one mutable proposal `(N_provisional, its exact membership, selection source, CV horizon, production horizon)` the operator owns until admission.
+- **provisional design** — the ordered, unique-by-`N` collection of per-size entries `(N_provisional, its exact membership, selection source, CV horizon, production horizon)` the operator owns until admission. Empty is its canonical unselected state.
 - **selected size** — the one target size `N_selected` frozen at `cross-validate` admission together with the exact membership `T_selected` and both effective role horizons.
 - **authoritative evidence** — persisted information that defines or independently proves a scientific decision.
 - **reconstructible execution cache** — discardable state derivable exactly from authoritative inputs.

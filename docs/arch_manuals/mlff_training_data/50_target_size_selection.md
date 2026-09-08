@@ -201,21 +201,44 @@ The terminal-decision rule participates in P2 policy identity (`practical_equiva
 
 ## The provisional design, and the freeze
 
-Before admission the campaign holds **one** mutable proposal:
+The prepared generation is expensive and deliberately reusable, so the operator may want several longer-horizon experiments from it - the same method and the same training order at different amounts of target data. The provisional design is therefore an **ordered collection of distinct qualified sizes**, not a single choice:
 
 ```text
-N_provisional        a configured qualified candidate size
-T_provisional        never stored; always pi_train[:N_provisional], with its digest
-selection_source     manual | auto_recommendation   (provenance, not a variable)
-H_cv                 provisional cross-validation max epochs
-H_prod               provisional final-production max epochs
+D_provisional = [ entry_1, entry_2, ..., entry_k ]     unique by N, first-insertion order
+
+entry_i:
+  N_provisional      a configured qualified candidate size
+  T_provisional      never stored; always pi_train[:N_provisional], with its digest
+  selection_source   manual | auto_recommendation   (provenance, not a variable)
+  H_cv               cross-validation max epochs for this size
+  H_prod             final-production max epochs for this size
 ```
 
-Repeated `select-target-size` invocations replace that one proposal through the ordinary CampaignStore compare-and-set boundary. A proposal is *complete when it is set*: both horizons are resolved to explicit values at that moment from `[post_selection.cv].max_num_epochs` and `[training].max_num_epochs`, or from the invocation's own `--select-horizon-cv` / `--select-horizon` overrides. Later edits to `campaign.toml` therefore cannot silently mutate a proposal that already exists, and a CLI override never becomes a sticky default for the next proposal. The CLI never writes `campaign.toml`.
+`select-target-size <N>` merges one complete entry through the ordinary CampaignStore compare-and-set boundary: a size not yet in the design is **appended**, and a size already in it has its **complete entry replaced in place**, keeping its list position. A second distinct `N` therefore adds an experiment rather than erasing the one already requested. Two entries for one `N` in authoritative state are corruption, not something to deduplicate. The empty collection is the canonical unselected state - there is no `N = undefined` placeholder - and `select-target-size --reset` returns to it pre-freeze without touching the prepared generation or any valid diagnostic evidence.
 
-`cross-validate` admission is the freeze. It reloads and authenticates the prepared generation, revalidates the proposed `N` against the current qualified candidate set, re-derives `T_selected = pi_train[:N]` from the P2 training order, and publishes `N_selected`, that exact membership, and both effective role horizons as immutable ancestry in one transition, before any numerical CV work. No automatic-screen execution head or reducer participates: a campaign that never ran the diagnostic freezes by exactly the same path as one that did. After the freeze, `select-target-size` in either form refuses to change the design.
+Each entry is *complete when it is set*: both horizons are resolved to explicit values at that moment from `[post_selection.cv].max_num_epochs` and `[training].max_num_epochs`, or from the invocation's own `--horizon-cv` / `--horizon` overrides. Later edits to `campaign.toml` therefore cannot silently mutate an entry that already exists, untouched sibling entries never drift, and a CLI override never becomes a sticky default. Reselecting a size deliberately re-resolves every omitted horizon for the new invocation. The CLI never writes `campaign.toml`.
 
-Although the operator chooses `(N, H_cv, H_prod)` together, identity does not collapse them. The frozen target binding carries the target identity only; the CV policy reads `H_cv` and never `H_prod`, and the production policy reads `H_prod` and never `H_cv`, so editing one role's budget cannot invalidate the other role's accepted evidence. Selection provenance is excluded from every downstream scientific identity: the same `N` on the same substrate is the same experiment whether it was chosen by hand or adopted from the screen.
+An adopted automatic recommendation goes through that same merge owner. The automatic path has no collection authority of its own: it cannot clear, reorder, or overwrite a sibling entry the operator chose by hand.
+
+`cross-validate` admission is the freeze, and it freezes the **whole collection atomically**. It reloads and authenticates the one prepared generation, revalidates every proposed `N` against the current qualified candidate set, re-derives every `T_N = pi_train[:N]` from the P2 training order, and publishes the complete ordered design - every `N_selected`, its exact membership, and both effective role horizons - as immutable ancestry in one transition, before any numerical CV work. One unauthenticatable member rejects the entire admission; there is no partial freeze and no quiet reduction to the subset that still validated. No automatic-screen execution head or reducer participates: a campaign that never ran the diagnostic freezes by exactly the same path as one that did. After the freeze, `select-target-size` in any form refuses to change the design.
+
+### The full frozen entry, and the target binding
+
+The operator chooses `(N, H_cv, H_prod)` together, but identity does not collapse them - and the separation has to survive being written down, not just being intended.
+
+The **full frozen entry** is the immutable design and audit record: `N`, exact membership and training-order identity, both role horizons, and selection provenance. It may carry its own digest for state authentication, and that digest is what detects a tampered horizon or forged provenance.
+
+The **target binding** is its role-neutral scientific projection, and it is what every P5/P7 descendant descends from:
+
+```text
+TargetBinding_i   = generation + accepted P1/P2 prepared lineage + N_i + exact T_i + training-order identity
+CV_i              = TargetBinding_i + method identity + CV policy (which contains H_cv_i) + CV plan/evidence ancestry
+Production_i      = TargetBinding_i + method identity + accepted CV_i ancestry + production policy (which contains H_prod_i)
+```
+
+So editing the production budget cannot invalidate accepted cross-validation evidence; editing the CV budget does not move the production policy itself, and reaches final production only through the accepted CV ancestry it names, which is correct. Selection provenance is excluded from every numerical identity: the same `N` on the same substrate is the same experiment whether it was chosen by hand or adopted from the screen. Sibling sizes, list position, and any whole-collection digest are excluded too - a per-size identity that moved when another size joined the design would make the multi-size feature self-defeating.
+
+The binding must therefore not be derived from the full frozen entry's digest, because that digest contains exactly the fields the binding is defined to exclude. This was a real defect in the scalar-selection predecessor, whose binding embedded the whole frozen record and so let `H_prod` and provenance contaminate every descendant transitively. Descendants published under that predecessor schema keep their own bytes and stay current under their own exact ancestry; new designs use the corrected decomposition, and no compatibility argument reintroduces the coupling.
 
 ## Currentness
 
@@ -238,13 +261,16 @@ A change to target-size scientific identity - source or frame membership, canoni
 Changes that are *not* target-size identity invalidate only their own descendants:
 
 - advisory provenance grouping or report presentation invalidates only the advisory evidence that depends on it, and never the frame UID, the canonical label identity, the neutral partition, or the target-size result;
-- cross-validation-only settings such as fold count and partition seed invalidate cross-validation and its descendants, and leave `N_selected`/`T_selected` byte-identical;
+- cross-validation-only settings such as fold count and partition seed invalidate cross-validation and its descendants, and leave every `N_selected`/`T_N` byte-identical;
+- adding, revising, or removing one size before the freeze changes only that entry; after the freeze the design is immutable, and a sibling size never participates in another size's numerical identity;
 - neither provisional nor frozen role horizon participates in automatic target-size diagnostic identity, so steering them never invalidates screen evidence;
 - production-only budget or runtime policy invalidates only final-production descendants.
 
 ## Post-selection cross-validation
 
-Cross-validation performs the freeze at its own admission boundary and then consumes exactly `T_selected` - complete coverage, no unselected sibling frame, no held-out outer frame.
+Cross-validation performs the whole-collection freeze at its own admission boundary and then runs the existing methodology once per frozen size, in frozen selection order, each consuming exactly its own `T_N` - complete coverage, no unselected sibling frame, no held-out outer frame, and no frame borrowed from another selected size.
+
+The size dimension sits *outside* everything below it: fold construction, seeds, evaluation, and the acceptance predicate are unchanged, and there is no cross-size reducer. Outer iteration over sizes is serial and shares the one effective resource allocation the existing fold/seed/MACE/library concurrency already owns; no new scheduler exists and no size claims the machine independently. Campaign cross-validation is accepted only when **every** frozen size is accepted; a rejected size stays visibly rejected and no selected size is ever silently dropped.
 
 It validates the **training method**, not the size:
 
@@ -252,15 +278,22 @@ It validates the **training method**, not the size:
 - the full P1 split-exclusion and correlation-family constraints continue to hold inside fold assignment;
 - fold-local preparation, training, checkpoint selection, and replay admissibility may never see that fold's held-out outer target set, and the fold representative freezes before held-out outer evaluation;
 - replay training exposure and the TRUE_DFT replay admissibility monitor remain distinct concerns, and TRUE_DFT replay contributes no ranking, tie-break, fold, or seed credit;
-- a cross-validation failure is a methodological result: `N_selected` and its evidence are unchanged, and final production is simply not authorized. If cross-validation shows that a materially different training method is required, that changed method needs a **new** target-size experiment, because the method whose convergence was measured has changed.
+- a cross-validation failure is a methodological result: the frozen design and its evidence are unchanged, and final production is simply not authorized for any size. If cross-validation shows that a materially different training method is required, that changed method needs a **new** target-size experiment, because the method whose convergence was measured has changed;
+- valid completed sibling evidence stays reusable on retry under the existing currentness and restart rules.
 
 Supported training modes remain exactly `scratch`, `naive_fine_tuning`, and `multihead_replay`; the canonical post-selection heads remain `target_head` and `pt_head`; and the foundation checkpoint head remains a separate foundation-owned concept. Method, foundation, replay, and content identity all fail closed.
 
 ## Fresh final production
 
-Final production starts fresh from the accepted foundation/initialization with fresh optimizer, RNG, and run state. It trains on the complete exact `T_selected`, under the cross-validation-accepted method, for the **frozen** production horizon - an independent budget that is deliberately unrelated to the screen's `n3` and to the frozen CV horizon.
+Admission is a **collection-wide barrier**. Before any new production job starts, the complete frozen design is authenticated and every selected size must hold current accepted cross-validation ancestry under its own binding and its own `H_cv`. If any size is missing, stale, corrupt, incomplete, or rejected there, the invocation starts no production job for *any* size and names every known blocker. Immutable evidence from an earlier attempt keeps whatever currentness its own identity earns; the barrier exists so that an all-sizes experiment cannot quietly become the subset that happened to succeed.
 
-Frozen `M3` evidence may remain development/model-selection evidence. Final authorization and publication remain currentness-fenced and restart-authenticatable: a reopened campaign reauthenticates the selected binding, the cross-validation acceptance, and the final publication identity before exposing any of them as current.
+After preflight, each frozen size starts fresh from the accepted foundation/initialization with fresh optimizer, RNG, and run state. It trains on that size's complete exact `T_N`, under the cross-validation-accepted method for *that* size, for **its own** frozen production horizon - an independent budget that is deliberately unrelated to the screen's `n3` and to the frozen CV horizon. Each size publishes one binding-scoped final-production decision. No size may consume another size's membership, horizons, CV plan or acceptance, run evidence, pointer, final plan, or publication, and there is no cross-size final-publication committee.
+
+Frozen `M3` evidence may remain development/model-selection evidence. Final authorization and publication remain currentness-fenced and restart-authenticatable: a reopened campaign reauthenticates each selected binding, its cross-validation acceptance, and its final publication identity before exposing any of them as current. If one size is complete and another fails or is interrupted, the frozen design is unchanged, the complete size's evidence stays reusable, only work the existing restart owners deem incomplete or stale is recomputed, and campaign production stays incomplete until every size closes.
+
+### Where the multi-size experiment ends
+
+Once every selected size has a current final publication, a multi-size training experiment is **complete and not release-qualified**. Several final products exist and this revision authorizes no rule for choosing one, so `advance` offers no further consequential command, `qualification status` reports the boundary read-only, and consequential qualification commands fail closed before any attempt or locked evidence is created or revealed. A one-size design keeps the existing qualification path unchanged. Choosing between sizes is a release decision that needs its own explicit design authority; it is deliberately not made here by defaulting to the first, the last, the recommended, or the best-scoring size.
 
 ## Public command surface
 

@@ -202,8 +202,8 @@ python tools/mdstats-mlff-campaign.py --config campaign.toml select-target-size 
 python tools/mdstats-mlff-campaign.py --config campaign.toml select-target-size --auto
 ```
 
-A bare `select-target-size` is invalid, and `<N>` and `--auto` cannot be
-combined. `<N>` must be one of the configured qualified candidate sizes, which
+A bare `select-target-size` is invalid, and `<N>`, `--auto` and `--reset` cannot
+be combined. `<N>` must be one of the configured qualified candidate sizes, which
 `status` lists. Every candidate is an exact prefix of one deterministic
 `pi_train` order, so the chosen set is always
 
@@ -213,36 +213,59 @@ T_N = pi_train[:N]
 
 There is no other membership constructor: no resampling, no arbitrary list.
 
-You can change your mind as often as you like. The most recent successful
-invocation defines the current provisional design, and all of these are
-ordinary:
+### Selecting several sizes
+
+`prepare` is expensive and its result is deliberately reusable, so you can ask
+for **more than one** size from the same prepared generation and compare how the
+downstream experiment behaves. The design is an ordered list of distinct sizes:
 
 ```bash
-select-target-size 512
-select-target-size 1024        # replaces the previous choice
-select-target-size --auto      # adopts the diagnostic's recommendation instead
-select-target-size 512         # overrides the recommendation again
+select-target-size 512          # design is [512]
+select-target-size 1024         # design is [512, 1024]   <- appended, not replaced
+select-target-size 512 --horizon 80   # design is [512(updated), 1024]
+select-target-size --auto       # merges the recommendation in the same way
+select-target-size --reset      # design is []
 ```
+
+A size that is not yet in the design is appended. A size that is already in it
+has its complete entry replaced in place, keeping its position, so revising one
+size never disturbs another. `--reset` clears the whole design; it works only
+before the freeze, and it keeps your prepared generation and any diagnostic
+evidence you already paid for.
+
+You can change your mind as often as you like until `cross-validate` freezes the
+whole design at once. After that, `select-target-size` refuses to change
+anything: starting a different experiment means a fresh `prepare` generation.
+
+Everything downstream then gains a size dimension and nothing else.
+`cross-validate` validates the method for **every** selected size and is
+accepted only if all of them pass; `train-production` refuses to start **any**
+production run until every selected size has accepted cross-validation, and then
+trains and publishes one final product per size. Nothing ever picks a winner
+among the sizes for you.
 
 ### The two training horizons
 
 The same command steers how long downstream training runs:
 
 ```bash
-select-target-size 512 --select-horizon-cv 20 --select-horizon 60
+select-target-size 512 --horizon-cv 20 --horizon 60
 ```
 
-`--select-horizon-cv` is the cross-validation max epochs; `--select-horizon` is
-the final-production max epochs. They are independent controls, and the software
-deliberately does not infer either one from `N`: no proven target-size-to-horizon
-scaling law exists here.
+`--horizon-cv` is the cross-validation max epochs; `--horizon` is the
+final-production max epochs. They are independent controls, and the software
+deliberately does not infer either one from `N`: no proven
+target-size-to-horizon scaling law exists here.
 
-Omit a flag and it resolves, *on that invocation*, from your configuration -
-`[post_selection.cv].max_num_epochs` (default 30) and `[training].max_num_epochs`
-(default 30). The resolved numbers are then stored with the proposal, so editing
-`campaign.toml` afterwards does not silently rewrite a decision you already made.
-An override applies to that invocation only; it never becomes a sticky default,
-and the CLI never rewrites `campaign.toml`.
+Both apply to the size *this* invocation touches, so different selected sizes
+can carry different budgets. Omit a flag and it resolves, *on that invocation*,
+from your configuration - `[post_selection.cv].max_num_epochs` (default 30) and
+`[training].max_num_epochs` (default 30). The resolved numbers are then stored
+with that entry, so editing `campaign.toml` afterwards does not silently rewrite
+a decision you already made, and sizes you did not touch keep the numbers they
+were given. Reselecting a size re-resolves any flag you omit that time. An
+override applies to that invocation only; it never becomes a sticky default, and
+the CLI never rewrites `campaign.toml`.
 
 ### The optional automatic diagnostic
 
@@ -345,17 +368,20 @@ closed.
 python tools/mdstats-mlff-campaign.py --config campaign.toml cross-validate
 ```
 
-`cross-validate` is the freeze point. It admits your current provisional
-design - the size, its exact membership, and both horizons - and makes it
-immutable ancestry before any training starts. After this, `select-target-size`
-refuses to change it; starting a different experiment means a fresh `prepare`
-generation.
+`cross-validate` is the freeze point. It admits your **complete** provisional
+design at once - every selected size, its exact membership, and both of its
+horizons - and makes it immutable ancestry before any training starts. If any
+selected size fails to authenticate, nothing is frozen and no training begins.
+After this, `select-target-size` refuses to change the design; starting a
+different experiment means a fresh `prepare` generation.
 
-It then consumes exactly
-`T_selected`. It validates the training method, not the amount of data. The
-configured `K >= 2` folds preserve the P1 split-exclusion and correlation
-relations; every required fold and optimizer seed must pass the target-only
-acceptance predicate.
+It then runs, for every frozen size in the order you selected them, exactly the
+same cross-validation as before on that size's own `T_N` and its own CV horizon.
+It validates the training method, not the amount of data. The configured
+`K >= 2` folds preserve the P1 split-exclusion and correlation relations; every
+required fold and optimizer seed must pass the target-only acceptance predicate.
+Cross-validation succeeds only if **every** selected size passes; a size that
+fails stays visibly failed and is never dropped from your design.
 
 Fold partitions are constructed inside the already frozen selected set. A fold
 may fit training-only transforms from its own training partition, freezes its
@@ -374,11 +400,19 @@ by a mean, majority, best-seed, or partial-fold result.
 python tools/mdstats-mlff-campaign.py --config campaign.toml train-production
 ```
 
-Final production starts from the accepted foundation with fresh optimizer, RNG,
-and run state. It trains the complete exact `T_selected` using the method
-accepted by cross-validation and `[training].max_num_epochs`. Screening and CV
-checkpoints are not production parents, even when their numeric seed or size
-matches.
+`train-production` first checks the **whole** design: every selected size must
+have current accepted cross-validation evidence of its own. If any does not, it
+starts no production run at all - for any size - and tells you which sizes are
+blocking. That is deliberate: an experiment you asked for across several sizes
+must not quietly become the subset that happened to work.
+
+Then, for each selected size, final production starts from the accepted
+foundation with fresh optimizer, RNG, and run state. It trains that size's
+complete exact `T_N` using the method accepted by cross-validation for that size
+and that size's own frozen production horizon. Each size publishes its own final
+product; no size can consume another size's data, evidence, or publication.
+Screening and CV checkpoints are not production parents, even when their numeric
+seed or size matches.
 
 The production horizon is independent of the screen's `n3`. A production-only
 configuration change invalidates production descendants while leaving the
@@ -398,6 +432,23 @@ downstream can change it.
 
 The training lifecycle ends at that publication. Everything after it validates
 the finished product without being able to change it.
+
+### If you selected more than one size
+
+When your design has several sizes, `train-production` finishes with several
+final products, and the training experiment is then **complete but not release
+qualified**. `advance` stops there and offers no further command, and
+`qualification status` explains why: nothing in this revision is authorized to
+decide which of your products is *the* release, and picking the first, the last,
+the diagnostic's recommendation, or the best-scoring one would be that decision
+made silently. `qualification run` and `qualification activate-locked` therefore
+fail closed before they create an attempt or open any locked evidence - in
+particular, one-shot locked data is never spent comparing sizes.
+
+Compare the per-size results reported by `status`, decide for yourself, and then
+qualify that product in its own campaign: a fresh `prepare` generation with
+exactly one selected size. Everything in the next section applies to that
+single-size case.
 
 ## 7. Qualify the frozen product
 

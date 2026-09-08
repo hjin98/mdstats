@@ -46,7 +46,15 @@ from ._common import (
     validate_digest,
 )
 
-TARGET_SIZE_CAMPAIGN_STATE_SCHEMA = "mdstats.target-size-campaign-state.v2"
+#: The current schema.  It carries the *ordered collection* of provisional
+#: per-size entries and, once ``cross-validate`` admits them, the ordered
+#: collection of frozen per-size entries.
+TARGET_SIZE_CAMPAIGN_STATE_SCHEMA = "mdstats.target-size-campaign-state.v3"
+#: The scalar-selection predecessor schema.  A row written under it carried at
+#: most one proposal and at most one frozen selection.  It is read - the chain
+#: is append-only - and normalized in memory into a one-entry collection; it is
+#: never rewritten in place and never written again.
+TARGET_SIZE_CAMPAIGN_STATE_V2_SCHEMA = "mdstats.target-size-campaign-state.v2"
 #: The pre-rework schema.  Rows written under it are still authenticated and
 #: read, because the persisted chain is append-only and a campaign that cannot
 #: read its own head cannot even advance to a fresh generation.  What a legacy
@@ -54,6 +62,13 @@ TARGET_SIZE_CAMPAIGN_STATE_SCHEMA = "mdstats.target-size-campaign-state.v2"
 #: exist in it, so a pre-rework "terminal selected" row is structurally
 #: incapable of authorizing post-selection work under the current contract.
 TARGET_SIZE_CAMPAIGN_STATE_LEGACY_SCHEMA = "mdstats.target-size-campaign-state.v1"
+#: Every campaign-state schema this runtime can read, newest first.  Only the
+#: first is ever written: a retired schema is history, not a target.
+_READABLE_STATE_SCHEMAS = (
+    TARGET_SIZE_CAMPAIGN_STATE_SCHEMA,
+    TARGET_SIZE_CAMPAIGN_STATE_V2_SCHEMA,
+    TARGET_SIZE_CAMPAIGN_STATE_LEGACY_SCHEMA,
+)
 TARGET_SIZE_CAMPAIGN_REVISION_SCHEMA = "mdstats.target-size-campaign-state-revision.v1"
 TARGET_SIZE_CAMPAIGN_TRANSITION_IDENTITY_SCHEMA = (
     "mdstats.target-size-campaign-transition-identity.v1"
@@ -111,10 +126,11 @@ class TargetSizeLifecycle(str, Enum):
 
     This axis describes one thing only: how far the optional automatic
     target-size screen has got.  It says nothing about whether the operator has
-    proposed a target size or frozen one, because those are independent facts
-    carried by :attr:`TargetSizeCampaignState.proposal` and
-    :attr:`TargetSizeCampaignState.frozen`.  Encoding their cross-product here
-    is exactly the enum maze this state deliberately does not have.
+    proposed target sizes or frozen them, because those are independent facts
+    carried by :attr:`TargetSizeCampaignState.provisional_entries` and
+    :attr:`TargetSizeCampaignState.frozen_entries`.  Encoding their
+    cross-product here is exactly the enum maze this state deliberately does
+    not have.
     """
 
     UNCONVERTED = "unconverted"
@@ -148,6 +164,10 @@ class TargetSizeTransitionKind(str, Enum):
     RECORD_AUTO_DIAGNOSTIC_RECOMMENDATION = "record_terminal_selection"
     RECORD_AUTO_DIAGNOSTIC_NO_RECOMMENDATION = "record_terminal_scientific_failure"
     SET_PROPOSAL = "set_proposal"
+    #: Clear every provisional entry.  It is a distinct kind because it is the
+    #: one selection transition whose successor collection is deliberately
+    #: empty, and ``set_proposal`` must never be able to publish that.
+    RESET_PROPOSAL = "reset_proposal"
     FREEZE_SELECTION = "freeze_selection"
     ADVANCE_GENERATION = "advance_generation"
 
@@ -338,12 +358,13 @@ def _positive_epochs(value: Any, *, name: str) -> int:
 
 @dataclass(frozen=True, slots=True)
 class TargetSizeProposal:
-    """The one mutable provisional downstream training design.
+    """One per-size entry of the mutable provisional downstream training design.
 
-    The operator owns this record until ``cross-validate`` admits it.  It is a
-    complete proposal by construction: the horizons it carries are the resolved
-    effective values of the invocation that set it, so a later edit to
-    ``campaign.toml`` cannot silently rewrite a proposal that already exists.
+    The operator owns these records until ``cross-validate`` admits them.  Each
+    is a complete per-size proposal by construction: the horizons it carries are
+    the resolved effective values of the invocation that set *it*, so a later
+    edit to ``campaign.toml`` cannot silently rewrite an entry that already
+    exists, and reselecting one size never perturbs its siblings.
 
     ``T_provisional`` is never stored as a list.  ``membership_digest`` is the
     identity of ``pi_train[:n_provisional]`` under ``training_order_digest``, and
@@ -434,7 +455,7 @@ class TargetSizeProposal:
 
 @dataclass(frozen=True, slots=True)
 class FrozenTargetSelection:
-    """The immutable downstream design admitted at ``cross-validate``.
+    """One immutable per-size entry of the design admitted at ``cross-validate``.
 
     Freeze fixes ``N_selected``, the exact ``T_selected`` identity, and both
     role-specific effective horizons in one decision.  Identity *projection*
@@ -526,6 +547,62 @@ class FrozenTargetSelection:
         return result
 
 
+def _validated_entry_collection(
+    entries: Any, *, label: str, element: type
+) -> tuple[Any, ...]:
+    """Return one ordered, unique-by-N per-size collection or fail closed.
+
+    Order is meaning here, not presentation: it is first-insertion order of the
+    distinct selected sizes, and it drives deterministic downstream
+    orchestration and rendering.  A duplicate ``N`` in authoritative state is
+    corruption rather than something to deduplicate silently: two entries for
+    one size means two different per-size designs claim the same identity, and
+    guessing which one the operator meant is exactly the failure this refuses.
+    """
+
+    items = tuple(entries)
+    for item in items:
+        if not isinstance(item, element):
+            raise TrainingDataInputError(
+                f"Every {label} entry must be a {element.__name__}."
+            )
+    sizes = [int(_entry_size(item)) for item in items]
+    if len(set(sizes)) != len(sizes):
+        raise TrainingDataInputError(
+            f"The {label} collection contains more than one entry for the same "
+            f"target size ({sorted(sizes)}); a target-size design has at most one "
+            "entry per N."
+        )
+    return items
+
+
+def _entry_size(entry: Any) -> int:
+    """The selected size of a provisional or frozen per-size entry."""
+
+    value = getattr(entry, "n_provisional", None)
+    if value is None:
+        value = getattr(entry, "n_selected")
+    return int(value)
+
+
+def merge_provisional_entry(
+    entries: Sequence[TargetSizeProposal], entry: TargetSizeProposal
+) -> tuple[TargetSizeProposal, ...]:
+    """Append a new size, or replace an existing size's complete entry in place.
+
+    This is the *one* merge owner.  Manual selection and an adopted automatic
+    recommendation both arrive here, so neither can gain collection authority
+    the other lacks, and reselecting a size can never reorder the design.
+    """
+
+    existing = tuple(entries)
+    size = int(entry.n_provisional)
+    for index, item in enumerate(existing):
+        if int(item.n_provisional) == size:
+            return existing[:index] + (entry,) + existing[index + 1 :]
+    return existing + (entry,)
+
+
 @dataclass(frozen=True, slots=True)
 class TargetSizeCampaignState:
     """The single mutable current-runtime target-size authority.
@@ -553,8 +630,18 @@ class TargetSizeCampaignState:
     adopted_execution_head_digest: str | None = None
     adopted_reducer_state_digest: str | None = None
     auto_diagnostic: TargetSizeAutoDiagnostic | None = None
-    proposal: TargetSizeProposal | None = None
-    frozen: FrozenTargetSelection | None = None
+    #: The ordered provisional design.  Empty is the canonical unselected
+    #: state; there is no ``N=undefined`` placeholder record.
+    provisional_entries: tuple[TargetSizeProposal, ...] = ()
+    #: ``None`` until ``cross-validate`` admits the design, then the complete
+    #: ordered frozen collection.  An empty tuple is never valid: freezing
+    #: nothing is not a design.
+    frozen_entries: tuple[FrozenTargetSelection, ...] | None = None
+    #: True only for a design that was frozen by the scalar-selection
+    #: predecessor.  Its single descendant binding keeps the predecessor's
+    #: binding schema so existing accepted P5/P7 evidence stays current; new
+    #: designs never set it and never inherit the identity coupling it carries.
+    legacy_scalar_binding: bool = False
     disposition: str | None = None
     disposition_detail: str | None = None
     #: Wire schema of this row.  A row read back from the pre-rework schema
@@ -600,10 +687,7 @@ class TargetSizeCampaignState:
             "execution_root",
             _canonical_relative_locator(self.execution_root, name="execution_root"),
         )
-        if self.schema_version not in (
-            TARGET_SIZE_CAMPAIGN_STATE_SCHEMA,
-            TARGET_SIZE_CAMPAIGN_STATE_LEGACY_SCHEMA,
-        ):
+        if self.schema_version not in _READABLE_STATE_SCHEMAS:
             raise TrainingDataSerializationError(
                 "Unsupported target-size campaign-state schema."
             )
@@ -613,15 +697,33 @@ class TargetSizeCampaignState:
             raise TrainingDataInputError(
                 "The automatic target-size diagnostic must be a TargetSizeAutoDiagnostic."
             )
-        if self.proposal is not None and not isinstance(
-            self.proposal, TargetSizeProposal
+        object.__setattr__(
+            self,
+            "provisional_entries",
+            _validated_entry_collection(
+                self.provisional_entries,
+                label="provisional target-size",
+                element=TargetSizeProposal,
+            ),
+        )
+        if self.frozen_entries is not None:
+            frozen_entries = _validated_entry_collection(
+                self.frozen_entries,
+                label="frozen target-size",
+                element=FrozenTargetSelection,
+            )
+            if not frozen_entries:
+                raise TrainingDataInputError(
+                    "A frozen target-size design contains at least one selected size."
+                )
+            object.__setattr__(self, "frozen_entries", frozen_entries)
+        object.__setattr__(self, "legacy_scalar_binding", bool(self.legacy_scalar_binding))
+        if self.legacy_scalar_binding and (
+            self.frozen_entries is None or len(self.frozen_entries) != 1
         ):
             raise TrainingDataInputError(
-                "A provisional target-size proposal must be a TargetSizeProposal."
-            )
-        if self.frozen is not None and not isinstance(self.frozen, FrozenTargetSelection):
-            raise TrainingDataInputError(
-                "A frozen target selection must be a FrozenTargetSelection."
+                "The predecessor scalar binding compatibility marker belongs only to "
+                "a one-entry frozen design."
             )
         for name in ("disposition", "disposition_detail"):
             value = getattr(self, name)
@@ -649,8 +751,8 @@ class TargetSizeCampaignState:
             or self.aggregate_digest is not None
             or self.adopted_execution_head_digest is not None
             or self.auto_diagnostic is not None
-            or self.proposal is not None
-            or self.frozen is not None
+            or self.provisional_entries
+            or self.frozen_entries is not None
         ):
             raise TrainingDataInputError(
                 "An unconverted campaign cannot bind current target-size authority."
@@ -722,8 +824,11 @@ class TargetSizeCampaignState:
         # A proposal and a frozen selection are independent of the diagnostic
         # axis, but both need the prepared scientific substrate that names
         # pi_train, and both are current-runtime facts.
-        for record, label in ((self.proposal, "proposal"), (self.frozen, "frozen selection")):
-            if record is None:
+        for present, label in (
+            (bool(self.provisional_entries), "provisional design"),
+            (self.frozen_entries is not None, "frozen design"),
+        ):
+            if not present:
                 continue
             if (
                 self.regime is not TargetSizeRegime.CURRENT
@@ -732,21 +837,43 @@ class TargetSizeCampaignState:
                 raise TrainingDataInputError(
                     f"A target-size {label} requires a bound current target-size substrate."
                 )
-        if self.proposal is not None and self.frozen is not None:
+        if self.provisional_entries and self.frozen_entries is not None:
             raise TrainingDataInputError(
-                "A frozen target selection replaces the provisional proposal; the two "
+                "A frozen target-size design replaces the provisional one; the two "
                 "are never current at the same time."
             )
         if self.schema_version == TARGET_SIZE_CAMPAIGN_STATE_LEGACY_SCHEMA and (
-            self.proposal is not None or self.frozen is not None
+            self.provisional_entries or self.frozen_entries is not None
         ):
             raise TrainingDataInputError(
                 "The pre-rework campaign-state schema cannot carry a provisional "
                 "proposal or a frozen selection."
             )
+        if self.schema_version == TARGET_SIZE_CAMPAIGN_STATE_V2_SCHEMA and (
+            len(self.provisional_entries) > 1
+            or (self.frozen_entries is not None and len(self.frozen_entries) > 1)
+        ):
+            raise TrainingDataInputError(
+                "The scalar-selection predecessor campaign-state schema carries at "
+                "most one provisional and one frozen target size; a multi-size "
+                "design is published under the current schema instead."
+            )
 
     @property
     def is_legacy_schema(self) -> bool:
+        """Whether this row was written under a retired schema.
+
+        A retired row is read and authenticated under its own native bytes and
+        is never rewritten in place.  The current runtime only ever *writes*
+        :data:`TARGET_SIZE_CAMPAIGN_STATE_SCHEMA`.
+        """
+
+        return self.schema_version != TARGET_SIZE_CAMPAIGN_STATE_SCHEMA
+
+    @property
+    def is_prerework_schema(self) -> bool:
+        """Whether this row predates the provisional/frozen selection axis."""
+
         return self.schema_version == TARGET_SIZE_CAMPAIGN_STATE_LEGACY_SCHEMA
 
     def _lifecycle_wire_value(self) -> str:
@@ -758,7 +885,7 @@ class TargetSizeCampaignState:
         history while the current runtime writes the honest single value.
         """
 
-        if not self.is_legacy_schema:
+        if not self.is_prerework_schema:
             return self.lifecycle.value
         if self.lifecycle is not TargetSizeLifecycle.DIAGNOSTIC_COMPLETE:
             return self.lifecycle.value
@@ -804,11 +931,34 @@ class TargetSizeCampaignState:
             # old-format workspace still loads and can be told, truthfully, that
             # it needs one explicit `prepare`.
             payload["prepared_manifest_digest"] = self.prepared_manifest_digest
-        if not self.is_legacy_schema:
+        if self.schema_version == TARGET_SIZE_CAMPAIGN_STATE_V2_SCHEMA:
+            # A predecessor row is reproduced in its own bytes so its committed
+            # revision digest still authenticates.  It held at most one entry
+            # of each kind, which is exactly what the collection normalizes to.
             payload["proposal"] = (
-                None if self.proposal is None else self.proposal.to_dict()
+                self.provisional_entries[0].to_dict()
+                if self.provisional_entries
+                else None
             )
-            payload["frozen"] = None if self.frozen is None else self.frozen.to_dict()
+            payload["frozen"] = (
+                self.frozen_entries[0].to_dict()
+                if self.frozen_entries is not None
+                else None
+            )
+        elif not self.is_prerework_schema:
+            payload["provisional_entries"] = [
+                entry.to_dict() for entry in self.provisional_entries
+            ]
+            payload["frozen_entries"] = (
+                None
+                if self.frozen_entries is None
+                else [entry.to_dict() for entry in self.frozen_entries]
+            )
+            if self.legacy_scalar_binding:
+                # Present only for a design inherited from the scalar
+                # predecessor, so an ordinary current row's identity is exactly
+                # what it would have been without this compatibility axis.
+                payload["legacy_scalar_binding"] = True
         return payload
 
     @property
@@ -821,10 +971,7 @@ class TargetSizeCampaignState:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> TargetSizeCampaignState:
         schema = payload.get("schema")
-        if schema not in (
-            TARGET_SIZE_CAMPAIGN_STATE_SCHEMA,
-            TARGET_SIZE_CAMPAIGN_STATE_LEGACY_SCHEMA,
-        ):
+        if schema not in _READABLE_STATE_SCHEMAS:
             raise TrainingDataSerializationError(
                 "Unsupported target-size campaign-state schema."
             )
@@ -838,8 +985,9 @@ class TargetSizeCampaignState:
             # along.  It is read as exactly that, and it brings no proposal and
             # no frozen selection with it.
             lifecycle_value = TargetSizeLifecycle.DIAGNOSTIC_COMPLETE.value
-        proposal_payload = payload.get("proposal")
-        frozen_payload = payload.get("frozen")
+        provisional_entries, frozen_entries, legacy_scalar_binding = (
+            _selection_collections_from_payload(payload, schema=str(schema))
+        )
         result = cls(
             regime=TargetSizeRegime(payload["regime"]),
             generation=int(payload["generation"]),
@@ -879,16 +1027,9 @@ class TargetSizeCampaignState:
                 if terminal_payload is None
                 else TargetSizeAutoDiagnostic.from_dict(terminal_payload)
             ),
-            proposal=(
-                None
-                if proposal_payload is None
-                else TargetSizeProposal.from_dict(proposal_payload)
-            ),
-            frozen=(
-                None
-                if frozen_payload is None
-                else FrozenTargetSelection.from_dict(frozen_payload)
-            ),
+            provisional_entries=provisional_entries,
+            frozen_entries=frozen_entries,
+            legacy_scalar_binding=legacy_scalar_binding,
             disposition=_text_or_none(payload.get("disposition")),
             disposition_detail=_text_or_none(payload.get("disposition_detail")),
             schema_version=str(schema),
@@ -903,6 +1044,62 @@ class TargetSizeCampaignState:
 
 def _text_or_none(value: Any) -> str | None:
     return None if value is None else str(value)
+
+
+def _selection_collections_from_payload(
+    payload: Mapping[str, Any], *, schema: str
+) -> tuple[
+    tuple[TargetSizeProposal, ...], tuple[FrozenTargetSelection, ...] | None, bool
+]:
+    """Read the selection axis of any readable campaign-state schema.
+
+    The predecessor's scalar keys project onto the collection - ``None`` means
+    the empty design and a value means a one-entry design - without rewriting
+    one byte of the persisted row.  A predecessor row that is already *frozen*
+    additionally marks its descendant binding as the predecessor's, so accepted
+    P5/P7 evidence under that exact legacy ancestry stays current.
+    """
+
+    if schema == TARGET_SIZE_CAMPAIGN_STATE_LEGACY_SCHEMA:
+        return (), None, False
+    if schema == TARGET_SIZE_CAMPAIGN_STATE_V2_SCHEMA:
+        proposal_payload = payload.get("proposal")
+        frozen_payload = payload.get("frozen")
+        provisional = (
+            ()
+            if proposal_payload is None
+            else (TargetSizeProposal.from_dict(proposal_payload),)
+        )
+        frozen = (
+            None
+            if frozen_payload is None
+            else (FrozenTargetSelection.from_dict(frozen_payload),)
+        )
+        return provisional, frozen, frozen is not None
+    provisional_payload = payload.get("provisional_entries") or ()
+    frozen_payload = payload.get("frozen_entries")
+    if not isinstance(provisional_payload, Sequence) or isinstance(
+        provisional_payload, (str, bytes)
+    ):
+        raise TrainingDataSerializationError(
+            "The provisional target-size design must be a sequence of entries."
+        )
+    if frozen_payload is not None and (
+        not isinstance(frozen_payload, Sequence)
+        or isinstance(frozen_payload, (str, bytes))
+    ):
+        raise TrainingDataSerializationError(
+            "The frozen target-size design must be a sequence of entries."
+        )
+    provisional = tuple(
+        TargetSizeProposal.from_dict(item) for item in provisional_payload
+    )
+    frozen = (
+        None
+        if frozen_payload is None
+        else tuple(FrozenTargetSelection.from_dict(item) for item in frozen_payload)
+    )
+    return provisional, frozen, bool(payload.get("legacy_scalar_binding", False))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1356,18 +1553,28 @@ def _validate_transition_semantics(
         raise TrainingDataInputError(
             "Every non-genesis target-size campaign transition requires an expected predecessor."
         )
-    if kind is TargetSizeTransitionKind.FREEZE_SELECTION and successor.frozen is None:
+    if kind is TargetSizeTransitionKind.FREEZE_SELECTION and not successor.frozen_entries:
         raise TrainingDataInputError(
-            "A freeze transition must publish the frozen target selection it admits."
+            "A freeze transition must publish the frozen target-size design it admits."
         )
     if kind is TargetSizeTransitionKind.SET_PROPOSAL:
-        if successor.proposal is None:
+        if not successor.provisional_entries:
             raise TrainingDataInputError(
-                "A proposal transition must publish the provisional proposal it sets."
+                "A proposal transition must publish the provisional design it sets."
             )
-        if successor.frozen is not None:
+        if successor.frozen_entries is not None:
             raise TrainingDataInputError(
-                "A frozen target selection is never revised by a proposal transition."
+                "A frozen target-size design is never revised by a proposal transition."
+            )
+    if kind is TargetSizeTransitionKind.RESET_PROPOSAL:
+        if successor.provisional_entries:
+            raise TrainingDataInputError(
+                "A reset transition clears every provisional entry."
+            )
+        if successor.frozen_entries is not None:
+            raise TrainingDataInputError(
+                "A frozen target-size design is never reset; it is retired only by a "
+                "fresh prepared generation."
             )
     if kind is TargetSizeTransitionKind.ADVANCE_GENERATION:
         if successor.generation <= expected.generation:
@@ -1403,6 +1610,7 @@ __all__ = [
     "TARGET_SIZE_CAMPAIGN_REVISION_SCHEMA",
     "TARGET_SIZE_CAMPAIGN_STATE_LEGACY_SCHEMA",
     "TARGET_SIZE_CAMPAIGN_STATE_SCHEMA",
+    "TARGET_SIZE_CAMPAIGN_STATE_V2_SCHEMA",
     "TARGET_SIZE_CAMPAIGN_TRANSITION_IDENTITY_SCHEMA",
     "TARGET_SIZE_FROZEN_SELECTION_SCHEMA",
     "TARGET_SIZE_PROPOSAL_SCHEMA",
@@ -1424,5 +1632,6 @@ __all__ = [
     "initial_target_size_campaign_state",
     "load_target_size_campaign_history",
     "load_target_size_campaign_revision",
+    "merge_provisional_entry",
     "target_size_transition_identity",
 ]

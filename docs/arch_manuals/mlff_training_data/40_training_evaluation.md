@@ -170,15 +170,24 @@ numeric seed or target size coincides.
 
 ## Post-selection method acceptance
 
-The dependency graph is acyclic:
+Post-selection work runs once per frozen selected size, in frozen selection
+order, over one shared prepared generation and one shared method resolution. The
+per-size dependency graph is acyclic:
 
 ```text
-current selected binding
+per-size target binding                       (N_i, exact T_i, prepared/P2 lineage)
   -> shared post-selection method identity
-  -> CV policy and final-production policy
+  -> CV policy (contains H_cv_i) and final-production policy (contains H_prod_i)
   -> CV plan and final-production plan
   -> fold/final execution and evidence
 ```
+
+The target binding names the target and nothing else: no role horizon, no
+selection provenance, no sibling size, no list position, and no digest of a
+record carrying them. That is what lets the production budget be edited without
+invalidating accepted cross-validation evidence, lets a size chosen by hand and
+the same size adopted from the diagnostic be one experiment, and lets a second
+selected size join the design without disturbing the first size's evidence.
 
 The shared method identity binds preparation/objective recipe, executable loss
 family, foundation and initialization family, optimizer family, LR schedule,
@@ -252,9 +261,15 @@ never rewrites its authorizing plan.
 
 CV freezes each fold representative on its authorized target monitor before
 evaluating the held-out fold. A required fold or seed failure is a
-methodological failure: it leaves `N_selected` and its evidence unchanged and
-does not authorize final production. A materially different method requires a
-new target-size experiment because the measured method has changed.
+methodological failure: it leaves the frozen design and its evidence unchanged
+and does not authorize final production. A materially different method requires
+a new target-size experiment because the measured method has changed.
+
+Campaign-level acceptance is all-sizes. Cross-validation is accepted only when
+every frozen size is accepted, and final production admits no new run for any
+size until every frozen size holds current accepted cross-validation ancestry
+under its own binding. A failing size stays visibly failed and is never dropped;
+valid completed sibling evidence stays reusable on retry.
 
 ## Final production and currentness
 

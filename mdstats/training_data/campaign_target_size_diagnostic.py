@@ -146,8 +146,9 @@ def commit_auto_diagnostic(
         adopted_execution_head_digest=head.content_digest,
         adopted_reducer_state_digest=head.post_state.content_digest,
         auto_diagnostic=projection,
-        proposal=state.proposal,
-        frozen=state.frozen,
+        provisional_entries=state.provisional_entries,
+        frozen_entries=state.frozen_entries,
+        legacy_scalar_binding=state.legacy_scalar_binding,
         disposition=(
             "auto_diagnostic_recommendation"
             if projection.has_recommendation

@@ -1535,11 +1535,12 @@ def execute_current_select_target_size(
 ) -> int:
     """Establish or revise the current provisional target training design.
 
-    Two modes, one outcome.  ``select-target-size <N>`` proposes a qualified
-    candidate directly and performs no candidate training or EVAL2 work at all.
-    ``select-target-size --auto`` runs or reuses the optional automatic screen
-    and adopts its recommendation.  Neither freezes anything: the proposal stays
-    mutable until ``cross-validate`` admits it.
+    Three operations, one design.  ``select-target-size <N>`` merges a qualified
+    candidate into the ordered collection and performs no candidate training or
+    EVAL2 work at all.  ``select-target-size --auto`` runs or reuses the optional
+    automatic screen and merges its recommendation through the same owner.
+    ``select-target-size --reset`` clears the collection.  None of them freezes
+    anything: the design stays mutable until ``cross-validate`` admits it whole.
     """
 
     from ._campaign_cli_core import CampaignStore, _load_config
@@ -1547,10 +1548,12 @@ def execute_current_select_target_size(
 
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
+    if bool(getattr(args, "reset", False)):
+        return _execute_target_size_reset(cfg, paths, store)
     horizons = resolve_provisional_horizons(
         cfg,
-        cv_max_num_epochs=getattr(args, "select_horizon_cv", None),
-        production_max_num_epochs=getattr(args, "select_horizon", None),
+        cv_max_num_epochs=getattr(args, "horizon_cv", None),
+        production_max_num_epochs=getattr(args, "horizon", None),
     )
     if bool(getattr(args, "auto", False)):
         return _execute_auto_target_size_diagnostic(
@@ -1585,23 +1588,43 @@ def _refresh_target_size_view(cfg: Any, paths: Any, store: Any, revision: Any) -
         )
 
 
-def _report_proposal(revision: Any, *, reused_diagnostic: bool | None = None) -> None:
+def _selection_baseline(state: Any) -> tuple[Any, ...]:
+    """The exact selection state a long-running auto install may write over.
+
+    Append, replace-in-place, reset and freeze all change it, so any of them
+    beats a diagnostic that started before them.  Nothing else does: publishing
+    unrelated screen evidence must not invalidate the operator's design.
+    """
+
+    return (
+        tuple(entry.content_digest for entry in state.provisional_entries),
+        None
+        if state.frozen_entries is None
+        else tuple(entry.content_digest for entry in state.frozen_entries),
+    )
+
+
+def _report_design(revision: Any, *, reused_diagnostic: bool | None = None) -> None:
+    """Render the complete resulting provisional design, in selection order."""
+
     from ._campaign_cli_core import _ok
 
-    proposal = revision.state.proposal
-    if proposal is None:  # pragma: no cover - callers commit before reporting
-        return
+    entries = revision.state.provisional_entries
     _ok(
-        f"provisional target size N = {proposal.n_provisional} "
-        f"(source: {proposal.selection_source}); "
-        f"T_provisional = pi_train[:{proposal.n_provisional}] "
-        f"identity {proposal.membership_digest[:12]}..."
+        f"provisional target-size design: {len(entries)} selected size(s)"
+        if entries
+        else "provisional target-size design: no size selected"
     )
-    _ok(
-        f"provisional cross-validation horizon {proposal.cv_max_num_epochs} epoch(s); "
-        f"provisional final-production horizon "
-        f"{proposal.production_max_num_epochs} epoch(s)"
-    )
+    for index, entry in enumerate(entries, start=1):
+        print(
+            f"  [{index}] N = {entry.n_provisional} "
+            f"(source: {entry.selection_source}); "
+            f"T_provisional = pi_train[:{entry.n_provisional}] identity "
+            f"{entry.membership_digest[:12]}...; CV horizon "
+            f"{entry.cv_max_num_epochs} epoch(s); production horizon "
+            f"{entry.production_max_num_epochs} epoch(s)",
+            flush=True,
+        )
     if reused_diagnostic is not None:
         _ok(
             "reused the existing automatic diagnostic; no screening jobs were rerun"
@@ -1609,10 +1632,36 @@ def _report_proposal(revision: Any, *, reused_diagnostic: bool | None = None) ->
             else "recorded new automatic diagnostic evidence"
         )
     print(
-        "Frozen: no. Run `select-target-size` again to change any of these, or "
-        "`cross-validate` to freeze this design.",
+        "Frozen: no. Run `select-target-size` again to add or revise a size, "
+        "`select-target-size --reset` to clear the design, or `cross-validate` "
+        "to freeze it.",
         flush=True,
     )
+
+
+def _execute_target_size_reset(cfg: Any, paths: Any, store: Any) -> int:
+    """`select-target-size --reset`: clear the provisional design, nothing else.
+
+    It is pre-freeze only and performs no numerical work whatsoever.  The
+    prepared generation and any valid automatic-diagnostic evidence survive: the
+    operator is saying "I have not chosen yet", not "discard the expensive
+    screen I already paid for".
+    """
+
+    from ._campaign_cli_core import _ok, _print_header
+    from .campaign_target_size_cutover import require_current_target_size_runtime
+    from .campaign_target_size_selection import commit_target_size_reset
+
+    _print_header("Target-size selection - clearing the provisional design")
+    revision = require_current_target_size_runtime(store)
+    revision = commit_target_size_reset(store, revision)
+    _refresh_target_size_view(cfg, paths, store, revision)
+    _ok(
+        "the provisional target-size design is empty; the prepared generation and "
+        "any automatic diagnostic evidence are unchanged"
+    )
+    _report_design(revision)
+    return 0
 
 
 def _execute_manual_target_size_proposal(
@@ -1646,7 +1695,7 @@ def _execute_manual_target_size_proposal(
     )
     revision = commit_target_size_proposal(store, revision, proposal)
     _refresh_target_size_view(cfg, paths, store, revision)
-    _report_proposal(revision)
+    _report_design(revision)
     return 0
 
 
@@ -1698,16 +1747,13 @@ def _install_recommendation(
             flush=True,
         )
         return 0
-    current = (
-        None if state.proposal is None else state.proposal.content_digest,
-        None if state.frozen is None else state.frozen.content_digest,
-    )
-    if current != baseline:
+    if _selection_baseline(state) != baseline:
         print(
             f"Recommendation N = {validated.recommended_target_size} was computed but "
             "not installed: the current target-size selection state changed while the "
             "diagnostic was running. The diagnostic evidence and its report are "
-            "committed and reusable.",
+            "committed and reusable. Rerun `select-target-size --auto` to install it "
+            "against the current design without retraining.",
             flush=True,
         )
         return 0
@@ -1720,7 +1766,7 @@ def _install_recommendation(
     )
     revision = commit_target_size_proposal(store, revision, proposal)
     _refresh_target_size_view(cfg, paths, store, revision)
-    _report_proposal(revision, reused_diagnostic=reused)
+    _report_design(revision, reused_diagnostic=reused)
     return 0
 
 
@@ -1802,10 +1848,7 @@ def _execute_auto_target_size_diagnostic(
     require_unfrozen(revision.state)
     # The exact selection state this invocation intends to update. Expensive
     # diagnostic execution proceeds independently of it; installation does not.
-    baseline = (
-        None if revision.state.proposal is None else revision.state.proposal.content_digest,
-        None,
-    )
+    baseline = _selection_baseline(revision.state)
 
     if revision.state.lifecycle is TargetSizeLifecycle.DIAGNOSTIC_COMPLETE:
         # Warm path. A complete diagnostic for this scientific/execution
@@ -1873,9 +1916,9 @@ def _execute_auto_target_size_diagnostic(
                 adopted_reducer_state_digest=(
                     revision.state.adopted_reducer_state_digest
                 ),
-                # An interrupted diagnostic never destroys a provisional choice
-                # the operator already made.
-                proposal=revision.state.proposal,
+                # An interrupted diagnostic never destroys a provisional
+                # design the operator already made.
+                provisional_entries=revision.state.provisional_entries,
             ),
         ).revision
 

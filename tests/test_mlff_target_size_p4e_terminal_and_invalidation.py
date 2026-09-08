@@ -596,7 +596,7 @@ def test_p4e_req4_terminal_scientific_failure_is_not_an_interruption():
     # recommendation, and it carries no proposal and no frozen selection.
     from mdstats.training_data._common import TrainingDataInputError
 
-    assert state.proposal is None and state.frozen is None
+    assert state.provisional_entries == () and state.frozen_entries is None
     with pytest.raises(TrainingDataInputError):
         replace(state, lifecycle=TargetSizeLifecycle.SCREEN_ACTIVE)
 
@@ -1021,8 +1021,9 @@ def test_p4e_mandatory7_selected_at_ceiling_reload_and_corruption_negative(
         )
         head_digest = state.adopted_execution_head_digest
         # The recommendation became the provisional choice; nothing is frozen.
-        assert state.proposal is not None and state.proposal.n_provisional == nmax
-        assert state.frozen is None
+        (proposal,) = state.provisional_entries
+        assert proposal.n_provisional == nmax
+        assert state.frozen_entries is None
 
         # Lifecycle keeps advancing: the next admissible command is cross-validate.
         snapshot = project_campaign_lifecycle(paths, store)
@@ -1077,7 +1078,7 @@ def test_p4e_mandatory7_selected_at_ceiling_reload_and_corruption_negative(
         )
         assert context.binding.n_selected == nmax
         assert len(context.selected_membership) == nmax
-        frozen = load_target_size_campaign_revision(store).state.frozen
+        (frozen,) = load_target_size_campaign_revision(store).state.frozen_entries
         assert frozen is not None and frozen.n_selected == nmax
         assert frozen.selection_source == "auto_recommendation"
     finally:

@@ -43,8 +43,7 @@ def test_p5a_adapter_projects_the_exact_authenticated_selection(tmp_path: Path):
 
         context = load_current_selected_training_context(cfg, paths, store)
         assert isinstance(context, CurrentSelectedTrainingContext)
-        frozen = revision.state.frozen
-        assert frozen is not None
+        (frozen,) = revision.state.frozen_entries
         n_selected = frozen.n_selected
         assert context.n_selected == n_selected
 
@@ -54,9 +53,24 @@ def test_p5a_adapter_projects_the_exact_authenticated_selection(tmp_path: Path):
         assert context.selected_membership == expected
         assert context.selected_membership_digest == frozen.selected_membership_digest
         assert context.binding.campaign_generation == revision.state.generation
-        assert context.binding.frozen_selection_digest == frozen.content_digest
-        # Provenance is not identity: the binding carries no selection source.
-        assert "selection_source" not in context.binding.to_dict()
+        # The target binding names the target and nothing else. The full frozen
+        # entry's digest is deliberately *not* its parent: that digest covers
+        # both role horizons and the selection provenance, so using it would
+        # make every descendant depend transitively on inputs the binding is
+        # defined to exclude.
+        payload = context.binding.to_dict()
+        for forbidden in (
+            "frozen_selection_digest",
+            "selection_source",
+            "auto_diagnostic_digest",
+            "cv_max_num_epochs",
+            "production_max_num_epochs",
+        ):
+            assert forbidden not in payload
+        assert payload["n_selected"] == n_selected
+        assert payload["selected_membership_digest"] == (
+            frozen.selected_membership_digest
+        )
     finally:
         store.close()
 
@@ -114,8 +128,11 @@ def test_p5a_post_selection_requires_an_admitted_freeze(tmp_path: Path):
     cfg, paths, store = load_context(config)
     try:
         revision = load_target_size_campaign_revision(store)
-        assert revision.state.frozen is None and revision.state.proposal is None
-        with pytest.raises(TargetSizeSelectionError, match="No frozen target selection"):
+        assert (
+            revision.state.frozen_entries is None
+            and revision.state.provisional_entries == ()
+        )
+        with pytest.raises(TargetSizeSelectionError, match="No frozen target-size"):
             load_current_selected_training_context(cfg, paths, store)
 
         # Even a complete, valid provisional proposal is not an entry point.
@@ -129,7 +146,7 @@ def test_p5a_post_selection_requires_an_admitted_freeze(tmp_path: Path):
             horizons=resolve_provisional_horizons(cfg),
         )
         commit_target_size_proposal(store, revision, proposal)
-        with pytest.raises(TargetSizeSelectionError, match="No frozen target selection"):
+        with pytest.raises(TargetSizeSelectionError, match="No frozen target-size"):
             load_current_selected_training_context(cfg, paths, store)
 
         # Admission is the boundary, and it is the only thing that changes this.
@@ -221,7 +238,7 @@ def test_p5a_only_one_current_selected_training_adapter_exists():
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and any(
-                alias.name == "resolve_frozen_target_selection"
+                alias.name == "resolve_frozen_target_design"
                 for alias in node.names
             ):
                 callers.append(path.name)

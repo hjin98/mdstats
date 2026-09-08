@@ -2,10 +2,11 @@
 kind: implementation-workplan
 workplan_id: MLFF-TARGET-SIZE-MULTI-SELECTION-AND-PER-SIZE-HORIZON
 protocol_version: 5.16.0
-status: implementation-ready
+status: implementation-complete
 created_date: 2026-09-07
 reviewed_date: 2026-09-07
 closure_reviewed_date: 2026-09-07
+implementation_completed_date: 2026-09-07
 closure_review_status: pass
 predecessor_workplan: workplans/active/MLFF_TARGET_SIZE_PROVISIONAL_SELECTION_AUTO_DIAGNOSTIC_AND_HORIZON_STEERING_WORKPLAN.md
 reviewed_implementation_branch: plan/mlff-target-size-provisional-selection-auto-diagnostic

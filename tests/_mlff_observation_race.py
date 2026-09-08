@@ -16,7 +16,7 @@ transaction:
   commit while the answer is in flight, and SQLite's rollback-journal semantics
   decide the outcome rather than the scheduler.
 
-The observer is paused at :func:`campaign_lifecycle._binding_for`, which the
+The observer is paused at :func:`campaign_lifecycle._bindings_for`, which the
 coherent owner snapshot calls *inside* its read transaction, after the
 target-size head read and before any pointer row is read.  That is exactly the
 window a hybrid answer would need: an implementation that read each pointer in
@@ -52,7 +52,7 @@ def _paused_inside_the_read_transaction():
 
     reached = threading.Event()
     release = threading.Event()
-    original = lifecycle_module._binding_for
+    original = lifecycle_module._bindings_for
 
     def hooked(revision: Any) -> Any:
         result = original(revision)
@@ -61,11 +61,11 @@ def _paused_inside_the_read_transaction():
             release.wait(timeout=_BARRIER_TIMEOUT)
         return result
 
-    lifecycle_module._binding_for = hooked
+    lifecycle_module._bindings_for = hooked
     try:
         yield reached, release
     finally:
-        lifecycle_module._binding_for = original
+        lifecycle_module._bindings_for = original
 
 
 def observe_during_open_publication(

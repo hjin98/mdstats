@@ -22,7 +22,7 @@ import tempfile
 
 from .campaign_target_size_state import TargetSizeCampaignRevision
 
-TARGET_SIZE_RESULT_VIEW_SCHEMA = "mdstats.target-size-result-view.v2"
+TARGET_SIZE_RESULT_VIEW_SCHEMA = "mdstats.target-size-result-view.v3"
 
 
 def _build_diagnostic_target_size_result_view(
@@ -67,8 +67,14 @@ def _build_diagnostic_target_size_result_view(
         "auto_diagnostic": (
             None if state.auto_diagnostic is None else state.auto_diagnostic.to_dict()
         ),
-        "proposal": None if state.proposal is None else state.proposal.to_dict(),
-        "frozen": None if state.frozen is None else state.frozen.to_dict(),
+        "provisional_entries": [
+            entry.to_dict() for entry in state.provisional_entries
+        ],
+        "frozen_entries": (
+            None
+            if state.frozen_entries is None
+            else [entry.to_dict() for entry in state.frozen_entries]
+        ),
         "reducer_status": head.post_state.status.value,
         "active_candidate_sizes": list(head.post_state.active_candidate_sizes),
         "completed_boundary_epochs": list(head.post_state.completed_boundary_epochs),
@@ -149,8 +155,14 @@ def build_target_size_result_view(
         "adopted_execution_head_digest": state.adopted_execution_head_digest,
         "adopted_reducer_state_digest": state.adopted_reducer_state_digest,
         "auto_diagnostic": None,
-        "proposal": None if state.proposal is None else state.proposal.to_dict(),
-        "frozen": None if state.frozen is None else state.frozen.to_dict(),
+        "provisional_entries": [
+            entry.to_dict() for entry in state.provisional_entries
+        ],
+        "frozen_entries": (
+            None
+            if state.frozen_entries is None
+            else [entry.to_dict() for entry in state.frozen_entries]
+        ),
     }
     if resolver is not None and state.adopted_execution_head_digest is not None:
         from .campaign_target_size_adoption import load_adopted_execution_head

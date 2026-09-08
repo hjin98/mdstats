@@ -14,8 +14,8 @@ This module derives the lifecycle from persisted owner state alone:
 .. code-block:: text
 
     CampaignStore target-size revision      (the sole current-generation authority)
-    + P5 pointer rows and compact records   (inside the current selected binding)
-    + P7 pointer rows and compact records   (inside the same binding)
+    + P5 pointer rows and compact records   (inside every current per-size binding)
+    + P7 pointer rows and compact records   (only where qualification is authorized)
       -> CampaignLifecycleSnapshot
 
 It constructs no provider, trainer, session, or evidence root, parses no source,
@@ -29,9 +29,11 @@ snapshot that was already stale when it was read cannot authorize work.
 
 Reads are taken as one coherent snapshot.  A concurrent writer may make status
 report the state before or after a transition, but never a hybrid: the target
-revision and every P5/P7 pointer row this answer depends on are read inside one
-SQLite read transaction, so the ancestry reported is an ancestry that actually
-existed.  Re-reading the target revision afterwards would not have been enough:
+revision and every P5/P7 pointer row of every current per-size binding are read
+inside one SQLite read transaction, so the ancestry reported is an ancestry that
+actually existed.  Iterating sizes with independently timed authoritative reads
+would be a second, weaker assembly that could report a combination of moments
+that never coexisted.  Re-reading the target revision afterwards would not have been enough:
 publishing a P5 or P7 pointer mutates ``meta`` without moving the target-size
 state revision at all.
 
@@ -108,15 +110,26 @@ class CampaignLifecycleSnapshot:
         return None
 
 
-def _pointer_prefixes(binding: Any) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    """Every pointer row one lifecycle answer reads, grouped by namespace."""
-
+def _post_selection_prefix(binding: Any) -> tuple[str, tuple[str, ...]]:
     from .post_selection_store import (
         POINTER_CV_ACCEPTANCE,
         POINTER_CV_PLAN,
         POINTER_FINAL_PLAN,
         POINTER_FINAL_PUBLICATION,
     )
+
+    return (
+        f"post_selection:{binding.content_digest}:",
+        (
+            POINTER_CV_PLAN,
+            POINTER_CV_ACCEPTANCE,
+            POINTER_FINAL_PLAN,
+            POINTER_FINAL_PUBLICATION,
+        ),
+    )
+
+
+def _qualification_prefix(binding: Any) -> tuple[str, tuple[str, ...]]:
     from .qualification.store import (
         POINTER_LOCKED_ACTIVATION,
         POINTER_QUALIFICATION_PLAN,
@@ -125,38 +138,45 @@ def _pointer_prefixes(binding: Any) -> tuple[tuple[str, tuple[str, ...]], ...]:
     )
 
     return (
+        f"qualification:{binding.content_digest}:",
         (
-            f"post_selection:{binding.content_digest}:",
-            (
-                POINTER_CV_PLAN,
-                POINTER_CV_ACCEPTANCE,
-                POINTER_FINAL_PLAN,
-                POINTER_FINAL_PUBLICATION,
-            ),
-        ),
-        (
-            f"qualification:{binding.content_digest}:",
-            (
-                POINTER_QUALIFICATION_PLAN,
-                POINTER_QUALIFICATION_RECORD,
-                POINTER_LOCKED_ACTIVATION,
-                POINTER_RELEASE_EVIDENCE,
-            ),
+            POINTER_QUALIFICATION_PLAN,
+            POINTER_QUALIFICATION_RECORD,
+            POINTER_LOCKED_ACTIVATION,
+            POINTER_RELEASE_EVIDENCE,
         ),
     )
 
 
-def campaign_owner_snapshot(store: Any) -> tuple[Any, Any, dict[str, str | None]]:
+def _pointer_prefixes(bindings: Any) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Every pointer row one lifecycle answer reads, grouped by namespace.
+
+    P5 namespaces are read for every current per-size binding.  P7 namespaces
+    are read only where qualification is actually authorized - a single-size
+    frozen design - because for a multi-size design there is no authorized
+    release path to observe and reading one would suggest otherwise.
+    """
+
+    prefixes = [_post_selection_prefix(binding) for binding in bindings]
+    if len(bindings) == 1:
+        prefixes.append(_qualification_prefix(bindings[0]))
+    return tuple(prefixes)
+
+
+def campaign_owner_snapshot(store: Any) -> tuple[Any, tuple[Any, ...], dict[str, str | None]]:
     """Read the target revision and every descendant pointer atomically.
 
     One deferred read transaction spans the campaign-state head and the P5/P7
-    pointer rows.  The binding is derived inside it because it is a pure
-    function of the revision, so the pointer namespace this answer reads is the
-    namespace that revision actually owned.
+    pointer rows of *every* current per-size binding.  The bindings are derived
+    inside it because they are a pure function of the revision, so the pointer
+    namespaces this answer reads are the namespaces that revision actually
+    owned.  Looping over sizes with independently timed authoritative reads
+    would let a concurrent publication produce a combined answer that never
+    existed at any instant; that is exactly what this boundary prevents.
 
     This is the *only* coherent-read boundary for public observation.  Every
     public status answer -- the campaign lifecycle projection and
-    `qualification status` alike -- derives its revision, binding and pointer
+    `qualification status` alike -- derives its revision, bindings and pointer
     digests here, so no second, weaker assembly of independently moving pointer
     reads can exist beside it.
     """
@@ -167,18 +187,17 @@ def campaign_owner_snapshot(store: Any) -> tuple[Any, Any, dict[str, str | None]
     db.execute("BEGIN")
     try:
         revision = _load_head(db)
-        binding = None if revision is None else _binding_for(revision)
+        bindings = () if revision is None else _bindings_for(revision)
         pointers: dict[str, str | None] = {}
-        if binding is not None:
-            for prefix, kinds in _pointer_prefixes(binding):
-                for kind in kinds:
-                    row = db.execute(
-                        "SELECT value FROM meta WHERE key=?", (prefix + kind,)
-                    ).fetchone()
-                    pointers[prefix + kind] = None if row is None else str(row[0])
+        for prefix, kinds in _pointer_prefixes(bindings):
+            for kind in kinds:
+                row = db.execute(
+                    "SELECT value FROM meta WHERE key=?", (prefix + kind,)
+                ).fetchone()
+                pointers[prefix + kind] = None if row is None else str(row[0])
     finally:
         db.rollback()
-    return revision, binding, pointers
+    return revision, bindings, pointers
 
 
 def _authenticated(store: Any, content_digest: str, deserializer: Any) -> Any | None:
@@ -196,39 +215,22 @@ def _authenticated(store: Any, content_digest: str, deserializer: Any) -> Any | 
         return None
 
 
-def _binding_for(revision: Any) -> Any | None:
-    """Derive the current descendant binding from campaign state alone.
+def _bindings_for(revision: Any) -> tuple[Any, ...]:
+    """Derive every current descendant binding from campaign state alone.
 
-    The binding is a pure function of the frozen selection the campaign store
+    A binding is a pure function of the frozen design the campaign store
     already committed at ``cross-validate`` admission, so the pointer namespace
     of every P5/P7 descendant is reachable without loading the prepared
-    generation or re-deriving anything.  Before that freeze there is no
-    descendant namespace at all, which is exactly right: a provisional proposal
-    has no descendants.
+    generation or re-deriving anything.  Before that freeze there are none,
+    which is exactly right: a provisional design has no descendants.
     """
 
-    from .campaign_post_selection import PostSelectionBinding
+    from .campaign_post_selection import current_target_size_bindings
 
-    state = revision.state
-    frozen = state.frozen
-    if frozen is None:
-        return None
     try:
-        return PostSelectionBinding(
-            campaign_generation=state.generation,
-            frozen_selection_digest=frozen.content_digest,
-            experiment_definition_digest=state.experiment_definition_digest,
-            training_order_digest=frozen.training_order_digest,
-            frame_authority_digest=state.frame_authority_digest,
-            neutral_statistical_base_digest=state.neutral_statistical_base_digest,
-            split_exclusion_digest=state.split_exclusion_digest,
-            target_size_policy_digest=state.policy_digest,
-            aggregate_digest=state.aggregate_digest,
-            n_selected=int(frozen.n_selected),
-            selected_membership_digest=str(frozen.selected_membership_digest),
-        )
+        return current_target_size_bindings(revision.state)
     except Exception:  # noqa: BLE001 - reported as a blocked observation
-        return None
+        return ()
 
 
 def _doctor_step(store: Any, paths: Any) -> LifecycleStep:
@@ -348,8 +350,16 @@ def _screen_step(state: Any, prepare_complete: bool) -> LifecycleStep:
             + "; an explicit qualified choice remains available"
         )
 
-    frozen = state.frozen
-    if frozen is not None:
+    entries = state.frozen_entries
+    if entries is not None:
+        sizes = "; ".join(
+            f"[{index}] N={entry.n_selected} "
+            f"T_selected={_short(entry.selected_membership_digest)} "
+            f"H_cv={entry.cv_max_num_epochs} "
+            f"H_prod={entry.production_max_num_epochs} "
+            f"source={entry.selection_source}"
+            for index, entry in enumerate(entries, start=1)
+        )
         return LifecycleStep(
             "target_size_selection",
             "select-target-size",
@@ -357,18 +367,24 @@ def _screen_step(state: Any, prepare_complete: bool) -> LifecycleStep:
             _SELECT_DESCRIPTION,
             LifecycleObservationState.COMPLETE,
             (
-                f"selected target size frozen at N={frozen.n_selected}; "
-                f"T_selected={_short(frozen.selected_membership_digest)}; "
-                f"CV horizon {frozen.cv_max_num_epochs}; production horizon "
-                f"{frozen.production_max_num_epochs}; source "
-                f"{frozen.selection_source}; Frozen: yes. {diagnostic_note}"
+                f"frozen target-size design: {len(entries)} selected size(s). "
+                f"{sizes}. Frozen: yes. {diagnostic_note}"
             ),
         )
 
-    proposal = state.proposal
-    if proposal is not None:
-        # A provisional proposal is a complete decision for routing purposes:
-        # the next consequential command is `cross-validate`, which freezes it.
+    proposals = state.provisional_entries
+    if proposals:
+        # A nonempty provisional design is a complete decision for routing
+        # purposes: the next consequential command is `cross-validate`, which
+        # freezes the whole collection at once.
+        sizes = "; ".join(
+            f"[{index}] N={entry.n_provisional} "
+            f"T_provisional={_short(entry.membership_digest)} "
+            f"H_cv={entry.cv_max_num_epochs} "
+            f"H_prod={entry.production_max_num_epochs} "
+            f"source={entry.selection_source}"
+            for index, entry in enumerate(proposals, start=1)
+        )
         return LifecycleStep(
             "target_size_selection",
             "select-target-size",
@@ -376,12 +392,8 @@ def _screen_step(state: Any, prepare_complete: bool) -> LifecycleStep:
             _SELECT_DESCRIPTION,
             LifecycleObservationState.COMPLETE,
             (
-                f"provisional target size N={proposal.n_provisional} "
-                f"(source {proposal.selection_source}); "
-                f"T_provisional={_short(proposal.membership_digest)}; "
-                f"CV horizon {proposal.cv_max_num_epochs}; production horizon "
-                f"{proposal.production_max_num_epochs}; Frozen: no. "
-                f"{diagnostic_note}"
+                f"provisional target-size design: {len(proposals)} selected size(s). "
+                f"{sizes}. Frozen: no. {diagnostic_note}"
             ),
         )
 
@@ -395,14 +407,17 @@ def _screen_step(state: Any, prepare_complete: bool) -> LifecycleStep:
             "no provisional target size has been chosen; run "
             "`select-target-size <N>` to choose one explicitly, or "
             "`select-target-size --auto` to run the optional automatic "
-            f"diagnostic and adopt its recommendation. {diagnostic_note}"
+            "diagnostic and adopt its recommendation. Selecting further sizes "
+            f"appends them to the design. {diagnostic_note}"
         ),
     )
 
 
-def _post_selection_steps(
+def _per_size_post_selection(
     paths: Any, binding: Any, pointers: Mapping[str, str | None]
-) -> tuple[LifecycleStep, LifecycleStep]:
+) -> tuple[tuple[str, str], tuple[str, str]]:
+    """The (cv, production) observation for exactly one per-size binding."""
+
     from .post_selection_cv_acceptance import CvCampaignAcceptance
     from .post_selection_publication import FinalProductionPublicationDecision
     from .post_selection_store import (
@@ -412,27 +427,6 @@ def _post_selection_steps(
         POINTER_FINAL_PUBLICATION,
         open_post_selection_store,
     )
-
-    if binding is None:
-        blocked = "no target size is frozen yet"
-        return (
-            LifecycleStep(
-                "post_selection_cv",
-                "cross-validate",
-                "cross-validate",
-                "post-selection cross-validation of the frozen method on exactly T_selected",
-                LifecycleObservationState.NOT_STARTED,
-                blocked,
-            ),
-            LifecycleStep(
-                "final_production",
-                "train-production",
-                "train-production",
-                "fresh final production on the complete selected dataset",
-                LifecycleObservationState.NOT_STARTED,
-                "the frozen method is not cross-validation accepted",
-            ),
-        )
 
     prefix = f"post_selection:{binding.content_digest}:"
     plan_digest = pointers.get(prefix + POINTER_CV_PLAN)
@@ -504,6 +498,75 @@ def _post_selection_steps(
             "fresh production is published on the full exact T_selected under the "
             f"accepted method ({_short(final_plan_digest)})"
         )
+    return (cv_state, cv_message), (production_state, production_message)
+
+
+#: Worst-first precedence when several sizes disagree.  A campaign stage is only
+#: as complete as its least complete requested size: every selected N stays
+#: accounted for, and no failure is averaged away by a successful sibling.
+_AGGREGATE_PRECEDENCE = (
+    LifecycleObservationState.BLOCKED,
+    LifecycleObservationState.FAILED,
+    LifecycleObservationState.NOT_STARTED,
+    LifecycleObservationState.WAITING,
+    LifecycleObservationState.RUNNING,
+    LifecycleObservationState.COMPLETE,
+)
+
+
+def _aggregate(observations: "list[tuple[int, str, str]]") -> tuple[str, str]:
+    """Fold per-size observations into one truthful campaign-stage answer."""
+
+    states = {state for _size, state, _message in observations}
+    combined = next(
+        (state for state in _AGGREGATE_PRECEDENCE if state in states),
+        LifecycleObservationState.NOT_STARTED,
+    )
+    detail = "; ".join(
+        f"N={size}: {message}" for size, _state, message in observations
+    )
+    return combined, detail
+
+
+def _post_selection_steps(
+    paths: Any, bindings: Any, pointers: Mapping[str, str | None]
+) -> tuple[LifecycleStep, LifecycleStep]:
+    if not bindings:
+        blocked = "no target size is frozen yet"
+        return (
+            LifecycleStep(
+                "post_selection_cv",
+                "cross-validate",
+                "cross-validate",
+                "post-selection cross-validation of the frozen method on exactly T_selected",
+                LifecycleObservationState.NOT_STARTED,
+                blocked,
+            ),
+            LifecycleStep(
+                "final_production",
+                "train-production",
+                "train-production",
+                "fresh final production on the complete selected dataset",
+                LifecycleObservationState.NOT_STARTED,
+                "the frozen method is not cross-validation accepted",
+            ),
+        )
+
+    cv_observations: list[tuple[int, str, str]] = []
+    production_observations: list[tuple[int, str, str]] = []
+    for binding in bindings:
+        (cv_state, cv_message), (prod_state, prod_message) = _per_size_post_selection(
+            paths, binding, pointers
+        )
+        cv_observations.append((binding.n_selected, cv_state, cv_message))
+        production_observations.append((binding.n_selected, prod_state, prod_message))
+
+    cv_state, cv_message = _aggregate(cv_observations)
+    production_state, production_message = _aggregate(production_observations)
+    if cv_state is not LifecycleObservationState.COMPLETE:
+        # Production is not the relevant stage until every requested size has
+        # accepted CV: admission is a collection-wide barrier, not a per-size one.
+        production_state = LifecycleObservationState.NOT_STARTED
 
     return (
         LifecycleStep(
@@ -525,9 +588,23 @@ def _post_selection_steps(
     )
 
 
+#: What a completed multi-size training experiment is, and is not.  Several
+#: final publications exist and every requested size closed successfully, but
+#: this revision authorizes no rule for choosing one release product and no
+#: qualification over several products.  Reporting anything else here would be
+#: the release decision itself, made silently.
+MULTI_SIZE_TERMINAL_MESSAGE = (
+    "the multi-size target training experiment is complete: every selected size "
+    "has its own current final-production publication. It is NOT release "
+    "qualified: this revision authorizes no rule for selecting one release "
+    "product from several sizes, so qualification is unavailable and there is no "
+    "next consequential command. `qualification status` explains the boundary."
+)
+
+
 def _qualification_step(
     paths: Any,
-    binding: Any,
+    bindings: Any,
     production_complete: bool,
     pointers: Mapping[str, str | None],
 ) -> LifecycleStep:
@@ -537,6 +614,10 @@ def _qualification_step(
     still unqualified until P7 says otherwise.  This reads only pointer rows and
     the small records they name, and it never routes to locked activation --
     opening locked evidence is irreversible and stays an explicit operator act.
+
+    For a multi-size frozen design there is no authorized release path at all,
+    so the completed experiment is reported as terminal rather than routed into
+    a command that is guaranteed to fail closed.
     """
 
     description = "post-production qualification of the frozen final publication"
@@ -552,11 +633,18 @@ def _qualification_step(
             terminal=terminal,
         )
 
-    if not production_complete or binding is None:
+    if not production_complete or not bindings:
         return step(
             LifecycleObservationState.NOT_STARTED,
             "no final-production publication has been frozen yet",
         )
+    if len(bindings) > 1:
+        return step(
+            LifecycleObservationState.COMPLETE,
+            MULTI_SIZE_TERMINAL_MESSAGE,
+            terminal=True,
+        )
+    binding = bindings[0]
 
     from .qualification.record import ProductionQualificationRecord
     from .qualification.store import (
@@ -645,21 +733,21 @@ def project_campaign_lifecycle(
     """Project the public lifecycle from persisted owner state, coherently."""
 
     steps: list[LifecycleStep] = [_doctor_step(store, paths)]
-    revision, binding, pointers = campaign_owner_snapshot(store)
+    revision, bindings, pointers = campaign_owner_snapshot(store)
     state = None if revision is None else revision.state
     prepare = _prepare_step(state)
     steps.append(prepare)
     prepare_complete = prepare.state == LifecycleObservationState.COMPLETE
     steps.append(_screen_step(state, prepare_complete))
     if not prepare_complete:
-        binding = None
-    cv_step, production_step = _post_selection_steps(paths, binding, pointers)
+        bindings = ()
+    cv_step, production_step = _post_selection_steps(paths, bindings, pointers)
     steps.append(cv_step)
     steps.append(production_step)
     steps.append(
         _qualification_step(
             paths,
-            binding,
+            bindings,
             production_step.state == LifecycleObservationState.COMPLETE,
             pointers,
         )
@@ -672,6 +760,7 @@ def project_campaign_lifecycle(
 
 
 __all__ = [
+    "MULTI_SIZE_TERMINAL_MESSAGE",
     "CampaignLifecycleSnapshot",
     "campaign_owner_snapshot",
     "LifecycleObservationState",

@@ -277,7 +277,7 @@ def test_p5e_a_frozen_production_horizon_does_not_drift_with_a_later_config_edit
     """The admitted experiment owns its budget; the config file no longer does.
 
     Before the freeze, the two role horizons are the operator's to steer with
-    `--select-horizon-cv` / `--select-horizon`. `cross-validate` admission fixes
+    `--horizon-cv` / `--horizon`. `cross-validate` admission fixes
     them, so a later `campaign.toml` edit cannot silently rewrite a production
     run that has already been authorized -- while still leaving the CV evidence
     untouched, which is what the roles being independent means.
@@ -291,7 +291,7 @@ def test_p5e_a_frozen_production_horizon_does_not_drift_with_a_later_config_edit
         before_cv = resolve_current_cv_acceptance(context)
         before_policy = context.production_policy
         revision_before = load_target_size_campaign_revision(store)
-        frozen = revision_before.state.frozen
+        (frozen,) = revision_before.state.frozen_entries
         assert frozen is not None
         assert before_policy.production_max_num_epochs == (
             frozen.production_max_num_epochs
@@ -393,7 +393,7 @@ def test_p5e_a_stale_g1_publication_loses_the_race_to_g2(tmp_path: Path):
         assert revision.state.generation > g1.campaign_generation
 
         # The delayed g1 writer now tries to publish. It loses deterministically.
-        with pytest.raises(PostSelectionStaleBindingError, match="newer frozen target selection"):
+        with pytest.raises(PostSelectionStaleBindingError, match="newer frozen target-size design"):
             publish_current_post_selection_pointer(
                 store,
                 binding=g1,
