@@ -887,17 +887,18 @@ def test_a_pre_rework_terminal_row_is_diagnostic_evidence_and_not_a_freeze():
 def test_a_pre_rework_post_selection_binding_stays_historical():
     """Old descendants are not re-parented onto a new freeze that shares N."""
 
-    from mdstats.training_data._common import (
-        TrainingDataSerializationError,
-        digest,
+    from mdstats.training_data._common import digest
+    from mdstats.training_data.campaign_post_selection import (
+        POST_SELECTION_BINDING_SCHEMA,
+        POST_SELECTION_BINDING_V1_SCHEMA,
+        PostSelectionBinding,
     )
-    from mdstats.training_data.campaign_post_selection import PostSelectionBinding
 
     def d(name: str) -> str:
         return digest({"fixture": name})
 
     retired = {
-        "schema": "mdstats.post-selection-binding.v1",
+        "schema": POST_SELECTION_BINDING_V1_SCHEMA,
         "campaign_generation": 1,
         "campaign_state_revision": d("revision"),
         "experiment_definition_digest": d("definition"),
@@ -912,8 +913,28 @@ def test_a_pre_rework_post_selection_binding_stays_historical():
         "n_selected": 8,
         "selected_membership_digest": d("membership"),
     }
-    with pytest.raises(TrainingDataSerializationError, match="Unsupported"):
-        PostSelectionBinding.from_dict(retired)
+    legacy = PostSelectionBinding.from_dict(retired)
+    assert legacy.is_v1_legacy_schema
+    assert legacy.is_legacy_schema
+    assert legacy.to_dict()["schema"] == POST_SELECTION_BINDING_V1_SCHEMA
+
+    # A fresh current binding that shares N does not match the legacy binding,
+    # so old descendants are not re-parented onto a new freeze that shares N.
+    current = PostSelectionBinding(
+        campaign_generation=1,
+        experiment_definition_digest=d("definition"),
+        training_order_digest=d("order"),
+        frame_authority_digest=d("frame"),
+        neutral_statistical_base_digest=d("neutral"),
+        split_exclusion_digest=d("split"),
+        target_size_policy_digest=d("policy"),
+        aggregate_digest=d("aggregate"),
+        n_selected=8,
+        selected_membership_digest=d("membership"),
+    )
+    assert current.to_dict()["schema"] == POST_SELECTION_BINDING_SCHEMA
+    assert not current.is_legacy_schema
+    assert legacy.content_digest != current.content_digest
 
 
 # --- 19.13 structural closure ----------------------------------------------

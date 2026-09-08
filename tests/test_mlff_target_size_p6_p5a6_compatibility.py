@@ -176,7 +176,7 @@ def test_p6_reopens_the_preserved_p5a6_workspace_through_real_owners():
         terminal = revision.state.auto_diagnostic
         assert terminal is not None
         assert terminal.recommended_target_size == identity["n_selected"]
-        assert terminal.selected_membership_digest == identity[
+        assert terminal.recommended_membership_digest == identity[
             "selected_membership_digest"
         ]
         selected = load_current_selected_training_context(cfg, paths, store)

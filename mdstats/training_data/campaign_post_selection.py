@@ -47,6 +47,10 @@ POST_SELECTION_BINDING_SCHEMA = "mdstats.post-selection-binding.v3"
 #: under it are still read and stay current under their exact legacy ancestry;
 #: no new binding is ever written under it.
 POST_SELECTION_BINDING_V2_SCHEMA = "mdstats.post-selection-binding.v2"
+#: The pre-rework schema.  Rows written under it carry the legacy P4/P5 lineage
+#: including the legacy adopted execution head and reducer state digests.
+POST_SELECTION_BINDING_V1_SCHEMA = "mdstats.post-selection-binding.v1"
+
 
 
 class PostSelectionError(TrainingDataError):
@@ -103,6 +107,9 @@ class PostSelectionBinding:
     n_selected: int
     selected_membership_digest: str
     legacy_frozen_selection_digest: str | None = None
+    legacy_v1_campaign_state_revision: str | None = None
+    legacy_v1_execution_head_digest: str | None = None
+    legacy_v1_reducer_state_digest: str | None = None
 
     def __post_init__(self) -> None:
         for name in (
@@ -127,6 +134,33 @@ class PostSelectionBinding:
                     name="legacy_frozen_selection_digest",
                 ),
             )
+        if self.legacy_v1_campaign_state_revision is not None:
+            object.__setattr__(
+                self,
+                "legacy_v1_campaign_state_revision",
+                validate_digest(
+                    self.legacy_v1_campaign_state_revision,
+                    name="legacy_v1_campaign_state_revision",
+                ),
+            )
+        if self.legacy_v1_execution_head_digest is not None:
+            object.__setattr__(
+                self,
+                "legacy_v1_execution_head_digest",
+                validate_digest(
+                    self.legacy_v1_execution_head_digest,
+                    name="legacy_v1_execution_head_digest",
+                ),
+            )
+        if self.legacy_v1_reducer_state_digest is not None:
+            object.__setattr__(
+                self,
+                "legacy_v1_reducer_state_digest",
+                validate_digest(
+                    self.legacy_v1_reducer_state_digest,
+                    name="legacy_v1_reducer_state_digest",
+                ),
+            )
         generation = int(self.campaign_generation)
         if generation < 0:
             raise TrainingDataInputError(
@@ -141,14 +175,38 @@ class PostSelectionBinding:
         object.__setattr__(self, "n_selected", n_selected)
 
     @property
+    def is_v1_legacy_schema(self) -> bool:
+        return self.legacy_v1_execution_head_digest is not None
+
+    @property
     def is_legacy_schema(self) -> bool:
-        return self.legacy_frozen_selection_digest is not None
+        return (
+            self.legacy_frozen_selection_digest is not None
+            or self.is_v1_legacy_schema
+        )
 
     def _payload(self) -> dict[str, Any]:
+        if self.is_v1_legacy_schema:
+            return {
+                "schema": POST_SELECTION_BINDING_V1_SCHEMA,
+                "campaign_generation": self.campaign_generation,
+                "campaign_state_revision": self.legacy_v1_campaign_state_revision,
+                "experiment_definition_digest": self.experiment_definition_digest,
+                "training_order_digest": self.training_order_digest,
+                "frame_authority_digest": self.frame_authority_digest,
+                "neutral_statistical_base_digest": self.neutral_statistical_base_digest,
+                "split_exclusion_digest": self.split_exclusion_digest,
+                "target_size_policy_digest": self.target_size_policy_digest,
+                "aggregate_digest": self.aggregate_digest,
+                "adopted_execution_head_digest": self.legacy_v1_execution_head_digest,
+                "adopted_reducer_state_digest": self.legacy_v1_reducer_state_digest,
+                "n_selected": self.n_selected,
+                "selected_membership_digest": self.selected_membership_digest,
+            }
         payload = {
             "schema": (
                 POST_SELECTION_BINDING_V2_SCHEMA
-                if self.is_legacy_schema
+                if self.legacy_frozen_selection_digest is not None
                 else POST_SELECTION_BINDING_SCHEMA
             ),
             "campaign_generation": self.campaign_generation,
@@ -162,7 +220,7 @@ class PostSelectionBinding:
             "n_selected": self.n_selected,
             "selected_membership_digest": self.selected_membership_digest,
         }
-        if self.is_legacy_schema:
+        if self.legacy_frozen_selection_digest is not None:
             # Reproduced in the predecessor's exact bytes, so a descendant
             # published under it still authenticates and stays reachable.
             payload["frozen_selection_digest"] = self.legacy_frozen_selection_digest
@@ -181,29 +239,62 @@ class PostSelectionBinding:
         if schema not in (
             POST_SELECTION_BINDING_SCHEMA,
             POST_SELECTION_BINDING_V2_SCHEMA,
+            POST_SELECTION_BINDING_V1_SCHEMA,
         ):
             raise TrainingDataSerializationError(
                 "Unsupported post-selection binding schema."
             )
-        result = cls(
-            campaign_generation=int(payload["campaign_generation"]),
-            experiment_definition_digest=str(payload["experiment_definition_digest"]),
-            training_order_digest=str(payload["training_order_digest"]),
-            frame_authority_digest=str(payload["frame_authority_digest"]),
-            neutral_statistical_base_digest=str(
-                payload["neutral_statistical_base_digest"]
-            ),
-            split_exclusion_digest=str(payload["split_exclusion_digest"]),
-            target_size_policy_digest=str(payload["target_size_policy_digest"]),
-            aggregate_digest=str(payload["aggregate_digest"]),
-            n_selected=int(payload["n_selected"]),
-            selected_membership_digest=str(payload["selected_membership_digest"]),
-            legacy_frozen_selection_digest=(
-                str(payload["frozen_selection_digest"])
-                if schema == POST_SELECTION_BINDING_V2_SCHEMA
-                else None
-            ),
-        )
+        if schema == POST_SELECTION_BINDING_V1_SCHEMA:
+            result = cls(
+                campaign_generation=int(payload["campaign_generation"]),
+                experiment_definition_digest=str(payload["experiment_definition_digest"]),
+                training_order_digest=str(payload["training_order_digest"]),
+                frame_authority_digest=str(payload["frame_authority_digest"]),
+                neutral_statistical_base_digest=str(
+                    payload["neutral_statistical_base_digest"]
+                ),
+                split_exclusion_digest=str(payload["split_exclusion_digest"]),
+                target_size_policy_digest=str(payload["target_size_policy_digest"]),
+                aggregate_digest=str(payload["aggregate_digest"]),
+                n_selected=int(payload["n_selected"]),
+                selected_membership_digest=str(payload["selected_membership_digest"]),
+                legacy_frozen_selection_digest=None,
+                legacy_v1_campaign_state_revision=(
+                    str(payload["campaign_state_revision"])
+                    if payload.get("campaign_state_revision") is not None
+                    else None
+                ),
+                legacy_v1_execution_head_digest=(
+                    str(payload["adopted_execution_head_digest"])
+                    if payload.get("adopted_execution_head_digest") is not None
+                    else None
+                ),
+                legacy_v1_reducer_state_digest=(
+                    str(payload["adopted_reducer_state_digest"])
+                    if payload.get("adopted_reducer_state_digest") is not None
+                    else None
+                ),
+            )
+        else:
+            result = cls(
+                campaign_generation=int(payload["campaign_generation"]),
+                experiment_definition_digest=str(payload["experiment_definition_digest"]),
+                training_order_digest=str(payload["training_order_digest"]),
+                frame_authority_digest=str(payload["frame_authority_digest"]),
+                neutral_statistical_base_digest=str(
+                    payload["neutral_statistical_base_digest"]
+                ),
+                split_exclusion_digest=str(payload["split_exclusion_digest"]),
+                target_size_policy_digest=str(payload["target_size_policy_digest"]),
+                aggregate_digest=str(payload["aggregate_digest"]),
+                n_selected=int(payload["n_selected"]),
+                selected_membership_digest=str(payload["selected_membership_digest"]),
+                legacy_frozen_selection_digest=(
+                    str(payload["frozen_selection_digest"])
+                    if schema == POST_SELECTION_BINDING_V2_SCHEMA
+                    else None
+                ),
+            )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
                 "Post-selection binding digest mismatch."
@@ -365,12 +456,258 @@ def load_current_selected_training_contexts(
     describing or continuing downstream work can never commit the experiment.
     """
 
+    from .campaign_target_size_cutover import require_current_target_size_runtime
     from .campaign_target_size_selection import resolve_frozen_target_design
+
+    revision = require_current_target_size_runtime(store)
+    if revision.state.is_prerework_schema:
+        return _load_legacy_prerework_training_contexts(cfg, paths, store, revision)
 
     admitted_design = resolve_frozen_target_design(cfg, paths, store, admit=admit)
     return tuple(
         _selected_training_context(admitted)
         for admitted in admitted_design.per_size
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _LegacyEvaluationOrder:
+    digest_value: str
+
+    def membership_digest(self, evaluation_size: int) -> str:
+        return self.digest_value
+
+
+@dataclass(frozen=True, slots=True)
+class _LegacyExperimentDefinition:
+    content_digest: str
+    training_order: Any = None
+    policy: Any = None
+    m3_membership: tuple[str, ...] = ()
+    m3_digest: str = ""
+
+    def evaluation_membership(self, evaluation_size: int) -> tuple[str, ...]:
+        return self.m3_membership
+
+    @property
+    def evaluation_order(self) -> Any:
+        return _LegacyEvaluationOrder(digest_value=self.m3_digest)
+
+
+@dataclass(frozen=True, slots=True)
+class _LegacyTargetSizeAggregate:
+    content_digest: str
+    definition: _LegacyExperimentDefinition
+
+
+def _load_legacy_prerework_training_contexts(
+    cfg: Mapping[str, Any],
+    paths: Any,
+    store: Any,
+    revision: Any,
+) -> tuple[CurrentSelectedTrainingContext, ...]:
+    import json
+    import mdstats
+    from ._campaign_cli_core import (
+        _ensure_manifest,
+        _load_or_rebuild_frame_data,
+        _path_cfg,
+    )
+    from ._frame_access import build_frame_array_index
+    from .campaign_target_size_runtime import (
+        CurrentTargetSizeAuthorities,
+        resolve_neutral_partition_policy,
+    )
+    from .neutral_substrate import (
+        authenticate_vasp_source_authority,
+        authenticated_vasp_temperature_targets,
+        build_canonical_frame_authority,
+        build_neutral_feature_evidence_from_data4_bundle,
+        build_neutral_split_exclusion_evidence,
+        build_neutral_statistical_base,
+        build_source_authority_from_data2_catalog,
+    )
+    from .post_selection_cv_plan import PostSelectionCvPlan
+    from .post_selection_production import FinalProductionPlan
+    from .post_selection_run_identity import (
+        PostSelectionRunRole,
+        post_selection_run_identity,
+    )
+    from .post_selection_store import (
+        POINTER_CV_PLAN,
+        POINTER_FINAL_PLAN,
+        open_post_selection_store,
+        post_selection_root,
+        read_current_post_selection_pointer,
+    )
+    from .target_size_experiment import (
+        resolve_target_size_policy_from_config,
+        target_training_prefix_digest,
+    )
+
+    state = revision.state
+    terminal = state.auto_diagnostic
+    if terminal is None or not terminal.has_recommendation:
+        raise PostSelectionError(
+            "Pre-rework campaign state does not contain a terminal target-size selection."
+        )
+
+    binding = PostSelectionBinding(
+        campaign_generation=state.generation,
+        experiment_definition_digest=state.experiment_definition_digest,
+        training_order_digest=terminal.training_order_digest,
+        frame_authority_digest=state.frame_authority_digest,
+        neutral_statistical_base_digest=state.neutral_statistical_base_digest,
+        split_exclusion_digest=state.split_exclusion_digest,
+        target_size_policy_digest=state.policy_digest,
+        aggregate_digest=state.aggregate_digest,
+        n_selected=terminal.recommended_target_size,
+        selected_membership_digest=terminal.recommended_membership_digest,
+        legacy_v1_campaign_state_revision=revision.state_revision,
+        legacy_v1_execution_head_digest=state.adopted_execution_head_digest,
+        legacy_v1_reducer_state_digest=state.adopted_reducer_state_digest,
+    )
+
+    evidence_store = open_post_selection_store(paths, binding, create=False)
+    cv_plan_digest = read_current_post_selection_pointer(
+        store, binding=binding, kind=POINTER_CV_PLAN
+    )
+    if cv_plan_digest is None or not evidence_store.has(cv_plan_digest):
+        raise PostSelectionError(
+            "Pre-rework campaign state is missing its published CV plan."
+        )
+    cv_plan = evidence_store.get(cv_plan_digest, PostSelectionCvPlan.from_dict)
+    first_fold = cv_plan.folds[0]
+    membership = tuple(
+        sorted(
+            first_fold.training_frame_uids
+            + first_fold.checkpoint_monitor_frame_uids
+            + first_fold.outer_evaluation_frame_uids
+            + first_fold.purged_frame_uids
+        )
+    )
+    if (
+        len(membership) != binding.n_selected
+        or target_training_prefix_digest(
+            binding.training_order_digest,
+            binding.n_selected,
+            membership,
+        )
+        != binding.selected_membership_digest
+    ):
+        raise PostSelectionError(
+            "Legacy CV plan frame membership does not reproduce the selected membership digest."
+        )
+
+    training_root = _path_cfg(cfg, paths, "training_root")
+    manifest = _ensure_manifest(cfg, paths, approve=False)
+    source_catalog = store.get_record(
+        "source_catalog", mdstats.TrainingDataSourceCatalog
+    )
+    data4 = store.get_record("data4", mdstats.Data4FeatureBundle)
+    frame_catalog = store.get_record("frame_catalog", mdstats.TrainingFrameCatalog)
+    frame_data_by_run, frame_records = _load_or_rebuild_frame_data(
+        cfg, paths, source_catalog
+    )
+    source_authority = build_source_authority_from_data2_catalog(
+        source_catalog, manifest=manifest
+    )
+    authenticated = authenticate_vasp_source_authority(
+        source_authority, base_directory=training_root
+    )
+    frame_authority = build_canonical_frame_authority(
+        source_authority,
+        frame_data_by_run,
+        temperature_targets_by_run=authenticated_vasp_temperature_targets(
+            authenticated
+        ),
+    )
+    feature_evidence = build_neutral_feature_evidence_from_data4_bundle(
+        source_authority, frame_authority, data4
+    )
+    neutral_base = build_neutral_statistical_base(
+        source_authority,
+        frame_authority,
+        feature_evidence,
+        policy=resolve_neutral_partition_policy(cfg),
+    )
+    split_exclusion = build_neutral_split_exclusion_evidence(
+        frame_authority, neutral_base
+    )
+    frame_array_index = build_frame_array_index(frame_catalog, frame_data_by_run)
+
+    if frame_authority.content_digest != state.frame_authority_digest:
+        raise PostSelectionError("Frame authority digest mismatch in legacy workspace.")
+    if neutral_base.content_digest != state.neutral_statistical_base_digest:
+        raise PostSelectionError(
+            "Neutral statistical base digest mismatch in legacy workspace."
+        )
+    if split_exclusion.content_digest != state.split_exclusion_digest:
+        raise PostSelectionError(
+            "Split exclusion digest mismatch in legacy workspace."
+        )
+
+    target_size_policy = resolve_target_size_policy_from_config(cfg)
+    m3_frames: tuple[str, ...] = ()
+    m3_digest = ""
+    final_plan_digest = read_current_post_selection_pointer(
+        store, binding=binding, kind=POINTER_FINAL_PLAN
+    )
+    if final_plan_digest is not None and evidence_store.has(final_plan_digest):
+        final_plan = evidence_store.get(
+            final_plan_digest, FinalProductionPlan.from_dict
+        )
+        m3_digest = final_plan.m3_membership_digest
+        if final_plan.required_final_seeds:
+            seed = final_plan.required_final_seeds[0]
+            run_id = post_selection_run_identity(
+                role=PostSelectionRunRole.FINAL_PRODUCTION,
+                plan_digest=final_plan.content_digest,
+                optimizer_seed=seed,
+            )
+            mat_path = (
+                post_selection_root(paths, binding.campaign_generation)
+                / "runs"
+                / run_id
+                / "materialization"
+                / "materialization.json"
+            )
+            if mat_path.is_file():
+                mat_data = json.loads(mat_path.read_text(encoding="utf-8"))
+                mon = mat_data.get("checkpoint_monitor_artifact")
+                if mon and "frame_uids" in mon:
+                    m3_frames = tuple(str(x) for x in mon["frame_uids"])
+
+    authorities = CurrentTargetSizeAuthorities(
+        manifest=manifest,
+        source_catalog=source_catalog,
+        source_authority=source_authority,
+        frame_authority=frame_authority,
+        feature_evidence=feature_evidence,
+        neutral_base=neutral_base,
+        split_exclusion=split_exclusion,
+        aggregate=_LegacyTargetSizeAggregate(
+            content_digest=state.aggregate_digest,
+            definition=_LegacyExperimentDefinition(
+                content_digest=state.experiment_definition_digest,
+                policy=target_size_policy,
+                m3_membership=m3_frames,
+                m3_digest=m3_digest,
+            ),
+        ),
+        common=None,
+        frame_catalog=frame_catalog,
+        frame_data_by_run=frame_data_by_run,
+        frame_array_index=frame_array_index,
+        frame_records=frame_records,
+    )
+    return (
+        CurrentSelectedTrainingContext(
+            binding=binding,
+            selected_membership=membership,
+            frozen=None,
+            authorities=authorities,
+        ),
     )
 
 
@@ -447,6 +784,7 @@ def select_selected_training_context(
 __all__ = [
     "POST_SELECTION_BINDING_SCHEMA",
     "POST_SELECTION_BINDING_V2_SCHEMA",
+    "POST_SELECTION_BINDING_V1_SCHEMA",
     "CurrentSelectedTrainingContext",
     "PostSelectionBinding",
     "PostSelectionError",

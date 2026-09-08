@@ -52,15 +52,17 @@ source/frame/label authorities
   -> neutral statistical substrate and protected relations
   -> one P_train/M3 split and pi_train/pi_eval
   -> one common target-size preparation
-  -> paired-seed candidate screen
-  -> selected binding
-  -> selected-only CV and fresh final production
+  -> optional paired-seed diagnostic (recommendation or typed no-recommendation)
+  -> operator-owned provisional ordered collection
+  -> cross-validate atomic collection freeze
+  -> per-frozen-size CV and fresh final production
 ```
 
 The common preparation is a single authenticated authority, not one independent
 copy per candidate or fold. A post-selection CV fold may create a fold-local
 fitted view from its own training partition when its owner requires it, but it
-cannot create a target-size ladder or alter `T_selected`.
+cannot create a target-size ladder or alter the frozen collection or that
+size's exact membership `T_N`.
 
 Foundation-model providers and large accelerator references are released as
 soon as their final preparation consumer completes. Derived file
@@ -78,7 +80,7 @@ qualified candidates
   -> coarse n1/M1
   -> at most four short n2/M2 continuations
   -> two final n3/M3 continuations
-  -> one selected size or typed scientific failure
+  -> one recommended size or typed no-recommendation outcome
 ```
 
 Each `(candidate size, optimizer seed)` cell runs through the accepted TRAIN2

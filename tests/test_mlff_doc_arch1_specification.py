@@ -161,6 +161,9 @@ def test_doc_arch1_no_campaign_global_scalar_selection_claims():
         "cannot change global T_selected",
         "final T_selected -> final-training fitted products",
         "one pi_train and exact T_selected membership after the target-size freeze",
+        "paired-seed candidate screen\n  -> selected binding",
+        "one selected size or typed scientific failure",
+        "alter `T_selected`",
     ):
         assert stale not in manual, f"stale scalar claim found in manual: {stale}"
         assert stale not in stage, f"stale scalar claim found in stage plan: {stale}"
