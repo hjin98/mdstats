@@ -248,3 +248,59 @@ Request another Software Design review only after candidate identity is resolvab
 ## Simplicity trigger
 
 If implementation begins adding caches, persisted summaries, wrapper loaders, compatibility adapters, migrations, duplicate view-state objects, new state machines, or a second scanner to solve these findings, stop and simplify. The remaining problems are authority substitution, stale prose, and incomplete acceptance. Repair the existing owner/contract/evidence surfaces directly.
+
+---
+
+## Implementation evidence (Round 3)
+
+```text
+executable_head: 23854d72555014c6d4e834d85a5ad292b228f93d
+python: 3.11.15
+mace: 0.3.16
+torch: 2.13.0+cu126
+e3nn: 0.4.4
+pytest-xdist: 3.8.0 (32 concurrent workers)
+```
+
+### 1. R7 — P5A6 compatibility authority restoration
+- Reverted `BASELINE_COMMIT` and `BASELINE_TREE` back to exact frozen baseline pins (`1670275487d29bbcde4c59efafdef9d1f8b0ced7` and `17e2c5609974712bda1efd3375f09f42da830f68`) across:
+  - `qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py`
+  - `qualification/p6-p5a6-compat/P5A6_FIXTURE_IDENTITY.json`
+  - `tests/test_mlff_target_size_p6_destructive_closure.py`
+  - `tests/test_mlff_target_size_p6_p5a6_compatibility.py`
+- Preserved current-side `frozen_entries` collection reopener without modifying historical producer or pre-loading migrations.
+- Executed qualification driver:
+  ```bash
+  conda run -n mace python qualification/p6-p5a6-compat/qualify_p5a6_to_p6.py
+  ```
+  Outcome: Failed closed with `qualification failed closed: baseline worktree creation failed: fatal: invalid reference: 1670275487d29bbcde4c59efafdef9d1f8b0ced7` because the exact commit is unreachable across local repository and project remotes.
+- Per Section R7 item 5, no arbitrary predecessor (`fc69...`), hand-authored fixture, or compatibility wrapper was substituted. The compatibility claim is truthfully left **blocking/unavailable** and returned to Software Design for a supported-history decision.
+
+### 2. R8 — Normative documentation reconciliation
+- Authoritative numbered chapters and stage plan spec updated to replace all scalar global selection statements with collection-level semantics and explicit per-size bindings:
+  - `docs/arch_manuals/mlff_training_data/00_front_matter.md`: training domain definition updated to ordered frozen collection with per-size `T_N = pi_train[:N]`.
+  - `docs/arch_manuals/mlff_training_data/10_foundations.md`: replaced scalar global decision statement with ordered collection and role horizons; CV partition flow updated to branch per frozen size `T_N`.
+  - `docs/arch_manuals/mlff_training_data/30_statistical_design.md`: updated post-selection partitioning, CV fold boundaries, cardinality invariance, admission flow, final production, and consumer views to explicit per-size `T_N` bindings.
+  - `docs/arch_manuals/mlff_training_data/80_ownership_and_decisions.md`: dataflow diagram, authority table, fold-local transform rule, prefix freezing, and durable rules updated to explicit `T_N` bindings.
+  - `docs/specs/training_data/mlff_data_stage_plan_spec.md`: updated fitted-domain diagram and text to explicitly branch over each frozen size `T_N`.
+- Reassembled composite manual and rebuilt PDFs:
+  ```bash
+  conda run -n mace python tools/build_mlff_architecture_manual.py
+  conda run -n mace python docs/build_pdfs.py build --target docs/arch_manuals/mlff_training_data_architecture.pdf --target docs/specs/training_data/mlff_data_stage_plan_spec.pdf
+  ```
+- Strengthened doc specifications in `tests/test_mlff_doc_arch1_specification.py` and `tests/test_mlff_data9b3_campaign_cli_specification.py` with negative assertions against stale scalar phrases.
+
+### 3. R9 — Complete affected-surface regression closure
+- Reconciled previously omitted result-view consumer test `tests/test_mlff_campaign_prepare_boundary.py` to assert current `frozen_entries` instead of retired scalar `frozen`.
+- Bytecode compilation:
+  ```bash
+  conda run -n mace python -m compileall mdstats tests qualification/p6-p5a6-compat
+  ```
+  Outcome: Clean, 0 errors.
+- Executed affected test suites across 32 concurrent CPU workers:
+  - `tests/test_mlff_doc_arch1_specification.py` & `tests/test_mlff_data9b3_campaign_cli_specification.py`: **12 passed in 1.96s**
+  - `tests/test_mlff_target_size_p6_destructive_closure.py` & `tests/test_mlff_target_size_p6_p5a6_compatibility.py`: **31 passed, 1 skipped in 43.74s**
+  - 10-module affected target-size & result-view suite: **200 passed in 125.50s** (`test_mlff_target_size_multi_selection.py`, `test_mlff_target_size_provisional_selection.py`, `test_mlff_target_size_p4d_runtime_cutover.py`, `test_mlff_target_size_multi_size_integration.py`, `test_mlff_campaign_prepare_boundary.py`, `test_mlff_target_size_p4e_terminal_and_invalidation.py`, `test_mlff_target_size_p5a_selected_context.py`, `test_mlff_target_size_p5f_structure.py`, `test_mlff_target_size_p4c_cross_store_adoption.py`, `test_mlff_target_size_p4f_storage_docs_structure.py`).
+  - Total across affected surfaces: **243 passed, 1 skipped in ~170s**.
+- Confirmed narrow prepared loader owner is `load_prepared_target_size_definition` in `mdstats/training_data/campaign_prepared_generation.py` / `campaign_target_size_runtime.py`.
+
