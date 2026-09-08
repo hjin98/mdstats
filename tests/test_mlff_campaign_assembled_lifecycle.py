@@ -130,12 +130,13 @@ def test_the_public_campaign_runs_end_to_end_with_restart_at_every_boundary(
     assert prepared.next_command == "select-target-size"
     _storage_is_safe_here(config)
 
-    # --- 6-8. select, reopen, observe -------------------------------------
+    # --- 6-8. run the optional automatic diagnostic, reopen, observe ------
     screen = p5._SelectedSizeScreenHarness()
     assert (
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=screen.train,
             _external_inference_evaluator=screen.evaluate,
         )
@@ -148,8 +149,14 @@ def test_the_public_campaign_runs_end_to_end_with_restart_at_every_boundary(
     )
     assert selected.next_command == "cross-validate"
     revision = observer.revision()
-    assert revision.state.lifecycle is TargetSizeLifecycle.TERMINAL_SELECTED
-    selected_membership = revision.state.terminal.selected_membership_digest
+    # The diagnostic completed and its recommendation became the provisional
+    # choice. Nothing is frozen yet: that is `cross-validate`'s job.
+    assert revision.state.lifecycle is TargetSizeLifecycle.DIAGNOSTIC_COMPLETE
+    assert revision.state.frozen_entries is None
+    (proposal,) = revision.state.provisional_entries
+    assert proposal.selection_source == "auto_recommendation"
+    selected_membership = proposal.membership_digest
+    assert "Frozen: no" in selected.step("target_size_selection").message
     _storage_is_safe_here(config)
 
     # --- 9-11. cross-validate, reopen, observe ----------------------------
@@ -160,11 +167,12 @@ def test_the_public_campaign_runs_end_to_end_with_restart_at_every_boundary(
         LifecycleObservationState.COMPLETE
     )
     assert validated.next_command == "train-production"
-    # Cross-validation is a statement about the method, not about the data.
-    assert (
-        observer.revision().state.terminal.selected_membership_digest
-        == selected_membership
-    )
+    # Cross-validation is a statement about the method, not about the data --
+    # but it is also the admission that froze the design.
+    (frozen,) = observer.revision().state.frozen_entries
+    assert frozen is not None
+    assert frozen.selected_membership_digest == selected_membership
+    assert observer.revision().state.provisional_entries == ()
 
     # --- 12-15. final production, freeze, reopen, observe -----------------
     assert p5.run_train_production(config, post) == 0
@@ -176,7 +184,7 @@ def test_the_public_campaign_runs_end_to_end_with_restart_at_every_boundary(
     # unqualified, and this is exactly where the old lifecycle stopped.
     assert produced.next_command == "qualification run"
     assert (
-        observer.revision().state.terminal.selected_membership_digest
+        observer.revision().state.frozen_entries[0].selected_membership_digest
         == selected_membership
     )
     _storage_is_safe_here(config)

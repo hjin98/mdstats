@@ -37,6 +37,7 @@ from .._common import (
 from ..campaign_post_selection import (
     PostSelectionBinding,
     PostSelectionStaleBindingError,
+    current_target_size_bindings,
 )
 from ..post_selection_store import PostSelectionPublicationConflictError
 from .errors import QualificationError, QualificationLineageError
@@ -253,12 +254,18 @@ def publish_current_qualification_pointer(
                 "be published as current."
             )
         state = revision.state
+        # See ``post_selection_store``: membership of the current frozen design
+        # is the ancestry token, so unrelated diagnostic publication cannot
+        # orphan a descendant.
+        current = {
+            item.content_digest for item in current_target_size_bindings(state)
+        }
         if (
             state.generation != binding.campaign_generation
-            or revision.state_revision != binding.campaign_state_revision
+            or binding.content_digest not in current
         ):
             raise PostSelectionStaleBindingError(
-                "A newer target-size campaign revision became current while this "
+                "A newer frozen target selection became current while this "
                 "qualification work was running. The stale qualification stays "
                 "available as historical evidence but is never published as current."
             )

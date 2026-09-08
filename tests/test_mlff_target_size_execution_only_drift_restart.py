@@ -100,7 +100,7 @@ def test_d_execution_only_drift_resumes_without_new_scientific_identity(
     )
 
     final_state = resume._revision(paths).state
-    assert final_state.terminal is not None
+    assert final_state.auto_diagnostic is not None
     # No new scientific generation and no new execution context were created.
     assert final_state.generation == generation_before
     assert final_state.execution_context_digest == execution_context_before
@@ -130,7 +130,7 @@ def test_d_execution_only_drift_reaches_the_same_conclusion(tmp_path: Path):
 
     drifted_state = resume._revision(drifted_paths).state
     clean_state = resume._revision(clean_paths).state
-    assert drifted_state.terminal is not None
+    assert drifted_state.auto_diagnostic is not None
     assert (
         drifted_state.adopted_reducer_state_digest
         == clean_state.adopted_reducer_state_digest
@@ -246,7 +246,7 @@ def test_d_general_training_learning_rate_is_not_screen_identity(tmp_path: Path)
     )
     assert resume._select(config, resumed) == 0
     state = resume._revision(paths).state
-    assert state.terminal is not None
+    assert state.auto_diagnostic is not None
     assert state.execution_context_digest == before
 
 
@@ -305,7 +305,7 @@ def test_r6a_unaccepted_first_rung_materialization_does_not_block_retry(
     assert stale_config_bytes
     # ... and accepted nothing.
     assert _accepted_progress_files(paths, revision) == []
-    assert revision.state.terminal is None
+    assert revision.state.auto_diagnostic is None
 
     # Only execution-only launch settings change.
     _rewrite_training(config, **drift)
@@ -320,7 +320,7 @@ def test_r6a_unaccepted_first_rung_materialization_does_not_block_retry(
     assert all(resumed.start_epochs[(size, seed, 1)] == 0 for size, seed in first_rung)
 
     final = resume._revision(paths).state
-    assert final.terminal is not None
+    assert final.auto_diagnostic is not None
     # No new scientific generation or execution context was minted to get past
     # the stale attempt.
     assert final.generation == revision.state.generation
@@ -402,7 +402,7 @@ def test_r6c_general_ema_decay_is_not_screen_identity_when_ema_is_disabled(
         resumed.start_epochs[(size, seed, 3)] == 1 for size, seed in executed_second
     )
     final = resume._revision(paths).state
-    assert final.terminal is not None
+    assert final.auto_diagnostic is not None
     assert final.generation == before.generation
     assert final.execution_context_digest == before.execution_context_digest
 

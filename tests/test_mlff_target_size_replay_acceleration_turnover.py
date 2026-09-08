@@ -232,7 +232,7 @@ def test_committed_head_and_continuation_replay_after_acceleration_turnover(
     assert _trajectory_acceleration_digests(root) == {previous_digest}
 
     final = resume._revision(paths).state
-    assert final.terminal is not None
+    assert final.auto_diagnostic is not None
     assert final.adopted_reducer_state_digest != committed_state
 
 

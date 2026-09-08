@@ -90,8 +90,11 @@ _PROTECTED_ACTIVE_LIFECYCLES = frozenset(
         TargetSizeLifecycle.AWAITING_AUTHORITIES,
         TargetSizeLifecycle.AUTHORITIES_BOUND,
         TargetSizeLifecycle.SCREEN_ACTIVE,
-        TargetSizeLifecycle.TERMINAL_SELECTED,
-        TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
+        # A complete diagnostic protects its own candidate evidence. That
+        # evidence is not disposable merely because a provisional or frozen N
+        # now exists: the operator may override, and the screen's own retention
+        # owner is the only thing that may certify it collectable.
+        TargetSizeLifecycle.DIAGNOSTIC_COMPLETE,
     }
 )
 

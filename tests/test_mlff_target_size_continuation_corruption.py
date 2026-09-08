@@ -79,6 +79,7 @@ def _screen_stopped_after_first_boundary(tmp_path: Path):
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )
@@ -131,6 +132,7 @@ def test_a_destroyed_predecessor_component_fails_closed(
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=resumed.train,
             _external_inference_evaluator=resumed.evaluate,
         )
@@ -154,7 +156,7 @@ def test_a_destroyed_predecessor_component_fails_closed(
     assert after.state.adopted_reducer_state_digest == (
         before.state.adopted_reducer_state_digest
     )
-    assert after.state.terminal is None
+    assert after.state.auto_diagnostic is None
     assert after.state.generation == before.state.generation
 
 
@@ -181,6 +183,7 @@ def test_a_foreign_predecessor_summary_is_refused(tmp_path: Path):
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=resumed.train,
             _external_inference_evaluator=resumed.evaluate,
         )
@@ -193,7 +196,7 @@ def test_a_foreign_predecessor_summary_is_refused(tmp_path: Path):
     assert after.state.adopted_execution_head_digest == (
         before.state.adopted_execution_head_digest
     )
-    assert after.state.terminal is None
+    assert after.state.auto_diagnostic is None
 
 
 def test_an_ordinary_interruption_leaves_the_reducer_untouched(tmp_path: Path):
@@ -211,6 +214,7 @@ def test_an_ordinary_interruption_leaves_the_reducer_untouched(tmp_path: Path):
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=resumed.train,
             _external_inference_evaluator=resumed.evaluate,
         )

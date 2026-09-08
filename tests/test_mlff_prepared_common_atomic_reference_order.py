@@ -332,6 +332,7 @@ def test_select_target_size_advances_past_prepared_common_state(
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )

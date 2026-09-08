@@ -21,10 +21,12 @@ The cross-cutting architecture is defined by the canonical chapters under `docs/
 
 ## Target-size and selected-data authority
 
-The current target-size authority is the single `pi_train`/prefix and reducer
-chain described by Architecture Part V and the cross-cutting contract. It
-derives one global `N_selected`/`T_selected` binding from the configured
-ladder. Retired multi-view, migration, generated-rescue, and pre-target
+The current target-membership authority is the single `pi_train`/prefix chain
+described by Architecture Part V and the cross-cutting contract. The paired-seed
+reducer is an *optional automatic diagnostic* over that ladder: it recommends a
+size. The operator owns the provisional choice, and `cross-validate` admission
+is the one boundary that freezes the global `N_selected`/`T_selected` binding
+and both role training horizons. Retired multi-view, migration, generated-rescue, and pre-target
 per-domain authorities are historical/reject-only and do not create a current
 specification.
 

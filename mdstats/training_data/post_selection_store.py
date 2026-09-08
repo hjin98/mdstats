@@ -37,6 +37,7 @@ from .campaign_post_selection import (
     PostSelectionBinding,
     PostSelectionError,
     PostSelectionStaleBindingError,
+    current_target_size_bindings,
 )
 
 POST_SELECTION_ROOT_NAME = "post-selection"
@@ -229,16 +230,27 @@ def publish_current_post_selection_pointer(
                 "be published as current."
             )
         state = revision.state
+        # Currentness is membership of the *current frozen design*, not the
+        # campaign state revision. Publishing later diagnostic evidence advances
+        # the revision without changing one fact about the frozen experiment,
+        # and must not orphan descendants of it; replacing the design, or the
+        # generation under it, must. Equality of N alone is never enough, and
+        # the collection's own shape is never required: a sibling size joining
+        # an equivalent fresh design cannot invalidate this size's evidence.
+        current = {
+            item.content_digest for item in current_target_size_bindings(state)
+        }
         if (
             state.generation != binding.campaign_generation
-            or revision.state_revision != binding.campaign_state_revision
+            or binding.content_digest not in current
         ):
             raise PostSelectionStaleBindingError(
-                "A newer target-size campaign revision became current while this "
+                "A newer frozen target-size design became current while this "
                 f"post-selection work was running (binding generation "
-                f"{binding.campaign_generation} revision "
-                f"{binding.campaign_state_revision[:12]}...; current generation "
-                f"{state.generation} revision {revision.state_revision[:12]}...). "
+                f"{binding.campaign_generation} target "
+                f"{binding.content_digest[:12]}... for N={binding.n_selected}; "
+                f"current generation {state.generation} with "
+                f"{len(current)} frozen size(s)). "
                 "The stale result stays available as historical evidence but is "
                 "never published as current."
             )

@@ -160,7 +160,7 @@ def test_p6_reopens_the_preserved_p5a6_workspace_through_real_owners():
     try:
         revision = require_current_target_size_runtime(store)
         assert revision.state.regime is TargetSizeRegime.CURRENT
-        assert revision.state.lifecycle is TargetSizeLifecycle.TERMINAL_SELECTED
+        assert revision.state.lifecycle is TargetSizeLifecycle.DIAGNOSTIC_COMPLETE
         assert revision.state.generation == identity["generation"]
         for field in (
             "frame_authority_digest",
@@ -173,9 +173,9 @@ def test_p6_reopens_the_preserved_p5a6_workspace_through_real_owners():
             assert getattr(revision.state, field) == identity[field], field
 
         # 3. The P4 terminal selection and the exact selected-frame binding.
-        terminal = revision.state.terminal
+        terminal = revision.state.auto_diagnostic
         assert terminal is not None
-        assert terminal.selected_target_size == identity["n_selected"]
+        assert terminal.recommended_target_size == identity["n_selected"]
         assert terminal.selected_membership_digest == identity[
             "selected_membership_digest"
         ]

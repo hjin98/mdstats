@@ -513,7 +513,7 @@ def test_p6_retired_target_size_workspace_is_rejected_before_reuse(tmp_path: Pat
         quarantined = [k for k in live if k.startswith(QUARANTINE_KEY_PREFIX)]
         assert any(k.endswith("target_size_study") for k in quarantined)
         # The retired selected size never becomes current authority.
-        assert revision.state.terminal is None
+        assert revision.state.auto_diagnostic is None
     finally:
         store.close()
 
@@ -562,7 +562,7 @@ def test_p6_current_workspace_closes_reopens_and_restarts_deterministically(
             context = build_post_selection_context(cfg, paths, store, trainer=None)
             acceptance = resolve_current_cv_acceptance(context)
             final_plan = resolve_current_final_production_plan(context)
-            assert revision.state.lifecycle is TargetSizeLifecycle.TERMINAL_SELECTED
+            assert revision.state.lifecycle is TargetSizeLifecycle.DIAGNOSTIC_COMPLETE
             assert acceptance is not None and acceptance.accepted
             assert final_plan is not None
             return {

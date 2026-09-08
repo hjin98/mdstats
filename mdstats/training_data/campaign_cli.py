@@ -11,6 +11,9 @@ architecture and no installable alternative selection engine.
 """
 from __future__ import annotations
 
+import sys
+from typing import Sequence
+
 from . import _campaign_cli_core as _core
 
 # Preserve the campaign module surface, including internal helper names used by
@@ -24,9 +27,8 @@ for _name in dir(_core):
 # compatibility names are never promoted through the facade's public API.
 __all__ = list(_core.__all__)
 
-
-def main(*args, **kwargs):
-    return _core.main(*args, **kwargs)
+def main(argv: Sequence[str] | None = None) -> int:
+    return _core.main(argv)
 
 
 if __name__ == "__main__":

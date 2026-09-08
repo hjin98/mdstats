@@ -890,7 +890,9 @@ def target_size_views(
                 revision.state.adopted_execution_head_digest,
                 revision.state.screen_window_digest,
                 revision.state.experiment_definition_digest,
-                revision.state.terminal,
+                revision.state.auto_diagnostic,
+                revision.state.provisional_entries,
+                revision.state.frozen_entries,
             )
         )
 
@@ -1131,32 +1133,51 @@ def post_selection_views(
     if current_generation is None:
         return views, tuple(unresolved)
 
-    publication_id = f"p5:publication:g{current_generation}"
     if not selection_is_expected(store):
         # The campaign has not selected a target size yet, so there is no current
         # publication to resolve and nothing downstream to be unresolved about.
         return views, tuple(unresolved)
     try:
-        context = _read_only_post_selection_context(cfg, paths, store)
+        contexts = _read_only_post_selection_contexts(cfg, paths, store)
     except Exception as exc:
         unresolved.append((OWNER_P5, f"current selected authority unresolved: {exc}"))
         return views, tuple(unresolved)
-    if context is None:
-        return views, tuple(unresolved)
 
-    try:
-        from ..post_selection_publication import (
-            resolve_current_final_production_publication,
-        )
+    from ..post_selection_publication import (
+        resolve_current_final_production_publication,
+    )
 
-        decision = resolve_current_final_production_publication(context)
-    except Exception as exc:
-        unresolved.append(
-            (OWNER_P5, f"current final publication could not be authenticated: {exc}")
+    for context in contexts:
+        n_selected = context.selected.n_selected
+        publication_id = f"p5:publication:g{current_generation}:n{n_selected}"
+        try:
+            decision = resolve_current_final_production_publication(context)
+        except Exception as exc:
+            unresolved.append(
+                (
+                    OWNER_P5,
+                    f"current final publication for N={n_selected} could not be "
+                    f"authenticated: {exc}",
+                )
+            )
+            continue
+        if decision is None:
+            continue
+        _publication_views(
+            views, paths, decision, current_generation, publication_id
         )
-        return views, tuple(unresolved)
-    if decision is None:
-        return views, tuple(unresolved)
+    return views, tuple(unresolved)
+
+
+def _publication_views(
+    views: list[OwnerArtifactView],
+    paths: Any,
+    decision: Any,
+    current_generation: int,
+    publication_id: str,
+) -> None:
+    """Append one selected size's current publication artifacts."""
+    from ..post_selection_store import post_selection_root
 
     member_ids: list[str] = []
     for item in decision.published_seed_evidence:
@@ -1196,6 +1217,7 @@ def post_selection_views(
     ):
         if candidate in reported or candidate.startswith("p4:"):
             requires.append(candidate)
+
     views.append(
         OwnerArtifactView(
             owner=OWNER_P5,
@@ -1224,7 +1246,6 @@ def post_selection_views(
             requires=tuple(requires),
         )
     )
-    return views, tuple(unresolved)
 
 
 def selection_is_expected(store: Any) -> bool:
@@ -1237,10 +1258,7 @@ def selection_is_expected(store: Any) -> bool:
     separates them.
     """
 
-    from ..campaign_target_size_state import (
-        TargetSizeLifecycle,
-        load_target_size_campaign_revision,
-    )
+    from ..campaign_target_size_state import load_target_size_campaign_revision
 
     try:
         revision = load_target_size_campaign_revision(store)
@@ -1248,7 +1266,9 @@ def selection_is_expected(store: Any) -> bool:
         return False
     if revision is None:
         return False
-    return revision.state.lifecycle is TargetSizeLifecycle.TERMINAL_SELECTED
+    # Post-selection storage exists only under an admitted frozen selection. A
+    # complete automatic diagnostic is not that, and never was.
+    return revision.state.frozen_entries is not None
 
 
 def _run_infrastructure_members(run_root: Path) -> tuple[str, ...]:
@@ -1267,12 +1287,21 @@ def _run_infrastructure_members(run_root: Path) -> tuple[str, ...]:
     return tuple(name for name in names if (run_root / name).is_file())
 
 
-def _read_only_post_selection_context(
+def _read_only_post_selection_contexts(
     cfg: Mapping[str, Any], paths: Any, store: Any
-) -> Any | None:
-    from ..campaign_post_selection_runtime import build_post_selection_context
+) -> tuple[Any, ...]:
+    """Every current per-size context, through the production enumeration owner.
 
-    return build_post_selection_context(cfg, paths, store, trainer=_readonly_trainer())
+    Reachability must account for *every* current sibling binding: treating one
+    size's pointer namespace as the whole current graph would make another
+    size's evidence look unreachable and eligible for cleanup.
+    """
+
+    from ..campaign_post_selection_runtime import build_post_selection_contexts
+
+    return build_post_selection_contexts(
+        cfg, paths, store, trainer=_readonly_trainer()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1286,7 +1315,7 @@ def qualification_views(
     store: Any,
     *,
     current_generation: int | None,
-    publication_present: bool,
+    publication_ids: tuple[str, ...],
     certify: bool = True,
 ) -> tuple[list[OwnerArtifactView], tuple[tuple[str, str], ...], tuple[str, ...]]:
     """P7 durable evidence, attempt scratch, and the P5 dependency it carries.
@@ -1557,8 +1586,9 @@ def qualification_views(
         for item in (f"p7:objects:g{current_generation}",)
         if item in reported
     ]
-    if publication_present:
-        requires.append(f"p5:publication:g{current_generation}")
+    # Qualification exists only for a single-size frozen design, so this edge
+    # names the one current publication it descends from.
+    requires.extend(publication_ids)
     views.append(
         OwnerArtifactView(
             owner=OWNER_P7,
@@ -1706,9 +1736,11 @@ def _current_qualification_state(
     if not selection_is_expected(store):
         return None
     try:
-        from ..campaign_post_selection import load_current_selected_training_context
+        from ..campaign_post_selection import (
+            load_current_selected_training_contexts,
+        )
 
-        selected = load_current_selected_training_context(cfg, paths, store)
+        contexts = load_current_selected_training_contexts(cfg, paths, store)
     except Exception:
         return (
             "unresolved",
@@ -1716,6 +1748,11 @@ def _current_qualification_state(
             "predecessor lineage stays pinned until ownership is repaired",
             "unresolved",
         )
+    if len(contexts) != 1:
+        # Qualification exists only for a single-size frozen design, so a
+        # multi-size campaign has no current P7 record to pin anything with.
+        return None
+    selected = contexts[0]
     try:
         from ..qualification.record import ProductionQualificationRecord
         from ..qualification.store import (
@@ -2114,7 +2151,7 @@ def build_owner_views(
         )
         current_generation = None
 
-    publication_present = False
+    publication_ids: tuple[str, ...] = ()
     try:
         p5_views, p5_unresolved = post_selection_views(
             cfg,
@@ -2125,8 +2162,10 @@ def build_owner_views(
         )
         views.extend(p5_views)
         unresolved.extend(p5_unresolved)
-        publication_present = any(
-            view.artifact_id == f"p5:publication:g{current_generation}" for view in p5_views
+        publication_ids = tuple(
+            view.artifact_id
+            for view in p5_views
+            if view.artifact_id.startswith(f"p5:publication:g{current_generation}")
         )
     except Exception as exc:
         unresolved.append((OWNER_P5, f"post-selection owner state unreadable: {exc}"))
@@ -2138,7 +2177,7 @@ def build_owner_views(
             paths,
             store,
             current_generation=current_generation,
-            publication_present=publication_present,
+            publication_ids=publication_ids,
             certify=certify,
         )
         views.extend(p7_views)

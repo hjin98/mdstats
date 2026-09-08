@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import ast
-
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -355,7 +355,7 @@ def test_r9b_head_namespace_is_one_owner_across_policy_and_mace_translation(
 def _write_fake_train_wrapper(path: Path, marker: Path, pseudo_train: Path, true_monitor: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     path.write_text(
-        f"""#!/usr/bin/env python3
+        f"""#!{sys.executable}
 import argparse
 import json
 import ast

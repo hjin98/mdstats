@@ -23,6 +23,9 @@ import tests.test_mlff_target_size_p4d_runtime_cutover as p4d
 
 from mdstats.training_data import _campaign_cli_core as cli
 from mdstats.training_data._campaign_cli_core import CampaignStore
+from mdstats.training_data.campaign_target_size_selection import (
+    resolve_frozen_target_design,
+)
 from mdstats.training_data.campaign_target_size_state import (
     load_target_size_campaign_revision,
 )
@@ -116,22 +119,30 @@ def build_selected_campaign(
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=screen.train,
             _external_inference_evaluator=screen.evaluate,
         )
         == 0
     )
-    # The fixture's contract is a *selected* terminal result at a CV-feasible
-    # size; a screen that merely finished is not what post-selection needs.
-    store = CampaignStore(p4d.cli._load_config(config)[1].state_db)
+    # The fixture's contract is a *frozen* downstream design at a CV-feasible
+    # size. The diagnostic only recommends; the freeze is a separate decision,
+    # taken here through the real admission owner exactly as `cross-validate`
+    # takes it, so every P5 suite starts from a genuine frozen ancestry.
+    cfg, paths = p4d.cli._load_config(config)
+    store = CampaignStore(paths.state_db)
     try:
         revision = load_target_size_campaign_revision(store)
-        terminal = revision.state.terminal
-        assert terminal is not None and terminal.is_selection, (
-            "post-selection fixture requires a terminal selection, got "
+        diagnostic = revision.state.auto_diagnostic
+        assert diagnostic is not None and diagnostic.has_recommendation, (
+            "post-selection fixture requires a diagnostic recommendation, got "
             f"{revision.state.lifecycle}"
         )
-        assert terminal.selected_target_size == SELECTED_TARGET_SIZE
+        assert diagnostic.recommended_target_size == SELECTED_TARGET_SIZE
+        entries = revision.state.provisional_entries
+        assert [entry.n_provisional for entry in entries] == [SELECTED_TARGET_SIZE]
+        design = resolve_frozen_target_design(cfg, paths, store, admit=True)
+        assert list(design.selected_sizes) == [SELECTED_TARGET_SIZE]
     finally:
         store.close()
     return config, workspace
@@ -231,7 +242,12 @@ def train_like_mace(request, *, real_mace_checkpoint: bool = False):
     handler = SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir)))
     train_loader = [object()]
     model = torch.nn.Linear(3, 2, dtype=torch.float64)
-    optimizer = torch.optim.SGD(model.parameters(), lr=1.0e-4, momentum=0.9)
+    base_lr = (
+        float(request.plan.learning_rate_policy.base_learning_rate)
+        if hasattr(request, "plan") and hasattr(request.plan, "learning_rate_policy")
+        else 1.0e-4
+    )
+    optimizer = torch.optim.SGD(model.parameters(), lr=base_lr, momentum=0.9)
     ema = ExponentialMovingAverage(model.parameters(), decay=0.95)
     runtime = runtime_mod._Train2Runtime(
         request.plan,

@@ -37,20 +37,20 @@ from mdstats.training_data.campaign_target_size_state import (
     commit_target_size_campaign_transition,
     load_target_size_campaign_revision,
 )
-from mdstats.training_data.campaign_target_size_terminal import (
+from mdstats.training_data.campaign_target_size_diagnostic import (
     SCIENTIFIC_IDENTITY_FIELDS,
-    TargetSizeTerminalProjectionError,
-    ValidatedTargetSizeTerminalResult,
+    TargetSizeDiagnosticProjectionError,
+    ValidatedTargetSizeAutoDiagnostic,
     classify_target_size_invalidation,
-    commit_terminal_projection,
-    derive_terminal_projection,
-    load_validated_target_size_terminal_result,
-    validate_terminal_projection,
+    commit_auto_diagnostic,
+    derive_auto_diagnostic,
+    load_validated_target_size_auto_diagnostic,
+    validate_auto_diagnostic,
 )
 from mdstats.training_data.campaign_target_size_view import (
     TARGET_SIZE_RESULT_VIEW_SCHEMA,
     build_target_size_result_view,
-    expose_current_target_size_terminal_result,
+    expose_current_target_size_auto_diagnostic,
     write_current_target_size_result_view,
     write_nonterminal_target_size_result_view,
     write_target_size_result_view,
@@ -98,6 +98,7 @@ def _terminal_campaign(tmp_path: Path):
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )
@@ -134,11 +135,11 @@ def test_p4e_req1_terminal_selection_is_derived_and_revalidated(tmp_path: Path):
     store = CampaignStore(_state_db(workspace))
     try:
         revision = load_target_size_campaign_revision(store)
-        terminal = revision.state.terminal
+        terminal = revision.state.auto_diagnostic
         assert terminal is not None
         assert revision.state.lifecycle in (
-            TargetSizeLifecycle.TERMINAL_SELECTED,
-            TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
+            TargetSizeLifecycle.DIAGNOSTIC_COMPLETE,
+            TargetSizeLifecycle.DIAGNOSTIC_COMPLETE,
         )
         assert terminal.experiment_definition_digest == definition.content_digest
         assert terminal.execution_head_digest == (
@@ -147,19 +148,19 @@ def test_p4e_req1_terminal_selection_is_derived_and_revalidated(tmp_path: Path):
         assert terminal.reducer_state_digest == (
             revision.state.adopted_reducer_state_digest
         )
-        if terminal.is_selection:
+        if terminal.has_recommendation:
             # The exact T_selected identity is what P2 produces for that N.
-            assert terminal.selected_membership_digest == (
-                definition.training_order.candidate_digest(terminal.selected_target_size)
+            assert terminal.recommended_membership_digest == (
+                definition.training_order.candidate_digest(terminal.recommended_target_size)
             )
-            assert terminal.selected_target_size in (
+            assert terminal.recommended_target_size in (
                 definition.qualified_candidate_sizes
             )
 
         resolver = TargetSizeExecutionResolver(
             workspace / revision.state.execution_root
         )
-        head = validate_terminal_projection(
+        head = validate_auto_diagnostic(
             revision, resolver=resolver, definition=definition
         )
         assert head.content_digest == terminal.execution_head_digest
@@ -180,12 +181,12 @@ def test_p4e_req1_fresh_process_reload_re_derives_the_identical_projection(
         resolver = TargetSizeExecutionResolver(
             workspace / revision.state.execution_root
         )
-        head = validate_terminal_projection(
+        head = validate_auto_diagnostic(
             revision, resolver=resolver, definition=definition
         )
         assert (
-            derive_terminal_projection(head, definition=definition)
-            == revision.state.terminal
+            derive_auto_diagnostic(head, definition=definition)
+            == revision.state.auto_diagnostic
         )
     finally:
         store.close()
@@ -199,6 +200,7 @@ def test_p4e_req1_repeating_select_target_size_stays_terminal(tmp_path: Path, ca
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )
@@ -207,14 +209,14 @@ def test_p4e_req1_repeating_select_target_size_stays_terminal(tmp_path: Path, ca
     # A terminal result is a result, not an interruption: nothing was retrained.
     assert harness.rungs == []
     output = capsys.readouterr().out
-    assert "already selected and frozen" in output or "scientifically terminal" in output
+    assert "no screening jobs were rerun" in output
 
 
 # --- REQ2 tamper negatives -------------------------------------------------
 
 
 def _tampered_terminal(revision, **changes):
-    return replace(revision.state.terminal, **changes)
+    return replace(revision.state.auto_diagnostic, **changes)
 
 
 def test_p4e_req2_mutating_only_selected_n_is_rejected(tmp_path: Path):
@@ -223,23 +225,23 @@ def test_p4e_req2_mutating_only_selected_n_is_rejected(tmp_path: Path):
     store = CampaignStore(_state_db(workspace))
     try:
         revision = load_target_size_campaign_revision(store)
-        terminal = revision.state.terminal
-        if not terminal.is_selection:
+        terminal = revision.state.auto_diagnostic
+        if not terminal.has_recommendation:
             pytest.skip("bounded fixture reached a terminal scientific failure")
         other = next(
             size
             for size in definition.qualified_candidate_sizes
-            if size != terminal.selected_target_size
+            if size != terminal.recommended_target_size
         )
-        forged = replace(revision.state, terminal=_tampered_terminal(
-            revision, selected_target_size=int(other)
+        forged = replace(revision.state, auto_diagnostic=_tampered_terminal(
+            revision, recommended_target_size=int(other)
         ))
         forged_revision = replace(revision, state=forged)
         resolver = TargetSizeExecutionResolver(
             workspace / revision.state.execution_root
         )
-        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo:
-            validate_terminal_projection(
+        with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo:
+            validate_auto_diagnostic(
                 forged_revision, resolver=resolver, definition=definition
             )
         assert "never accepted from campaign state alone" in str(excinfo.value)
@@ -253,19 +255,19 @@ def test_p4e_req2_mutating_only_t_selected_identity_is_rejected(tmp_path: Path):
     store = CampaignStore(_state_db(workspace))
     try:
         revision = load_target_size_campaign_revision(store)
-        if not revision.state.terminal.is_selection:
+        if not revision.state.auto_diagnostic.has_recommendation:
             pytest.skip("bounded fixture reached a terminal scientific failure")
         forged = replace(
             revision.state,
-            terminal=_tampered_terminal(
-                revision, selected_membership_digest=digest({"forged": "membership"})
+            auto_diagnostic=_tampered_terminal(
+                revision, recommended_membership_digest=digest({"forged": "membership"})
             ),
         )
         resolver = TargetSizeExecutionResolver(
             workspace / revision.state.execution_root
         )
-        with pytest.raises(TargetSizeTerminalProjectionError):
-            validate_terminal_projection(
+        with pytest.raises(TargetSizeDiagnosticProjectionError):
+            validate_auto_diagnostic(
                 replace(revision, state=forged),
                 resolver=resolver,
                 definition=definition,
@@ -285,7 +287,7 @@ def test_p4e_req2_mutating_only_the_adopted_head_reference_is_rejected(
         forged = replace(
             revision.state,
             adopted_execution_head_digest=digest({"forged": "head"}),
-            terminal=_tampered_terminal(
+            auto_diagnostic=_tampered_terminal(
                 revision, execution_head_digest=digest({"forged": "head"})
             ),
         )
@@ -293,7 +295,7 @@ def test_p4e_req2_mutating_only_the_adopted_head_reference_is_rejected(
             workspace / revision.state.execution_root
         )
         with pytest.raises(TargetSizeAdoptionCorruptionError):
-            validate_terminal_projection(
+            validate_auto_diagnostic(
                 replace(revision, state=forged),
                 resolver=resolver,
                 definition=definition,
@@ -313,7 +315,7 @@ def test_p4e_req2_reducer_state_carrying_a_foreign_membership_is_rejected(
     store = CampaignStore(_state_db(workspace))
     try:
         revision = load_target_size_campaign_revision(store)
-        if not revision.state.terminal.is_selection:
+        if not revision.state.auto_diagnostic.has_recommendation:
             pytest.skip("bounded fixture reached a terminal scientific failure")
         resolver = TargetSizeExecutionResolver(
             workspace / revision.state.execution_root
@@ -332,8 +334,8 @@ def test_p4e_req2_reducer_state_carrying_a_foreign_membership_is_rejected(
             post_state=forged_state,
             post_state_digest=forged_state.content_digest,
         )
-        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo:
-            derive_terminal_projection(forged_head, definition=definition)
+        with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo:
+            derive_auto_diagnostic(forged_head, definition=definition)
         assert "the P2 training order does not produce" in str(excinfo.value)
     finally:
         store.close()
@@ -346,8 +348,8 @@ def test_p4e_req2_nonterminal_head_cannot_be_projected(tmp_path: Path):
     batch = _execute_boundary(env, tmp_path, state, 1)
     head = commit_target_size_boundary_batch(env["root"], definition, state, batch)
     assert not head.post_state.is_terminal
-    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo:
-        derive_terminal_projection(head, definition=definition)
+    with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo:
+        derive_auto_diagnostic(head, definition=definition)
     assert "requires a terminal reducer state" in str(excinfo.value)
 
 
@@ -398,13 +400,13 @@ def test_p4e_req3_changed_identity_advances_the_generation_and_keeps_the_old_res
         after = ensure_current_target_size_authorities(store, changed)
         assert after.state.generation == before.state.generation + 1
         # The fresh generation starts without inheriting the retired result.
-        assert after.state.terminal is None
+        assert after.state.auto_diagnostic is None
         assert after.state.adopted_execution_head_digest is None
         assert after.state.attempt is None
         assert after.state.disposition == "scientific_identity_changed"
         # The retired generation's terminal evidence remains in the chain as
         # history rather than being edited into the new one.
-        assert before.state.terminal is not None
+        assert before.state.auto_diagnostic is not None
     finally:
         store.close()
 
@@ -455,7 +457,7 @@ def test_p4e_req3_cv_only_and_production_only_settings_are_target_size_neutral(
             revision.state, observed
         ).is_current
         # ...and the terminal result is untouched.
-        assert revision.state.terminal is not None
+        assert revision.state.auto_diagnostic is not None
     finally:
         store.close()
 
@@ -521,6 +523,7 @@ def test_p4e_req4_operational_interruption_stays_resumable(tmp_path: Path, capsy
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=interrupted.train,
             _external_inference_evaluator=interrupted.evaluate,
         )
@@ -530,7 +533,7 @@ def test_p4e_req4_operational_interruption_stays_resumable(tmp_path: Path, capsy
         revision = load_target_size_campaign_revision(store)
         # An incomplete rung is an operational interruption, never a terminal
         # scientific outcome.
-        assert revision.state.terminal is None
+        assert revision.state.auto_diagnostic is None
         assert revision.state.lifecycle is TargetSizeLifecycle.SCREEN_ACTIVE
     finally:
         store.close()
@@ -540,6 +543,7 @@ def test_p4e_req4_operational_interruption_stays_resumable(tmp_path: Path, capsy
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=resumed.train,
             _external_inference_evaluator=resumed.evaluate,
         )
@@ -548,7 +552,7 @@ def test_p4e_req4_operational_interruption_stays_resumable(tmp_path: Path, capsy
     store = CampaignStore(_state_db(workspace))
     try:
         revision = load_target_size_campaign_revision(store)
-        assert revision.state.terminal is not None
+        assert revision.state.auto_diagnostic is not None
     finally:
         store.close()
 
@@ -557,10 +561,10 @@ def test_p4e_req4_terminal_scientific_failure_is_not_an_interruption():
     """A nonconverged terminal outcome persists as a scientific result."""
 
     from mdstats.training_data.campaign_target_size_state import (
-        TargetSizeTerminalProjection,
+        TargetSizeAutoDiagnostic,
     )
 
-    projection = TargetSizeTerminalProjection(
+    projection = TargetSizeAutoDiagnostic(
         reducer_status=ReducerStatus.INSUFFICIENT_COMPARISON.value,
         experiment_definition_digest=digest({"fixture": "definition"}),
         reducer_state_digest=digest({"fixture": "reducer"}),
@@ -568,11 +572,11 @@ def test_p4e_req4_terminal_scientific_failure_is_not_an_interruption():
         training_order_digest=digest({"fixture": "order"}),
         terminal_reason_codes=("too_few_complete_comparable_candidates",),
     )
-    assert not projection.is_selection
+    assert not projection.has_recommendation
     state = TargetSizeCampaignState(
         regime=TargetSizeRegime.CURRENT,
         generation=1,
-        lifecycle=TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE,
+        lifecycle=TargetSizeLifecycle.DIAGNOSTIC_COMPLETE,
         frame_authority_digest=digest({"fixture": "frame"}),
         neutral_statistical_base_digest=digest({"fixture": "neutral"}),
         split_exclusion_digest=digest({"fixture": "split"}),
@@ -585,28 +589,28 @@ def test_p4e_req4_terminal_scientific_failure_is_not_an_interruption():
         execution_root="target-size/g1",
         adopted_execution_head_digest=digest({"fixture": "head"}),
         adopted_reducer_state_digest=digest({"fixture": "reducer"}),
-        terminal=projection,
+        auto_diagnostic=projection,
     )
-    assert state.lifecycle is TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE
-    # A terminal scientific outcome can never be relabelled as a selection.
+    assert state.lifecycle is TargetSizeLifecycle.DIAGNOSTIC_COMPLETE
+    # A diagnostic that established nothing cannot be dressed up as a
+    # recommendation, and it carries no proposal and no frozen selection.
     from mdstats.training_data._common import TrainingDataInputError
 
+    assert state.provisional_entries == () and state.frozen_entries is None
     with pytest.raises(TrainingDataInputError):
-        replace(state, lifecycle=TargetSizeLifecycle.TERMINAL_SELECTED)
+        replace(state, lifecycle=TargetSizeLifecycle.SCREEN_ACTIVE)
 
-    # A historical blocking-ceiling projection stays a scientific failure; the
-    # corrected practical-ceiling rule never reclassifies old evidence in place.
-    from mdstats.training_data.campaign_target_size_terminal import (
-        _terminal_lifecycle,
-    )
-    from mdstats.training_data.target_size_experiment import (
-        HISTORICAL_BLOCKING_CEILING_STATUS,
+    # Nor can it block an explicit manual choice: nothing in this state names a
+    # campaign-terminal step, and the lifecycle projection says so.
+    from mdstats.training_data.campaign_lifecycle import (
+        LifecycleObservationState,
+        _screen_step,
     )
 
-    assert (
-        _terminal_lifecycle(HISTORICAL_BLOCKING_CEILING_STATUS)
-        is TargetSizeLifecycle.TERMINAL_SCIENTIFIC_FAILURE
-    )
+    step = _screen_step(state, True)
+    assert step.terminal is False
+    assert step.state is LifecycleObservationState.WAITING
+    assert "explicit qualified choice remains available" in step.message
 
 
 # --- REQ5 raw/live/EMA restart semantics stay with the P3 owner ------------
@@ -633,7 +637,7 @@ def test_p4e_req5_runtime_never_reinterprets_checkpoint_state(tmp_path: Path):
         "campaign_target_size_state.py",
         "campaign_target_size_cutover.py",
         "campaign_target_size_adoption.py",
-        "campaign_target_size_terminal.py",
+        "campaign_target_size_diagnostic.py",
         "campaign_target_size_retention.py",
         "campaign_target_size_view.py",
     ):
@@ -685,6 +689,7 @@ def test_p4e_req5_resume_goes_through_the_real_p3_owner(tmp_path: Path, monkeypa
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )
@@ -743,6 +748,7 @@ def _ceiling_selection_campaign(tmp_path: Path):
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )
@@ -771,13 +777,14 @@ def test_p4e_mandatory1_unchanged_fresh_process_reload_with_stale_or_missing_poi
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=poison_trainer,
             _external_inference_evaluator=poison_evaluator,
         )
         == 0
     )
     output = capsys.readouterr().out
-    assert "already selected and frozen" in output or "scientifically terminal" in output
+    assert "no screening jobs were rerun" in output
 
     # Forging the rebuildable pointer still results in authenticated resolution:
     pointer_path.write_text(
@@ -787,6 +794,7 @@ def test_p4e_mandatory1_unchanged_fresh_process_reload_with_stale_or_missing_poi
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=poison_trainer,
             _external_inference_evaluator=poison_evaluator,
         )
@@ -814,6 +822,7 @@ def test_p4e_mandatory2_missing_immutable_adopted_head_fails_closed(tmp_path: Pa
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=_PoisonTrainer(),
             _external_inference_evaluator=_PoisonEvaluator(),
         )
@@ -840,6 +849,7 @@ def test_p4e_mandatory3_corrupt_immutable_adopted_head_fails_closed(tmp_path: Pa
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=_PoisonTrainer(),
             _external_inference_evaluator=_PoisonEvaluator(),
         )
@@ -869,6 +879,7 @@ def test_p4e_mandatory4_persisted_campaign_tamper_fails_closed(tmp_path: Path):
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=_PoisonTrainer(),
             _external_inference_evaluator=_PoisonEvaluator(),
         )
@@ -921,10 +932,11 @@ def test_p4e_mandatory5_scientific_configuration_invalidation_fails_closed(
             content + f"\n[{section}]\n{key} = {new_value}\n", encoding="utf-8"
         )
 
-    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo:
+    with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo:
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=_PoisonTrainer(),
             _external_inference_evaluator=_PoisonEvaluator(),
         )
@@ -958,13 +970,14 @@ checkpoint_strategy = "topk"
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=poison_trainer,
             _external_inference_evaluator=poison_evaluator,
         )
         == 0
     )
     output = capsys.readouterr().out
-    assert "already selected and frozen" in output or "scientifically terminal" in output
+    assert "no screening jobs were rerun" in output
 
 
 def test_p4e_mandatory7_selected_at_ceiling_reload_and_corruption_negative(
@@ -993,25 +1006,24 @@ def test_p4e_mandatory7_selected_at_ceiling_reload_and_corruption_negative(
     try:
         revision = load_target_size_campaign_revision(store)
         state = revision.state
-        # The warning is diagnostic metadata on a valid selection: the campaign
-        # is TERMINAL_SELECTED, not a scientific failure.
-        assert state.lifecycle is TargetSizeLifecycle.TERMINAL_SELECTED
-        assert state.terminal.is_selection
+        # The warning is diagnostic metadata on a valid recommendation, not a
+        # scientific failure and not a frozen decision.
+        assert state.lifecycle is TargetSizeLifecycle.DIAGNOSTIC_COMPLETE
+        assert state.auto_diagnostic.has_recommendation
         assert CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE in (
-            state.terminal.terminal_reason_codes
+            state.auto_diagnostic.terminal_reason_codes
         )
         definition, _paths = _definition(config)
         nmax = definition.policy.nmax
-        assert state.terminal.selected_target_size == nmax
-        assert state.terminal.selected_membership_digest == (
+        assert state.auto_diagnostic.recommended_target_size == nmax
+        assert state.auto_diagnostic.recommended_membership_digest == (
             definition.training_order.candidate_digest(nmax)
         )
         head_digest = state.adopted_execution_head_digest
-
-        # P5 admits the exact selected ceiling through the real owner.
-        context = load_current_selected_training_context(cfg, paths, store)
-        assert context.binding.n_selected == nmax
-        assert len(context.selected_membership) == nmax
+        # The recommendation became the provisional choice; nothing is frozen.
+        (proposal,) = state.provisional_entries
+        assert proposal.n_provisional == nmax
+        assert state.frozen_entries is None
 
         # Lifecycle keeps advancing: the next admissible command is cross-validate.
         snapshot = project_campaign_lifecycle(paths, store)
@@ -1028,20 +1040,21 @@ def test_p4e_mandatory7_selected_at_ceiling_reload_and_corruption_negative(
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=_PoisonTrainer(),
             _external_inference_evaluator=_PoisonEvaluator(),
         )
         == 0
     )
     output = capsys.readouterr().out
-    assert "already selected and frozen" in output
+    assert "no screening jobs were rerun" in output
     assert "convergence was not demonstrated" in output
 
     view = json.loads(
         (paths.results / "target-size-state.json").read_text(encoding="utf-8")
     )
     assert view["nonconverged_at_configured_ceiling"] is True
-    assert view["selected_target_size"] == nmax
+    assert view["recommended_target_size"] == nmax
 
     # Missing adopted head fails as corruption rather than exposing persisted failure:
     head_path = workspace / ".mdstats" / "target-size" / "g1" / "heads" / f"{head_digest}.json"
@@ -1050,9 +1063,26 @@ def test_p4e_mandatory7_selected_at_ceiling_reload_and_corruption_negative(
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=_PoisonTrainer(),
             _external_inference_evaluator=_PoisonEvaluator(),
         )
+
+    # Admission - and only admission - freezes the exact ceiling membership, and
+    # it does so without the automatic screen's execution head. The diagnostic is
+    # optional evidence, so its absence cannot block the downstream design.
+    store = CampaignStore(_state_db(workspace))
+    try:
+        context = load_current_selected_training_context(
+            cfg, paths, store, admit=True
+        )
+        assert context.binding.n_selected == nmax
+        assert len(context.selected_membership) == nmax
+        (frozen,) = load_target_size_campaign_revision(store).state.frozen_entries
+        assert frozen is not None and frozen.n_selected == nmax
+        assert frozen.selection_source == "auto_recommendation"
+    finally:
+        store.close()
 
 
 def test_p4e_mandatory8_terminal_view_bypass_negative(tmp_path: Path):
@@ -1063,27 +1093,27 @@ def test_p4e_mandatory8_terminal_view_bypass_negative(tmp_path: Path):
     cfg, paths = _load_config(config)
     try:
         revision = load_target_size_campaign_revision(store)
-        assert revision.state.terminal is not None
+        assert revision.state.auto_diagnostic is not None
 
         # 1. Generic builder rejects terminal revision unconditionally:
-        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo1:
+        with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo1:
             build_target_size_result_view(revision)
-        assert "cannot render terminal target-size state" in str(excinfo1.value)
+        assert "cannot render a completed automatic diagnostic" in str(excinfo1.value)
 
         # 2. Generic writer rejects terminal revision unconditionally:
-        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo2:
+        with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo2:
             write_target_size_result_view(tmp_path / "stale.json", revision)
-        assert "cannot write terminal target-size state" in str(excinfo2.value)
+        assert "cannot write a completed automatic diagnostic" in str(excinfo2.value)
 
         # 3. CampaignStore-backed current exposure succeeds:
         view = write_current_target_size_result_view(
             cfg, paths, store, expected_revision=revision
         )
         assert view["schema"] == TARGET_SIZE_RESULT_VIEW_SCHEMA
-        assert view["terminal"] is not None
+        assert view["auto_diagnostic"] is not None
         assert (
-            view["terminal"]["selected_target_size"]
-            == revision.state.terminal.selected_target_size
+            view["auto_diagnostic"]["selected_target_size"]
+            == revision.state.auto_diagnostic.recommended_target_size
         )
     finally:
         store.close()
@@ -1106,7 +1136,7 @@ def test_p4e_mandatory_historical_revision_cannot_masquerade_as_current(
     try:
         g1_revision = load_target_size_campaign_revision(store)
         assert g1_revision.state.generation == 1
-        assert g1_revision.state.terminal is not None
+        assert g1_revision.state.auto_diagnostic is not None
     finally:
         store.close()
 
@@ -1124,22 +1154,22 @@ def test_p4e_mandatory_historical_revision_cannot_masquerade_as_current(
         g2_revision = load_target_size_campaign_revision(store2)
         assert g2_revision.state.generation == 2
         assert g2_revision.state.lifecycle is TargetSizeLifecycle.AUTHORITIES_BOUND
-        assert g2_revision.state.terminal is None
+        assert g2_revision.state.auto_diagnostic is None
 
         # Current-terminal loader called on the campaign must reject because current g2 is nonterminal:
-        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo1:
-            load_validated_target_size_terminal_result(cfg2, paths2, store2)
-        assert "is not in a terminal state" in str(excinfo1.value)
+        with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo1:
+            load_validated_target_size_auto_diagnostic(cfg2, paths2, store2)
+        assert "has no complete automatic target-size diagnostic" in str(excinfo1.value)
 
         # Calling with expected_revision=g1_revision must fail immediately on revision mismatch:
-        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo2:
-            load_validated_target_size_terminal_result(
+        with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo2:
+            load_validated_target_size_auto_diagnostic(
                 cfg2, paths2, store2, expected_revision=g1_revision
             )
         assert "does not match the current CampaignStore revision" in str(
             excinfo2.value
         )
-        assert "Historical terminal state cannot be loaded as current" in str(
+        assert "Historical diagnostic state cannot be loaded as current" in str(
             excinfo2.value
         )
     finally:
@@ -1149,7 +1179,7 @@ def test_p4e_mandatory_historical_revision_cannot_masquerade_as_current(
 def test_p4e_mandatory_raw_historical_terminal_view_is_rejected(tmp_path: Path):
     """P4-E4 Mandatory Currentness Test B:
     Generic build/write functions reject terminal state even when supplied with
-    a legitimate matching historical ValidatedTargetSizeTerminalResult.
+    a legitimate matching historical ValidatedTargetSizeAutoDiagnostic.
     """
 
     config, workspace, _harness = _terminal_campaign(tmp_path)
@@ -1157,7 +1187,7 @@ def test_p4e_mandatory_raw_historical_terminal_view_is_rejected(tmp_path: Path):
     store = CampaignStore(paths.state_db)
     try:
         g1_revision = load_target_size_campaign_revision(store)
-        g1_validated = load_validated_target_size_terminal_result(
+        g1_validated = load_validated_target_size_auto_diagnostic(
             cfg, paths, store, expected_revision=g1_revision
         )
     finally:
@@ -1172,49 +1202,49 @@ def test_p4e_mandatory_raw_historical_terminal_view_is_rejected(tmp_path: Path):
     assert p4d._run(config, "prepare") == 0
 
     # 1. Calling generic builder with g1_revision raises:
-    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo1:
+    with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo1:
         build_target_size_result_view(g1_revision)
-    assert "cannot render terminal target-size state" in str(excinfo1.value)
+    assert "cannot render a completed automatic diagnostic" in str(excinfo1.value)
 
     # 2. Calling generic builder with g1_revision + g1_validated raises:
-    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo2:
+    with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo2:
         build_target_size_result_view(g1_revision, validated_result=g1_validated)
-    assert "cannot render terminal target-size state" in str(excinfo2.value)
+    assert "cannot render a completed automatic diagnostic" in str(excinfo2.value)
 
     # 3. Calling generic writer with g1_revision + g1_validated raises:
-    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo3:
+    with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo3:
         write_target_size_result_view(
             paths.results / "target-size-state.json",
             g1_revision,
             validated_result=g1_validated,
         )
-    assert "cannot write terminal target-size state" in str(excinfo3.value)
+    assert "cannot write a completed automatic diagnostic" in str(excinfo3.value)
 
 
 def test_p4e_mandatory_reporter_rejects_raw_terminal_projection():
-    """P4-E2 Mandatory Check: _report_terminal_state rejects raw TargetSizeTerminalProjection
-    and raw TargetSizeCampaignRevision, accepting only ValidatedTargetSizeTerminalResult.
+    """P4-E2 Mandatory Check: _report_auto_diagnostic rejects raw TargetSizeAutoDiagnostic
+    and raw TargetSizeCampaignRevision, accepting only ValidatedTargetSizeAutoDiagnostic.
     """
     from mdstats.training_data.campaign_target_size_runtime import (
-        _report_terminal_state,
+        _report_auto_diagnostic,
     )
     from mdstats.training_data.campaign_target_size_state import (
-        TargetSizeTerminalProjection,
+        TargetSizeAutoDiagnostic,
     )
 
-    raw_projection = TargetSizeTerminalProjection(
+    raw_projection = TargetSizeAutoDiagnostic(
         reducer_status="selected",
         experiment_definition_digest=digest({"fixture": "definition"}),
         reducer_state_digest=digest({"fixture": "reducer"}),
         execution_head_digest=digest({"fixture": "head"}),
         training_order_digest=digest({"fixture": "order"}),
-        selected_target_size=4,
-        selected_membership_digest=digest({"fixture": "membership"}),
+        recommended_target_size=4,
+        recommended_membership_digest=digest({"fixture": "membership"}),
         terminal_reason_codes=(),
     )
-    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo:
-        _report_terminal_state(raw_projection)
-    assert "requires a ValidatedTargetSizeTerminalResult" in str(excinfo.value)
+    with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo:
+        _report_auto_diagnostic(raw_projection)
+    assert "requires a ValidatedTargetSizeAutoDiagnostic" in str(excinfo.value)
 
 
 def test_p4e_mandatory_stale_current_view_write_exposure_fails_before_publication(
@@ -1226,11 +1256,11 @@ def test_p4e_mandatory_stale_current_view_write_exposure_fails_before_publicatio
     3. Call write_current_target_size_result_view(cfg2, paths2, store2, expected_revision=g1_revision)
        or write_current_target_size_result_view(cfg2, paths2, store2).
     4. Must reload current CampaignStore state, detect that current is g2 (nonterminal / mismatch),
-       and raise TargetSizeTerminalProjectionError.
+       and raise TargetSizeDiagnosticProjectionError.
     5. Prove file atomicity: the target-size-state.json file is either absent or its pre-attempt content is unchanged.
     """
     from mdstats.training_data.campaign_target_size_view import (
-        expose_current_target_size_terminal_result,
+        expose_current_target_size_auto_diagnostic,
         write_current_target_size_result_view,
     )
 
@@ -1239,7 +1269,7 @@ def test_p4e_mandatory_stale_current_view_write_exposure_fails_before_publicatio
     store = CampaignStore(paths.state_db)
     try:
         g1_revision = load_target_size_campaign_revision(store)
-        _g1_validated = expose_current_target_size_terminal_result(
+        _g1_validated = expose_current_target_size_auto_diagnostic(
             cfg, paths, store, expected_revision=g1_revision
         )
     finally:
@@ -1263,7 +1293,7 @@ def test_p4e_mandatory_stale_current_view_write_exposure_fails_before_publicatio
     store2 = CampaignStore(paths2.state_db)
     try:
         # A1: Stale write with expected_revision=g1_revision must fail and NOT write the file
-        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo1:
+        with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo1:
             write_current_target_size_result_view(
                 cfg2, paths2, store2, expected_revision=g1_revision
             )
@@ -1273,9 +1303,9 @@ def test_p4e_mandatory_stale_current_view_write_exposure_fails_before_publicatio
         assert not view_file.exists(), "Stale write attempt created target-size-state.json"
 
         # A2: Stale write without expected_revision must fail because current g2 is nonterminal
-        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo2:
+        with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo2:
             write_current_target_size_result_view(cfg2, paths2, store2)
-        assert "is not in a terminal state" in str(excinfo2.value)
+        assert "has no complete automatic target-size diagnostic" in str(excinfo2.value)
         assert not view_file.exists(), "Stale write attempt created target-size-state.json"
     finally:
         store2.close()
@@ -1287,17 +1317,17 @@ def test_p4e_mandatory_stale_current_report_exposure_fails_before_stdout(
     """P4-E3 Mandatory Stale-Snapshot Acceptance B:
     1. Produce terminal generation g1 and capture its terminal revision and legitimate g1_validated.
     2. Advance CampaignStore to generation g2 via prepare.
-    3. Call report_current_target_size_terminal_state(cfg2, paths2, store2, expected_revision=g1_revision)
-       or report_current_target_size_terminal_state(cfg2, paths2, store2).
-    4. Must raise TargetSizeTerminalProjectionError.
+    3. Call report_current_target_size_auto_diagnostic(cfg2, paths2, store2, expected_revision=g1_revision)
+       or report_current_target_size_auto_diagnostic(cfg2, paths2, store2).
+    4. Must raise TargetSizeDiagnosticProjectionError.
     5. Capture stdout and assert absence of stale terminal messages (no 'Target size is already selected',
        no 'N=', no 'scientifically terminal').
     """
     from mdstats.training_data.campaign_target_size_runtime import (
-        report_current_target_size_terminal_state,
+        report_current_target_size_auto_diagnostic,
     )
     from mdstats.training_data.campaign_target_size_view import (
-        expose_current_target_size_terminal_result,
+        expose_current_target_size_auto_diagnostic,
     )
 
     config, workspace, _harness = _terminal_campaign(tmp_path)
@@ -1305,7 +1335,7 @@ def test_p4e_mandatory_stale_current_report_exposure_fails_before_stdout(
     store = CampaignStore(paths.state_db)
     try:
         g1_revision = load_target_size_campaign_revision(store)
-        _g1_validated = expose_current_target_size_terminal_result(
+        _g1_validated = expose_current_target_size_auto_diagnostic(
             cfg, paths, store, expected_revision=g1_revision
         )
     finally:
@@ -1324,8 +1354,8 @@ def test_p4e_mandatory_stale_current_report_exposure_fails_before_stdout(
     store2 = CampaignStore(paths2.state_db)
     try:
         # B1: Stale report with expected_revision=g1_revision raises before emitting stdout:
-        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo1:
-            report_current_target_size_terminal_state(
+        with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo1:
+            report_current_target_size_auto_diagnostic(
                 cfg2, paths2, store2, expected_revision=g1_revision
             )
         assert "does not match the current CampaignStore revision" in str(
@@ -1337,9 +1367,9 @@ def test_p4e_mandatory_stale_current_report_exposure_fails_before_stdout(
         assert "N=" not in out1
 
         # B2: Stale report without expected_revision raises before emitting stdout:
-        with pytest.raises(TargetSizeTerminalProjectionError) as excinfo2:
-            report_current_target_size_terminal_state(cfg2, paths2, store2)
-        assert "is not in a terminal state" in str(excinfo2.value)
+        with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo2:
+            report_current_target_size_auto_diagnostic(cfg2, paths2, store2)
+        assert "has no complete automatic target-size diagnostic" in str(excinfo2.value)
         out2 = capsys.readouterr().out
         assert "Target size is already selected" not in out2
         assert "scientifically terminal" not in out2
@@ -1358,7 +1388,7 @@ def test_p4e_mandatory_legacy_generic_terminal_writer_cannot_publish_g1(
     4. Must fail before publication; canonical result file is not created or modified with g1 terminal data.
     """
     from mdstats.training_data.campaign_target_size_view import (
-        expose_current_target_size_terminal_result,
+        expose_current_target_size_auto_diagnostic,
         write_target_size_result_view,
     )
 
@@ -1367,7 +1397,7 @@ def test_p4e_mandatory_legacy_generic_terminal_writer_cannot_publish_g1(
     store = CampaignStore(paths.state_db)
     try:
         g1_revision = load_target_size_campaign_revision(store)
-        g1_validated = expose_current_target_size_terminal_result(
+        g1_validated = expose_current_target_size_auto_diagnostic(
             cfg, paths, store, expected_revision=g1_revision
         )
     finally:
@@ -1389,22 +1419,22 @@ def test_p4e_mandatory_legacy_generic_terminal_writer_cannot_publish_g1(
     pre_bytes = result_file.read_bytes()
 
     # Stale publish attempt via generic writer must raise and NOT overwrite with g1:
-    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo1:
+    with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo1:
         write_target_size_result_view(
             result_file, g1_revision, validated_result=g1_validated
         )
-    assert "cannot write terminal target-size state" in str(excinfo1.value)
+    assert "cannot write a completed automatic diagnostic" in str(excinfo1.value)
     assert (
         result_file.read_bytes() == pre_bytes
     ), "Stale write attempt modified target-size-state.json"
 
     # Also test when destination is unlinked:
     result_file.unlink()
-    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo2:
+    with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo2:
         write_target_size_result_view(
             result_file, g1_revision, validated_result=g1_validated
         )
-    assert "cannot write terminal target-size state" in str(excinfo2.value)
+    assert "cannot write a completed automatic diagnostic" in str(excinfo2.value)
     assert not result_file.exists(), "Stale write attempt created target-size-state.json"
 
 
@@ -1419,7 +1449,7 @@ def test_p4e_mandatory_legacy_generic_terminal_builder_cannot_supply_g1_payload(
     """
     from mdstats.training_data.campaign_target_size_view import (
         build_target_size_result_view,
-        expose_current_target_size_terminal_result,
+        expose_current_target_size_auto_diagnostic,
     )
 
     config, workspace, _harness = _terminal_campaign(tmp_path)
@@ -1427,7 +1457,7 @@ def test_p4e_mandatory_legacy_generic_terminal_builder_cannot_supply_g1_payload(
     store = CampaignStore(paths.state_db)
     try:
         g1_revision = load_target_size_campaign_revision(store)
-        g1_validated = expose_current_target_size_terminal_result(
+        g1_validated = expose_current_target_size_auto_diagnostic(
             cfg, paths, store, expected_revision=g1_revision
         )
     finally:
@@ -1442,9 +1472,9 @@ def test_p4e_mandatory_legacy_generic_terminal_builder_cannot_supply_g1_payload(
     assert p4d._run(config, "prepare") == 0
 
     # Stale build attempt via generic builder must raise:
-    with pytest.raises(TargetSizeTerminalProjectionError) as excinfo:
+    with pytest.raises(TargetSizeDiagnosticProjectionError) as excinfo:
         build_target_size_result_view(g1_revision, validated_result=g1_validated)
-    assert "cannot render terminal target-size state" in str(excinfo.value)
+    assert "cannot render a completed automatic diagnostic" in str(excinfo.value)
 
 
 def test_p4e_structural_public_api_surface_sealing():
@@ -1454,12 +1484,12 @@ def test_p4e_structural_public_api_surface_sealing():
     3. Assert that exactly one canonical current-terminal loader exists.
     """
     import mdstats.training_data.campaign_target_size_view as view_mod
-    import mdstats.training_data.campaign_target_size_terminal as terminal_mod
+    import mdstats.training_data.campaign_target_size_diagnostic as terminal_mod
     import mdstats.training_data.campaign_target_size_runtime as runtime_mod
 
     exported = view_mod.__all__
     assert "TARGET_SIZE_RESULT_VIEW_SCHEMA" in exported
-    assert "expose_current_target_size_terminal_result" in exported
+    assert "expose_current_target_size_auto_diagnostic" in exported
     assert "write_current_target_size_result_view" in exported
     assert "write_nonterminal_target_size_result_view" in exported
     assert "build_target_size_result_view" in exported
@@ -1470,9 +1500,9 @@ def test_p4e_structural_public_api_surface_sealing():
     assert "_write_terminal_target_size_result_view" not in exported
 
     # Single canonical loader and reporter:
-    assert hasattr(terminal_mod, "load_validated_target_size_terminal_result")
-    assert hasattr(terminal_mod, "ValidatedTargetSizeTerminalResult")
-    assert hasattr(runtime_mod, "report_current_target_size_terminal_state")
+    assert hasattr(terminal_mod, "load_validated_target_size_auto_diagnostic")
+    assert hasattr(terminal_mod, "ValidatedTargetSizeAutoDiagnostic")
+    assert hasattr(runtime_mod, "report_current_target_size_auto_diagnostic")
 
 
 

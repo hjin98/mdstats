@@ -100,12 +100,12 @@ def _observe(config: Path, paths):
     with cli.observational_campaign_state():
         store = CampaignStore(paths.state_db, create=False)
         try:
-            _revision, binding, pointers = campaign_owner_snapshot(store)
-            if binding is None:
+            _revision, bindings, pointers = campaign_owner_snapshot(store)
+            if not bindings:
                 return None
             return observe_current_qualification(
                 paths,
-                binding,
+                bindings[0],
                 pointers,
                 specification_digest=resolve_qualification_spec_identity(
                     cfg
@@ -118,7 +118,7 @@ def _observe(config: Path, paths):
 def _binding(paths):
     store = CampaignStore(paths.state_db, create=False)
     try:
-        return campaign_owner_snapshot(store)[1]
+        return campaign_owner_snapshot(store)[1][0]
     finally:
         store.close()
 
@@ -126,7 +126,7 @@ def _binding(paths):
 def _root(paths):
     store = CampaignStore(paths.state_db, create=False)
     try:
-        revision, _snapshot_binding, _pointers = campaign_owner_snapshot(store)
+        revision, _snapshot_bindings, _pointers = campaign_owner_snapshot(store)
     finally:
         store.close()
     return qualification_root(paths, revision.state.generation)
@@ -136,7 +136,7 @@ def _pointer(paths, kind: str) -> str:
     binding = _binding(paths)
     store = CampaignStore(paths.state_db, create=False)
     try:
-        _revision, _snapshot_binding, pointers = campaign_owner_snapshot(store)
+        _revision, _snapshot_bindings, pointers = campaign_owner_snapshot(store)
     finally:
         store.close()
     value = pointers.get(f"qualification:{binding.content_digest}:{kind}")
@@ -628,7 +628,7 @@ def test_a_target_generation_adoption_cannot_land_inside_one_status_answer(
 
     store = CampaignStore(paths.state_db, create=False)
     try:
-        revision, _snapshot_binding, _pointers = campaign_owner_snapshot(store)
+        revision, _snapshot_bindings, _pointers = campaign_owner_snapshot(store)
     finally:
         store.close()
     identity = {

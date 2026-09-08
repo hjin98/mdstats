@@ -15,12 +15,14 @@ SPEC_PDF = ROOT / "docs/specs/training_data/mlff_data_stage_plan_spec.pdf"
 PYPROJECT = ROOT / "pyproject.toml"
 
 
-def test_current_architecture_manual_describes_revision_107_authorities() -> None:
+def test_current_architecture_manual_describes_current_authorities() -> None:
     text = MANUAL.read_text(encoding="utf-8")
-    assert "architecture_revision: 107" in text
+    assert "architecture_revision: 109" in text
     for token in (
         "one canonical training order pi_train",
-        "paired optimizer-seed screen over candidate sizes",
+        "optional paired optimizer-seed automatic diagnostic over candidate sizes",
+        "operator-owned provisional design",
+        "cross-validate admission",
         "post-selection cross-validation on exactly T_selected",
         "fresh final production",
         "reconstructible execution cache",

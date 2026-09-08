@@ -210,7 +210,12 @@ def test_r6d_static_pre_repair_authorization_is_rejected_before_trainer_launch(
                 cv_acceptance=historical_acceptance,
                 replay_lineage_digest=historical_plan.replay_lineage_digest,
             )
-        assert "different training method" in str(excinfo.value) or "different shared method" in str(excinfo.value)
+        err_msg = str(excinfo.value)
+        assert (
+            "different training method" in err_msg
+            or "different shared method" in err_msg
+            or "Stale descendants are never republished as current" in err_msg
+        )
         assert getattr(harness, "trained", []) == []
     finally:
         store.close()

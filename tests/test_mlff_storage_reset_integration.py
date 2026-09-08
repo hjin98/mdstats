@@ -296,7 +296,7 @@ def test_p4_current_terminal_reload_survives_every_allowed_storage_operation(
     try:
         after = load_target_size_campaign_revision(reopened)
         assert after == before
-        assert after.state.terminal == before.state.terminal
+        assert after.state.auto_diagnostic == before.state.auto_diagnostic
     finally:
         reopened.close()
 

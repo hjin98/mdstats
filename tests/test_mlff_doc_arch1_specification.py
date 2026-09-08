@@ -18,12 +18,15 @@ REL_INDEX = ROOT / "docs/history/mlff/release_notes/INDEX.md"
 def test_doc_arch1_release_and_current_authority_are_synchronized():
     assert mdstats.__version__ == "0.20.242a0"
     text = MANUAL.read_text(encoding="utf-8")
-    assert "architecture_revision: 108" in text
+    assert "architecture_revision: 109" in text
     assert "# Part VI - Bounded execution, restart, and performance architecture" in text
     assert "# Part VII - Ownership and extension boundaries" in text
     assert "## Context retrieval index" in text
     assert "one canonical training order pi_train" in text
-    assert "paired optimizer-seed screen over candidate sizes" in text
+    assert (
+        "optional paired optimizer-seed automatic diagnostic over candidate sizes"
+        in text
+    )
     assert "post-selection cross-validation on exactly T_selected" in text
     assert not (ROOT / "mlff_training_data_architecture.md").exists()
     assert not (ROOT / "mlff_training_data_dependency_graph.json").exists()
@@ -49,8 +52,12 @@ def test_doc_arch1_current_target_size_and_execution_contract():
         "fresh final production", "deterministic", "restart",
     ):
         assert token.lower() in text.lower()
-    assert "the reducer is the sole target-size authority" in text
-    assert "Fewer than three qualified sizes is a typed failure" in text
+    # The screen recommends; the operator decides; `cross-validate` freezes.
+    assert "the automatic screen recommends and the operator decides" in text
+    assert "cross-validate admission" in text
+    assert (
+        "Fewer than three qualified sizes is a typed no-recommendation outcome" in text
+    )
     assert "nonconverged_at_configured_ceiling" in text
     assert "n1 / M1  ->  n2 / M2  ->  n3 / M3" in text
     assert "exactly one target-size architecture" in text

@@ -40,6 +40,50 @@ def _seams(args: Any) -> dict[str, Any]:
     }
 
 
+#: Why a multi-size training experiment has no release path in this revision.
+MULTI_SIZE_QUALIFICATION_MESSAGE = (
+    "Qualification is unavailable for a multi-size frozen target design. The "
+    "campaign froze {count} selected sizes {sizes}, so several final-production "
+    "publications exist and this revision authorizes no rule for deciding which "
+    "one is the release product. Choosing implicitly - the first, the last, the "
+    "automatic recommendation, or the best metric - would be a release decision "
+    "made silently, and running locked evidence across sizes would turn one-shot "
+    "reserved data into a target-size comparison. `qualification status` reports "
+    "the boundary read-only. To qualify one product, start a separate experiment "
+    "from a fresh `prepare` generation with exactly one selected size."
+)
+
+
+def _frozen_selected_sizes(store: Any) -> tuple[int, ...]:
+    """The current frozen design's sizes, read without creating anything."""
+
+    from ..campaign_target_size_state import load_target_size_campaign_revision
+
+    revision = load_target_size_campaign_revision(store)
+    if revision is None or revision.state.frozen_entries is None:
+        return ()
+    return tuple(entry.n_selected for entry in revision.state.frozen_entries)
+
+
+def require_single_size_release_boundary(store: Any) -> None:
+    """Fail closed before a consequential P7 path opens anything.
+
+    This runs *before* a session, an attempt, an evidence root, an external
+    reference request, or any locked-cohort access exists, because the boundary
+    is about not creating those in the first place.  It is a safety boundary,
+    not a missing algorithm: multi-product release selection needs its own
+    explicit design authority, not a default picked here.
+    """
+
+    sizes = _frozen_selected_sizes(store)
+    if len(sizes) > 1:
+        raise QualificationUnavailableError(
+            MULTI_SIZE_QUALIFICATION_MESSAGE.format(
+                count=len(sizes), sizes=list(sizes)
+            )
+        )
+
+
 def _no_publication_message() -> str:
     return (
         "No current final-production publication exists yet. Qualification "
@@ -63,6 +107,7 @@ def execute_qualification_run(args: Any) -> int:
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
     _print_header("Post-production qualification of the frozen final publication")
+    require_single_size_release_boundary(store)
     session = build_qualification_session(cfg, paths, store, **_seams(args))
     if session is None:
         raise QualificationError(_no_publication_message())
@@ -143,10 +188,19 @@ def execute_qualification_status(args: Any) -> int:
             # One read transaction spans the target-size revision, the binding
             # derived from it, and every P7 pointer row this answer interprets,
             # so the qualification state reported is one ancestry that existed.
-            _revision, binding, pointers = campaign_owner_snapshot(store)
-            if binding is None:
+            _revision, bindings, pointers = campaign_owner_snapshot(store)
+            if len(bindings) > 1:
+                sizes = [item.n_selected for item in bindings]
+                _warn(
+                    MULTI_SIZE_QUALIFICATION_MESSAGE.format(
+                        count=len(bindings), sizes=sizes
+                    )
+                )
+                return 0
+            if not bindings:
                 _warn(_no_publication_message())
                 return 0
+            binding = bindings[0]
             observation = observe_current_qualification(
                 paths,
                 binding,
@@ -240,6 +294,7 @@ def execute_qualification_activate_locked(args: Any) -> int:
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
     _print_header("Explicit one-shot locked-test activation")
+    require_single_size_release_boundary(store)
     session = build_qualification_session(cfg, paths, store, **_seams(args))
     if session is None:
         raise QualificationError(_no_publication_message())
@@ -268,7 +323,9 @@ def execute_qualification_activate_locked(args: Any) -> int:
 
 
 __all__ = [
+    "MULTI_SIZE_QUALIFICATION_MESSAGE",
     "QUALIFICATION_STAGE",
+    "require_single_size_release_boundary",
     "execute_qualification_activate_locked",
     "execute_qualification_run",
     "execute_qualification_status",

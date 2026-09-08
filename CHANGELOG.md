@@ -1,3 +1,18 @@
+## 0.20.242a0 - 2026-09-07
+
+- Implement multi-target-size selection and per-size horizon support across MLFF campaign orchestration.
+- Replace scalar proposal and freeze fields on `TargetSizeCampaignState` with ordered, unique-by-`N` collections (`provisional_entries` and `frozen_entries`), migrating state schema to `mdstats.target-size-campaign-state.v3` while retaining read compatibility with legacy v1 and v2 states.
+- Introduce `merge_provisional_entry` as the single owner for appending or updating provisional target-size choices in place, with `--horizon-cv` and `--horizon` (production) overrides per size, alongside `--reset` for explicit clearing of the provisional design prior to admission.
+- Enforce atomic whole-collection freeze during `cross-validate` via `resolve_frozen_target_design`, requiring every proposed size and its derived prefix membership to authenticate against the canonical training order before committing the frozen design.
+- Decouple post-selection identity: update `PostSelectionBinding` to `mdstats.post-selection-binding.v3`, removing the contaminated scalar `frozen_selection_digest` ancestry edge while maintaining byte-exact compatibility for legacy single-size frozen entries via `legacy_frozen_selection_digest`.
+- Drive post-selection `cross-validate` and `train-production` through per-size iteration in frozen order, with a collection-wide production barrier requiring all selected sizes to hold accepted cross-validation before any production training is admitted.
+- Bound post-production qualification (P7) to single-size experiments, cleanly failing closed when multiple target sizes are frozen.
+- Extend campaign status observation and lifecycle aggregation to report all selected sizes coherently, establishing a terminal non-release state for multi-size production completion.
+- Tighten P5 cross-validation plan currentness to authenticate both `method_identity_digest` and `cv_policy_identity_digest` against the resolved context before admission.
+- Enforce exact CV policy ancestry validation in `require_cv_acceptance_for_method`, ensuring stored `acceptance.cv_policy_identity_digest` strictly matches the referenced CV plan.
+- Upgrade the collection-wide production admission preflight in `execute_current_train_production` / `_cv_admission_blockers` to fully authenticate CV plan, acceptance, and semantic method authorization across all frozen target sizes, preventing partial production execution when any size has stale, corrupt, or rejected ancestry.
+- Expose explicit post-selection optimizer defaults (`learning_rate = 1.0e-4`, `ema = true`, `ema_decay = 0.99999`) in the `init` configuration template, making newly generated campaign files self-describing while preserving independent ownership from target-size optimizer normalization.
+
 ## 0.20.241a0 - 2026-08-18
 
 - Harden TARGET-DATA2C-MVSEL1 for the production 36,408-candidate, 165-family, 9.51-billion-edge MPA-0 index without changing sequential FP64 selection authority.

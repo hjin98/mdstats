@@ -21,9 +21,10 @@ source evidence and labels
     -> one P_train / M3 split
     -> one pi_train and nested pi_eval ladder M1 subset M2 subset M3
     -> one common target-size preparation
-    -> paired optimizer-seed screen
-    -> target-size reducer
-    -> N_selected and exact global T_selected
+    -> optional paired optimizer-seed automatic diagnostic (recommends only)
+    -> operator-owned provisional design (N, H_cv, H_prod)
+    -> cross-validate admission
+    -> frozen N_selected, exact global T_selected, and both role horizons
     -> post-selection cross-validation on exactly T_selected
     -> fresh final production on the complete T_selected
     -> currentness-fenced publication
@@ -46,8 +47,9 @@ quarantined/reprepared rather than translated.
 | common fitted preparation | current P3 preparation owner | neutral substrate and frozen method inputs | transforms, metrics, E0, objective/weights, difficulty inputs | membership or target size |
 | target-size split and orders | current target-size experiment owner | frame authority, neutral substrate, configured policy | `P_train`/`M3`, `pi_train`, `pi_eval`, `M1/M2/M3` | method acceptance |
 | common target-size preparation | `TargetSizeCommonPreparation` | `P_train` and foundation/training protocol | one shared preparation identity | per-size or per-seed scientific variation |
-| scientific target size | one target-size reducer | paired target-side screen evidence | `N_selected` or typed scientific failure | monitor cardinality and CV evidence |
-| current selected set | `CampaignStore` terminal projection | authenticated reducer state and `pi_train` | exact `N_selected`/`T_selected` binding | re-deciding size |
+| automatic target-size diagnostic | one target-size reducer | paired target-side screen evidence | a *recommended* size, or a typed no-recommendation outcome | freezing a size, monitor cardinality, CV evidence |
+| provisional downstream design | operator, through `select-target-size` | qualified candidate set, `pi_train`, configured/overridden horizons | one mutable ordered collection of per-size entries `(N, T_N identity, H_cv, H_prod)`, unique by `N` | immutable ancestry; running screen work; choosing a release product among sizes |
+| frozen downstream design | `cross-validate` admission | the current proposal and authenticated P2 order | exact `N_selected`/`T_selected` binding plus both effective role horizons | re-deciding size afterwards |
 | post-selection method acceptance | post-selection CV owner | exactly `T_selected`, protected relations, `K >= 2`, CV seeds | all-required-fold target-only verdict | changing `N_selected` |
 | fresh final production | final-production owner | accepted method, complete `T_selected`, required final seeds | complete executed run evidence / model artifacts | target-size or CV authority (publication is P7) |
 | target monitor | current monitor policy | authorized development role | deterministic monitor | target membership |
@@ -112,7 +114,14 @@ not a reason to choose a different order.
 The reducer consumes only authorized target-side development/model-selection
 evidence. Replay metrics, post-selection CV, calibration, physical-observable,
 and locked-test evidence cannot rank, reject, or tie-break a target size.
-Fewer than three qualified sizes is a typed failure.
+Fewer than three qualified sizes is a typed no-recommendation outcome.
+
+What the reducer emits is a **recommendation**. It is short-horizon evidence
+about target-force RMSE under one configured screening protocol - not proof of
+asymptotic target-size convergence, long-horizon training quality, final model
+quality, or MD stability. The operator owns the actual decision, and may accept,
+ignore, or override the recommendation at any time before `cross-validate`
+freezes the design.
 
 The configured ladder ceiling is a **practical budget limit**, not a requirement
 that convergence occur below it. At the terminal comparison the current
@@ -121,26 +130,28 @@ terminal-decision policy
 identity) is:
 
 - if two finalists differ by no more than `practical_equivalence_mev_per_a`, the
-  smaller finalist is selected -- a raw improvement at `Nmax` inside that band is
+  smaller finalist is recommended -- a raw improvement at `Nmax` inside that band is
   a plateau, not unresolved convergence;
 - if a smaller finalist has the best terminal paired-mean target-force RMSE, it
-  is selected normally;
+  is recommended normally;
 - if `Nmax` is materially superior to every other successful terminal finalist by
-  more than the practical-equivalence threshold, `Nmax` is **selected** and the
+  more than the practical-equivalence threshold, `Nmax` is **recommended** and the
   result carries the non-blocking warning code
   `nonconverged_at_configured_ceiling`, meaning that the configured practical
   ceiling is the best evaluated permitted size while a plateau was not
   demonstrated within the configured ladder. It does not claim that `Nmax` is
   asymptotically converged.
 
-A selected-at-ceiling result follows the ordinary terminal path
-(`TERMINAL_SELECTED` -> post-selection CV -> fresh production); no separate
+A ceiling recommendation follows the ordinary diagnostic path; no separate
 status, lifecycle, or admission path exists for it. Genuinely insufficient
 comparison -- too few complete comparable finalists, or malformed, missing,
-duplicated, reordered, or lineage-incompatible boundary evidence -- remains
-blocking and is never converted into a ceiling selection. No unconfigured rescue
-size is invented. Evidence reduced under the retired blocking-ceiling rule stays
-historical and is never relabelled as a selection.
+duplicated, reordered, or lineage-incompatible boundary evidence -- remains a
+no-recommendation outcome and is never converted into a ceiling recommendation.
+No unconfigured rescue size is invented. A no-recommendation outcome is a
+conclusion about the diagnostic, not about the campaign: it leaves any existing
+proposal untouched and does not prevent an explicit qualified choice. Evidence
+reduced under the retired blocking-ceiling rule stays historical and is never
+relabelled.
 
 ## Post-selection ownership
 
@@ -211,9 +222,17 @@ init -> doctor -> prepare -> select-target-size -> cross-validate -> train-produ
 ```
 
 `prepare` builds the neutral/current substrate and common preparation but
-selects nothing. `select-target-size` owns candidate training and the reducer.
-`cross-validate` owns selected-only method acceptance. `train-production` owns
-fresh final publication. `status` and `advance` project these same owners;
+selects nothing. `select-target-size` owns the provisional downstream design,
+which is an ordered collection of distinct qualified sizes over that one
+prepared generation: `<N>` merges a qualified candidate into it - appending a
+new size, or replacing an existing size's complete entry in place - and trains
+nothing; `--auto` runs or reuses the automatic diagnostic and merges its
+recommendation through the same owner; `--reset` clears the design pre-freeze;
+and `--horizon-cv` / `--horizon` steer the two role horizons of the size the
+invocation touches. It freezes nothing. `cross-validate` owns the atomic
+whole-collection freeze and then selected-only method acceptance for every
+frozen size. `train-production` owns the collection-wide cross-validation
+barrier and then one fresh final publication per frozen size. `status` and `advance` project these same owners;
 they do not create another state machine. `storage` is orthogonal: it manages
 representation, retention, caching, archival, and admission, and it advances no
 scientific lifecycle.
@@ -415,8 +434,9 @@ The durable rules are:
 1. independent evidence remains independent;
 2. fitted preparation and target membership are separate authorities;
 3. one canonical order and one common preparation define every candidate;
-4. `N_selected` and exact global `T_selected` are frozen together;
-5. the reducer is the sole target-size authority; post-selection
+4. `N_selected`, exact global `T_selected`, and both effective role horizons are
+   frozen together, once, at `cross-validate` admission;
+5. the automatic screen recommends and the operator decides; post-selection
    cross-validation accepts the method and can never re-choose the size;
 6. final production is fresh full-selected-set training;
 7. execution/cache/provider choices cannot change scientific semantics;

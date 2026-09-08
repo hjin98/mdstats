@@ -371,7 +371,6 @@ def test_guard_p5_cross_campaign_authorization_rejected(tmp_path: Path):
         b = context.selected.binding
         fake_binding = PostSelectionBinding(
             campaign_generation=b.campaign_generation + 1,  # Different generation!
-            campaign_state_revision=b.campaign_state_revision,
             experiment_definition_digest=b.experiment_definition_digest,
             training_order_digest=b.training_order_digest,
             frame_authority_digest=b.frame_authority_digest,
@@ -379,15 +378,13 @@ def test_guard_p5_cross_campaign_authorization_rejected(tmp_path: Path):
             split_exclusion_digest=b.split_exclusion_digest,
             target_size_policy_digest=b.target_size_policy_digest,
             aggregate_digest=b.aggregate_digest,
-            adopted_execution_head_digest=b.adopted_execution_head_digest,
-            adopted_reducer_state_digest=b.adopted_reducer_state_digest,
             n_selected=b.n_selected,
             selected_membership_digest=b.selected_membership_digest,
         )
         fake_selected = CurrentSelectedTrainingContext(
             binding=fake_binding,
             selected_membership=context.selected.selected_membership,
-            validated_terminal_result=context.selected.validated_terminal_result,
+            frozen=context.selected.frozen,
             authorities=context.selected.authorities,
         )
         with pytest.raises(PostSelectionError):
@@ -416,7 +413,6 @@ def test_guard_p5_modified_selection_invalidates_authorization(tmp_path: Path):
         b = context.selected.binding
         fake_binding = PostSelectionBinding(
             campaign_generation=b.campaign_generation,
-            campaign_state_revision=b.campaign_state_revision,
             experiment_definition_digest=b.experiment_definition_digest,
             training_order_digest=b.training_order_digest,
             frame_authority_digest=b.frame_authority_digest,
@@ -424,15 +420,13 @@ def test_guard_p5_modified_selection_invalidates_authorization(tmp_path: Path):
             split_exclusion_digest=b.split_exclusion_digest,
             target_size_policy_digest=b.target_size_policy_digest,
             aggregate_digest=b.aggregate_digest,
-            adopted_execution_head_digest=b.adopted_execution_head_digest,
-            adopted_reducer_state_digest=b.adopted_reducer_state_digest,
             n_selected=b.n_selected - 1,
             selected_membership_digest="f" * 64,
         )
         fake_selected = CurrentSelectedTrainingContext(
             binding=fake_binding,
             selected_membership=context.selected.selected_membership[:-1],  # dropped one frame
-            validated_terminal_result=context.selected.validated_terminal_result,
+            frozen=context.selected.frozen,
             authorities=context.selected.authorities,
         )
         with pytest.raises(PostSelectionError):

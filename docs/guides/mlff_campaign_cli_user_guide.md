@@ -189,21 +189,87 @@ source or scientific-identity change invalidates the affected generation;
 provenance-only presentation changes do not change arithmetic. Interrupted
 work is resumed by rerunning the same command after inspecting `status`.
 
-## 4. Select the target size
+## 4. Choose the target size and the training horizons
+
+This step is a decision *you* make. The command records it; nothing here freezes
+it.
 
 ```bash
-python tools/mdstats-mlff-campaign.py --config campaign.toml select-target-size
+# choose a size explicitly - runs no training at all
+python tools/mdstats-mlff-campaign.py --config campaign.toml select-target-size 512
+
+# or run (or reuse) the optional automatic diagnostic and take its recommendation
+python tools/mdstats-mlff-campaign.py --config campaign.toml select-target-size --auto
 ```
 
-This is the only current screening entrypoint. It is the sole command that
-trains target-size candidates or decides `N_selected`. Every candidate is an
-exact prefix of one deterministic `pi_train` order, so the selected set is
+A bare `select-target-size` is invalid, and `<N>`, `--auto` and `--reset` cannot
+be combined. `<N>` must be one of the configured qualified candidate sizes, which
+`status` lists. Every candidate is an exact prefix of one deterministic
+`pi_train` order, so the chosen set is always
 
 ```text
-T_selected = pi_train[:N_selected]
+T_N = pi_train[:N]
 ```
 
-The screen uses the configured power range, direct nested evaluation
+There is no other membership constructor: no resampling, no arbitrary list.
+
+### Selecting several sizes
+
+`prepare` is expensive and its result is deliberately reusable, so you can ask
+for **more than one** size from the same prepared generation and compare how the
+downstream experiment behaves. The design is an ordered list of distinct sizes:
+
+```bash
+select-target-size 512          # design is [512]
+select-target-size 1024         # design is [512, 1024]   <- appended, not replaced
+select-target-size 512 --horizon 80   # design is [512(updated), 1024]
+select-target-size --auto       # merges the recommendation in the same way
+select-target-size --reset      # design is []
+```
+
+A size that is not yet in the design is appended. A size that is already in it
+has its complete entry replaced in place, keeping its position, so revising one
+size never disturbs another. `--reset` clears the whole design; it works only
+before the freeze, and it keeps your prepared generation and any diagnostic
+evidence you already paid for.
+
+You can change your mind as often as you like until `cross-validate` freezes the
+whole design at once. After that, `select-target-size` refuses to change
+anything: starting a different experiment means a fresh `prepare` generation.
+
+Everything downstream then gains a size dimension and nothing else.
+`cross-validate` validates the method for **every** selected size and is
+accepted only if all of them pass; `train-production` refuses to start **any**
+production run until every selected size has accepted cross-validation, and then
+trains and publishes one final product per size. Nothing ever picks a winner
+among the sizes for you.
+
+### The two training horizons
+
+The same command steers how long downstream training runs:
+
+```bash
+select-target-size 512 --horizon-cv 20 --horizon 60
+```
+
+`--horizon-cv` is the cross-validation max epochs; `--horizon` is the
+final-production max epochs. They are independent controls, and the software
+deliberately does not infer either one from `N`: no proven
+target-size-to-horizon scaling law exists here.
+
+Both apply to the size *this* invocation touches, so different selected sizes
+can carry different budgets. Omit a flag and it resolves, *on that invocation*,
+from your configuration - `[post_selection.cv].max_num_epochs` (default 30) and
+`[training].max_num_epochs` (default 30). The resolved numbers are then stored
+with that entry, so editing `campaign.toml` afterwards does not silently rewrite
+a decision you already made, and sizes you did not touch keep the numbers they
+were given. Reselecting a size re-resolves any flag you omit that time. An
+override applies to that invocation only; it never becomes a sticky default, and
+the CLI never rewrites `campaign.toml`.
+
+### The optional automatic diagnostic
+
+`--auto` runs the paired optimizer-seed screen. The screen uses the configured power range, direct nested evaluation
 populations `M1 subset M2 subset M3`, the configured `fidelity_epochs`, and the
 ordered seeds from the sole enabled training method. It runs the authenticated
 continuation:
@@ -214,8 +280,24 @@ n1 / M1 -> n2 / M2 -> n3 / M3
 
 The current default is `(n1, n2, n3) = (1, 3, 10)`. Boundaries are continuation
 points; an earlier better checkpoint cannot replace the prescribed endpoint.
-The reducer first narrows the qualified population, then freezes one size and
-its exact membership or records a typed scientific failure.
+The reducer first narrows the qualified population, then either **recommends**
+one size or reports that it could not make a valid comparison. It freezes
+nothing either way.
+
+Read the recommendation for what it is. The screen measures target-force RMSE
+after 1, 3 and 10 epochs under one configured protocol. It is not evidence that
+the size is asymptotically converged, that training for 60 epochs would rank the
+sizes the same way, or that the resulting potential is stable in MD. Treat it as
+one input to your decision alongside your own judgement about cost and risk.
+
+Every completed diagnostic writes a portable Markdown report under `results/`
+containing the full per-boundary, per-seed evidence, the survivor progression,
+the normalization geometry, and the recommendation or the reason there is none.
+It is meant to be read, and it is safe to delete: it is a rebuildable projection,
+never authority.
+
+Re-running `--auto` on an unchanged campaign is cheap. It authenticates the
+cached diagnostic, reruns no training or evaluation at all, and says so.
 
 Larger candidates take more optimizer steps per epoch, so the screen normalizes
 learning-rate amplitude and EMA decay against a reference size. You configure
@@ -258,40 +340,48 @@ qualification cannot rank or tie-break a size.
 
 The configured ceiling is a **practical budget limit**, not a requirement that
 convergence happen below it. If the largest configured size is still materially
-better than every other finalist, that size is selected and `status` reports the
-warning `nonconverged_at_configured_ceiling`:
-
-```text
-selected target size frozen at N=16384; T_selected=...; warning: nonconverged_at_configured_ceiling
-```
+better than every other finalist, that size is recommended and `status` reports
+the warning `nonconverged_at_configured_ceiling`.
 
 Read that as: this is the best size available within your configured budget, and
-the screen did not show a plateau below it. It is a normal selection - the next
-command is still `cross-validate` - and no rescue size outside the configured
-ladder is invented. If you want to know whether a larger dataset would help,
-raise `target_size_power_max` and run a fresh screen.
+the screen did not show a plateau below it. No rescue size outside the
+configured ladder is invented. If you want to know whether a larger dataset
+would help, raise `target_size_power_max` and run a fresh screen.
 
 Inside the practical-equivalence band the smaller size is still preferred, so a
-tiny improvement at the ceiling is treated as a plateau, not a warning. A run
-that simply lacks enough comparable candidates remains a typed scientific
-failure and is not turned into a ceiling selection. An incomplete but nonterminal
-run remains resumable.
+tiny improvement at the ceiling is treated as a plateau, not a warning.
 
-The selected size and membership are not editable fields. Every current read
-re-derives them from authenticated reducer state and `pi_train`; divergence
-fails closed.
+A diagnostic that simply lacks enough comparable candidates reports **no
+recommendation**. That is a conclusion about the diagnostic, not about your
+campaign: the command succeeds, your existing provisional choice is left exactly
+as it was, and you can still select any qualified candidate explicitly and
+proceed. An incomplete but nonterminal run remains resumable, and resuming it
+never destroys a choice you already made.
 
-## 5. Validate the frozen method
+The membership of any chosen size is not an editable field. Every read
+re-derives it from `pi_train` through the P2 training order; divergence fails
+closed.
+
+## 5. Freeze the design and validate the method
 
 ```bash
 python tools/mdstats-mlff-campaign.py --config campaign.toml cross-validate
 ```
 
-Cross-validation starts only after selection and consumes exactly
-`T_selected`. It validates the training method, not the amount of data. The
-configured `K >= 2` folds preserve the P1 split-exclusion and correlation
-relations; every required fold and optimizer seed must pass the target-only
-acceptance predicate.
+`cross-validate` is the freeze point. It admits your **complete** provisional
+design at once - every selected size, its exact membership, and both of its
+horizons - and makes it immutable ancestry before any training starts. If any
+selected size fails to authenticate, nothing is frozen and no training begins.
+After this, `select-target-size` refuses to change the design; starting a
+different experiment means a fresh `prepare` generation.
+
+It then runs, for every frozen size in the order you selected them, exactly the
+same cross-validation as before on that size's own `T_N` and its own CV horizon.
+It validates the training method, not the amount of data. The configured
+`K >= 2` folds preserve the P1 split-exclusion and correlation relations; every
+required fold and optimizer seed must pass the target-only acceptance predicate.
+Cross-validation succeeds only if **every** selected size passes; a size that
+fails stays visibly failed and is never dropped from your design.
 
 Fold partitions are constructed inside the already frozen selected set. A fold
 may fit training-only transforms from its own training partition, freezes its
@@ -310,11 +400,19 @@ by a mean, majority, best-seed, or partial-fold result.
 python tools/mdstats-mlff-campaign.py --config campaign.toml train-production
 ```
 
-Final production starts from the accepted foundation with fresh optimizer, RNG,
-and run state. It trains the complete exact `T_selected` using the method
-accepted by cross-validation and `[training].max_num_epochs`. Screening and CV
-checkpoints are not production parents, even when their numeric seed or size
-matches.
+`train-production` first checks the **whole** design: every selected size must
+have current accepted cross-validation evidence of its own. If any does not, it
+starts no production run at all - for any size - and tells you which sizes are
+blocking. That is deliberate: an experiment you asked for across several sizes
+must not quietly become the subset that happened to work.
+
+Then, for each selected size, final production starts from the accepted
+foundation with fresh optimizer, RNG, and run state. It trains that size's
+complete exact `T_N` using the method accepted by cross-validation for that size
+and that size's own frozen production horizon. Each size publishes its own final
+product; no size can consume another size's data, evidence, or publication.
+Screening and CV checkpoints are not production parents, even when their numeric
+seed or size matches.
 
 The production horizon is independent of the screen's `n3`. A production-only
 configuration change invalidates production descendants while leaving the
@@ -334,6 +432,23 @@ downstream can change it.
 
 The training lifecycle ends at that publication. Everything after it validates
 the finished product without being able to change it.
+
+### If you selected more than one size
+
+When your design has several sizes, `train-production` finishes with several
+final products, and the training experiment is then **complete but not release
+qualified**. `advance` stops there and offers no further command, and
+`qualification status` explains why: nothing in this revision is authorized to
+decide which of your products is *the* release, and picking the first, the last,
+the diagnostic's recommendation, or the best-scoring one would be that decision
+made silently. `qualification run` and `qualification activate-locked` therefore
+fail closed before they create an attempt or open any locked evidence - in
+particular, one-shot locked data is never spent comparing sizes.
+
+Compare the per-size results reported by `status`, decide for yourself, and then
+qualify that product in its own campaign: a fresh `prepare` generation with
+exactly one selected size. Everything in the next section applies to that
+single-size case.
 
 ## 7. Qualify the frozen product
 
@@ -619,8 +734,9 @@ checkpoints, restart evidence, and diagnostics. The retired `recompute` and
 
 The durable result is the authenticated chain of source identity, neutral
 substrate, target-size experiment, selected binding, CV acceptance, and final
-production identity. A target-size scientific failure is terminal evidence and
-does not expose a production next action. A missing accelerator, unavailable
+production identity. An automatic-diagnostic no-recommendation outcome is
+diagnostic evidence: it does not block an explicit target-size choice, and it
+does not by itself expose a production next action. A missing accelerator, unavailable
 target-machine run, or absent downstream qualification is reported as deferred
 or unavailable rather than silently passed.
 

@@ -25,8 +25,8 @@ Narrow specifications own exact module schemas, numerical constants, algorithms,
 6. Feature fitting, E0 fitting, label-derived difficulty evidence, and target-subset inputs inspect only the applicable authorized training partition; post-selection fold-local fits never inspect that fold's held-out partition.
 7. Current DATA6/DATA7 preparation publishes fitted inputs and evidence for the common target-size owner and SHALL NOT publish target membership or target size.
 8. One canonical training order `pi_train` is the sole current target-membership authority; every candidate is the exact prefix `T_N = pi_train[:N]`.
-9. The one target-size reducer is the sole scientific target-size authority. Monitor/replay/batch/pool cardinalities are different semantic types.
-10. Target membership and the selected target size are both protocol-global and are frozen together as `N_selected` and `T_selected`.
+9. The one target-size reducer is the sole owner of the *automatic* target-size diagnostic, which recommends a size and freezes nothing. The operator owns the provisional choice, restricted to the configured qualified candidate set. Monitor/replay/batch/pool cardinalities are different semantic types.
+10. Target membership, the selected target size, and both effective role training horizons are protocol-global and are frozen together, once, at `cross-validate` admission.
 11. Target-size screening uses only authorized development/model-selection evidence. Held-out CV, calibration, and locked tests are forbidden inputs.
 12. Locked tests cannot affect fitting, membership, size, protocol choice, stopping, checkpointing, calibration-policy choice, or acquisition and are activated only after protocol/committee freeze.
 13. Replay training, replay monitoring, target monitoring, and target training preserve separate source/role identities.
@@ -53,8 +53,9 @@ Narrow specifications own exact module schemas, numerical constants, algorithms,
 | canonical training order `pi_train` | one deterministic order whose prefixes are the candidate subsets | evaluation populations or size choice |
 | canonical evaluation ladder `pi_eval` | nested direct populations `M1 subset M2 subset M3` | training membership or size choice |
 | common target-size preparation | one preparation identity shared by every candidate size and optimizer seed | any per-size or per-seed variation |
-| target-size policy / reducer decision | configured candidate ladder, fidelity funnel, selected target size or typed failure | monitor construction or post-selection cross-validation |
-| `CampaignStore` terminal projection | `N_selected` bound to the exact `T_selected` membership digest | re-deciding the size or accepting the method |
+| target-size policy / reducer decision | configured candidate ladder, fidelity funnel, a recommended target size or a typed no-recommendation outcome | freezing a size; monitor construction; post-selection cross-validation |
+| `CampaignStore` provisional proposal | one mutable `(N, T_N identity, selection source, H_cv, H_prod)` | immutable ancestry; running screen work |
+| `CampaignStore` frozen selection | `N_selected` bound to the exact `T_selected` membership digest, plus both effective role horizons | re-deciding the size or accepting the method |
 | `OnlineTargetMonitorPolicy` | common target-monitor evidence set | target-training size |
 | `ReplayMonitorPolicy` | replay-monitor evidence set | target-training size or replay-training membership |
 | `TrainingProtocolIdentity` | complete frozen model/data/replay/membership/size/objective/exposure/checkpoint/runtime protocol | mutable runtime observations or test results |
@@ -112,9 +113,10 @@ neutral statistical substrate
   -> one canonical training order pi_train
   -> one canonical evaluation ladder M1 subset M2 subset M3
   -> one common target-size preparation
-  -> paired optimizer-seed screen over the configured candidate ladder
-  -> one target-size reducer
-  -> N_selected and T_selected = pi_train[:N_selected]
+  -> optional paired optimizer-seed automatic diagnostic (recommends only)
+  -> operator-owned provisional design (N, H_cv, H_prod)
+  -> cross-validate admission
+  -> N_selected, T_selected = pi_train[:N_selected], and both role horizons
 ```
 
 No current alternate, migration, or rescue branch exists. Retired derived
@@ -125,8 +127,10 @@ production-horizon policy are owned by the architecture manual's Part V and the
 campaign configuration; they are not duplicated here.
 
 Candidate membership at size `N` is the exact prefix `pi_train[:N]`. The selected
-`N` and its exact membership `T_selected` are frozen together into the complete
-training protocol.
+`N`, its exact membership `T_selected`, and the effective CV and production
+horizons are frozen together at `cross-validate` admission into the complete
+training protocol. Identity projection stays role-specific: CV depends on the
+frozen CV horizon and never on the production horizon, and vice versa.
 
 Because every candidate is a prefix of one order, increasing `N` only adds
 frames; a non-monotone qualification result over nested increasing prefixes is an

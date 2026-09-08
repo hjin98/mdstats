@@ -67,6 +67,7 @@ def _screened_campaign(tmp_path: Path):
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )
@@ -218,7 +219,7 @@ def test_p4f_req2_fresh_process_replay_after_safe_cleanup_is_identical(
     try:
         after = load_target_size_campaign_revision(reopened)
         assert after == before
-        assert after.state.terminal == before.state.terminal
+        assert after.state.auto_diagnostic == before.state.auto_diagnostic
     finally:
         reopened.close()
 
@@ -228,6 +229,7 @@ def test_p4f_req2_fresh_process_replay_after_safe_cleanup_is_identical(
         p4d._run(
             config,
             "select-target-size",
+            "--auto",
             _external_boundary_trainer=harness.train,
             _external_inference_evaluator=harness.evaluate,
         )
@@ -284,9 +286,12 @@ def test_p4f_req2_external_and_symlink_paths_stay_denied(tmp_path: Path):
 def test_p4f_req3_user_guide_states_prepare_does_not_select():
     text = " ".join(_GUIDE.read_text(encoding="utf-8").split())
     assert "`prepare` does not select a target size" in text
-    assert "only current screening entrypoint" in text
+    # The screen recommends; the operator decides; `cross-validate` freezes.
+    assert "This step is a decision *you* make" in text
+    assert "`--auto` runs the paired optimizer-seed screen" in text
+    assert "`cross-validate` is the freeze point" in text
     assert "quarantines them rather than migrating them" in text
-    assert "not editable fields" in text
+    assert "not an editable field" in text
 
 
 def test_p4f_req3_user_guide_does_not_claim_a_retired_lifecycle():
@@ -320,8 +325,8 @@ def test_p4f_req3_parser_help_describes_the_current_commands():
     }
     assert "does not select a target size" in by_name["prepare"]
     assert (
-        "only command that trains candidates and decides N"
-        in by_name["select-target-size"]
+        "ordered provisional design" in by_name["select-target-size"]
+        and "Freezes nothing" in by_name["select-target-size"]
     )
     assert "post-selection cross-validation" in by_name["cross-validate"]
     assert "fresh final production" in by_name["train-production"]
@@ -351,7 +356,7 @@ _P4_MODULES = (
     "campaign_target_size_cutover.py",
     "campaign_target_size_adoption.py",
     "campaign_target_size_retention.py",
-    "campaign_target_size_terminal.py",
+    "campaign_target_size_diagnostic.py",
     "campaign_target_size_view.py",
     "campaign_target_size_runtime.py",
 )

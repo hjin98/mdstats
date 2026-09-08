@@ -122,9 +122,11 @@ source bytes / controls / trajectory collections
   -> neutral DATA6/DATA7 fitted preparation
   -> P_train / M3 split -> pi_train / pi_eval
   -> common target-size preparation
-  -> paired optimizer-seed screen -> target-size reducer
-  -> target-size study using authorized development/model-selection evidence
-  -> one frozen N_selected and exact global T_selected
+  -> optional paired optimizer-seed diagnostic -> target-size reducer
+  -> target-size study using authorized development/model-selection evidence,
+     yielding a recommendation rather than a decision
+  -> operator-owned provisional design, frozen at cross-validate admission
+  -> one frozen N_selected, exact global T_selected, and both role horizons
   -> protocol-matched CV partitions inside T_selected, with held-out folds inaccessible to size/checkpoint choice
   -> accepted frozen protocol
   -> independent final seeds and checkpoint admission

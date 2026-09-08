@@ -44,7 +44,8 @@ from ._common import (
 from .campaign_post_selection import (
     CurrentSelectedTrainingContext,
     PostSelectionError,
-    load_current_selected_training_context,
+    load_current_selected_training_contexts,
+    select_selected_training_context,
 )
 from .neutral_substrate.split_exclusion import (
     frame_split_exclusion_component_membership,
@@ -268,20 +269,69 @@ def build_post_selection_context(
     *,
     trainer: Any = None,
     inference_evaluator: Callable[[Any, Sequence[Any]], Sequence[Any]] | None = None,
-    expected_revision: Any = None,
     qualification_case_workers: int = 1,
+    admit: bool = False,
+    n_selected: int | None = None,
 ) -> PostSelectionContext:
-    """Re-establish current P4 authority and resolve all three P5 identities.
+    """Resolve exactly one frozen size's post-selection invocation context.
 
-    The three identities are resolved here, before any expensive work, which is
-    exactly what makes them policy rather than evidence: nothing they depend on
-    has been produced yet.
+    It is a selector over :func:`build_post_selection_contexts`, which does all
+    the resolution.  ``n_selected`` may be omitted only when the frozen design
+    has exactly one size; for a multi-size design there is no single "the"
+    selected size and guessing one would silently reduce the requested
+    experiment.
+    """
+
+    contexts = build_post_selection_contexts(
+        cfg,
+        paths,
+        store,
+        trainer=trainer,
+        inference_evaluator=inference_evaluator,
+        qualification_case_workers=qualification_case_workers,
+        admit=admit,
+    )
+    selected = select_selected_training_context(
+        tuple(item.selected for item in contexts), n_selected=n_selected
+    )
+    return next(
+        item for item in contexts if item.selected.n_selected == selected.n_selected
+    )
+
+
+def build_post_selection_contexts(
+    cfg: Mapping[str, Any],
+    paths: Any,
+    store: Any,
+    *,
+    trainer: Any = None,
+    inference_evaluator: Callable[[Any, Sequence[Any]], Sequence[Any]] | None = None,
+    qualification_case_workers: int = 1,
+    admit: bool = False,
+) -> tuple[PostSelectionContext, ...]:
+    """Resolve one ready invocation context per frozen size, in frozen order.
+
+    This is the production-owned enumeration of the frozen design.  Every size
+    resolves its three identities here, before any expensive work - which is
+    exactly what makes them policy rather than evidence - and each reads *its
+    own* frozen role horizons rather than whatever the config file says today,
+    so an edit to ``campaign.toml`` after admission cannot rewrite an experiment
+    that is already running.
+
+    ``admit`` belongs to ``cross-validate`` alone: it is the freeze boundary that
+    converts the operator's provisional design into immutable ancestry, and it
+    admits the whole collection at once.  Every other caller requires a freeze
+    that already happened.
+
+    One shared trainer, one shared method-policy resolution and one shared
+    prepared generation serve every size: adding sizes is one more post-selection
+    experiment dimension, not one more campaign.
     """
 
     from ._campaign_cli_core import _ensure_local_wrappers
 
-    selected = load_current_selected_training_context(
-        cfg, paths, store, expected_revision=expected_revision
+    selected_contexts = load_current_selected_training_contexts(
+        cfg, paths, store, admit=admit
     )
     resolved_trainer = trainer
     if resolved_trainer is None:
@@ -289,18 +339,26 @@ def build_post_selection_context(
             wrapper_path=_ensure_local_wrappers(paths)["mdstats-mace-train"]
         )
     policies = resolve_post_selection_method_policies(cfg)
-    return PostSelectionContext(
-        cfg=cfg,
-        paths=paths,
-        store=store,
-        selected=selected,
-        method=resolve_post_selection_method_identity(cfg, policies=policies),
-        method_policies=policies,
-        cv_policy=resolve_cv_validation_policy_identity(cfg),
-        production_policy=resolve_final_production_policy_identity(cfg),
-        trainer=resolved_trainer,
-        inference_evaluator=inference_evaluator,
-        qualification_case_workers=max(1, int(qualification_case_workers)),
+    method = resolve_post_selection_method_identity(cfg, policies=policies)
+    return tuple(
+        PostSelectionContext(
+            cfg=cfg,
+            paths=paths,
+            store=store,
+            selected=selected,
+            method=method,
+            method_policies=policies,
+            cv_policy=resolve_cv_validation_policy_identity(
+                cfg, max_num_epochs=selected.frozen.cv_max_num_epochs
+            ),
+            production_policy=resolve_final_production_policy_identity(
+                cfg, max_num_epochs=selected.frozen.production_max_num_epochs
+            ),
+            trainer=resolved_trainer,
+            inference_evaluator=inference_evaluator,
+            qualification_case_workers=max(1, int(qualification_case_workers)),
+        )
+        for selected in selected_contexts
     )
 
 
@@ -1879,6 +1937,20 @@ def resolve_current_cv_plan(context: PostSelectionContext) -> PostSelectionCvPla
             context.selected,
             replay_lineage_digest=replay_lineage_digest,
         )
+        if plan.method_identity_digest != context.method.content_digest:
+            raise PostSelectionError(
+                "The stored CV plan validated a different training method "
+                f"({plan.method_identity_digest[:12]}...) than current authority resolves "
+                f"({context.method.content_digest[:12]}...). Run `cross-validate` to validate "
+                "the current method."
+            )
+        if plan.cv_policy_identity_digest != context.cv_policy.content_digest:
+            raise PostSelectionError(
+                "The stored CV plan used a different cross-validation policy "
+                f"({plan.cv_policy_identity_digest[:12]}...) than current authority resolves "
+                f"({context.cv_policy.content_digest[:12]}...). Run `cross-validate` to validate "
+                "under the current policy."
+            )
     return plan
 
 
@@ -2086,7 +2158,16 @@ def resolve_current_final_production_completion(
 
 
 def execute_current_cross_validate(args: Any) -> int:
-    """`cross-validate`: the only current post-selection CV entrypoint."""
+    """`cross-validate`: freeze the whole design, then validate every size.
+
+    Freeze is atomic and collection-wide: ``N``, the exact ``T_selected``
+    membership and both effective role horizons of *every* selected size become
+    immutable ancestry before one numerical CV job is admitted.  The outer
+    iteration is deliberately serial over sizes, so the existing fold/seed
+    workers, MACE subprocesses and library thread pools keep the one effective
+    resource allocation they already own; the size dimension adds no scheduler
+    and claims no additional machine.
+    """
 
     from ._campaign_cli_core import (
         CampaignStore,
@@ -2100,69 +2181,151 @@ def execute_current_cross_validate(args: Any) -> int:
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
     _print_header("Post-selection cross-validation of the frozen training method")
-    context = build_post_selection_context(
+    contexts = build_post_selection_contexts(
         cfg,
         paths,
         store,
         trainer=getattr(args, "_external_post_selection_trainer", None),
         inference_evaluator=getattr(args, "_external_inference_evaluator", None),
+        admit=True,
     )
+    sizes = [context.selected.n_selected for context in contexts]
+    _ok(
+        f"froze the downstream design: {len(contexts)} selected size(s) {sizes}"
+    )
+    for index, context in enumerate(contexts, start=1):
+        _ok(
+            f"  [{index}] N_selected={context.selected.n_selected}; "
+            f"T_selected={context.selected.selected_membership_digest[:12]}...; "
+            f"CV horizon {context.cv_policy.cv_max_num_epochs}; production horizon "
+            f"{context.production_policy.production_max_num_epochs}; selection source "
+            f"{context.selected.frozen.selection_source}"
+        )
     _mark_stage(
         store,
         paths,
         "post_selection_cross_validation",
         StageState.RUNNING,
-        f"cross-validating N_selected={context.selected.n_selected}",
+        f"cross-validating selected sizes {sizes}",
     )
-    try:
-        plan, acceptance = execute_post_selection_cross_validation(context)
-    except Exception as exc:
-        _mark_stage(
-            store,
-            paths,
-            "post_selection_cross_validation",
-            StageState.FAILED,
-            str(exc),
+    rejected: list[tuple[int, tuple[str, ...]]] = []
+    for context in contexts:
+        n_selected = context.selected.n_selected
+        try:
+            plan, acceptance = execute_post_selection_cross_validation(context)
+        except Exception as exc:
+            _mark_stage(
+                store,
+                paths,
+                "post_selection_cross_validation",
+                StageState.FAILED,
+                f"N={n_selected}: {exc}",
+            )
+            raise
+        print(
+            f"Cross-validated the exact selected dataset: N_selected="
+            f"{n_selected}, K={plan.fold_count}, "
+            f"seeds={list(plan.required_cv_seeds)}.",
+            flush=True,
         )
-        raise
-    print(
-        f"Cross-validated the exact selected dataset: N_selected="
-        f"{context.selected.n_selected}, K={plan.fold_count}, "
-        f"seeds={list(plan.required_cv_seeds)}.",
-        flush=True,
-    )
-    if not acceptance.accepted:
+        if acceptance.accepted:
+            _ok(
+                f"N={n_selected}: every required fold of every required CV seed "
+                f"passed the configured target-only predicate "
+                f"({context.cv_policy.acceptance_metric} <= "
+                f"{context.cv_policy.acceptance_maximum})"
+            )
+            continue
+        # A rejected size stays visibly rejected and keeps its place in the
+        # design. Sibling evidence already gathered stays valid and reusable;
+        # what is refused is calling the campaign accepted.
+        rejected.append((n_selected, tuple(acceptance.rejection_reasons)))
+        break
+    if rejected:
+        detail = "; ".join(
+            f"N={size}: {list(reasons)}" for size, reasons in rejected
+        )
         _mark_stage(
             store,
             paths,
             "post_selection_cross_validation",
             StageState.FAILED,
-            "; ".join(acceptance.rejection_reasons),
+            detail,
         )
         raise PostSelectionError(
-            "Post-selection cross-validation rejected the training method: "
-            f"{list(acceptance.rejection_reasons)}. This is a methodological "
-            "result, not a target-size result: the selected N and its evidence "
-            "are unchanged, and final production is not authorized."
+            "Post-selection cross-validation rejected the training method for "
+            f"{detail}. This is a methodological result, not a target-size "
+            "result: the frozen design and its evidence are unchanged, no "
+            "selected size was dropped, and final production is not authorized "
+            "for any size."
         )
-    _ok(
-        "every required fold of every required CV seed passed the configured "
-        f"target-only predicate ({context.cv_policy.acceptance_metric} <= "
-        f"{context.cv_policy.acceptance_maximum})"
-    )
     _mark_stage(
         store,
         paths,
         "post_selection_cross_validation",
         StageState.COMPLETE,
-        f"cv acceptance {acceptance.content_digest[:12]}",
+        f"cv acceptance for selected sizes {sizes}",
     )
     print("Next: `train-production`.", flush=True)
     return 0
 
 
+def _cv_admission_blockers(
+    contexts: "tuple[PostSelectionContext, ...]",
+) -> tuple[str, ...]:
+    """Every frozen size that has no current accepted CV ancestry of its own.
+
+    This is the collection-wide production barrier.  It runs before any new
+    production job so a requested multi-size experiment can never quietly turn
+    into the successful subset of it.
+    """
+
+    blockers: list[str] = []
+    for context in contexts:
+        n_selected = context.selected.n_selected
+        try:
+            plan = resolve_current_cv_plan(context)
+        except Exception as exc:  # noqa: BLE001 - reported, not interpreted
+            blockers.append(f"N={n_selected}: CV plan is unreadable or stale ({exc})")
+            continue
+        if plan is None:
+            blockers.append(f"N={n_selected}: no current cross-validation plan exists")
+            continue
+
+        try:
+            acceptance = resolve_current_cv_acceptance(context)
+        except Exception as exc:  # noqa: BLE001 - reported, not interpreted
+            blockers.append(f"N={n_selected}: CV acceptance is unreadable ({exc})")
+            continue
+        if acceptance is None:
+            blockers.append(
+                f"N={n_selected}: no current cross-validation acceptance exists"
+            )
+            continue
+
+        try:
+            require_cv_acceptance_for_method(
+                acceptance,
+                plan=plan,
+                method_identity_digest=context.method.content_digest,
+                selected_binding_digest=context.selected.binding.content_digest,
+            )
+        except Exception as exc:  # noqa: BLE001 - reported, not interpreted
+            blockers.append(f"N={n_selected}: cross-validation is not accepted ({exc})")
+            continue
+    return tuple(blockers)
+
+
 def execute_current_train_production(args: Any) -> int:
-    """`train-production`: fresh full-``T_selected`` production training."""
+    """`train-production`: fresh full-``T_selected`` production for every size.
+
+    Admission is a collection-wide barrier: the complete frozen design is
+    authenticated and every selected size must hold current accepted CV ancestry
+    under its own binding and its own ``H_cv`` before *any* new production job
+    starts.  Evidence already published by an earlier attempt keeps whatever
+    currentness its own identity earns; what the barrier prevents is admitting
+    new work that would present a partial experiment as a whole one.
+    """
 
     from ._campaign_cli_core import (
         CampaignStore,
@@ -2176,49 +2339,74 @@ def execute_current_train_production(args: Any) -> int:
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
     _print_header("Fresh final production on the complete selected dataset")
-    context = build_post_selection_context(
+    contexts = build_post_selection_contexts(
         cfg,
         paths,
         store,
         trainer=getattr(args, "_external_post_selection_trainer", None),
         inference_evaluator=getattr(args, "_external_inference_evaluator", None),
     )
-    _mark_stage(
-        store,
-        paths,
-        "post_selection_final_production",
-        StageState.RUNNING,
-        f"producing N_selected={context.selected.n_selected}",
-    )
-    try:
-        final_plan, evidence, decision = execute_final_production(context)
-    except Exception as exc:
+    sizes = [context.selected.n_selected for context in contexts]
+    blockers = _cv_admission_blockers(contexts)
+    if blockers:
+        detail = "; ".join(blockers)
         _mark_stage(
             store,
             paths,
             "post_selection_final_production",
             StageState.FAILED,
-            str(exc),
+            detail,
         )
-        raise
-    _ok(
-        f"trained {len(evidence)} fresh production run(s) on the full "
-        f"T_selected (N={final_plan.n_selected}) for "
-        f"{final_plan.planned_epochs} configured [training].max_num_epochs, "
-        "under the cross-validation-accepted method"
+        raise PostSelectionError(
+            "Final production is not admitted: the frozen design requests selected "
+            f"sizes {sizes}, and {detail}. No production run was started for any "
+            "size. Existing immutable evidence is untouched; resolve the blocking "
+            "size(s) with `cross-validate` and rerun."
+        )
+    _mark_stage(
+        store,
+        paths,
+        "post_selection_final_production",
+        StageState.RUNNING,
+        f"producing selected sizes {sizes}",
     )
-    _ok(
-        f"published the final product under `{decision.committee_policy}`: "
-        f"member(s) {list(decision.published_member_ids)} on target head "
-        f"`{decision.target_head_name}`"
-    )
+    published: list[str] = []
+    for context in contexts:
+        n_selected = context.selected.n_selected
+        try:
+            final_plan, evidence, decision = execute_final_production(context)
+        except Exception as exc:
+            _mark_stage(
+                store,
+                paths,
+                "post_selection_final_production",
+                StageState.FAILED,
+                f"N={n_selected}: {exc}",
+            )
+            raise
+        _ok(
+            f"N={n_selected}: trained {len(evidence)} fresh production run(s) on "
+            f"the full T_selected for {final_plan.planned_epochs} frozen "
+            "production epoch(s), under the cross-validation-accepted method"
+        )
+        _ok(
+            f"N={n_selected}: published the final product under "
+            f"`{decision.committee_policy}`: member(s) "
+            f"{list(decision.published_member_ids)} on target head "
+            f"`{decision.target_head_name}`"
+        )
+        published.append(f"N={n_selected} {decision.content_digest[:12]}")
     _mark_stage(
         store,
         paths,
         "post_selection_final_production",
         StageState.COMPLETE,
-        f"final publication {decision.content_digest[:12]}",
+        f"final publications {published}",
     )
+    if len(contexts) > 1:
+        from .campaign_lifecycle import MULTI_SIZE_TERMINAL_MESSAGE
+
+        print(MULTI_SIZE_TERMINAL_MESSAGE, flush=True)
     return 0
 
 
@@ -2231,6 +2419,7 @@ __all__ = [
     "PostSelectionContext",
     "PostSelectionReplayResolution",
     "build_post_selection_context",
+    "build_post_selection_contexts",
     "execute_current_cross_validate",
     "execute_current_train_production",
     "execute_final_production",

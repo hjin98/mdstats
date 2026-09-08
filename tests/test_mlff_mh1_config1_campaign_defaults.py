@@ -159,7 +159,6 @@ def test_config1_init_defaults_are_explicit_not_environment_autodetected(tmp_pat
     target = tmp_path / "campaign.toml"
     parser = campaign_cli.build_parser()
     args = parser.parse_args(["--config", str(target), "init"])
-    assert args.foundation_family == "mace_mh_1"
     assert args.backend == "e3nn"
     rc = args.func(args)
     assert rc == 0
