@@ -2,7 +2,7 @@
 kind: implementation-workplan
 workplan_id: MLFF-TARGET-SIZE-MULTI-SELECTION-NEXT-ROUND-REPAIR
 protocol_version: 5.16.0
-status: implementation-ready
+status: implementation-complete
 created_date: 2026-09-08
 branch: plan/mlff-target-size-multi-selection-reviewed
 implementation_base_head: e2b3c20dee4832eb62416ccfb630b05136fa4313

@@ -6025,7 +6025,13 @@ policy_generation = "train2"
 # explicit per-method tables below for new campaigns.
 device = "{default_device}"
 dtype = "{precision['training_dtype']}"
+# Shared post-selection optimizer settings. These govern post-selection
+# cross-validation and fresh final production; target-size screening derives its
+# per-candidate learning rate and EMA decay from
+# [target_data.size_convergence.optimizer_normalization].
 learning_rate = 1.0e-4
+ema = true
+ema_decay = 0.99999
 batch_size = 2
 valid_batch_size = 2
 # 0 chooses a CPU/RAM-bounded DataLoader worker count.

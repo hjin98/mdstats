@@ -576,3 +576,199 @@ def test_assembled_screen_normalizes_every_current_candidate_route(
     # A candidate below and a candidate above the reference really do differ.
     lrs = {size: by_size[size][0]["lr"] for size in by_size}
     assert len(set(lrs.values())) >= 2
+
+
+# --- T4 - T7: post-selection optimizer defaults & independence counterfactuals ---
+
+
+def test_t4_generated_config_visibility() -> None:
+    """T4: _config_template explicitly writes [training] learning_rate, ema, ema_decay and screen ref LR/EMA."""
+    import tomllib
+    from mdstats.training_data._campaign_cli_core import _config_template
+
+    template = _config_template(
+        workspace="/path/to/ws",
+        training_root="/path/to/tr",
+        foundation_model="/path/to/m.model",
+    )
+    parsed = tomllib.loads(template)
+
+    # 1. Post-selection defaults explicitly present in generated TOML
+    assert parsed["training"]["learning_rate"] == 1.0e-4
+    assert parsed["training"]["ema"] is True
+    assert parsed["training"]["ema_decay"] == 0.99999
+
+    # 2. Separately contains the target-size optimizer-normalization reference fields
+    norm = parsed["target_data"]["size_convergence"]["optimizer_normalization"]
+    assert norm["reference_target_size"] == 1024
+    assert norm["reference_learning_rate"] == 1.0e-4
+    assert norm["reference_ema_decay"] == 0.99999
+
+
+def test_t5_screen_independence_counterfactual() -> None:
+    """T5: changing [training] LR/EMA does not alter screen normalization policy or realized values."""
+    import tomllib
+    from mdstats.training_data._campaign_cli_core import _config_template
+    from mdstats.training_data.target_size_execution import (
+        resolve_target_size_optimizer_normalization_policy,
+    )
+    from mdstats.training_data.target_size_execution.execution import (
+        target_size_realized_learning_rate_policy,
+    )
+
+    template = _config_template(
+        workspace="/path/to/ws",
+        training_root="/path/to/tr",
+        foundation_model="/path/to/m.model",
+    )
+    base_cfg = tomllib.loads(template)
+
+    base_policy = resolve_target_size_optimizer_normalization_policy(base_cfg)
+    base_scale = base_policy.optimizer_progress_scale(
+        batch_size=4, updates_per_epoch=math.ceil(512 / 4)
+    )
+    base_lr = base_policy.effective_base_learning_rate(base_scale)
+    base_beta = base_policy.effective_ema_decay(base_scale)
+
+    # 1. Change only [training].learning_rate and [training].ema_decay
+    changed_training_cfg = tomllib.loads(template)
+    changed_training_cfg["training"]["learning_rate"] = 0.05
+    changed_training_cfg["training"]["ema_decay"] = 0.80
+
+    policy_after_training_edit = resolve_target_size_optimizer_normalization_policy(
+        changed_training_cfg
+    )
+    scale_after_training_edit = policy_after_training_edit.optimizer_progress_scale(
+        batch_size=4, updates_per_epoch=math.ceil(512 / 4)
+    )
+    lr_after_training_edit = policy_after_training_edit.effective_base_learning_rate(
+        scale_after_training_edit
+    )
+    beta_after_training_edit = policy_after_training_edit.effective_ema_decay(
+        scale_after_training_edit
+    )
+
+    # Screen normalization policy and realized values are completely unchanged
+    assert policy_after_training_edit == base_policy
+    assert lr_after_training_edit == base_lr
+    assert beta_after_training_edit == base_beta
+
+    # 2. Change only reference_learning_rate / reference_ema_decay
+    changed_screen_cfg = tomllib.loads(template)
+    changed_screen_cfg["target_data"]["size_convergence"]["optimizer_normalization"][
+        "reference_learning_rate"
+    ] = 5.0e-4
+    changed_screen_cfg["target_data"]["size_convergence"]["optimizer_normalization"][
+        "reference_ema_decay"
+    ] = 0.99
+
+    policy_after_screen_edit = resolve_target_size_optimizer_normalization_policy(
+        changed_screen_cfg
+    )
+    scale_after_screen_edit = policy_after_screen_edit.optimizer_progress_scale(
+        batch_size=4, updates_per_epoch=math.ceil(512 / 4)
+    )
+    lr_after_screen_edit = policy_after_screen_edit.effective_base_learning_rate(
+        scale_after_screen_edit
+    )
+    beta_after_screen_edit = policy_after_screen_edit.effective_ema_decay(
+        scale_after_screen_edit
+    )
+
+    assert lr_after_screen_edit != base_lr
+    assert beta_after_screen_edit != base_beta
+
+
+def test_t6_post_selection_independence_counterfactual(tmp_path: Path) -> None:
+    """T6: changing screen reference LR/EMA does not alter post-selection optimizer settings or method."""
+    import tomllib
+    from mdstats.training_data._campaign_cli_core import _config_template
+    from mdstats.training_data.training_settings import resolve_shared_optimizer_settings
+
+    template = _config_template(
+        workspace=str(tmp_path / "ws"),
+        training_root=str(tmp_path / "tr"),
+        foundation_model=str(tmp_path / "m.model"),
+    )
+    base_cfg = tomllib.loads(template)
+    base_shared = resolve_shared_optimizer_settings(base_cfg)
+
+    # 1. Change only the screen normalization reference LR/EMA
+    screen_changed_cfg = tomllib.loads(template)
+    screen_changed_cfg["target_data"]["size_convergence"]["optimizer_normalization"][
+        "reference_learning_rate"
+    ] = 8.0e-3
+    screen_changed_cfg["target_data"]["size_convergence"]["optimizer_normalization"][
+        "reference_ema_decay"
+    ] = 0.90
+
+    screen_changed_shared = resolve_shared_optimizer_settings(screen_changed_cfg)
+    assert screen_changed_shared == base_shared
+    assert screen_changed_shared["learning_rate"] == 1.0e-4
+    assert screen_changed_shared["ema_decay"] == 0.99999
+
+    # 2. Change only [training].learning_rate / [training].ema_decay
+    training_changed_cfg = tomllib.loads(template)
+    training_changed_cfg["training"]["learning_rate"] = 3.0e-4
+    training_changed_cfg["training"]["ema_decay"] = 0.999
+
+    training_changed_shared = resolve_shared_optimizer_settings(training_changed_cfg)
+    assert training_changed_shared != base_shared
+    assert training_changed_shared["learning_rate"] == 3.0e-4
+    assert training_changed_shared["ema_decay"] == 0.999
+
+    # Screen normalization policy is unaffected by the [training] change
+    base_screen_policy = resolve_target_size_optimizer_normalization_policy(base_cfg)
+    training_changed_screen_policy = (
+        resolve_target_size_optimizer_normalization_policy(training_changed_cfg)
+    )
+    assert base_screen_policy == training_changed_screen_policy
+
+
+def test_t7_cv_production_shared_method_consistency(tmp_path: Path) -> None:
+    """T7: CV and final production execute the exact same shared post-selection method identity and optimizer."""
+    from unittest.mock import patch
+    import tests._mlff_post_selection_fixture as fx
+    import tests.test_mlff_target_size_p4d_runtime_cutover as p4d
+    from mdstats.training_data._campaign_cli_core import CampaignStore, _load_config
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        _optimizer_policy_for,
+        build_post_selection_context,
+    )
+    from mdstats.training_data.training_settings import (
+        resolve_shared_optimizer_settings,
+        shared_optimizer_settings_payload,
+    )
+
+    with patch.object(p4d, "_CONFIG", fx.fixture_config_text()):
+        config, workspace = p4d._fixture_campaign(tmp_path)
+    assert p4d._run(config, "prepare") == 0
+    assert p4d._run(config, "select-target-size", "8") == 0
+
+    cfg, paths = _load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        context = build_post_selection_context(cfg, paths, store, admit=True)
+    finally:
+        store.close()
+
+    # The shared method identity binds the shared optimizer settings
+    shared_optimizer = resolve_shared_optimizer_settings(context.cfg)
+    assert shared_optimizer["learning_rate"] == 1.0e-4
+    assert shared_optimizer["ema"] is True
+    assert shared_optimizer["ema_decay"] == 0.99999
+    assert context.method.shared_optimizer_settings_digest == digest(
+        shared_optimizer_settings_payload(context.cfg)
+    )
+
+    # Both CV and production realize the exact same optimizer settings
+    cv_optimizer = _optimizer_policy_for(context, seed=0, planned_epochs=2)
+    prod_optimizer = _optimizer_policy_for(context, seed=0, planned_epochs=3)
+    assert cv_optimizer.learning_rate == prod_optimizer.learning_rate == 1.0e-4
+    assert cv_optimizer.ema == prod_optimizer.ema is True
+    assert cv_optimizer.ema_decay == prod_optimizer.ema_decay == 0.99999
+
+    # Both CV and production policies reference their role horizons, but the method is shared
+    assert context.cv_policy.content_digest is not None
+    assert context.production_policy.content_digest is not None
+

@@ -564,6 +564,13 @@ def require_cv_acceptance_for_method(
             f"production would execute ({str(method_identity_digest)[:12]}...). "
             "Stale CV cannot authorize a changed method."
         )
+    if acceptance.cv_policy_identity_digest != plan.cv_policy_identity_digest:
+        raise PostSelectionCvRejectedError(
+            "The accepted cross-validation validated a different cross-validation policy "
+            f"({acceptance.cv_policy_identity_digest[:12]}...) than the CV plan binds "
+            f"({plan.cv_policy_identity_digest[:12]}...). "
+            "Inconsistent CV policy ancestry cannot authorize production."
+        )
     if acceptance.selected_binding_digest != str(selected_binding_digest):
         raise PostSelectionCvRejectedError(
             "The accepted cross-validation descends from a different selected "

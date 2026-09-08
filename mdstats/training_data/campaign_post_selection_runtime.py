@@ -1937,6 +1937,20 @@ def resolve_current_cv_plan(context: PostSelectionContext) -> PostSelectionCvPla
             context.selected,
             replay_lineage_digest=replay_lineage_digest,
         )
+        if plan.method_identity_digest != context.method.content_digest:
+            raise PostSelectionError(
+                "The stored CV plan validated a different training method "
+                f"({plan.method_identity_digest[:12]}...) than current authority resolves "
+                f"({context.method.content_digest[:12]}...). Run `cross-validate` to validate "
+                "the current method."
+            )
+        if plan.cv_policy_identity_digest != context.cv_policy.content_digest:
+            raise PostSelectionError(
+                "The stored CV plan used a different cross-validation policy "
+                f"({plan.cv_policy_identity_digest[:12]}...) than current authority resolves "
+                f"({context.cv_policy.content_digest[:12]}...). Run `cross-validate` to validate "
+                "under the current policy."
+            )
     return plan
 
 
@@ -2270,19 +2284,35 @@ def _cv_admission_blockers(
     for context in contexts:
         n_selected = context.selected.n_selected
         try:
+            plan = resolve_current_cv_plan(context)
+        except Exception as exc:  # noqa: BLE001 - reported, not interpreted
+            blockers.append(f"N={n_selected}: CV plan is unreadable or stale ({exc})")
+            continue
+        if plan is None:
+            blockers.append(f"N={n_selected}: no current cross-validation plan exists")
+            continue
+
+        try:
             acceptance = resolve_current_cv_acceptance(context)
         except Exception as exc:  # noqa: BLE001 - reported, not interpreted
-            blockers.append(f"N={n_selected}: CV evidence is unreadable ({exc})")
+            blockers.append(f"N={n_selected}: CV acceptance is unreadable ({exc})")
             continue
         if acceptance is None:
             blockers.append(
                 f"N={n_selected}: no current cross-validation acceptance exists"
             )
-        elif not bool(acceptance.accepted):
-            blockers.append(
-                f"N={n_selected}: cross-validation rejected the training method "
-                f"({list(acceptance.rejection_reasons)})"
+            continue
+
+        try:
+            require_cv_acceptance_for_method(
+                acceptance,
+                plan=plan,
+                method_identity_digest=context.method.content_digest,
+                selected_binding_digest=context.selected.binding.content_digest,
             )
+        except Exception as exc:  # noqa: BLE001 - reported, not interpreted
+            blockers.append(f"N={n_selected}: cross-validation is not accepted ({exc})")
+            continue
     return tuple(blockers)
 
 

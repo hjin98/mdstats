@@ -426,3 +426,118 @@ def test_single_size_qualification_keeps_its_existing_route(tmp_path: Path):
     step = snapshot.step("post_production_qualification")
     assert step.state == "not_started"
     assert "run `qualification run`" in step.message
+
+
+# --- T1 / T2 / T3: CV currentness & collection preflight acceptance --------
+
+
+def test_t1_single_size_cv_policy_currentness_guards_production(tmp_path: Path):
+    """T1: changing a non-horizon CV-policy field invalidates CV currentness before production."""
+    config, _workspace = _prepared(tmp_path)
+    assert _select(config, str(FIRST_SIZE), "--horizon-cv", "2", "--horizon", "3") == 0
+
+    cv_harness = fx.PostSelectionHarness()
+    assert fx.run_cross_validate(config, cv_harness) == 0
+
+    _cfg, _paths, contexts = _contexts(config)
+    context = contexts[0]
+    initial_plan = resolve_current_cv_plan(context)
+    assert initial_plan is not None
+    initial_acceptance = resolve_current_cv_acceptance(context)
+    assert initial_acceptance is not None and initial_acceptance.accepted
+
+    # Change a non-horizon CV-policy field in config: partition_seed.
+    fx.rewrite_config(config, "partition_seed = 7", "partition_seed = 42")
+
+    # Real train-production must fail before trainer launch and before publication.
+    prod_harness = fx.PostSelectionHarness()
+    with pytest.raises(PostSelectionError, match="cross-validation policy"):
+        fx.run_train_production(config, prod_harness)
+    assert prod_harness.runs == [], "zero production trainer invocations on stale CV policy"
+
+    _cfg, _paths, contexts = _contexts(config)
+    assert resolve_current_final_production_plan(contexts[0]) is None
+    assert resolve_current_final_production_publication(contexts[0]) is None
+
+    # Rerun cross-validate under policy B; prove production can then proceed.
+    cv_harness_b = fx.PostSelectionHarness()
+    assert fx.run_cross_validate(config, cv_harness_b) == 0
+    prod_harness_b = fx.PostSelectionHarness()
+    assert fx.run_train_production(config, prod_harness_b) == 0
+    _cfg, _paths, contexts = _contexts(config)
+    assert resolve_current_final_production_publication(contexts[0]) is not None
+
+
+def test_t2_collection_wide_stale_or_corrupt_late_member_barrier(tmp_path: Path):
+    """T2: invalidating only the later frozen size stops train-production collection-wide."""
+    config = _two_size_campaign(tmp_path)
+    assert fx.run_cross_validate(config, fx.PostSelectionHarness()) == 0
+
+    _cfg, _paths, contexts = _contexts(config)
+    assert len(contexts) == 2
+    later_context = contexts[1]
+    later_plan = resolve_current_cv_plan(later_context)
+    assert later_plan is not None
+
+    # Invalidate only the later size below the owner boundary:
+    # Remove the CV plan object from the later size's evidence store so its pointer
+    # references a missing object.
+    object_file = later_context.evidence_store.object_path(later_plan.content_digest)
+    assert object_file.is_file()
+    object_file.unlink()
+
+    # Call real public train-production.
+    barrier_harness = fx.PostSelectionHarness()
+    with pytest.raises(PostSelectionError) as excinfo:
+        fx.run_train_production(config, barrier_harness)
+
+    # 1. Zero new production trainer invocations for all sizes.
+    assert barrier_harness.runs == [], "no production jobs admitted when any size is invalid"
+
+    # 2. No new final-production plan or publication becomes current for the earlier size.
+    _cfg, _paths, contexts = _contexts(config)
+    assert resolve_current_final_production_plan(contexts[0]) is None
+    assert resolve_current_final_production_publication(contexts[0]) is None
+
+    # 3. All known blocking N/reasons are surfaced.
+    assert f"N={SECOND_SIZE}" in str(excinfo.value)
+    assert "not admitted" in str(excinfo.value)
+
+    # 4. Existing immutable historical evidence of earlier size remains untouched.
+    earlier_plan = resolve_current_cv_plan(contexts[0])
+    assert earlier_plan is not None
+    assert resolve_current_cv_acceptance(contexts[0]).accepted
+
+
+def test_t3_exact_acceptance_policy_ancestry(tmp_path: Path):
+    """T3: acceptance whose cv_policy_identity_digest disagrees with the plan is rejected."""
+    from dataclasses import replace
+    from mdstats.training_data.post_selection_cv_acceptance import (
+        PostSelectionCvRejectedError,
+        require_cv_acceptance_for_method,
+    )
+
+    config = _two_size_campaign(tmp_path)
+    assert fx.run_cross_validate(config, fx.PostSelectionHarness()) == 0
+
+    _cfg, _paths, contexts = _contexts(config)
+    context = contexts[0]
+    plan = resolve_current_cv_plan(context)
+    acceptance = resolve_current_cv_acceptance(context)
+    assert plan is not None and acceptance is not None
+
+    # Tamper with the acceptance's cv_policy_identity_digest so it disagrees with the plan.
+    corrupted_policy_digest = "a" * 64
+    assert corrupted_policy_digest != plan.cv_policy_identity_digest
+    corrupted_acceptance = replace(
+        acceptance, cv_policy_identity_digest=corrupted_policy_digest
+    )
+
+    with pytest.raises(PostSelectionCvRejectedError, match="cross-validation policy"):
+        require_cv_acceptance_for_method(
+            corrupted_acceptance,
+            plan=plan,
+            method_identity_digest=context.method.content_digest,
+            selected_binding_digest=context.selected.binding.content_digest,
+        )
+

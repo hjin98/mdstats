@@ -8,6 +8,10 @@
 - Drive post-selection `cross-validate` and `train-production` through per-size iteration in frozen order, with a collection-wide production barrier requiring all selected sizes to hold accepted cross-validation before any production training is admitted.
 - Bound post-production qualification (P7) to single-size experiments, cleanly failing closed when multiple target sizes are frozen.
 - Extend campaign status observation and lifecycle aggregation to report all selected sizes coherently, establishing a terminal non-release state for multi-size production completion.
+- Tighten P5 cross-validation plan currentness to authenticate both `method_identity_digest` and `cv_policy_identity_digest` against the resolved context before admission.
+- Enforce exact CV policy ancestry validation in `require_cv_acceptance_for_method`, ensuring stored `acceptance.cv_policy_identity_digest` strictly matches the referenced CV plan.
+- Upgrade the collection-wide production admission preflight in `execute_current_train_production` / `_cv_admission_blockers` to fully authenticate CV plan, acceptance, and semantic method authorization across all frozen target sizes, preventing partial production execution when any size has stale, corrupt, or rejected ancestry.
+- Expose explicit post-selection optimizer defaults (`learning_rate = 1.0e-4`, `ema = true`, `ema_decay = 0.99999`) in the `init` configuration template, making newly generated campaign files self-describing while preserving independent ownership from target-size optimizer normalization.
 
 ## 0.20.241a0 - 2026-08-18
 
