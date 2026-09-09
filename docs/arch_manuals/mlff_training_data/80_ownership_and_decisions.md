@@ -51,7 +51,7 @@ quarantined/reprepared rather than translated.
 | provisional downstream design | operator, through `select-target-size` | qualified candidate set, `pi_train`, configured/overridden horizons | one mutable ordered collection of per-size entries `(N, T_N identity, H_cv, H_prod)`, unique by `N` | immutable ancestry; running screen work; choosing a release product among sizes |
 | frozen downstream design | `cross-validate` admission | the current proposal and authenticated P2 order | frozen ordered collection of per-size bindings (`N_selected`, exact `T_N`, role horizons) | re-deciding size afterwards |
 | post-selection method acceptance | post-selection CV owner | frozen target collection, protected relations, `K >= 2`, CV seeds | all-required-fold target-only verdict across each admitted size | changing selected sizes |
-| fresh final production | final-production owner | accepted method, complete selected dataset(s), required final seeds | complete executed run evidence / model artifacts | target-size or CV authority (publication is P7) |
+| fresh final production | final-production owner | accepted method, complete selected dataset(s), required final seeds | complete executed run evidence / model artifacts, and the final-production publication decision | target-size or CV authority (qualification is a downstream consumer of the publication, never its author) |
 | target monitor | current monitor policy | authorized development role | deterministic monitor | target membership |
 | replay monitor | replay policy | authorized replay evidence | deterministic replay monitor | target ranking or method acceptance credit |
 | execution/provider lifetime | current stage owners | authenticated plans and resource budgets | bounded task/cache/provider state | scientific decisions |
@@ -170,8 +170,8 @@ current selected binding
 Cross-validation evaluates the frozen selected collection, preserves P1 protected relations,
 requires every configured fold and seed, and accepts or rejects the method.
 It cannot alter the frozen target design. Final production starts fresh from the accepted
-foundation and trains the complete selected dataset(s) under
-`[training].max_num_epochs`; it cannot continue a screen or CV run.
+foundation and trains the complete selected dataset(s) under each size's own
+frozen production horizon `H_prod_i`; it cannot continue a screen or CV run.
 
 ### The final-production publication decision
 
@@ -245,7 +245,13 @@ deliberately not part of that lifecycle:
 qualification status | qualification run | qualification activate-locked
 ```
 
-`advance` never runs qualification and never opens locked evidence.
+`advance` may route ordinary nonlocked `qualification run` once a single-size
+campaign has a current final publication, because that step is repeatable and
+consumes only evidence the campaign already owns. It never opens locked
+evidence: `qualification activate-locked` is irreversible one-shot disclosure
+and stays an explicit operator act. For a multi-size frozen design the completed
+experiment is terminal and non-release-qualified, so no qualification attempt is
+routed or created at all.
 
 ## Downstream qualification ownership
 

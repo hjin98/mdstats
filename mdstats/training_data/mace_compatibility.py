@@ -928,7 +928,15 @@ def record_mace_execution_evidence(
     resolved = {
         "schema": MACE_EXECUTION_EVIDENCE_SCHEMA,
         "execution_semantics_version": MACE_EXECUTION_SEMANTICS_VERSION,
-        **dict(evidence),
+        # Re-authentication commonly receives evidence that was already
+        # resolved once.  Remove its old content digest before rebuilding the
+        # canonical payload; otherwise the new digest would include the old
+        # digest and fail the normalizer's content check.
+        **{
+            key: value
+            for key, value in dict(evidence).items()
+            if key != "evidence_digest"
+        },
     }
     for name in (
         "loss_family",

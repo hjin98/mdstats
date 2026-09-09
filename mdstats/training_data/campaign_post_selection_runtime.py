@@ -28,8 +28,10 @@ lineage, restart, and publication behavior while substituting only MACE.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -70,11 +72,17 @@ from .post_selection_execution import (
     DATASET_ROLE_OUTER_EVALUATION,
     MacePostSelectionTrainer,
     PostSelectionExecutionError,
+    PostSelectionMaterialization,
     PostSelectionRunEvidence,
     PostSelectionRungRequest,
+    _post_selection_mace_config,
+    _build_post_selection_mace_execution_authority,
+    _mace_execution_frame_uid_set_digest,
     authenticate_post_selection_provider,
     evaluate_post_selection_dataset,
+    fit_post_selection_preparation,
     materialize_post_selection_run,
+    post_selection_mace_run_configuration,
     post_selection_checkpoint_candidates,
     post_selection_runtime_plan,
 )
@@ -339,7 +347,7 @@ def build_post_selection_contexts(
         resolved_trainer = MacePostSelectionTrainer(
             wrapper_path=_ensure_local_wrappers(paths)["mdstats-mace-train"]
         )
-    policies = resolve_post_selection_method_policies(cfg)
+    policies = resolve_post_selection_method_policies(cfg, config_dir=paths.config_dir)
     method = resolve_post_selection_method_identity(cfg, policies=policies)
     contexts = []
     for selected in selected_contexts:
@@ -493,8 +501,8 @@ def _resolve_post_selection_replay_resolution(
                 "Single-source replay did not produce an independent TRUE_DFT "
                 "monitor artifact."
             )
-        source_art = single_ctx.get("replay_source")
-        split_manifest = single_ctx.get("replay_split_manifest")
+        source_art = single_ctx["source"]
+        split_manifest = single_ctx["split"]
         return PostSelectionReplayResolution(
             interface="single_source",
             train_path=str(training_path),
@@ -503,14 +511,10 @@ def _resolve_post_selection_replay_resolution(
             monitor_artifact=monitor_artifact,
             training_label_mode=getattr(training_artifact, "label_mode", None),
             true_label_mode=getattr(monitor_artifact, "label_mode", None),
-            source_path=(None if source_art is None else str(source_art.path)),
-            source_content_digest=(
-                None if source_art is None else source_art.content_digest
-            ),
-            source_sha256=None if source_art is None else source_art.sha256,
-            split_manifest_digest=(
-                None if split_manifest is None else split_manifest.content_digest
-            ),
+            source_path=str(source_art.path),
+            source_content_digest=source_art.content_digest,
+            source_sha256=source_art.sha256,
+            split_manifest_digest=split_manifest.content_digest,
         )
 
     # Legacy split replay has one canonical training plan and a separate true
@@ -676,6 +680,7 @@ def evaluate_post_selection_run_candidates(
             summary=summary,
             evaluation_model_state=evaluation_model_state,
             allow_forward_override=context.inference_evaluator is not None,
+            foundation_model_path=context.method_policies.foundation_model,
         )
         replay_candidate_rmse = None
         replay_foundation_rmse = None
@@ -746,11 +751,16 @@ def evaluate_post_selection_run_candidates(
                     "Replay admissibility evaluation requires a configured foundation model."
                 )
 
-            foundation_content_digest = (
-                foundation_identity.canonical_content_digest
-                if foundation_identity is not None
-                else digest({"foundation_model": foundation_model})
-            )
+            if foundation_identity is None:
+                # A foundation-backed replay evaluation without authenticated
+                # foundation identity has nothing scientific to key its baseline
+                # on.  Substituting the runtime locator would reintroduce
+                # location into what is content/head identity.
+                raise PostSelectionExecutionError(
+                    "Replay admissibility evaluation requires canonical "
+                    "foundation identity."
+                )
+            foundation_content_digest = foundation_identity.canonical_content_digest
             cache_key = digest(
                 {
                     "foundation_content_digest": foundation_content_digest,
@@ -863,6 +873,600 @@ def execute_post_selection_run(
         )
 
 
+_POST_SELECTION_MATERIALIZATION_FILES = frozenset(
+    {
+        "materialization.json",
+        "post_selection_mace_config.yaml",
+        "mace_run_config.yaml",
+        "target_train.extxyz",
+        "target_train.extxyz.manifest.json",
+        "checkpoint_monitor.extxyz",
+        "checkpoint_monitor.extxyz.manifest.json",
+        "outer_evaluation.extxyz",
+        "outer_evaluation.extxyz.manifest.json",
+    }
+)
+
+
+def _post_selection_recovery_error(
+    message: str, cause: Exception | None = None
+) -> None:
+    """Raise the typed P5 error used for preserved recovery conflicts."""
+
+    if cause is None:
+        raise PostSelectionExecutionError(message)
+    raise PostSelectionExecutionError(message) from cause
+
+
+def _safe_materialization_relative_path(
+    root: Path, value: str, *, name: str
+) -> Path:
+    """Return one in-root materialization path without following an input link."""
+
+    relative = Path(str(value))
+    if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+        _post_selection_recovery_error(
+            f"{name} must be a relative path inside the P5 materialization."
+        )
+    candidate = root / relative
+    resolved_root = root.resolve()
+    resolved = candidate.resolve()
+    if resolved != resolved_root and resolved_root not in resolved.parents:
+        _post_selection_recovery_error(
+            f"{name} resolves outside the P5 materialization: {value!r}."
+        )
+    return relative
+
+
+def _materialization_allowed_nodes(
+    root: Path, record: PostSelectionMaterialization | None
+) -> frozenset[str]:
+    """Return the exact local names current P5 publication can leave behind."""
+
+    names = set(_POST_SELECTION_MATERIALIZATION_FILES)
+    if record is not None:
+        for artifact_name, artifact in (
+            ("target training artifact", record.target_train_artifact),
+            ("checkpoint-monitor artifact", record.checkpoint_monitor_artifact),
+            ("outer-evaluation artifact", record.outer_evaluation_artifact),
+        ):
+            if artifact is None:
+                continue
+            for field in ("relative_path", "sidecar_relative_path"):
+                relative = _safe_materialization_relative_path(
+                    root,
+                    getattr(artifact, field),
+                    name=f"{artifact_name} {field}",
+                )
+                names.add(relative.as_posix())
+        relative = _safe_materialization_relative_path(
+            root,
+            record.mace_config_relative_path,
+            name="MACE configuration path",
+        )
+        names.add(relative.as_posix())
+    lock_names = {
+        f".{Path(name).name}.lock" for name in names if "/" not in name
+    }
+    return frozenset(names | lock_names)
+
+
+def _assert_owned_materialization_tree(
+    material_directory: Path,
+    *,
+    record: PostSelectionMaterialization | None,
+) -> None:
+    """Reject links/foreign descendants before any run-owned cleanup."""
+
+    if material_directory.is_symlink():
+        _post_selection_recovery_error(
+            "P5 materialization is a symlink; refusing to classify or remove it."
+        )
+    if not material_directory.is_dir():
+        _post_selection_recovery_error(
+            f"P5 materialization path is not a directory: {material_directory}."
+        )
+    allowed = _materialization_allowed_nodes(material_directory, record)
+    for node in material_directory.rglob("*"):
+        if node.is_symlink():
+            _post_selection_recovery_error(
+                f"P5 materialization contains a symlinked node; preserving it: {node}."
+            )
+        if not node.is_file() and not node.is_dir():
+            _post_selection_recovery_error(
+                f"P5 materialization contains a non-regular node; preserving it: {node}."
+            )
+        relative = node.relative_to(material_directory)
+        if len(relative.parts) != 1:
+            _post_selection_recovery_error(
+                "P5 materialization contains an unexpected nested descendant; "
+                f"preserving it: {node}."
+            )
+        name = relative.as_posix()
+        if name not in allowed and not name.startswith(".tmp_"):
+            _post_selection_recovery_error(
+                "P5 materialization contains a descendant this owner did not "
+                f"publish; preserving it: {node}."
+            )
+
+
+def _checkpoint_has_durable_entries(checkpoint_directory: Path) -> bool:
+    """Ignore only publication-temp/lock residue when probing continuation."""
+
+    for node in checkpoint_directory.iterdir():
+        if node.is_symlink():
+            _post_selection_recovery_error(
+                "TRAIN2 checkpoint directory contains a symlink; preserving it."
+            )
+        if node.name.startswith(".tmp_") or node.name.endswith(".lock"):
+            continue
+        return True
+    return False
+
+
+def _authenticate_post_selection_continuation(
+    checkpoint_directory: Path,
+    *,
+    runtime_plan: Any,
+) -> tuple[Any | None, int]:
+    """Authenticate TRAIN2 state; never infer resumability from a filename."""
+
+    if checkpoint_directory.is_symlink():
+        _post_selection_recovery_error(
+            "TRAIN2 checkpoint state is a symlink; preserving diagnostic state."
+        )
+    if not checkpoint_directory.exists():
+        return None, 0
+    if not checkpoint_directory.is_dir():
+        _post_selection_recovery_error(
+            "TRAIN2 checkpoint state is not a regular run-owned directory; "
+            "preserving it."
+        )
+    if not _checkpoint_has_durable_entries(checkpoint_directory):
+        return None, 0
+
+    from .train2_runtime import validate_train2_runtime_continuation_artifacts
+
+    try:
+        summary = validate_train2_runtime_continuation_artifacts(
+            checkpoint_directory,
+            training_protocol_digest=runtime_plan.training_protocol_digest,
+            optimizer_policy_digest=runtime_plan.optimizer_policy_digest,
+            budget_policy=runtime_plan.budget_policy,
+            learning_rate_policy=runtime_plan.learning_rate_policy,
+            structures_per_epoch=runtime_plan.structures_per_epoch,
+        )
+        # The shared validator permits a different execution limit for target-
+        # size boundary reuse. P5 has no rung pause, so bind the result to this
+        # exact runtime plan before handing it to the trainer.
+        if summary.plan_digest != runtime_plan.content_digest:
+            raise TrainingDataInputError(
+                "TRAIN2 continuation summary belongs to a different P5 runtime plan."
+            )
+        if summary.execution_epoch_limit != runtime_plan.execution_epoch_limit:
+            raise TrainingDataInputError(
+                "TRAIN2 continuation summary belongs to a different P5 execution limit."
+            )
+    except Exception as exc:
+        _post_selection_recovery_error(
+            "TRAIN2 checkpoint files exist but do not authenticate as the current "
+            "P5 continuation; preserving diagnostic state.",
+            exc,
+        )
+    return summary, int(summary.completed_epochs)
+
+
+def _validate_post_selection_continuation_execution_evidence(
+    context: PostSelectionContext,
+    *,
+    materialization: PostSelectionMaterialization,
+    config_payload: Mapping[str, Any],
+    continuation_summary: Any,
+    replay_resolution: Any | None,
+    optimizer_policy: Any,
+) -> None:
+    """Bind persisted MACE execution facts to the current materialization.
+
+    TRAIN2 authenticates its own continuation shape and tensor state.  The P5
+    materialization is the owner of the exact DATA8 workload, however, so a
+    continuation is not reusable until the existing MACE evidence also names
+    this materialization's configuration and training membership.  This is an
+    owner-local compatibility check, not another restart record or identity.
+    """
+
+    from .mace_compatibility import (
+        MACE_EXECUTION_EVIDENCE_SCHEMA,
+        MACE_EXECUTION_SEMANTICS_VERSION,
+        record_mace_execution_evidence,
+    )
+
+    evidence = getattr(continuation_summary, "mace_execution_evidence", None)
+    if not isinstance(evidence, Mapping):
+        _post_selection_recovery_error(
+            "TRAIN2 continuation has no persisted MACE execution evidence bound "
+            "to the current P5 materialization; preserving diagnostic state."
+        )
+    evidence = dict(evidence)
+    if evidence.get("schema") != MACE_EXECUTION_EVIDENCE_SCHEMA:
+        _post_selection_recovery_error(
+            "TRAIN2 continuation carries an unsupported MACE execution-evidence "
+            "schema; preserving diagnostic state."
+        )
+    if evidence.get("execution_semantics_version") != MACE_EXECUTION_SEMANTICS_VERSION:
+        _post_selection_recovery_error(
+            "TRAIN2 continuation carries an unsupported MACE execution-semantics "
+            "revision; preserving diagnostic state."
+        )
+    if evidence.get("role") != "post_selection":
+        _post_selection_recovery_error(
+            "TRAIN2 continuation MACE execution evidence is not for post-selection; "
+            "preserving diagnostic state."
+        )
+    evidence_digest = evidence.get("evidence_digest")
+    if evidence_digest is None or str(evidence_digest) != digest(
+        {key: value for key, value in evidence.items() if key != "evidence_digest"}
+    ):
+        _post_selection_recovery_error(
+            "TRAIN2 continuation MACE execution evidence content is inconsistent; "
+            "preserving diagnostic state."
+        )
+
+    target_artifact = materialization.target_train_artifact
+    multihead = bool(config_payload.get("multiheads_finetuning", False))
+    replay_artifact = None
+    if replay_resolution is not None:
+        replay_artifact = getattr(replay_resolution, "train_artifact", None)
+
+    expected_config_digest = materialization.mace_config_digest
+    if evidence.get("authority_config_digest") != expected_config_digest:
+        _post_selection_recovery_error(
+            "TRAIN2 continuation MACE authority does not match the current P5 "
+            "materialization configuration; preserving diagnostic state."
+        )
+
+    try:
+        target_uid_digest = _mace_execution_frame_uid_set_digest(target_artifact)
+        if target_uid_digest is None:
+            raise TrainingDataInputError(
+                "P5 materialization target training artifact has no frame-UID authority."
+            )
+        replay_uid_digest = None
+        if multihead:
+            if replay_artifact is None:
+                raise TrainingDataInputError(
+                    "P5 replay materialization has no authenticated training input."
+                )
+            replay_uid_digest = _mace_execution_frame_uid_set_digest(replay_artifact)
+            if replay_uid_digest is None:
+                raise TrainingDataInputError(
+                    "P5 replay materialization has no exported frame-UID authority."
+                )
+        executable_payload = post_selection_mace_run_configuration(
+            config_payload,
+            foundation_model_path=context.method_policies.foundation_model,
+        )
+        authority = _build_post_selection_mace_execution_authority(
+            materialization=materialization,
+            internal_payload=config_payload,
+            executable_payload=executable_payload,
+            optimizer_policy=optimizer_policy,
+            replay_train_artifact=replay_artifact,
+        )
+        authenticated = record_mace_execution_evidence(authority, evidence)
+        resolved = authenticated.get("resolved_evidence")
+        if not isinstance(resolved, Mapping):
+            raise TrainingDataInputError(
+                "MACE execution authority did not produce resolved evidence."
+            )
+        if resolved.get("target_frame_uid_set_digest") != target_uid_digest:
+            raise TrainingDataInputError(
+                "Persisted MACE target frame membership differs from P5 materialization."
+            )
+        if resolved.get("replay_frame_uid_set_digest") != replay_uid_digest:
+            raise TrainingDataInputError(
+                "Persisted MACE replay frame membership differs from P5 materialization."
+            )
+    except Exception as exc:
+        _post_selection_recovery_error(
+            "TRAIN2 continuation MACE execution evidence is incompatible with the "
+            "current P5 materialization; preserving diagnostic state.",
+            exc,
+        )
+
+
+def _validate_post_selection_materialization_artifacts(
+    selected: CurrentSelectedTrainingContext,
+    *,
+    material_directory: Path,
+    record: PostSelectionMaterialization,
+    training_frame_uids: Sequence[str],
+    monitor_frame_uids: Sequence[str],
+    outer_evaluation_frame_uids: Sequence[str] | None,
+    preparation: Any,
+    extxyz_policy: Any,
+) -> None:
+    """Re-authenticate DATA8 role artifacts before treating a record as owned."""
+
+    expected = [
+        (
+            "target training",
+            record.target_train_artifact,
+            "target_train",
+            training_frame_uids,
+            preparation.content_digest,
+        ),
+        (
+            "checkpoint monitor",
+            record.checkpoint_monitor_artifact,
+            "checkpoint_monitor",
+            monitor_frame_uids,
+            None,
+        ),
+    ]
+    outer_frames = () if outer_evaluation_frame_uids is None else tuple(
+        str(value) for value in outer_evaluation_frame_uids
+    )
+    if outer_frames:
+        if record.outer_evaluation_artifact is None:
+            _post_selection_recovery_error(
+                "P5 materialization is missing its required outer-evaluation artifact."
+            )
+        expected.append(
+            (
+                "outer evaluation",
+                record.outer_evaluation_artifact,
+                "outer_evaluation",
+                outer_frames,
+                None,
+            )
+        )
+    elif record.outer_evaluation_artifact is not None:
+        _post_selection_recovery_error(
+            "P5 materialization carries an outer-evaluation artifact for a run "
+            "that has no outer-evaluation membership."
+        )
+
+    from .target_size_execution import validate_target_size_extxyz_artifact
+
+    authorities = selected.authorities
+    for label, artifact, role, frame_uids, preparation_digest in expected:
+        if artifact is None:
+            _post_selection_recovery_error(
+                f"P5 materialization is missing its {label} artifact."
+            )
+        if artifact.role != role or tuple(artifact.frame_uids) != tuple(
+            str(value) for value in frame_uids
+        ):
+            _post_selection_recovery_error(
+                f"P5 materialization {label} membership/role does not match the "
+                "current run plan."
+            )
+        if artifact.common_preparation_digest != preparation_digest:
+            _post_selection_recovery_error(
+                f"P5 materialization {label} preparation lineage does not match "
+                "the current fitted preparation."
+            )
+        try:
+            validate_target_size_extxyz_artifact(
+                artifact,
+                root_directory=material_directory,
+                canonical_frame_authority=authorities.frame_authority,
+                policy=extxyz_policy,
+                frame_catalog=authorities.frame_catalog,
+                frame_data_by_run=authorities.frame_data_by_run,
+                frame_array_index=authorities.frame_array_index,
+            )
+        except Exception as exc:
+            _post_selection_recovery_error(
+                f"P5 materialization {label} artifact failed authentication; "
+                "preserving diagnostic state.",
+                exc,
+            )
+
+
+def _classify_post_selection_materialization(
+    context: PostSelectionContext,
+    *,
+    run_plan: Any,
+    material_directory: Path,
+    run_root: Path,
+    training_frame_uids: Sequence[str],
+    monitor_frame_uids: Sequence[str],
+    outer_evaluation_frame_uids: Sequence[str] | None,
+    preparation: Any,
+    optimizer_policy: Any,
+    extxyz_policy: Any,
+    replay_resolution: Any | None,
+    continuation_summary: Any | None,
+) -> tuple[PostSelectionMaterialization | None, bool, bool]:
+    """Classify existing P5 materialization before any replacement is allowed.
+
+    Returns ``(record, rebuild, use_existing)``. ``rebuild`` is granted only
+    for absent/incomplete or authenticated disposable pre-fix scratch. A
+    faithful pre-fix record with valid TRAIN2 progress is returned for direct
+    reuse because immutable descendant state must not be deleted merely to
+    obtain the current configuration spelling.
+    """
+
+    if any(
+        (run_root / name).exists() or (run_root / name).is_symlink()
+        for name in RUN_TERMINAL_RECORD_NAMES
+    ):
+        _post_selection_recovery_error(
+            "P5 run root already carries terminal evidence; refusing to re-enter "
+            "its materialization recovery path."
+        )
+    if material_directory.is_symlink():
+        _post_selection_recovery_error(
+            "P5 materialization is a symlink; preserving it."
+        )
+    if not material_directory.exists():
+        if continuation_summary is not None:
+            _post_selection_recovery_error(
+                "TRAIN2 continuation is durable but its P5 materialization is "
+                "absent; preserving both sides and refusing to rebuild it."
+            )
+        return None, False, False
+    if not material_directory.is_dir():
+        _post_selection_recovery_error(
+            "P5 materialization is not a regular directory; preserving it."
+        )
+
+    record_path = material_directory / "materialization.json"
+    if not record_path.exists():
+        _assert_owned_materialization_tree(material_directory, record=None)
+        if continuation_summary is not None:
+            _post_selection_recovery_error(
+                "TRAIN2 continuation is durable but P5 materialization publication "
+                "is incomplete; preserving both sides and refusing to rebuild it."
+            )
+        # No final authenticated record means interrupted publication, not a
+        # completed record whose bytes failed validation.
+        return None, True, False
+    if record_path.is_symlink() or not record_path.is_file():
+        _post_selection_recovery_error(
+            "P5 materialization final record is not a regular file; preserving it."
+        )
+    try:
+        payload = json.loads(record_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, Mapping):
+            raise TrainingDataSerializationError(
+                "P5 materialization final record must be a JSON object."
+            )
+        record = PostSelectionMaterialization.from_dict(payload)
+    except Exception as exc:
+        _post_selection_recovery_error(
+            "P5 materialization final record is malformed or digest-inconsistent; "
+            "preserving diagnostic state.",
+            exc,
+        )
+    _assert_owned_materialization_tree(material_directory, record=record)
+
+    if preparation is None:
+        _post_selection_recovery_error(
+            "P5 materialization requires a current fitted preparation for "
+            "authentication; preserving it."
+        )
+
+    if (
+        record.run_plan_digest != run_plan.content_digest
+        or record.run_identity != run_plan.run_identity
+        or record.preparation_digest != preparation.content_digest
+        or Path(record.output_directory).resolve() != material_directory.resolve()
+    ):
+        _post_selection_recovery_error(
+            "P5 materialization is internally valid but belongs to a different "
+            "run, plan, preparation, or output directory; preserving it."
+        )
+    _validate_post_selection_materialization_artifacts(
+        context.selected,
+        material_directory=material_directory,
+        record=record,
+        training_frame_uids=training_frame_uids,
+        monitor_frame_uids=monitor_frame_uids,
+        outer_evaluation_frame_uids=outer_evaluation_frame_uids,
+        preparation=preparation,
+        extxyz_policy=extxyz_policy,
+    )
+    if record.mace_config_relative_path != "post_selection_mace_config.yaml":
+        _post_selection_recovery_error(
+            "P5 materialization uses an unsupported internal configuration path; "
+            "preserving it."
+        )
+    _safe_materialization_relative_path(
+        material_directory,
+        record.mace_config_relative_path,
+        name="MACE configuration path",
+    )
+    config_path = material_directory / record.mace_config_relative_path
+    if config_path.is_symlink() or not config_path.is_file():
+        _post_selection_recovery_error(
+            "P5 materialization MACE configuration is missing or symlinked; "
+            "preserving it."
+        )
+    try:
+        config_bytes = config_path.read_bytes()
+        config_payload = json.loads(config_bytes.decode("utf-8"))
+        if not isinstance(config_payload, Mapping):
+            raise TrainingDataSerializationError(
+                "P5 materialization MACE configuration must be a JSON object."
+            )
+        if hashlib.sha256(config_bytes).hexdigest() != record.mace_config_sha256:
+            raise TrainingDataInputError(
+                "P5 materialization MACE configuration bytes do not match its record."
+            )
+        if digest(config_payload) != record.mace_config_digest:
+            raise TrainingDataInputError(
+                "P5 materialization MACE configuration digest does not match its record."
+            )
+    except Exception as exc:
+        _post_selection_recovery_error(
+            "P5 materialization MACE configuration is corrupt or inconsistent; "
+            "preserving diagnostic state.",
+            exc,
+        )
+
+    if continuation_summary is not None:
+        _validate_post_selection_continuation_execution_evidence(
+            context,
+            materialization=record,
+            config_payload=config_payload,
+            continuation_summary=continuation_summary,
+            replay_resolution=replay_resolution,
+            optimizer_policy=optimizer_policy,
+        )
+
+    expected_config = _post_selection_mace_config(
+        run_identity=run_plan.run_identity,
+        optimizer_seed=run_plan.optimizer_seed,
+        planned_epochs=run_plan.planned_epochs,
+        preparation=preparation,
+        optimizer_policy=optimizer_policy,
+        target_train=record.target_train_artifact,
+        monitor=record.checkpoint_monitor_artifact,
+        extxyz_policy=extxyz_policy,
+        method=context.method,
+        mace_architecture=context.method_policies.mace_architecture,
+        foundation_head=context.method_policies.foundation_head,
+        multiheads_finetuning=(
+            context.method_policies.training_mode == "multihead_replay"
+        ),
+        replay_train=(
+            None if replay_resolution is None else replay_resolution.train_path
+        ),
+        replay_monitor=(
+            None if replay_resolution is None else replay_resolution.monitor_path
+        ),
+    )
+    expected_bytes = json.dumps(
+        expected_config, indent=2, sort_keys=True
+    ).encode("utf-8")
+    current = config_payload == expected_config and config_bytes == expected_bytes
+    if current:
+        return record, False, False
+
+    # The only supported pre-fix compatibility is the retired runtime locator
+    # field. The record, artifacts, method, and every other config field have
+    # already authenticated above; the stale locator is never consulted.
+    legacy_payload = dict(config_payload)
+    legacy_locator = legacy_payload.pop("foundation_model", None)
+    faithful_pre_fix = (
+        context.method_policies.foundation_potential_identity is not None
+        and isinstance(legacy_locator, str)
+        and bool(legacy_locator.strip())
+        and legacy_payload == expected_config
+    )
+    if faithful_pre_fix:
+        if continuation_summary is not None:
+            return record, False, True
+        return record, True, False
+    _post_selection_recovery_error(
+        "P5 materialization is internally valid but its protected executable "
+        "configuration is foreign to the current run; preserving it."
+    )
+    return record, False, False
+
+
 def _execute_post_selection_run_locked(
     context: PostSelectionContext,
     *,
@@ -878,7 +1482,6 @@ def _execute_post_selection_run_locked(
     selected = context.selected
     material_directory = run_root / "materialization"
     checkpoint_directory = run_root / "checkpoints"
-    checkpoint_directory.mkdir(parents=True, exist_ok=True)
     optimizer_policy = _optimizer_policy_for(
         context, seed=run_plan.optimizer_seed, planned_epochs=run_plan.planned_epochs
     )
@@ -894,35 +1497,29 @@ def _execute_post_selection_run_locked(
                 "Could not resolve TRUE_DFT replay monitor artifact for replay-enabled run."
             )
 
-    preparation, materialization = materialize_post_selection_run(
-        selected,
-        run_plan=run_plan,
-        method=context.method,
-        training_frame_uids=training_frame_uids,
-        monitor_frame_uids=monitor_frame_uids,
-        outer_evaluation_frame_uids=outer_evaluation_frame_uids,
-        optimizer_policy=optimizer_policy,
-        extxyz_policy=extxyz_policy,
-        output_directory=material_directory,
-        common_training_policy=context.method_policies.common_training,
-        mace_architecture=context.method_policies.mace_architecture,
-        foundation_model=context.method_policies.foundation_model,
-        foundation_head=context.method_policies.foundation_head,
-        multiheads_finetuning=(
-            context.method_policies.training_mode == "multihead_replay"
-        ),
-        replay_train=(
-            None if replay_resolution is None else replay_resolution.train_path
-        ),
-        replay_monitor=(
-            None if replay_resolution is None else replay_resolution.monitor_path
-        ),
-    )
+    # A first publication has no materialization to classify, so preserve the
+    # existing materialization owner as the preparation authority. When a
+    # durable record is present, fit the current preparation in memory before
+    # authenticating or replacing that record. This keeps recovery
+    # non-destructive without imposing the full current-context contract on
+    # first-publication test seams or on ordinary no-materialization runs.
+    preparation = None
+    if (material_directory / "materialization.json").exists():
+        preparation = fit_post_selection_preparation(
+            selected,
+            membership=training_frame_uids,
+            owner_plan_digest=run_plan.content_digest,
+            common_training_policy=context.method_policies.common_training,
+        )
     runtime_plan = post_selection_runtime_plan(
         method=context.method,
         optimizer_policy=optimizer_policy,
         budget_policy=budget_policy,
-        structures_per_epoch=len(preparation.membership),
+        structures_per_epoch=(
+            len(preparation.membership)
+            if preparation is not None
+            else len(tuple(str(value) for value in training_frame_uids))
+        ),
         learning_rate_policy=context.method_policies.learning_rate_schedule,
         replay_monitor_enabled=admissibility.replay_enabled,
         true_replay_monitor_sha256=(
@@ -933,43 +1530,112 @@ def _execute_post_selection_run_locked(
         target_head_name=context.method_policies.target_head_name,
         replay_head_name=context.method_policies.replay_head_name,
     )
-    summary = context.trainer(
-        PostSelectionRungRequest(
-            plan=runtime_plan,
+
+    continuation_summary, start_epoch = _authenticate_post_selection_continuation(
+        checkpoint_directory,
+        runtime_plan=runtime_plan,
+    )
+    existing_materialization, rebuild_materialization, use_existing_materialization = (
+        _classify_post_selection_materialization(
+            context,
             run_plan=run_plan,
-            materialization=materialization,
-            materialization_directory=material_directory,
-            checkpoint_directory=checkpoint_directory,
+            material_directory=material_directory,
+            run_root=run_root,
+            training_frame_uids=training_frame_uids,
+            monitor_frame_uids=monitor_frame_uids,
+            outer_evaluation_frame_uids=outer_evaluation_frame_uids,
+            preparation=preparation,
             optimizer_policy=optimizer_policy,
-            foundation_identity=context.method_policies.foundation_potential_identity,
-            foundation_model_path=(
-                Path(context.method_policies.foundation_model)
-                if context.method_policies.foundation_model
-                else None
-            ),
-            replay_train_artifact=(
-                replay_resolution.train_artifact
-                if replay_resolution is not None
-                else None
-            ),
-            replay_train_path=(
-                Path(replay_resolution.train_path)
-                if replay_resolution is not None and replay_resolution.train_path is not None
-                else None
-            ),
-            replay_monitor_artifact=(
-                replay_resolution.monitor_artifact
-                if replay_resolution is not None
-                else None
-            ),
-            replay_monitor_path=(
-                Path(replay_resolution.monitor_path)
-                if replay_resolution is not None
-                and replay_resolution.monitor_path is not None
-                else None
-            ),
+            extxyz_policy=extxyz_policy,
+            replay_resolution=replay_resolution,
+            continuation_summary=continuation_summary,
         )
     )
+    if rebuild_materialization:
+        # The classifier has already established that this is a local,
+        # run-owned, nonterminal scratch tree with no ambiguous descendant.
+        shutil.rmtree(material_directory)
+    checkpoint_directory.mkdir(parents=True, exist_ok=True)
+
+    if use_existing_materialization:
+        materialization = existing_materialization
+    else:
+        preparation, materialization = materialize_post_selection_run(
+            selected,
+            run_plan=run_plan,
+            method=context.method,
+            training_frame_uids=training_frame_uids,
+            monitor_frame_uids=monitor_frame_uids,
+            outer_evaluation_frame_uids=outer_evaluation_frame_uids,
+            optimizer_policy=optimizer_policy,
+            extxyz_policy=extxyz_policy,
+            output_directory=material_directory,
+            preparation=preparation,
+            common_training_policy=context.method_policies.common_training,
+            mace_architecture=context.method_policies.mace_architecture,
+            foundation_head=context.method_policies.foundation_head,
+            multiheads_finetuning=(
+                context.method_policies.training_mode == "multihead_replay"
+            ),
+            replay_train=(
+                None if replay_resolution is None else replay_resolution.train_path
+            ),
+            replay_monitor=(
+                None if replay_resolution is None else replay_resolution.monitor_path
+            ),
+        )
+
+    if continuation_summary is not None and (
+        continuation_summary.completed_epochs == runtime_plan.execution_epoch_limit
+    ):
+        # A crash after the last durable epoch but before EVAL2/terminal
+        # publication can reuse the fully authenticated summary without asking
+        # the trainer seam to perform a zero-epoch call.
+        summary = continuation_summary
+    else:
+        summary = context.trainer(
+            PostSelectionRungRequest(
+                plan=runtime_plan,
+                run_plan=run_plan,
+                materialization=materialization,
+                materialization_directory=material_directory,
+                checkpoint_directory=checkpoint_directory,
+                optimizer_policy=optimizer_policy,
+                start_epoch=start_epoch,
+                foundation_identity=context.method_policies.foundation_potential_identity,
+                foundation_model_path=(
+                    Path(context.method_policies.foundation_model)
+                    if context.method_policies.foundation_model
+                    else None
+                ),
+                replay_train_artifact=(
+                    replay_resolution.train_artifact
+                    if replay_resolution is not None
+                    else None
+                ),
+                replay_train_path=(
+                    Path(replay_resolution.train_path)
+                    if replay_resolution is not None
+                    and replay_resolution.train_path is not None
+                    else None
+                ),
+                replay_monitor_artifact=(
+                    replay_resolution.monitor_artifact
+                    if replay_resolution is not None
+                    else None
+                ),
+                replay_monitor_path=(
+                    Path(replay_resolution.monitor_path)
+                    if replay_resolution is not None
+                    and replay_resolution.monitor_path is not None
+                    else None
+                ),
+            )
+        )
+    if summary is None:
+        raise PostSelectionExecutionError(
+            "The post-selection trainer returned no authenticated TRAIN2 summary."
+        )
     if summary.plan_digest != runtime_plan.content_digest:
         raise PostSelectionExecutionError(
             "The TRAIN2 runtime summary does not belong to this run's runtime plan."
@@ -1006,6 +1672,7 @@ def _execute_post_selection_run_locked(
                 planned_epochs=run_plan.planned_epochs,
             ),
             allow_forward_override=context.inference_evaluator is not None,
+            foundation_model_path=context.method_policies.foundation_model,
         )
         try:
             outer_metrics = evaluate_post_selection_dataset(
@@ -2261,9 +2928,11 @@ def execute_current_cross_validate(args: Any) -> int:
             continue
         # A rejected size stays visibly rejected and keeps its place in the
         # design. Sibling evidence already gathered stays valid and reusable;
-        # what is refused is calling the campaign accepted.
+        # what is refused is calling the campaign accepted.  The frozen
+        # collection defines the experiment, so a methodological rejection of
+        # one size never removes a later size from it: every requested size is
+        # cross-validated and only then is the campaign verdict reduced.
         rejected.append((n_selected, tuple(acceptance.rejection_reasons)))
-        break
     if rejected:
         detail = "; ".join(
             f"N={size}: {list(reasons)}" for size, reasons in rejected

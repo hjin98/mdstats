@@ -158,8 +158,10 @@ replace the prescribed endpoint merely because its metric is better.
 
 The current public screen owns the complete restartable continuation. Generated
 campaigns default to `(n1,n2,n3) = (1,3,10)`; fresh final production has its
-independent `[training].max_num_epochs` horizon. Screen checkpoints and CV
-checkpoints are never production parents.
+own independent role horizon `H_prod_i`, frozen per selected size when the
+downstream design is frozen rather than read from `[training].max_num_epochs`
+at execution time. Screen checkpoints and CV checkpoints are never production
+parents.
 
 After selection, CV and final production run under the accepted method. CV
 uses fold partitions of exactly `T_selected`, with fresh model/optimizer

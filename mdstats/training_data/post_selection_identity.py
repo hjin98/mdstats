@@ -34,6 +34,7 @@ from ._common import (
     TrainingDataInputError,
     TrainingDataSerializationError,
     digest,
+    resolve_configured_path,
     validate_digest,
 )
 from .campaign_post_selection import PostSelectionError
@@ -687,6 +688,28 @@ class FinalProductionPolicyIdentity:
 resolve_shared_optimizer_settings = _resolve_shared_optimizer_settings
 
 
+def _canonical_configured_foundation_path(
+    value: str, config_dir: str | Path | None
+) -> Path:
+    """Interpret ``[paths].foundation_model`` through the one campaign owner.
+
+    Without a campaign configuration directory a relative locator has no
+    campaign meaning at all, and resolving it against the process CWD is the
+    split-brain interpretation this owner exists to remove, so it fails closed
+    rather than guessing.
+    """
+
+    if config_dir is None:
+        candidate = Path(value).expanduser()
+        if not candidate.is_absolute():
+            raise PostSelectionError(
+                "A relative foundation checkpoint locator requires the campaign "
+                f"configuration directory to be interpreted: {value!r}."
+            )
+        return candidate.resolve()
+    return resolve_configured_path(value, config_dir)
+
+
 def resolve_post_selection_foundation_identity(
     path: str | Path | None,
     *,
@@ -697,7 +720,10 @@ def resolve_post_selection_foundation_identity(
 
     if path is None or not str(path).strip():
         return None
-    source = Path(path).expanduser().resolve()
+    # The caller resolves the configured locator through the one canonical
+    # campaign path owner; inspection must authenticate exactly that file
+    # rather than re-derive a second interpretation of the same value.
+    source = Path(path)
     if not source.is_file():
         raise TrainingDataInputError(f"Foundation checkpoint does not exist: {source!s}.")
 
@@ -997,7 +1023,6 @@ class PostSelectionMethodPolicies:
     foundation_potential_identity: Any = None
     foundation_model: str | None = None
     foundation_head: str | None = None
-    replay_context: Any = None
     target_head_name: str = POST_SELECTION_TARGET_HEAD_NAME
     replay_head_name: str = POST_SELECTION_REPLAY_HEAD_NAME
     replay_training_label_mode: Any = None
@@ -1005,8 +1030,15 @@ class PostSelectionMethodPolicies:
 
 def resolve_post_selection_method_policies(
     config: Mapping[str, Any],
+    *,
+    config_dir: str | Path | None = None,
 ) -> PostSelectionMethodPolicies:
     """Resolve the shared method's policy objects from configuration alone.
+
+    ``config_dir`` is the campaign configuration directory that configured
+    relative paths are anchored to.  Production always supplies it, so the
+    foundation checkpoint a P5 method identity describes is the same file
+    ``doctor`` and P5 execution reach, independent of the invocation CWD.
 
     Replay admissibility follows the campaign's configured replay corpus: a
     campaign with no TRUE_DFT replay source does not acquire a replay
@@ -1043,8 +1075,13 @@ def resolve_post_selection_method_policies(
 
     # 1. Canonical replay-source presence.  A replay table with no source is
     # still a configuration error for scratch/naive methods; it must not be
-    # silently downgraded to an admissibility-only mode.
-    single_replay = single_source_replay_config_from_campaign(config)
+    # silently downgraded to an admissibility-only mode.  The replay policy
+    # this owner derives is path-free, but it is resolved through the campaign
+    # configuration directory so P5 never becomes a second interpretation of a
+    # configured replay locator.
+    single_replay = single_source_replay_config_from_campaign(
+        config, base_directory=config_dir
+    )
     legacy_replay_train = str(paths.get("replay_train", "")).strip()
     legacy_replay_monitor = str(paths.get("replay_monitor", "")).strip()
     legacy_replay_true = str(paths.get("replay_true_labels", "")).strip()
@@ -1198,10 +1235,15 @@ def resolve_post_selection_method_policies(
         else None
     )
 
+    foundation_locator = (
+        _canonical_configured_foundation_path(f_model_raw, config_dir)
+        if f_model_raw
+        else None
+    )
     foundation_identity = None
-    if f_model_raw:
+    if foundation_locator is not None:
         foundation_identity = resolve_post_selection_foundation_identity(
-            f_model_raw,
+            foundation_locator,
             requested_head=f_head_req,
             model_family=str(
                 foundation.get("family", model.get("family", "MACE-MPA-0"))
@@ -1307,9 +1349,8 @@ def resolve_post_selection_method_policies(
         mace_architecture_digest=mace_architecture_digest,
         default_dtype=default_dtype,
         foundation_potential_identity=foundation_identity,
-        foundation_model=str(Path(f_model_raw).resolve()) if f_model_raw else None,
+        foundation_model=str(foundation_locator) if foundation_locator else None,
         foundation_head=resolved_foundation_head if f_model_raw else None,
-        replay_context=single_replay,
         target_head_name=target_head_name,
         replay_head_name=replay_head_name,
         replay_training_label_mode=replay_training_label_mode,

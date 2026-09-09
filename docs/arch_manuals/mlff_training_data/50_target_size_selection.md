@@ -269,7 +269,7 @@ Changes that are *not* target-size identity invalidate only their own descendant
 
 Cross-validation performs the whole-collection freeze at its own admission boundary and then runs the existing methodology once per frozen size, in frozen selection order, each consuming exactly its own `T_N` - complete coverage, no unselected sibling frame, no held-out outer frame, and no frame borrowed from another selected size.
 
-The size dimension sits *outside* everything below it: fold construction, seeds, evaluation, and the acceptance predicate are unchanged, and there is no cross-size reducer. Outer iteration over sizes is serial and shares the one effective resource allocation the existing fold/seed/MACE/library concurrency already owns; no new scheduler exists and no size claims the machine independently. Campaign cross-validation is accepted only when **every** frozen size is accepted; a rejected size stays visibly rejected and no selected size is ever silently dropped.
+The size dimension sits *outside* everything below it: fold construction, seeds, evaluation, and the acceptance predicate are unchanged, and there is no cross-size reducer. Outer iteration over sizes is serial and shares the one effective resource allocation the existing fold/seed/MACE/library concurrency already owns; no new scheduler exists and no size claims the machine independently. Every frozen size receives its own valid cross-validation verdict before any campaign-level reduction happens: a methodological rejection of one size is recorded and the remaining frozen sizes are still cross-validated, because the frozen collection *is* the experiment the operator requested. Campaign cross-validation is accepted only when **every** frozen size is accepted; a rejected size stays visibly rejected and no selected size is ever silently dropped. A hard execution, corruption, lineage, or authority failure is not a scientific verdict and may still abort the invocation.
 
 It validates the **training method**, not the size:
 
@@ -281,6 +281,8 @@ It validates the **training method**, not the size:
 - valid completed sibling evidence stays reusable on retry under the existing currentness and restart rules.
 
 Supported training modes remain exactly `scratch`, `naive_fine_tuning`, and `multihead_replay`; the canonical post-selection heads remain `target_head` and `pt_head`; and the foundation checkpoint head remains a separate foundation-owned concept. Method, foundation, replay, and content identity all fail closed.
+
+Foundation **identity** is the authenticated checkpoint content, selected head, and family; the configured filesystem path is a runtime locator only. One canonical interpretation resolves that locator for every downstream owner - `~` expands to the user home, a relative value is anchored to the campaign configuration directory rather than the process working directory - so one `campaign.toml` cannot mean different files to environment checks, method identity, execution, and qualification. Relocating byte-identical content with the same selected head therefore preserves the method and stays executable after reauthentication, while changed bytes, head, or family still invalidate stale descendants fail-closed.
 
 ## Fresh final production
 

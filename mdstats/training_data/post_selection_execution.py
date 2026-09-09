@@ -441,7 +441,6 @@ def _post_selection_mace_config(
     extxyz_policy: Any,
     method: PostSelectionMethodIdentity,
     mace_architecture: Mapping[str, Any] | None = None,
-    foundation_model: str | None = None,
     foundation_head: str | None = None,
     multiheads_finetuning: bool = False,
     replay_train: Any = None,
@@ -471,10 +470,10 @@ def _post_selection_mace_config(
             "disagree."
         )
     if expected_multihead:
-        if not foundation_model or not foundation_head:
+        if not foundation_head:
             raise PostSelectionExecutionError(
                 "multihead_replay materialization requires the canonical "
-                "foundation model and foundation head."
+                "foundation head."
             )
         if replay_train is None or replay_monitor is None:
             raise PostSelectionExecutionError(
@@ -482,7 +481,7 @@ def _post_selection_mace_config(
                 "and independent TRUE_DFT monitor artifacts."
             )
     elif training_mode == "scratch":
-        if foundation_model or foundation_head:
+        if foundation_head:
             raise PostSelectionExecutionError(
                 "scratch materialization cannot carry a foundation checkpoint."
             )
@@ -491,10 +490,10 @@ def _post_selection_mace_config(
                 "scratch materialization cannot carry replay training fields."
             )
     else:
-        if not foundation_model or not foundation_head:
+        if not foundation_head:
             raise PostSelectionExecutionError(
                 "naive_fine_tuning materialization requires the canonical "
-                "foundation model and foundation head."
+                "foundation head."
             )
         if replay_train is not None or replay_monitor is not None:
             raise PostSelectionExecutionError(
@@ -562,9 +561,12 @@ def _post_selection_mace_config(
         config["eval_interval"] = int(optimizer_policy.eval_interval)
     if hasattr(optimizer_policy, "acceleration_policy") and optimizer_policy.acceleration_policy is not None:
         config.update(optimizer_policy.acceleration_policy.training_config())
-    if foundation_model:
-        config["foundation_model"] = str(foundation_model)
     if foundation_head:
+        # Only the checkpoint's *scientific* selection lives in the immutable
+        # execution representation.  The filesystem locator is a runtime
+        # address: it is authenticated per launch from the request, so a
+        # byte-identical checkpoint reached through a different valid path
+        # neither changes this run's identity nor blocks its execution.
         config["foundation_head"] = str(foundation_head)
     if multiheads_finetuning:
         config["multiheads_finetuning"] = True
@@ -619,7 +621,6 @@ def materialize_post_selection_run(
     preparation: PostSelectionFittedPreparation | None = None,
     common_training_policy: Any = None,
     mace_architecture: Mapping[str, Any] | None = None,
-    foundation_model: str | None = None,
     foundation_head: str | None = None,
     multiheads_finetuning: bool = False,
     replay_train: Any = None,
@@ -711,7 +712,6 @@ def materialize_post_selection_run(
         extxyz_policy=policy,
         method=method,
         mace_architecture=mace_architecture,
-        foundation_model=foundation_model,
         foundation_head=foundation_head,
         multiheads_finetuning=multiheads_finetuning,
         replay_train=replay_train,
@@ -778,6 +778,138 @@ class PostSelectionTrainer(Protocol):
 
     def __call__(self, request: PostSelectionRungRequest) -> Any:
         ...
+
+
+def _mace_execution_frame_uid_set_digest(artifact: Any) -> str | None:
+    """Resolve the UID set the dependency-facing MACE loader will observe.
+
+    DATA8 artifacts retain explicit frame UIDs.  ReplayFileArtifact is an
+    existing path/content authority whose scientific record stores geometry
+    identities instead, so recover the already-exported ``frame_uid`` metadata
+    from that authenticated file at the launch boundary.  No UID is inferred
+    from geometry or regenerated when the exported identity is unavailable.
+    """
+
+    from .mace_compatibility import mace_frame_uid_set_digest
+
+    values = getattr(artifact, "frame_uids", None)
+    if values is None:
+        path_value = getattr(artifact, "path", None)
+        if path_value is None:
+            return None
+        try:
+            from ase.io import iread
+
+            values = tuple(
+                str(atoms.info.get("frame_uid"))
+                for atoms in iread(
+                    Path(str(path_value)).expanduser().resolve(),
+                    index=":",
+                    format="extxyz",
+                )
+            )
+        except Exception as exc:
+            raise PostSelectionExecutionError(
+                "Authenticated replay training input could not expose its "
+                "exported frame-UID metadata."
+            ) from exc
+    return mace_frame_uid_set_digest(values)
+
+
+def _build_post_selection_mace_execution_authority(
+    *,
+    materialization: PostSelectionMaterialization,
+    internal_payload: Mapping[str, Any],
+    executable_payload: Mapping[str, Any],
+    optimizer_policy: Any,
+    replay_train_artifact: Any | None,
+    structures_per_epoch: int | None = None,
+) -> dict[str, Any]:
+    """Build the one MACE authority used by launch and continuation checks."""
+
+    from .mace_compatibility import (
+        build_mace_execution_authority,
+    )
+
+    target_train_art = materialization.target_train_artifact
+    target_uid_digest = _mace_execution_frame_uid_set_digest(target_train_art)
+    internal_multihead = bool(internal_payload.get("multiheads_finetuning"))
+    if internal_multihead:
+        replay_count = int(
+            getattr(
+                replay_train_artifact,
+                "configuration_count",
+                max(
+                    0,
+                    int(
+                        structures_per_epoch
+                        if structures_per_epoch is not None
+                        else getattr(optimizer_policy, "structures_per_epoch", 0)
+                    )
+                    - int(target_train_art.configuration_count),
+                ),
+            )
+        )
+    else:
+        # A single-head P5/final request has no replay exposure.  Do not infer a
+        # synthetic replay count merely because an older minimal fixture used
+        # ``structures_per_epoch`` as a total-size hint.
+        replay_count = 0
+    replay_uid_digest = None
+    if replay_train_artifact is not None:
+        replay_uid_digest = _mace_execution_frame_uid_set_digest(replay_train_artifact)
+
+    # Production projections always contain these canonical optimizer fields. A
+    # few pre-launch guard fixtures intentionally stop at a minimal config
+    # boundary; resolve their omitted values from the already-authenticated
+    # optimizer policy so authority construction does not mask the guard being
+    # tested.
+    def executable_optimizer_value(name: str, default: Any) -> Any:
+        if name in executable_payload:
+            return executable_payload[name]
+        return getattr(optimizer_policy, name, default)
+
+    configured_ema = bool(executable_optimizer_value("ema", True))
+    return build_mace_execution_authority(
+        role="post_selection",
+        config_digest=materialization.mace_config_digest,
+        method_identity_digest=internal_payload.get("method_identity_digest"),
+        loss_family=executable_optimizer_value(
+            "loss", POST_SELECTION_MACE_LOSS_FAMILY
+        ),
+        learning_rate=float(executable_optimizer_value("lr", 1.0e-4)),
+        ema=configured_ema,
+        ema_decay=(
+            None
+            if not configured_ema
+            else float(executable_optimizer_value("ema_decay", 0.99999))
+        ),
+        multiheads_finetuning=internal_multihead,
+        force_mh_ft_lr=(
+            executable_payload.get("force_mh_ft_lr")
+            if internal_multihead
+            else None
+        ),
+        real_pt_data_ratio_threshold=(
+            executable_payload.get("real_pt_data_ratio_threshold")
+            if internal_multihead
+            else None
+        ),
+        target_train_count=int(target_train_art.configuration_count),
+        replay_train_count=replay_count,
+        batch_size=int(executable_optimizer_value("batch_size", 2)),
+        target_updates_per_epoch=None,
+        target_drop_last=None,
+        distributed_allowed=True,
+        target_frame_uid_set_digest=target_uid_digest,
+        replay_frame_uid_set_digest=replay_uid_digest,
+        target_head_name=(
+            POST_SELECTION_TARGET_HEAD_NAME
+            if internal_multihead
+            else POST_SELECTION_SINGLE_HEAD_NAME
+        ),
+        replay_head_name=POST_SELECTION_REPLAY_HEAD_NAME,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -943,16 +1075,8 @@ class MacePostSelectionTrainer:
         # configuration and authenticated request must agree on whether this
         # method is foundation-backed; otherwise a scratch request could carry
         # an unclaimed foundation input that never entered its identity.
-        internal_foundation_model = internal_payload.get("foundation_model")
         internal_foundation_head = internal_payload.get("foundation_head")
-        if bool(internal_foundation_model) != bool(internal_foundation_head):
-            raise PostSelectionExecutionError(
-                "Post-selection foundation configuration must carry both the "
-                "canonical model and foundation head."
-            )
-        internal_has_foundation = bool(
-            internal_foundation_model or internal_foundation_head
-        )
+        internal_has_foundation = bool(internal_foundation_head)
         request_has_foundation = (
             request.foundation_identity is not None
             or request.foundation_model_path is not None
@@ -962,11 +1086,16 @@ class MacePostSelectionTrainer:
                 "Post-selection foundation configuration and authenticated "
                 "request disagree about foundation execution."
             )
+        authenticated_foundation_path: Path | None = None
         if internal_has_foundation:
             if request.foundation_identity is None or request.foundation_model_path is None:
                 raise PostSelectionExecutionError(
                     "Non-scratch training requires canonical foundation identity and path in request."
                 )
+            # 5. The locator is a runtime address, so it is re-authenticated
+            # here rather than compared against a stored pathname: the bytes and
+            # the selected head reached through the current locator are what the
+            # frozen method actually bound.
             f_path = Path(request.foundation_model_path).resolve()
             if not f_path.is_file():
                 raise PostSelectionExecutionError(
@@ -976,17 +1105,11 @@ class MacePostSelectionTrainer:
                 raise PostSelectionExecutionError(
                     "Foundation model file SHA256 does not match canonical foundation identity."
                 )
-            # 5. if internal config contains foundation locator/head, verify agreement
-            if internal_foundation_model:
-                if Path(internal_foundation_model).resolve() != f_path:
-                    raise PostSelectionExecutionError(
-                        "Internal config foundation_model does not match request foundation model path."
-                    )
-            if internal_foundation_head:
-                if internal_foundation_head != request.foundation_identity.foundation_head:
-                    raise PostSelectionExecutionError(
-                        "Internal config foundation_head does not match request foundation head."
-                    )
+            if internal_foundation_head != request.foundation_identity.foundation_head:
+                raise PostSelectionExecutionError(
+                    "Internal config foundation_head does not match request foundation head."
+                )
+            authenticated_foundation_path = f_path
 
         # 6. For multihead_replay: replay train path/artifact present and file SHA matches
         if internal_payload.get("multiheads_finetuning") or request.replay_train_artifact is not None or request.replay_train_path is not None:
@@ -1068,7 +1191,9 @@ class MacePostSelectionTrainer:
                 )
 
         # 9. Write executable configuration and execute wrapper subprocess
-        executable_payload = post_selection_mace_run_configuration(internal_payload)
+        executable_payload = post_selection_mace_run_configuration(
+            internal_payload, foundation_model_path=authenticated_foundation_path
+        )
         executable_config_path = (
             request.materialization_directory / "mace_run_config.yaml"
         )
@@ -1083,86 +1208,16 @@ class MacePostSelectionTrainer:
         # facts in the existing TRAIN2 summary.
         from .mace_compatibility import (
             MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE,
-            build_mace_execution_authority,
-            mace_frame_uid_set_digest,
             mace_execution_authority_to_environment,
         )
 
-        target_uid_digest = None
-        if hasattr(target_train_art, "frame_uids"):
-            target_uid_digest = mace_frame_uid_set_digest(target_train_art.frame_uids)
-        if internal_multihead:
-            replay_count = int(
-                getattr(
-                    request.replay_train_artifact,
-                    "configuration_count",
-                    max(
-                        0,
-                        int(getattr(request.plan, "structures_per_epoch", 0))
-                        - int(target_train_art.configuration_count),
-                    ),
-                )
-            )
-        else:
-            # A single-head P5/final request has no replay exposure.  Do not
-            # infer a synthetic replay count merely because an older minimal
-            # fixture used ``structures_per_epoch`` as a total-size hint.
-            replay_count = 0
-        replay_uid_digest = None
-        if request.replay_train_artifact is not None and hasattr(
-            request.replay_train_artifact, "frame_uids"
-        ):
-            replay_uid_digest = mace_frame_uid_set_digest(
-                request.replay_train_artifact.frame_uids
-            )
-        # Production projections always contain these canonical optimizer
-        # fields. A few pre-launch guard fixtures intentionally stop at a
-        # minimal config boundary; resolve their omitted values from the
-        # already-authenticated optimizer policy so authority construction does
-        # not mask the guard being tested.
-        def executable_optimizer_value(name: str, default: Any) -> Any:
-            if name in executable_payload:
-                return executable_payload[name]
-            return getattr(request.optimizer_policy, name, default)
-
-        configured_ema = bool(executable_optimizer_value("ema", True))
-        authority = build_mace_execution_authority(
-            role="post_selection",
-            config_digest=request.materialization.mace_config_digest,
-            method_identity_digest=internal_payload.get("method_identity_digest"),
-            loss_family=executable_optimizer_value("loss", POST_SELECTION_MACE_LOSS_FAMILY),
-            learning_rate=float(executable_optimizer_value("lr", 1.0e-4)),
-            ema=configured_ema,
-            ema_decay=(
-                None
-                if not configured_ema
-                else float(executable_optimizer_value("ema_decay", 0.99999))
-            ),
-            multiheads_finetuning=internal_multihead,
-            force_mh_ft_lr=(
-                executable_payload.get("force_mh_ft_lr")
-                if internal_multihead
-                else None
-            ),
-            real_pt_data_ratio_threshold=(
-                executable_payload.get("real_pt_data_ratio_threshold")
-                if internal_multihead
-                else None
-            ),
-            target_train_count=int(target_train_art.configuration_count),
-            replay_train_count=replay_count,
-            batch_size=int(executable_optimizer_value("batch_size", 2)),
-            target_updates_per_epoch=None,
-            target_drop_last=None,
-            distributed_allowed=True,
-            target_frame_uid_set_digest=target_uid_digest,
-            replay_frame_uid_set_digest=replay_uid_digest,
-            target_head_name=(
-                POST_SELECTION_TARGET_HEAD_NAME
-                if internal_multihead
-                else POST_SELECTION_SINGLE_HEAD_NAME
-            ),
-            replay_head_name=POST_SELECTION_REPLAY_HEAD_NAME,
+        authority = _build_post_selection_mace_execution_authority(
+            materialization=request.materialization,
+            internal_payload=internal_payload,
+            executable_payload=executable_payload,
+            optimizer_policy=request.optimizer_policy,
+            replay_train_artifact=request.replay_train_artifact,
+            structures_per_epoch=getattr(request.plan, "structures_per_epoch", None),
         )
 
         run_root = request.materialization_directory.parent
@@ -1317,13 +1372,21 @@ _MACE_CONFIG_PASSTHROUGH_KEYS = (
 
 
 def post_selection_mace_run_configuration(
-    config: Mapping[str, Any]
+    config: Mapping[str, Any],
+    *,
+    foundation_model_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Project the frozen post-selection configuration into MACE arguments.
 
     Renaming, explicit architecture projection, and the pinned parser's
     scalar-literal spelling all happen here; the canonical configuration and its
     digests are untouched.
+
+    ``foundation_model_path`` is the authenticated *current* runtime locator of
+    the foundation checkpoint.  It is supplied per launch rather than stored,
+    because the immutable configuration owns the checkpoint's scientific
+    selection while the filesystem address it is reached through is not part of
+    the method.
     """
 
     from .mace_compatibility import (
@@ -1354,8 +1417,8 @@ def post_selection_mace_run_configuration(
     }
     result["train_file"] = config["target_train_file"]
     result["valid_file"] = config["target_valid_file"]
-    if config.get("foundation_model"):
-        result["foundation_model"] = str(config["foundation_model"])
+    if foundation_model_path is not None:
+        result["foundation_model"] = str(foundation_model_path)
     if config.get("foundation_head"):
         result["foundation_head"] = str(config["foundation_head"])
     multihead = bool(config.get("multiheads_finetuning"))
@@ -1724,6 +1787,7 @@ def authenticate_post_selection_provider(
     evaluation_model_state: str,
     allow_forward_override: bool,
     checkpoint_epoch: int | None = None,
+    foundation_model_path: str | os.PathLike[str] | None = None,
 ) -> tuple[Any, str]:
     """Authenticate one post-selection checkpoint through the shared provider owner.
 
@@ -1824,6 +1888,7 @@ def authenticate_post_selection_provider(
         config_payload=config_payload,
         allow_forward_override=allow_forward_override,
         raw_checkpoint_epoch=effective_checkpoint_epoch,
+        foundation_model_path=foundation_model_path,
     )
     return provider, evaluated_digest
 

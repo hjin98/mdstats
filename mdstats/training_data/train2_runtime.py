@@ -1342,6 +1342,11 @@ def validate_train2_runtime_continuation_artifacts(
         or Path(str(payload.get("raw_checkpoint_name", ""))).name != raw.name
     ):
         raise TrainingDataSerializationError("TRAIN2 continuation companion disagrees with its runtime summary.")
+    if payload.get("mace_execution_evidence") != summary.mace_execution_evidence:
+        raise TrainingDataSerializationError(
+            "TRAIN2 continuation companion MACE execution evidence disagrees "
+            "with its runtime summary."
+        )
     # Metadata/shape/type agreement is insufficient: a syntactically valid
     # companion can still carry modified live-parameter, EMA, or RNG values.
     # Recompute the same canonical content digests used at persistence time

@@ -89,6 +89,22 @@ def strict_string(value: Any, *, name: str) -> str:
     return value
 
 
+def resolve_configured_path(value: str | Path, base: str | Path) -> Path:
+    """The one canonical interpretation of a user-configured path.
+
+    A configured locator must mean the same file to every campaign owner: ``~``
+    expands to the user home, a relative value is anchored to the campaign
+    configuration directory rather than to whatever directory the process
+    happens to be started from, and the result is canonically resolved.  An
+    owner that interpreted the same configured field independently could make
+    one ``campaign.toml`` mean different files to ``doctor``, P5 identity, P5
+    execution, and P7 - which is exactly the split this owner exists to prevent.
+    """
+
+    path = Path(value).expanduser()
+    return (path if path.is_absolute() else Path(base) / path).resolve()
+
+
 def json_value(value: Any) -> Any:
     """Convert supported values to deterministic JSON-compatible objects."""
 

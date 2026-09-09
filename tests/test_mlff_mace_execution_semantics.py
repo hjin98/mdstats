@@ -215,7 +215,6 @@ def _post_selection_internal_config(
         "clip_grad": 10.0,
         "default_dtype": "float64",
         "device": "cpu",
-        "foundation_model": str(foundation),
         "foundation_head": POST_SELECTION_TARGET_HEAD_NAME,
         "multiheads_finetuning": True,
         "force_mh_ft_lr": True,
@@ -422,7 +421,9 @@ def test_real_multihead_run_train_retains_native_loss_and_replay_controls(
         replay_valid=tmp_path / "replay-valid.extxyz",
         foundation=foundation,
     )
-    config = post_selection_mace_run_configuration(internal)
+    config = post_selection_mace_run_configuration(
+        internal, foundation_model_path=foundation
+    )
     authority = build_mace_execution_authority(
         role="post_selection",
         config_digest=digest(internal),

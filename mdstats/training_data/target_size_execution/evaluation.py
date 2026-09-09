@@ -143,6 +143,7 @@ def authenticate_train2_checkpoint_provider(
     config_payload: Mapping[str, Any],
     allow_forward_override: bool,
     raw_checkpoint_epoch: int | None = None,
+    foundation_model_path: str | Path | None = None,
 ) -> tuple[Any, str, Mapping[str, Any] | None]:
     """Authenticate one TRAIN2 state through the shared provider owner.
 
@@ -297,7 +298,9 @@ def authenticate_train2_checkpoint_provider(
         # The candidate materialization/configuration is the only architecture
         # authority.  The raw checkpoint contributes state_dict bytes only;
         # companion['model'] is deliberately ignored in this production branch.
-        provider_model = build_mace_model_from_configuration(config_payload)
+        provider_model = build_mace_model_from_configuration(
+            config_payload, foundation_model_path=foundation_model_path
+        )
         configured_target_head = config_payload.get("target_head_name")
         model_heads = tuple(str(value) for value in getattr(provider_model, "heads", ()))
         if configured_target_head and len(model_heads) > 1:

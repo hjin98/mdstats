@@ -329,15 +329,17 @@ def test_r10a_exact_mode_matrix_and_executable_head_parity(tmp_path: Path, monke
         extxyz_policy=naive_policies.extxyz,
         method=naive_method,
         mace_architecture=naive_policies.mace_architecture,
-        foundation_model=naive_policies.foundation_model,
         foundation_head=naive_policies.foundation_head,
     )
     assert "multiheads_finetuning" not in naive_internal
     assert "pt_train_file" not in naive_internal
     assert "heads" not in naive_internal
-    assert post_selection_mace_run_configuration(naive_internal)["foundation_model"] == str(
-        foundation.resolve()
-    )
+    # The runtime locator is never stored in the immutable representation; the
+    # launch projection receives the authenticated current one.
+    assert "foundation_model" not in naive_internal
+    assert post_selection_mace_run_configuration(
+        naive_internal, foundation_model_path=naive_policies.foundation_model
+    )["foundation_model"] == str(foundation.resolve())
 
     multi_internal = _post_selection_mace_config(
         run_identity="multi",
@@ -350,13 +352,14 @@ def test_r10a_exact_mode_matrix_and_executable_head_parity(tmp_path: Path, monke
         extxyz_policy=multi_policies.extxyz,
         method=multi_method,
         mace_architecture=multi_policies.mace_architecture,
-        foundation_model=multi_policies.foundation_model,
         foundation_head=multi_policies.foundation_head,
         multiheads_finetuning=True,
         replay_train=SimpleNamespace(relative_path="replay-train.extxyz"),
         replay_monitor=SimpleNamespace(relative_path="replay-monitor.extxyz"),
     )
-    executable = post_selection_mace_run_configuration(multi_internal)
+    executable = post_selection_mace_run_configuration(
+        multi_internal, foundation_model_path=multi_policies.foundation_model
+    )
     assert executable["multiheads_finetuning"] is True
     assert executable["pt_train_file"] == "replay-train.extxyz"
     assert executable["pt_valid_file"] == "replay-monitor.extxyz"
@@ -553,3 +556,351 @@ def test_r10b_real_foundation_provider_owner_counterfactuals(
             foundation_identity=identity,
             foundation_head="default",
         )
+
+
+# --- R10c / Single-source replay lineage adapter repair (Section 7) -----------
+
+
+def _single_source_replay_fixture_config(
+    tmp_path: Path,
+    source: Path,
+    *,
+    label_mode: str = "true_dft",
+    split_seed: int = 42,
+    split_ratio: str = "5:1",
+) -> tuple[dict, Any]:
+    from mdstats.training_data import campaign_cli
+
+    training = tmp_path / "training"
+    training.mkdir(exist_ok=True)
+    model = tmp_path / "foundation.model"
+    model.write_bytes(b"foundation-fixture")
+    text = campaign_cli._config_template(
+        workspace=str(tmp_path / "work"),
+        training_root=str(training),
+        foundation_model=str(model),
+        replay_set=str(source),
+        foundation_family="mace_mpa_0",
+        foundation_head="default",
+        training_acceleration_backend="e3nn",
+        default_device="cpu",
+    )
+    text = text.replace('label_mode = "foundation_pseudolabel"', f'label_mode = "{label_mode}"')
+    if split_seed != 42:
+        text = text.replace("split_seed = 42", f"split_seed = {split_seed}")
+    if split_ratio != "5:1":
+        text = text.replace('split_ratio = "5:1"', f'split_ratio = "{split_ratio}"')
+    config = tmp_path / "campaign.toml"
+    config.write_text(text, encoding="utf-8")
+    return campaign_cli._load_config(config)
+
+
+def test_r10c_real_single_source_true_dft_lineage_resolves_and_authenticates(
+    tmp_path: Path,
+):
+    from tests.test_mlff_replay_unify1d import _write_source
+    from mdstats.training_data import campaign_cli
+    from mdstats.training_data._campaign_cli_core import _single_source_replay_context
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        _resolve_post_selection_replay_resolution,
+    )
+
+    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    source_path = tmp_path / "replay.extxyz"
+    _write_source(source_path, 12)
+    cfg, paths = _single_source_replay_fixture_config(
+        tmp_path, source_path, label_mode="true_dft"
+    )
+
+    single_ctx = _single_source_replay_context(cfg, paths)
+    assert single_ctx is not None
+    assert "source" in single_ctx
+    assert "split" in single_ctx
+
+    context = SimpleNamespace(cfg=cfg, paths=paths)
+    resolution = _resolve_post_selection_replay_resolution(context)
+    assert resolution is not None
+    assert resolution.interface == "single_source"
+
+    assert resolution.source_content_digest == single_ctx["source"].content_digest
+    assert resolution.source_sha256 == single_ctx["source"].sha256
+    assert resolution.split_manifest_digest == single_ctx["split"].content_digest
+
+    lineage_digest = compute_replay_lineage_digest(resolution)
+    assert lineage_digest is not None
+    assert len(lineage_digest) == 64
+
+
+def test_r10c_foundation_pseudolabel_single_source_lineage_and_label_separation(
+    tmp_path: Path, monkeypatch
+):
+    import mdstats
+    from tests.test_mlff_replay_unify1d import _FakeProvider, _write_source
+    from mdstats.training_data import campaign_cli
+    from mdstats.training_data import _campaign_cli_core as campaign_core
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        _resolve_post_selection_replay_resolution,
+    )
+    from mdstats.training_data.foundation import (
+        FoundationInferenceIdentity,
+        FoundationPotentialIdentity,
+    )
+
+    source_path = tmp_path / "replay.extxyz"
+    _write_source(source_path, 12)
+    cfg, paths = _single_source_replay_fixture_config(
+        tmp_path, source_path, label_mode="foundation_pseudolabel"
+    )
+
+    model_path = Path(cfg["paths"]["foundation_model"]).resolve()
+    potential = FoundationPotentialIdentity(
+        reference=str(model_path),
+        sha256=sha256_file_cached(model_path),
+        foundation_head="default",
+        model_family="mace_custom",
+        model_atomic_numbers=(1,),
+        available_heads=("default",),
+        inspection_state="inspected",
+    )
+    inference = FoundationInferenceIdentity(
+        foundation_potential_digest=potential.canonical_content_digest,
+        default_dtype="float32",
+        backend="e3nn",
+        resolved_kernel_mode="e3nn",
+        mace_version="test",
+        adapter_version=mdstats.MACE_ADAPTER_VERSION,
+    )
+    realization = SimpleNamespace(
+        resolved_kernel_mode="e3nn",
+        foundation_inference_identity_digest=inference.content_digest,
+    )
+    monkeypatch.setattr(
+        campaign_core, "_resolved_foundation_potential_identity", lambda cfg, paths: potential
+    )
+    monkeypatch.setattr(
+        campaign_core,
+        "_stored_acceleration_realization",
+        lambda cfg, paths, require_qualified=False: realization,
+    )
+    monkeypatch.setattr(
+        campaign_core,
+        "_foundation_inference_identity",
+        lambda cfg, potential_arg, **kwargs: inference,
+    )
+
+    original_builder = mdstats.build_replay_foundation_prediction_cache
+    providers: list[_FakeProvider] = []
+
+    def build_with_fake(source, policy, cache_root, **kwargs):
+        provider = _FakeProvider(policy)
+        providers.append(provider)
+        return original_builder(source, policy, cache_root, provider=provider, **kwargs)
+
+    monkeypatch.setattr(mdstats, "build_replay_foundation_prediction_cache", build_with_fake)
+    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+
+    single_ctx = campaign_core._single_source_replay_context(cfg, paths)
+    assert single_ctx is not None
+    context = SimpleNamespace(cfg=cfg, paths=paths)
+    resolution = _resolve_post_selection_replay_resolution(context)
+    assert resolution is not None
+    assert resolution.interface == "single_source"
+
+    # Replay training artifact remains foundation pseudolabel
+    assert resolution.training_label_mode is ReplayLabelMode.FOUNDATION_PSEUDOLABEL
+    assert resolution.train_artifact.label_mode is ReplayLabelMode.FOUNDATION_PSEUDOLABEL
+
+    # Independent monitor remains TRUE_DFT
+    assert ReplayLabelMode(resolution.true_label_mode) is ReplayLabelMode.TRUE_DFT
+    assert ReplayLabelMode(resolution.monitor_artifact.label_mode) is ReplayLabelMode.TRUE_DFT
+
+    # Canonical source/split lineage is complete
+    assert resolution.source_content_digest == single_ctx["source"].content_digest
+    assert resolution.source_sha256 == single_ctx["source"].sha256
+    assert resolution.split_manifest_digest == single_ctx["split"].content_digest
+
+    # Lineage digest succeeds without changing semantic label ownership
+    digest = compute_replay_lineage_digest(resolution)
+    assert digest is not None
+    assert len(digest) == 64
+
+
+def test_r10c_single_source_restart_stability_across_context_cache_clear(
+    tmp_path: Path,
+):
+    from tests.test_mlff_replay_unify1d import _write_source
+    from mdstats.training_data import campaign_cli
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        _resolve_post_selection_replay_resolution,
+    )
+
+    source_path = tmp_path / "replay.extxyz"
+    _write_source(source_path, 12)
+    cfg, paths = _single_source_replay_fixture_config(
+        tmp_path, source_path, label_mode="true_dft"
+    )
+
+    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    context = SimpleNamespace(cfg=cfg, paths=paths)
+    first_resolution = _resolve_post_selection_replay_resolution(context)
+    first_digest = compute_replay_lineage_digest(first_resolution)
+
+    # Discard only the in-memory context cache to simulate restart
+    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    second_resolution = _resolve_post_selection_replay_resolution(context)
+    second_digest = compute_replay_lineage_digest(second_resolution)
+
+    assert first_digest == second_digest
+
+
+def test_r10c_single_source_mutation_invalidates_lineage(
+    tmp_path: Path,
+):
+    from tests.test_mlff_replay_unify1d import _write_source
+    from mdstats.training_data import campaign_cli
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        _resolve_post_selection_replay_resolution,
+    )
+
+    source_path = tmp_path / "replay.extxyz"
+    _write_source(source_path, 12)
+    cfg, paths = _single_source_replay_fixture_config(
+        tmp_path, source_path, label_mode="true_dft", split_seed=42
+    )
+
+    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    context = SimpleNamespace(cfg=cfg, paths=paths)
+    baseline_resolution = _resolve_post_selection_replay_resolution(context)
+    baseline_digest = compute_replay_lineage_digest(baseline_resolution)
+
+    # 1. Mutating source content bytes invalidates lineage
+    mutated_source_dir = tmp_path / "mutated_source"
+    mutated_source_dir.mkdir()
+    mutated_source_path = mutated_source_dir / "replay.extxyz"
+    _write_source(mutated_source_path, 14)
+    cfg_mutated_source, paths_mutated_source = _single_source_replay_fixture_config(
+        mutated_source_dir, mutated_source_path, label_mode="true_dft", split_seed=42
+    )
+    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    mutated_source_res = _resolve_post_selection_replay_resolution(
+        SimpleNamespace(cfg=cfg_mutated_source, paths=paths_mutated_source)
+    )
+    mutated_source_digest = compute_replay_lineage_digest(mutated_source_res)
+    assert mutated_source_digest != baseline_digest
+
+    # 2. Mutating split configuration (split_seed) invalidates lineage
+    split_mutated_dir = tmp_path / "split_mutated"
+    split_mutated_dir.mkdir()
+    cfg_mutated_split, paths_mutated_split = _single_source_replay_fixture_config(
+        split_mutated_dir, source_path, label_mode="true_dft", split_seed=999
+    )
+    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    mutated_split_res = _resolve_post_selection_replay_resolution(
+        SimpleNamespace(cfg=cfg_mutated_split, paths=paths_mutated_split)
+    )
+    mutated_split_digest = compute_replay_lineage_digest(mutated_split_res)
+    assert mutated_split_digest != baseline_digest
+
+
+def test_r10c_multi_size_cv_admission_resolves_shared_single_source_replay_lineage(
+    tmp_path: Path, monkeypatch
+):
+    import tests._mlff_post_selection_fixture as fx
+    import tests.test_mlff_target_size_multi_size_integration as msi
+    from tests.test_mlff_replay_unify1d import _write_source
+    from mdstats.training_data import _campaign_cli_core as cli
+    from mdstats.training_data._campaign_cli_core import CampaignStore
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        build_post_selection_contexts,
+        build_post_selection_cv_plan,
+        build_selected_relation_projection,
+        _resolve_post_selection_replay_resolution,
+    )
+
+    config = msi._two_size_campaign(tmp_path)
+
+    source_path = tmp_path / "replay.extxyz"
+    _write_source(source_path, 12)
+
+    foundation_path = tmp_path / "foundation.model"
+    foundation_path.write_bytes(b"foundation-checkpoint-fixture")
+
+    config_text = config.read_text(encoding="utf-8")
+    config_text = config_text.replace(
+        'mode = "scratch_training"',
+        'mode = "multihead_replay"',
+    )
+    config_text = config_text.replace(
+        "[paths]\n",
+        f'[paths]\nreplay_set = "{source_path}"\nfoundation_model = "{foundation_path}"\n',
+    )
+    config_text += """
+[foundation]
+family = "mace_mpa_0"
+head = "default"
+
+[replay]
+label_mode = "true_dft"
+split_ratio = "5:1"
+split_seed = 42
+"""
+    config.write_text(config_text, encoding="utf-8")
+
+    cfg, paths = cli._load_config(config)
+    store = CampaignStore(paths.state_db)
+    try:
+        monkeypatch.setattr(
+            "mdstats.training_data.foundation.inspect_mace_foundation",
+            lambda path: _foundation_inspection(Path(path)),
+        )
+        harness = fx.PostSelectionHarness()
+        contexts = build_post_selection_contexts(
+            cfg,
+            paths,
+            store,
+            trainer=harness.train,
+            inference_evaluator=harness.evaluate,
+            admit=True,
+        )
+        assert len(contexts) == 2
+        ctx8, ctx16 = contexts
+        assert ctx8.selected.n_selected == 8
+        assert ctx16.selected.n_selected == 16
+
+        # Shared replay lineage resolves successfully before/for per-size CV orchestration
+        res8 = _resolve_post_selection_replay_resolution(ctx8)
+        res16 = _resolve_post_selection_replay_resolution(ctx16)
+        assert res8 is not None
+        assert res16 is not None
+        digest8 = compute_replay_lineage_digest(res8)
+        digest16 = compute_replay_lineage_digest(res16)
+
+        # Repaired shared replay resolution is identical in scientific identity for the same replay source/split
+        assert digest8 == digest16
+
+        # Build CV plans for both sizes
+        plan8 = build_post_selection_cv_plan(
+            ctx8.selected,
+            ctx8.method,
+            ctx8.cv_policy,
+            projection=build_selected_relation_projection(ctx8.selected),
+            replay_lineage_digest=digest8,
+        )
+        plan16 = build_post_selection_cv_plan(
+            ctx16.selected,
+            ctx16.method,
+            ctx16.cv_policy,
+            projection=build_selected_relation_projection(ctx16.selected),
+            replay_lineage_digest=digest16,
+        )
+
+        assert plan8.replay_lineage_digest == digest8
+        assert plan16.replay_lineage_digest == digest16
+
+        # Both selected entries retain their independent (N_selected, H_cv, H_prod) bindings
+        assert plan8.binding.n_selected == 8
+        assert plan16.binding.n_selected == 16
+        assert plan8.binding.content_digest != plan16.binding.content_digest
+    finally:
+        store.close()
+

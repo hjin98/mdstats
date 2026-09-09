@@ -429,7 +429,6 @@ def test_guard_p5_r7_09_mace_post_selection_trainer_translates_internal_config()
         "atomic_numbers": [1, 6, 8],
         "target_train_file": "target_train.extxyz",
         "target_valid_file": "target_valid.extxyz",
-        "foundation_model": "/path/to/foundation.model",
         "foundation_head": "default",
         "multiheads_finetuning": True,
         "pt_train_file": "pt_train.extxyz",
@@ -439,7 +438,9 @@ def test_guard_p5_r7_09_mace_post_selection_trainer_translates_internal_config()
         "batch_size": 4,
         "max_num_epochs": 10,
     }
-    executable = post_selection_mace_run_configuration(internal)
+    executable = post_selection_mace_run_configuration(
+        internal, foundation_model_path="/path/to/foundation.model"
+    )
     assert executable["train_file"] == "target_train.extxyz"
     assert executable["valid_file"] == "target_valid.extxyz"
     assert "target_train_file" not in executable
