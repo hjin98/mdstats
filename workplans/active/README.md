@@ -6,20 +6,26 @@ There is currently one active MLFF implementation workplan:
 
 - `workplans/active/MLFF_REPLAY_MACE_EXECUTION_MEMBERSHIP_IDENTITY_REPAIR_WORKPLAN.md`
 
-It is governed by **Scientific Software Development Protocol 6.0.0** and coordinates a bounded D4 repair beneath unchanged accepted D3 replay/MACE architecture.
+Its binding Protocol 6 implementation-review amendment is:
 
-Observed failure: post-selection `cross-validate` with valid single-source replay can fail before TRAIN2 because the strengthened MACE execution-membership adapter requires replay `frame_uid`, while supported single-source replay views are authorized by replay geometry/source/split identity and need not carry target-domain `frame_uid` metadata.
+- `workplans/active/MLFF_REPLAY_MACE_EXECUTION_MEMBERSHIP_IDENTITY_REPAIR_REVIEW_REOPEN.md`
 
-The active plan requires an adapter-level identity-owner correction, not a replay-science redesign: preserve exact target `frame_uid` membership, bind replay execution to the existing replay membership authority, preserve replay source/split/view/method/lineage identity in the already-prepared workspace, preserve exact TRAIN2 continuation authentication, and do not introduce a new replay identity/registry/migration/state machine/wrapper.
+The implementation review of candidate `41fd1cf0643fb7f42a8423c22368b2283f9176de` is **NO-PASS / REOPENED**. The original identity-domain correction is directionally accepted: target execution remains exact on target `frame_uid`, canonical single-source replay can use its existing geometry identity, mixed replay identity domains fail closed, and no new durable replay identity/registry/migration/state machinery was added.
 
-Implementation/review coordination is on:
+The candidate is not yet acceptable because its execution realization reparses the complete replay ExtXYZ in the parent P5 authority path and reparses it again in the child MACE membership adapter after MACE has already loaded the data. Those redundant corpus-wide scans sit inside the CV seed/fold run matrix and are not represented by the tiny new fixtures. The public CV command also emits no liveness output between freezing the design and completing an entire selected size, so parsing, lock wait, MACE launch, and normal training are indistinguishable from a hang.
+
+The binding review amendment requires removal of avoidable replay reparsing using the already-authenticated replay source/split authority and, where exact equivalence is established, the geometry retained by MACE's loaded `Configuration`; bounded size/seed/fold/phase progress; missing replay-mutation/continuation counterfactuals; and actual execution of the final affected regression/integration/static surface.
+
+The work remains governed by **Scientific Software Development Protocol 6.0.0** as a bounded D4 repair beneath unchanged accepted D3 replay/MACE architecture. No Serious Challenge is active.
+
+Implementation/review coordination remains on:
 
 - `fix/mlff-replay-mace-membership-identity`
 
 Planning base and previously accepted executable:
 
 - closeout/planning base: `9abb2b89930b48d9e2771addb5f59879bfec1001`
-- executable baseline containing the defect: `13859556cd4d472837a9e171c2be32e59d5e6d82`
+- executable baseline containing the original identity defect: `13859556cd4d472837a9e171c2be32e59d5e6d82`
 
 The prior downstream-integration closure remains archived and is not reopened wholesale:
 
