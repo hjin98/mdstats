@@ -184,6 +184,9 @@ class PostSelectionReplayResolution:
     source_sha256: str | None = None
     split_manifest_digest: str | None = None
     true_label_source_sha256: str | None = None
+    # Process-local ordered transport from the existing single-source split
+    # authority. It is not part of replay lineage or any scientific identity.
+    replay_geometry_identities: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         from .replay import ReplayLabelMode
@@ -265,6 +268,28 @@ class PostSelectionReplayResolution:
                 raise PostSelectionError(
                     "P5 replay TRUE_DFT source identity is not a valid SHA256."
                 ) from exc
+        if self.replay_geometry_identities is not None:
+            identities = tuple(str(value) for value in self.replay_geometry_identities)
+            if len(identities) != int(
+                getattr(self.train_artifact, "configuration_count", -1)
+            ):
+                raise PostSelectionError(
+                    "P5 replay geometry transport does not match the training artifact count."
+                )
+            try:
+                identities = tuple(
+                    validate_digest(value, name="replay_geometry_identity")
+                    for value in identities
+                )
+            except TrainingDataInputError as exc:
+                raise PostSelectionError(
+                    "P5 replay geometry transport contains an invalid identity."
+                ) from exc
+            if len(set(identities)) != len(identities):
+                raise PostSelectionError(
+                    "P5 replay geometry transport contains duplicate identities."
+                )
+            object.__setattr__(self, "replay_geometry_identities", identities)
         object.__setattr__(self, "train_path", str(self.train_path))
         object.__setattr__(self, "monitor_path", str(self.monitor_path))
         object.__setattr__(self, "training_label_mode", training_mode)
@@ -337,15 +362,46 @@ def build_post_selection_contexts(
     experiment dimension, not one more campaign.
     """
 
-    from ._campaign_cli_core import _ensure_local_wrappers
+    from ._campaign_cli_core import _cfg, _ensure_local_wrappers
 
     selected_contexts = load_current_selected_training_contexts(
         cfg, paths, store, admit=admit
     )
     resolved_trainer = trainer
     if resolved_trainer is None:
+        visible_interval = max(
+            0.05,
+            float(
+                _cfg(
+                    cfg,
+                    "execution",
+                    "training_progress_interval_seconds",
+                    10.0,
+                )
+            ),
+        )
+        timeout_value = float(
+            _cfg(cfg, "execution", "timeout_seconds", 0.0) or 0.0
+        )
+        disk_reserve_gib = float(
+            _cfg(cfg, "execution", "minimum_free_disk_gib", 20.0) or 0.0
+        )
         resolved_trainer = MacePostSelectionTrainer(
-            wrapper_path=_ensure_local_wrappers(paths)["mdstats-mace-train"]
+            wrapper_path=_ensure_local_wrappers(paths)["mdstats-mace-train"],
+            poll_interval_seconds=min(1.0, max(0.05, visible_interval / 4.0)),
+            visible_progress_interval_seconds=visible_interval,
+            minimum_free_disk_bytes=(
+                None
+                if disk_reserve_gib <= 0.0
+                else int(disk_reserve_gib * 1024**3)
+            ),
+            timeout_seconds=(None if timeout_value <= 0.0 else timeout_value),
+            terminate_grace_seconds=max(
+                0.1,
+                float(
+                    _cfg(cfg, "execution", "terminate_grace_seconds", 30.0)
+                ),
+            ),
         )
     policies = resolve_post_selection_method_policies(cfg, config_dir=paths.config_dir)
     method = resolve_post_selection_method_identity(cfg, policies=policies)
@@ -503,6 +559,7 @@ def _resolve_post_selection_replay_resolution(
             )
         source_art = single_ctx["source"]
         split_manifest = single_ctx["split"]
+        train_geometry_set = set(split_manifest.train_geometry_identities)
         return PostSelectionReplayResolution(
             interface="single_source",
             train_path=str(training_path),
@@ -515,6 +572,15 @@ def _resolve_post_selection_replay_resolution(
             source_content_digest=source_art.content_digest,
             source_sha256=source_art.sha256,
             split_manifest_digest=split_manifest.content_digest,
+            # The materializer writes source-index order. Preserve that order
+            # from the already-authenticated source authority so the child can
+            # compare its loaded Configuration sequence without reparsing the
+            # replay view or treating the split-rank order as transport order.
+            replay_geometry_identities=tuple(
+                identity
+                for identity in source_art.geometry_identities
+                if identity in train_geometry_set
+            ),
         )
 
     # Legacy split replay has one canonical training plan and a separate true
@@ -851,6 +917,11 @@ def execute_post_selection_run(
     training_frame_uids: Sequence[str],
     monitor_frame_uids: Sequence[str],
     outer_evaluation_frame_uids: Sequence[str] | None,
+    progress_context: Mapping[str, Any] | None = None,
+    cancellation_event: Any | None = None,
+    progress_callback: Callable[[str], None] | None = None,
+    progress_observer: Callable[[Mapping[str, Any]], None] | None = None,
+    telemetry_ref: Any | None = None,
 ) -> tuple[PostSelectionRunEvidence, Any, Any]:
     """Run one post-selection job end to end and return its bound evidence.
 
@@ -870,6 +941,11 @@ def execute_post_selection_run(
             monitor_frame_uids=monitor_frame_uids,
             outer_evaluation_frame_uids=outer_evaluation_frame_uids,
             run_root=run_root,
+            progress_context=progress_context,
+            cancellation_event=cancellation_event,
+            progress_callback=progress_callback,
+            progress_observer=progress_observer,
+            telemetry_ref=telemetry_ref,
         )
 
 
@@ -1139,10 +1215,20 @@ def _validate_post_selection_continuation_execution_evidence(
                 raise TrainingDataInputError(
                     "P5 replay materialization has no authenticated training input."
                 )
-            replay_uid_digest = _mace_execution_frame_uid_set_digest(
-                replay_artifact,
-                role="replay",
+            replay_geometry_identities = getattr(
+                replay_resolution, "replay_geometry_identities", None
             )
+            if replay_geometry_identities is None:
+                replay_uid_digest = _mace_execution_frame_uid_set_digest(
+                    replay_artifact,
+                    role="replay",
+                )
+            else:
+                from .mace_compatibility import mace_frame_uid_set_digest
+
+                replay_uid_digest = mace_frame_uid_set_digest(
+                    replay_geometry_identities
+                )
             if replay_uid_digest is None:
                 raise TrainingDataInputError(
                     "P5 replay materialization has no exported frame-UID authority."
@@ -1157,6 +1243,9 @@ def _validate_post_selection_continuation_execution_evidence(
             executable_payload=executable_payload,
             optimizer_policy=optimizer_policy,
             replay_train_artifact=replay_artifact,
+            replay_geometry_identities=getattr(
+                replay_resolution, "replay_geometry_identities", None
+            ),
         )
         authenticated = record_mace_execution_evidence(authority, evidence)
         resolved = authenticated.get("resolved_evidence")
@@ -1473,7 +1562,26 @@ def _classify_post_selection_materialization(
     return record, False, False
 
 
-def _execute_post_selection_run_locked(
+@dataclass(frozen=True, slots=True)
+class _PostSelectionRunSetup:
+    """Authenticated, non-mutating setup shared by execution and preflight."""
+
+    material_directory: Path
+    checkpoint_directory: Path
+    optimizer_policy: Any
+    extxyz_policy: Any
+    admissibility: Any
+    replay_resolution: Any | None
+    preparation: Any | None
+    runtime_plan: Any
+    continuation_summary: Any | None
+    start_epoch: int
+    existing_materialization: Any | None
+    rebuild_materialization: bool
+    use_existing_materialization: bool
+
+
+def _prepare_post_selection_run(
     context: PostSelectionContext,
     *,
     run_plan: Any,
@@ -1481,13 +1589,11 @@ def _execute_post_selection_run_locked(
     training_frame_uids: Sequence[str],
     monitor_frame_uids: Sequence[str],
     outer_evaluation_frame_uids: Sequence[str] | None,
-    run_root: Path,
-) -> tuple[PostSelectionRunEvidence, Any, Any]:
-    """The run body, executed while this run root's activity lease is held."""
+) -> _PostSelectionRunSetup:
+    """Authenticate one run's recoverable state without changing its files."""
 
-    selected = context.selected
-    material_directory = run_root / "materialization"
-    checkpoint_directory = run_root / "checkpoints"
+    material_directory = context.run_root(run_plan.run_identity) / "materialization"
+    checkpoint_directory = context.run_root(run_plan.run_identity) / "checkpoints"
     optimizer_policy = _optimizer_policy_for(
         context, seed=run_plan.optimizer_seed, planned_epochs=run_plan.planned_epochs
     )
@@ -1503,16 +1609,13 @@ def _execute_post_selection_run_locked(
                 "Could not resolve TRUE_DFT replay monitor artifact for replay-enabled run."
             )
 
-    # A first publication has no materialization to classify, so preserve the
-    # existing materialization owner as the preparation authority. When a
-    # durable record is present, fit the current preparation in memory before
-    # authenticating or replacing that record. This keeps recovery
-    # non-destructive without imposing the full current-context contract on
-    # first-publication test seams or on ordinary no-materialization runs.
+    # A durable materialization is fitted from current authority in memory
+    # before it is authenticated or replaced. This is the same recovery
+    # preparation used by the execution owner; setup itself publishes nothing.
     preparation = None
     if (material_directory / "materialization.json").exists():
         preparation = fit_post_selection_preparation(
-            selected,
+            context.selected,
             membership=training_frame_uids,
             owner_plan_digest=run_plan.content_digest,
             common_training_policy=context.method_policies.common_training,
@@ -1536,7 +1639,6 @@ def _execute_post_selection_run_locked(
         target_head_name=context.method_policies.target_head_name,
         replay_head_name=context.method_policies.replay_head_name,
     )
-
     continuation_summary, start_epoch = _authenticate_post_selection_continuation(
         checkpoint_directory,
         runtime_plan=runtime_plan,
@@ -1546,7 +1648,7 @@ def _execute_post_selection_run_locked(
             context,
             run_plan=run_plan,
             material_directory=material_directory,
-            run_root=run_root,
+            run_root=context.run_root(run_plan.run_identity),
             training_frame_uids=training_frame_uids,
             monitor_frame_uids=monitor_frame_uids,
             outer_evaluation_frame_uids=outer_evaluation_frame_uids,
@@ -1557,6 +1659,62 @@ def _execute_post_selection_run_locked(
             continuation_summary=continuation_summary,
         )
     )
+    return _PostSelectionRunSetup(
+        material_directory=material_directory,
+        checkpoint_directory=checkpoint_directory,
+        optimizer_policy=optimizer_policy,
+        extxyz_policy=extxyz_policy,
+        admissibility=admissibility,
+        replay_resolution=replay_resolution,
+        preparation=preparation,
+        runtime_plan=runtime_plan,
+        continuation_summary=continuation_summary,
+        start_epoch=start_epoch,
+        existing_materialization=existing_materialization,
+        rebuild_materialization=rebuild_materialization,
+        use_existing_materialization=use_existing_materialization,
+    )
+
+
+def _execute_post_selection_run_locked(
+    context: PostSelectionContext,
+    *,
+    run_plan: Any,
+    budget_policy: Any,
+    training_frame_uids: Sequence[str],
+    monitor_frame_uids: Sequence[str],
+    outer_evaluation_frame_uids: Sequence[str] | None,
+    run_root: Path,
+    progress_context: Mapping[str, Any] | None = None,
+    cancellation_event: Any | None = None,
+    progress_callback: Callable[[str], None] | None = None,
+    progress_observer: Callable[[Mapping[str, Any]], None] | None = None,
+    telemetry_ref: Any | None = None,
+) -> tuple[PostSelectionRunEvidence, Any, Any]:
+    """The run body, executed while this run root's activity lease is held."""
+
+    selected = context.selected
+    setup = _prepare_post_selection_run(
+        context,
+        run_plan=run_plan,
+        budget_policy=budget_policy,
+        training_frame_uids=training_frame_uids,
+        monitor_frame_uids=monitor_frame_uids,
+        outer_evaluation_frame_uids=outer_evaluation_frame_uids,
+    )
+    material_directory = setup.material_directory
+    checkpoint_directory = setup.checkpoint_directory
+    optimizer_policy = setup.optimizer_policy
+    extxyz_policy = setup.extxyz_policy
+    admissibility = setup.admissibility
+    replay_resolution = setup.replay_resolution
+    preparation = setup.preparation
+    runtime_plan = setup.runtime_plan
+    continuation_summary = setup.continuation_summary
+    start_epoch = setup.start_epoch
+    existing_materialization = setup.existing_materialization
+    rebuild_materialization = setup.rebuild_materialization
+    use_existing_materialization = setup.use_existing_materialization
     if rebuild_materialization:
         # The classifier has already established that this is a local,
         # run-owned, nonterminal scratch tree with no ambiguous descendant.
@@ -1636,6 +1794,16 @@ def _execute_post_selection_run_locked(
                     and replay_resolution.monitor_path is not None
                     else None
                 ),
+                replay_geometry_identities=(
+                    None
+                    if replay_resolution is None
+                    else getattr(replay_resolution, "replay_geometry_identities", None)
+                ),
+                progress_context=progress_context,
+                cancellation_event=cancellation_event,
+                progress_callback=progress_callback,
+                progress_observer=progress_observer,
+                telemetry_ref=telemetry_ref,
             )
         )
     if summary is None:
@@ -1721,6 +1889,11 @@ def _execute_post_selection_run_locked(
     store.put(representative)
     store.put(monitor_metrics)
     store.put(evidence)
+    # Final-production evidence is independently restartable. Publish its
+    # run-root proof before the shared scheduler can observe a later sibling
+    # failure; CV still waits for its separate fold-acceptance authority.
+    if str(getattr(run_plan, "run_role", "")) == "final_production":
+        _record_completed_run_evidence(context, run_plan, evidence)
     return evidence, representative, outer_metrics
 
 
@@ -2506,6 +2679,391 @@ def _record_completed_run_evidence(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True, slots=True)
+class _PendingPostSelectionRun:
+    """One exact pending CV/final slot admitted to the shared scheduler."""
+
+    slot: int
+    run_plan: Any
+    training_frame_uids: tuple[str, ...]
+    monitor_frame_uids: tuple[str, ...]
+    outer_evaluation_frame_uids: tuple[str, ...] | None
+    progress_context: Mapping[str, Any]
+
+
+def _post_selection_training_concurrency_policy(
+    context: PostSelectionContext,
+) -> Any:
+    """Resolve the existing runtime-only adaptive training policy from config."""
+
+    from ._campaign_cli_core import _cfg
+    from .training_parallel import TrainingConcurrencyPolicy
+
+    return TrainingConcurrencyPolicy(
+        requested_jobs=int(_cfg(context.cfg, "execution", "parallel_training_jobs", 0)),
+        minimum_auto_jobs=int(
+            _cfg(context.cfg, "execution", "minimum_parallel_training_jobs", 1)
+        ),
+        maximum_auto_jobs=int(
+            _cfg(context.cfg, "execution", "maximum_parallel_training_jobs", 4)
+        ),
+        gpu_memory_fraction=float(
+            _cfg(context.cfg, "execution", "training_gpu_memory_fraction", 0.90)
+        ),
+        gpu_utilization_fraction=float(
+            _cfg(context.cfg, "execution", "training_gpu_utilization_fraction", 0.90)
+        ),
+        estimated_gpu_memory_mib_per_job=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "estimated_training_vram_mib_per_job",
+                6144.0,
+            )
+        ),
+        estimated_ram_mib_per_job=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "estimated_training_ram_mib_per_job",
+                8192.0,
+            )
+        ),
+        epoch_stabilization_seconds=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_epoch_stabilization_seconds",
+                60.0,
+            )
+        ),
+        stability_samples=int(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_epoch_stability_samples",
+                12,
+            )
+        ),
+        stability_relative_tolerance=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_stability_relative_tolerance",
+                0.10,
+            )
+        ),
+        utilization_stability_absolute_tolerance=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_utilization_stability_absolute_tolerance",
+                8.0,
+            )
+        ),
+        observed_memory_growth_margin=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_memory_growth_margin",
+                1.05,
+            )
+        ),
+        observed_utilization_growth_margin=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_utilization_growth_margin",
+                1.05,
+            )
+        ),
+        monitor_interval_seconds=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_monitor_interval_seconds",
+                10.0,
+            )
+        ),
+    )
+
+
+def _preflight_post_selection_pending_runs(
+    context: PostSelectionContext,
+    *,
+    pending: Sequence[_PendingPostSelectionRun],
+    budget_policy: Any,
+) -> None:
+    """Reject durable foreign continuations before any sibling reaches EVAL2."""
+
+    for task in sorted(pending, key=lambda item: int(item.slot)):
+        run_root = context.run_root(task.run_plan.run_identity)
+        checkpoint_directory = run_root / "checkpoints"
+        if not checkpoint_directory.exists() and not checkpoint_directory.is_symlink():
+            continue
+        if (
+            checkpoint_directory.is_dir()
+            and not _checkpoint_has_durable_entries(checkpoint_directory)
+        ):
+            continue
+        # Use the exact same setup/authentication owner as execution. Holding
+        # the existing activity lease makes this read-only classification safe
+        # against another P5 process while keeping it free of publication or
+        # replacement side effects.
+        with post_selection_run_activity_lease(run_root):
+            _prepare_post_selection_run(
+                context,
+                run_plan=task.run_plan,
+                budget_policy=budget_policy,
+                training_frame_uids=task.training_frame_uids,
+                monitor_frame_uids=task.monitor_frame_uids,
+                outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
+            )
+
+
+def _execute_post_selection_pending_runs(
+    context: PostSelectionContext,
+    *,
+    pending: Sequence[_PendingPostSelectionRun],
+    budget_policy: Any,
+) -> dict[int, tuple[PostSelectionRunEvidence, Any, Any]]:
+    """Run exact pending slots through the existing adaptive controller.
+
+    The caller constructs ``pending`` only after it has materialized every
+    canonical run plan and classified reusable evidence. This function owns
+    admission and supervision, but it never reorders or ranks the returned
+    scientific evidence: callers reduce results by the frozen slot number.
+    """
+
+    if not pending:
+        return {}
+
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+    import threading
+    import time
+
+    from ._campaign_cli_core import _cfg, _performance_resources
+    from .progress_timing import ProgressRateTracker, format_progress_fraction, format_progress_timing_fields
+    from .training_parallel import (
+        AdaptiveTrainingConcurrency,
+        build_training_concurrency_plan,
+        query_gpu_telemetry,
+    )
+
+    ordered_pending = tuple(sorted(pending, key=lambda item: int(item.slot)))
+    _preflight_post_selection_pending_runs(
+        context,
+        pending=ordered_pending,
+        budget_policy=budget_policy,
+    )
+    first_policy = _optimizer_policy_for(
+        context,
+        seed=ordered_pending[0].run_plan.optimizer_seed,
+        planned_epochs=ordered_pending[0].run_plan.planned_epochs,
+    )
+    device = str(context.method_policies.device)
+    resources = _performance_resources(context.cfg)
+    concurrency_policy = _post_selection_training_concurrency_policy(context)
+    initial_sample = query_gpu_telemetry(device)
+    concurrency_plan = build_training_concurrency_plan(
+        task_count=len(ordered_pending),
+        device=device,
+        loader_workers_per_job=int(getattr(first_policy, "num_workers", 0)),
+        resources=resources,
+        policy=concurrency_policy,
+        gpu_sample=initial_sample,
+    )
+    controller = AdaptiveTrainingConcurrency(concurrency_plan, concurrency_policy)
+    telemetry_ref: dict[str, Any] = {"sample": initial_sample}
+    cancellation_event = threading.Event()
+    state_lock = threading.Lock()
+    states: dict[int, dict[str, Any]] = {
+        task.slot: {
+            "completed_updates": 0,
+            "completed_epochs": 0,
+            "true_epoch": False,
+            "phase": "queued",
+        }
+        for task in ordered_pending
+    }
+    started = time.monotonic()
+    outer_tracker = ProgressRateTracker(completed=0, started_at=started)
+    completed_count = 0
+    next_task = 0
+    active: dict[Any, _PendingPostSelectionRun] = {}
+    results: dict[int, tuple[PostSelectionRunEvidence, Any, Any]] = {}
+    last_sample_at = started
+    last_report_at: float | None = None
+    last_decision_reason = "initial one-job admission"
+    visible_interval = max(
+        0.05,
+        float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "training_progress_interval_seconds",
+                10.0,
+            )
+        ),
+    )
+    poll_interval = min(
+        1.0,
+        max(0.05, float(concurrency_policy.monitor_interval_seconds) / 4.0),
+    )
+
+    def report(status: str, *, force: bool = False) -> None:
+        nonlocal last_report_at
+        now = time.monotonic()
+        if (
+            not force
+            and last_report_at is not None
+            and now - last_report_at < visible_interval
+        ):
+            return
+        with state_lock:
+            active_count = len(active)
+            true_epoch_count = sum(
+                bool(state.get("true_epoch"))
+                for state in states.values()
+                if state.get("phase") not in {"queued", "completed"}
+            )
+        snapshot = outer_tracker.snapshot(
+            completed=completed_count,
+            total=len(ordered_pending),
+            now=now,
+        )
+        sample = telemetry_ref.get("sample")
+        if sample is None:
+            gpu_fields = ("gpu=unavailable", "vram=unavailable")
+        else:
+            gpu_fields = (
+                f"gpu={float(getattr(sample, 'utilization_percent', 0.0)):.0f}%",
+                f"vram={int(getattr(sample, 'used_bytes', 0)) / 1024**3:.1f}/"
+                f"{int(getattr(sample, 'total_bytes', 0)) / 1024**3:.1f}GiB",
+            )
+        plan_summary = concurrency_plan.summary().replace(";", ",")
+        timing = format_progress_timing_fields(
+            elapsed_seconds=snapshot.elapsed_seconds,
+            eta_seconds=snapshot.eta_seconds,
+            recent_rate=snapshot.recent_rate,
+            average_rate=snapshot.average_rate,
+            rate_unit="training-run/s",
+        )
+        line = "; ".join(
+            (
+                f"[TRAIN scheduler] status={status}",
+                f"progress={format_progress_fraction(completed_count, len(ordered_pending))}",
+                "unit=training-run",
+                f"active_jobs={active_count}",
+                f"true_epoch_jobs={true_epoch_count}",
+                f"target_jobs={controller.target_jobs}",
+                f"ceiling={concurrency_plan.maximum_jobs}",
+                f"pending_jobs={len(ordered_pending) - completed_count - active_count}",
+                timing,
+                *gpu_fields,
+                f"plan={plan_summary}",
+                f"last_decision={last_decision_reason.replace(';', ',')}",
+            )
+        )
+        print(line, flush=True)
+        last_report_at = now
+
+    def submit_available(executor: ThreadPoolExecutor) -> None:
+        nonlocal next_task
+        target = max(1, int(controller.target_jobs))
+        while next_task < len(ordered_pending) and len(active) < target:
+            task = ordered_pending[next_task]
+            next_task += 1
+
+            def observe(
+                observation: Mapping[str, Any],
+                *,
+                slot: int = task.slot,
+            ) -> None:
+                with state_lock:
+                    states[slot].update(dict(observation))
+
+            future = executor.submit(
+                execute_post_selection_run,
+                context,
+                run_plan=task.run_plan,
+                budget_policy=budget_policy,
+                training_frame_uids=task.training_frame_uids,
+                monitor_frame_uids=task.monitor_frame_uids,
+                outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
+                progress_context=task.progress_context,
+                cancellation_event=cancellation_event,
+                progress_observer=observe,
+                telemetry_ref=telemetry_ref,
+            )
+            active[future] = task
+            with state_lock:
+                states[task.slot]["phase"] = "running"
+
+    executor = ThreadPoolExecutor(
+        max_workers=max(1, int(concurrency_plan.maximum_jobs)),
+        thread_name_prefix="mdstats-p5-train",
+    )
+    report("planned", force=True)
+    try:
+        submit_available(executor)
+        report("running", force=True)
+        while active or next_task < len(ordered_pending):
+            done, _ = wait(
+                tuple(active),
+                timeout=poll_interval,
+                return_when=FIRST_COMPLETED,
+            ) if active else (set(), set())
+            for future in done:
+                task = active.pop(future)
+                result = future.result()
+                results[task.slot] = result
+                with state_lock:
+                    states[task.slot]["phase"] = "completed"
+                completed_count += 1
+
+            now = time.monotonic()
+            if now - last_sample_at >= float(concurrency_policy.monitor_interval_seconds):
+                sample = query_gpu_telemetry(device)
+                telemetry_ref["sample"] = sample
+                with state_lock:
+                    active_count = len(active)
+                    true_epoch_count = sum(
+                        bool(state.get("true_epoch"))
+                        for state in states.values()
+                        if state.get("phase") == "running"
+                    )
+                decision = controller.observe(
+                    sample,
+                    active_jobs=active_count,
+                    epoch_active_jobs=true_epoch_count,
+                    now=now,
+                )
+                last_decision_reason = decision.reason
+                last_sample_at = now
+
+            submit_available(executor)
+            report("running", force=bool(done))
+            if not done and active:
+                report("running")
+        report("completed", force=True)
+    except BaseException as exc:
+        cancellation_event.set()
+        for future in active:
+            future.cancel()
+        report(
+            "cancelled"
+            if isinstance(exc, (KeyboardInterrupt, SystemExit))
+            else "failed",
+            force=True,
+        )
+        executor.shutdown(wait=True, cancel_futures=True)
+        raise
+    else:
+        executor.shutdown(wait=True, cancel_futures=True)
+    return results
+
+
 def execute_post_selection_cross_validation(
     context: PostSelectionContext,
 ) -> tuple[PostSelectionCvPlan, CvCampaignAcceptance]:
@@ -2558,8 +3116,11 @@ def execute_post_selection_cross_validation(
         )
 
     budget_policy = cv_training_budget_policy(context.method, context.cv_policy)
-    acceptances: list[CvFoldAcceptance] = []
-    for seed, fold_index in plan.required_run_matrix:
+    acceptances_by_slot: dict[int, CvFoldAcceptance] = {}
+    pending: list[_PendingPostSelectionRun] = []
+    required_runs = tuple(plan.required_run_matrix)
+    total_runs = len(required_runs)
+    for slot, (seed, fold_index) in enumerate(required_runs):
         fold = plan.fold(fold_index)
         run_plan = build_cv_fold_run_plan(
             plan,
@@ -2570,29 +3131,55 @@ def execute_post_selection_cross_validation(
         store.put(run_plan)
         completed = _completed_fold_acceptance(context, run_plan)
         if completed is not None:
-            acceptances.append(completed)
+            acceptances_by_slot[slot] = completed
+            print(
+                "[TRAIN] status=reused; "
+                f"N_selected={selected.n_selected}; run={slot + 1}/{total_runs}; "
+                f"seed={seed}; fold={fold_index + 1}/{plan.fold_count}; "
+                "restored=reused; phase=reused",
+                flush=True,
+            )
             continue
-        _evidence, representative, outer_metrics = execute_post_selection_run(
-            context,
-            run_plan=run_plan,
-            budget_policy=budget_policy,
-            training_frame_uids=fold.training_frame_uids,
-            monitor_frame_uids=fold.checkpoint_monitor_frame_uids,
-            outer_evaluation_frame_uids=fold.outer_evaluation_frame_uids,
+        pending.append(
+            _PendingPostSelectionRun(
+                slot=slot,
+                run_plan=run_plan,
+                training_frame_uids=tuple(fold.training_frame_uids),
+                monitor_frame_uids=tuple(fold.checkpoint_monitor_frame_uids),
+                outer_evaluation_frame_uids=tuple(fold.outer_evaluation_frame_uids),
+                progress_context={
+                    "N_selected": selected.n_selected,
+                    "run": f"{slot + 1}/{total_runs}",
+                    "seed": seed,
+                    "fold": f"{fold_index + 1}/{plan.fold_count}",
+                    "restored": "executing",
+                    "phase": "executing",
+                },
+            )
         )
+
+    results = _execute_post_selection_pending_runs(
+        context,
+        pending=pending,
+        budget_policy=budget_policy,
+    )
+    for task in pending:
+        _evidence, representative, outer_metrics = results[task.slot]
         if outer_metrics is None:
             raise PostSelectionError(
-                f"CV fold {fold_index} produced no held-out outer evaluation."
+                f"CV fold {task.run_plan.fold_index} produced no held-out outer evaluation."
             )
         acceptance = build_cv_fold_acceptance(
-            run_plan=run_plan,
+            run_plan=task.run_plan,
             representative=representative,
             outer_metrics=outer_metrics,
             policy=context.cv_policy,
         )
         store.put(acceptance)
-        _record_completed_fold_acceptance(context, run_plan, acceptance)
-        acceptances.append(acceptance)
+        _record_completed_fold_acceptance(context, task.run_plan, acceptance)
+        acceptances_by_slot[task.slot] = acceptance
+
+    acceptances = [acceptances_by_slot[slot] for slot in range(total_runs)]
 
     campaign = accept_post_selection_cv_campaign(plan, context.cv_policy, acceptances)
     with post_selection_publication_barrier(
@@ -2740,24 +3327,50 @@ def execute_final_production(
     budget_policy = final_production_training_budget_policy(
         context.method, context.production_policy
     )
-    evidence: list[PostSelectionRunEvidence] = []
-    for seed in final_plan.required_final_seeds:
+    evidence_by_slot: dict[int, PostSelectionRunEvidence] = {}
+    pending: list[_PendingPostSelectionRun] = []
+    required_seeds = tuple(final_plan.required_final_seeds)
+    total_runs = len(required_seeds)
+    for slot, seed in enumerate(required_seeds):
         run_plan = build_final_production_run_plan(final_plan, optimizer_seed=seed)
         store.put(run_plan)
         completed = _completed_run_evidence(context, run_plan)
         if completed is not None:
-            evidence.append(completed)
+            evidence_by_slot[slot] = completed
+            print(
+                "[TRAIN] status=reused; "
+                f"N_selected={selected.n_selected}; run={slot + 1}/{total_runs}; "
+                f"seed={seed}; restored=reused; phase=reused",
+                flush=True,
+            )
             continue
-        run_evidence, _representative, _outer = execute_post_selection_run(
-            context,
-            run_plan=run_plan,
-            budget_policy=budget_policy,
-            training_frame_uids=selected.selected_membership,
-            monitor_frame_uids=m3_membership,
-            outer_evaluation_frame_uids=None,
+        pending.append(
+            _PendingPostSelectionRun(
+                slot=slot,
+                run_plan=run_plan,
+                training_frame_uids=tuple(selected.selected_membership),
+                monitor_frame_uids=tuple(m3_membership),
+                outer_evaluation_frame_uids=None,
+                progress_context={
+                    "N_selected": selected.n_selected,
+                    "run": f"{slot + 1}/{total_runs}",
+                    "seed": seed,
+                    "restored": "executing",
+                    "phase": "executing",
+                },
+            )
         )
-        _record_completed_run_evidence(context, run_plan, run_evidence)
-        evidence.append(run_evidence)
+
+    results = _execute_post_selection_pending_runs(
+        context,
+        pending=pending,
+        budget_policy=budget_policy,
+    )
+    for task in pending:
+        run_evidence, _representative, _outer = results[task.slot]
+        evidence_by_slot[task.slot] = run_evidence
+
+    evidence = [evidence_by_slot[slot] for slot in range(total_runs)]
 
     # Deciding which of the completed seeds constitute the released product is
     # the last pre-qualification act, and it belongs here: every input it uses

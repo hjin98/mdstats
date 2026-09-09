@@ -160,6 +160,9 @@ def authenticate_train2_checkpoint_provider(
         MaceCalculatorProvider,
         build_mace_model_from_configuration,
         mace_model_execution_architecture_digest,
+        mace_model_execution_architecture_first_difference,
+        realize_mace_training_model,
+        restore_mace_portable_model,
     )
     from ..train2_runtime import (
         TRAIN2_RUNTIME_COMPANION_SCHEMA,
@@ -301,20 +304,6 @@ def authenticate_train2_checkpoint_provider(
         provider_model = build_mace_model_from_configuration(
             config_payload, foundation_model_path=foundation_model_path
         )
-        configured_target_head = config_payload.get("target_head_name")
-        model_heads = tuple(str(value) for value in getattr(provider_model, "heads", ()))
-        if configured_target_head and len(model_heads) > 1:
-            configured_target_head = str(configured_target_head)
-            if configured_target_head not in model_heads:
-                raise TrainingDataInputError(
-                    "Candidate MACE configuration target head is absent from the reconstructed model."
-                )
-            provider_kwargs["calculator_kwargs"] = {
-                "head": configured_target_head,
-            }
-        provider = MaceCalculatorProvider.from_authenticated_model(
-            provider_model, **provider_kwargs
-        )
         expected_architecture_digest = getattr(
             summary, "model_architecture_digest", None
         )
@@ -328,6 +317,202 @@ def authenticate_train2_checkpoint_provider(
                 raise TrainingDataInputError(
                     "TRAIN2 companion model architecture identity differs from its runtime summary."
                 )
+        summary_ema_for_live = getattr(summary, "ema_state_digest", None)
+        if isinstance(summary, Mapping) and summary_ema_for_live is None:
+            summary_ema_for_live = summary.get("ema_state_digest")
+        if (
+            evaluation_model_state == EVALUATION_MODEL_STATE_LIVE
+            and not candidate_is_latest
+            and summary_ema_for_live is not None
+        ):
+            raise TrainingDataInputError(
+                "An earlier TRAIN2 checkpoint saved with EMA cannot be evaluated as live state."
+            )
+        configured_target_head = config_payload.get("target_head_name")
+        model_heads = tuple(str(value) for value in getattr(provider_model, "heads", ()))
+        if configured_target_head and len(model_heads) > 1:
+            configured_target_head = str(configured_target_head)
+            if configured_target_head not in model_heads:
+                raise TrainingDataInputError(
+                    "Candidate MACE configuration target head is absent from the reconstructed model."
+                )
+            provider_kwargs["calculator_kwargs"] = {
+                "head": configured_target_head,
+            }
+
+        training_model, training_realization = realize_mace_training_model(
+            provider_model, config_payload
+        )
+        if training_realization is not None:
+            # TRAIN2 persists the state of the transient accelerator model.  It
+            # must be authenticated in that same realization before the model
+            # is projected back to the portable e3nn provider used by EVAL2.
+            training_architecture_digest = mace_model_execution_architecture_digest(
+                training_model
+            )
+            if training_architecture_digest != expected_architecture_digest:
+                raise TrainingDataInputError(
+                    "TRAIN2 and independent MACE architecture differ in the "
+                    f"{training_realization} realization: "
+                    f"summary={expected_architecture_digest}; "
+                    f"reconstructed={training_architecture_digest}."
+                )
+            training_provider = MaceCalculatorProvider.from_authenticated_model(
+                training_model, **provider_kwargs
+            )
+            training_live_digest: str | None = None
+            training_ema_digest: str | None = None
+            try:
+                training_provider.load_authenticated_model_state_dict(
+                    raw_checkpoint_state, state_name="TRAIN2 checkpoint model state"
+                )
+                raw_parameter_values = tuple(
+                    raw_checkpoint_state[name]
+                    for name, _parameter in training_provider.model.named_parameters()
+                )
+                if candidate_is_latest:
+                    assert companion is not None and live_parameters is not None
+                    verify_train2_checkpoint_model_parameters(
+                        raw_parameter_values,
+                        companion=companion,
+                        summary=summary,
+                    )
+                    training_provider.load_authenticated_parameter_state(
+                        live_parameters, state_name="live"
+                    )
+
+                training_live_digest = _tensor_state_digest(
+                    tuple(
+                        parameter
+                        for _name, parameter in training_provider.model.named_parameters()
+                    ),
+                    schema="mdstats.train2-live-parameters.v1",
+                )
+                if candidate_is_latest:
+                    summary_live_digest = getattr(
+                        summary, "live_parameter_digest", None
+                    )
+                    if (
+                        isinstance(summary, Mapping)
+                        and summary_live_digest is None
+                    ):
+                        summary_live_digest = summary.get("live_parameter_digest")
+                    if training_live_digest != summary_live_digest:
+                        raise TrainingDataInputError(
+                            "Loaded TRAIN2 transient model live state does not "
+                            "match its runtime summary."
+                        )
+
+                summary_ema_digest = getattr(summary, "ema_state_digest", None)
+                if isinstance(summary, Mapping) and summary_ema_digest is None:
+                    summary_ema_digest = summary.get("ema_state_digest")
+                if evaluation_model_state == EVALUATION_MODEL_STATE_EMA:
+                    if summary_ema_digest is None:
+                        raise TrainingDataInputError(
+                            "EMA trajectory convention requires authenticated EMA boundary state."
+                        )
+                    if candidate_is_latest:
+                        assert companion is not None
+                        ema_state = companion.get("ema_state")
+                        if not isinstance(ema_state, Mapping):
+                            raise TrainingDataInputError(
+                                "EMA state missing in continuation companion."
+                            )
+                        shadow_params = ema_state.get("shadow_params")
+                        if not isinstance(shadow_params, list) or not shadow_params:
+                            raise TrainingDataInputError(
+                                "EMA shadow parameter state is missing or invalid."
+                            )
+                        collected = ema_state.get("collected_params")
+                        if collected is not None:
+                            if not isinstance(collected, list) or len(collected) != len(
+                                shadow_params
+                            ):
+                                raise TrainingDataInputError(
+                                    "EMA collected parameter state must have the exact shadow-state cardinality."
+                                )
+                            named = tuple(training_provider.model.named_parameters())
+                            if len(named) != len(collected):
+                                raise TrainingDataInputError(
+                                    "EMA collected parameter state cardinality differs from the transient model."
+                                )
+                            for (name, resident), value in zip(
+                                named, collected, strict=True
+                            ):
+                                if (
+                                    not torch.is_tensor(value)
+                                    or tuple(value.shape) != tuple(resident.shape)
+                                    or value.dtype != resident.dtype
+                                    or (
+                                        torch.is_floating_point(value)
+                                        and not bool(
+                                            torch.isfinite(value.detach()).all().item()
+                                        )
+                                    )
+                                ):
+                                    raise TrainingDataInputError(
+                                        f"EMA collected parameter {name!r} is incompatible with the transient model."
+                                    )
+                        training_provider.load_authenticated_parameter_state(
+                            shadow_params, state_name="EMA shadow"
+                        )
+                        training_ema_digest = _tensor_state_digest(
+                            tuple(shadow_params) + tuple(collected or ()),
+                            schema="mdstats.train2-ema-state.v1",
+                        )
+                        if training_ema_digest != summary_ema_digest:
+                            raise TrainingDataInputError(
+                                "Loaded TRAIN2 transient EMA state does not match its runtime summary."
+                            )
+                    else:
+                        training_ema_digest = _tensor_state_digest(
+                            tuple(
+                                parameter
+                                for _name, parameter in training_provider.model.named_parameters()
+                            ),
+                            schema="mdstats.train2-ema-state.v1",
+                        )
+                elif evaluation_model_state != EVALUATION_MODEL_STATE_LIVE:
+                    raise TrainingDataInputError(
+                        f"Unsupported evaluation model state: {evaluation_model_state!r}"
+                    )
+
+                portable_loaded_model = restore_mace_portable_model(
+                    training_provider.model, config_payload
+                )
+            finally:
+                training_provider.close()
+
+            portable_architecture_digest = mace_model_execution_architecture_digest(
+                portable_loaded_model
+            )
+            canonical_portable_digest = mace_model_execution_architecture_digest(
+                provider_model
+            )
+            if portable_architecture_digest != canonical_portable_digest:
+                first_difference = mace_model_execution_architecture_first_difference(
+                    provider_model, portable_loaded_model
+                )
+                raise TrainingDataInputError(
+                    "MACE accelerator checkpoint round-trip changed the portable "
+                    f"architecture: realization={training_realization}; "
+                    f"canonical={canonical_portable_digest}; "
+                    f"round_trip={portable_architecture_digest}; "
+                    f"first_difference={first_difference or 'unknown'}."
+                )
+            provider = MaceCalculatorProvider.from_authenticated_model(
+                portable_loaded_model, **provider_kwargs
+            )
+            if evaluation_model_state == EVALUATION_MODEL_STATE_LIVE:
+                assert training_live_digest is not None
+                return provider, training_live_digest, companion
+            assert training_ema_digest is not None
+            return provider, training_ema_digest, companion
+
+        provider_model = training_model
+        provider = MaceCalculatorProvider.from_authenticated_model(
+            provider_model, **provider_kwargs
+        )
         reconstructed_architecture_digest = mace_model_execution_architecture_digest(
             provider.model
         )

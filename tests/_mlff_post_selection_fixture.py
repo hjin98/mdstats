@@ -290,6 +290,9 @@ def train_like_mace(
             executable_payload=executable_payload,
             optimizer_policy=request.optimizer_policy,
             replay_train_artifact=replay_artifact,
+            replay_geometry_identities=getattr(
+                request, "replay_geometry_identities", None
+            ),
         )
         authority = record_mace_execution_evidence(
             authority,
