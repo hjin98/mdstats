@@ -72,6 +72,7 @@ from ._common import (
     TrainingDataSerializationError,
     configure_sha256_receipt_store,
     digest,
+    resolve_configured_path as _resolve_path,
     sha256_file_cached,
     validate_digest,
 )
@@ -1139,11 +1140,6 @@ def _process_rss_mib() -> float:
         return value / (1024.0 if sys.platform != "darwin" else 1024.0 * 1024.0)
     except Exception:
         return float("nan")
-
-
-def _resolve_path(value: str | Path, base: Path) -> Path:
-    path = Path(value).expanduser()
-    return (path if path.is_absolute() else base / path).resolve()
 
 
 def _load_config(

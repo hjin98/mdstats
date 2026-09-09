@@ -228,9 +228,18 @@ def test_p5_real_nonreplay_reconstructs_default_head_and_authenticates_eval2(
         assert config_payload["schema"] == "mdstats.post-selection-mace-config.v2"
         assert "heads" not in config_payload
         assert config_payload["E0s"]
-        executable = post_selection_mace_run_configuration(config_payload)
+        # The immutable configuration never carries the runtime locator; both
+        # the launch projection and EVAL2 reconstruction receive the currently
+        # authenticated one from the resolved method policy.
+        assert "foundation_model" not in config_payload
+        foundation_locator = context.method_policies.foundation_model
+        executable = post_selection_mace_run_configuration(
+            config_payload, foundation_model_path=foundation_locator
+        )
         assert executable["multiheads_finetuning"] is False
-        model_shell = build_mace_model_from_configuration(config_payload)
+        model_shell = build_mace_model_from_configuration(
+            config_payload, foundation_model_path=foundation_locator
+        )
         import torch
 
         shell_e0s = torch.as_tensor(
@@ -265,6 +274,7 @@ def test_p5_real_nonreplay_reconstructs_default_head_and_authenticates_eval2(
             ),
             allow_forward_override=False,
             checkpoint_epoch=summary.raw_checkpoint_epoch,
+            foundation_model_path=context.method_policies.foundation_model,
         )
         assert tuple(str(value) for value in provider.model.heads) == ("Default",)
         assert (
@@ -505,7 +515,11 @@ legacy_normalized = true
         assert config_payload["lr"] == pytest.approx(0.0123)
         assert config_payload["ema"] is True
         assert config_payload["ema_decay"] == pytest.approx(0.87)
-        executable = post_selection_mace_run_configuration(config_payload)
+        assert "foundation_model" not in config_payload
+        executable = post_selection_mace_run_configuration(
+            config_payload,
+            foundation_model_path=context.method_policies.foundation_model,
+        )
         assert executable["force_mh_ft_lr"] is True
         assert executable["real_pt_data_ratio_threshold"] == 0.0
         assert executable["lr"] == pytest.approx(0.0123)
@@ -531,6 +545,7 @@ legacy_normalized = true
             evaluation_model_state=EVALUATION_MODEL_STATE_EMA,
             allow_forward_override=False,
             checkpoint_epoch=earliest_epoch,
+            foundation_model_path=context.method_policies.foundation_model,
         )
         assert earlier_provider.model is not None
         assert earlier_digest
@@ -554,6 +569,7 @@ legacy_normalized = true
                     evaluation_model_state=EVALUATION_MODEL_STATE_LIVE,
                     allow_forward_override=allow_forward_override,
                     checkpoint_epoch=earliest_epoch,
+                    foundation_model_path=context.method_policies.foundation_model,
                 )
 
         # Reuse the exact native checkpoint through the P7 qualification owner,
@@ -598,6 +614,7 @@ legacy_normalized = true
                     evaluation_model_state=EVALUATION_MODEL_STATE_EMA,
                     allow_forward_override=False,
                     checkpoint_epoch=earliest_epoch,
+                    foundation_model_path=context.method_policies.foundation_model,
                 )
         finally:
             boundary_path.write_bytes(boundary_bytes)
@@ -619,6 +636,7 @@ legacy_normalized = true
                     evaluation_model_state=EVALUATION_MODEL_STATE_EMA,
                     allow_forward_override=False,
                     checkpoint_epoch=earliest_epoch,
+                    foundation_model_path=context.method_policies.foundation_model,
                 )
         finally:
             earliest_checkpoint.write_bytes(raw_checkpoint_bytes)

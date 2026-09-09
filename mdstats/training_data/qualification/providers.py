@@ -66,6 +66,7 @@ def member_provider(context: Any, member: PublishedProductionMember) -> Iterator
         summary=summary,
         evaluation_model_state=evaluation_model_state,
         allow_forward_override=context.inference_evaluator is not None,
+        foundation_model_path=context.method_policies.foundation_model,
     )
     try:
         yield provider

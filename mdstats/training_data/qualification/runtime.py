@@ -25,7 +25,12 @@ import threading
 
 import numpy as np
 
-from .._common import TrainingDataInputError, TrainingDataSerializationError, digest
+from .._common import (
+    TrainingDataInputError,
+    TrainingDataSerializationError,
+    digest,
+    resolve_configured_path,
+)
 from ..campaign_post_selection import PostSelectionError
 from .binding import (
     EvidenceRoleMembership,
@@ -287,8 +292,10 @@ def _reference_root(cfg: Mapping[str, Any], paths: Any) -> Path:
     reference = section.get("reference", {}) if isinstance(section, Mapping) else {}
     configured = reference.get("root") if isinstance(reference, Mapping) else None
     if configured:
-        candidate = Path(str(configured))
-        return candidate if candidate.is_absolute() else (Path(paths.config_dir) / candidate)
+        # The explicit reference root is an ordinary configured campaign path:
+        # it means the same directory to every invocation CWD and supports the
+        # same absolute/``~``/config-relative forms as the rest of the campaign.
+        return resolve_configured_path(str(configured), paths.config_dir)
     return Path(paths.workspace) / "qualification-references"
 
 

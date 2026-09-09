@@ -329,15 +329,17 @@ def test_r10a_exact_mode_matrix_and_executable_head_parity(tmp_path: Path, monke
         extxyz_policy=naive_policies.extxyz,
         method=naive_method,
         mace_architecture=naive_policies.mace_architecture,
-        foundation_model=naive_policies.foundation_model,
         foundation_head=naive_policies.foundation_head,
     )
     assert "multiheads_finetuning" not in naive_internal
     assert "pt_train_file" not in naive_internal
     assert "heads" not in naive_internal
-    assert post_selection_mace_run_configuration(naive_internal)["foundation_model"] == str(
-        foundation.resolve()
-    )
+    # The runtime locator is never stored in the immutable representation; the
+    # launch projection receives the authenticated current one.
+    assert "foundation_model" not in naive_internal
+    assert post_selection_mace_run_configuration(
+        naive_internal, foundation_model_path=naive_policies.foundation_model
+    )["foundation_model"] == str(foundation.resolve())
 
     multi_internal = _post_selection_mace_config(
         run_identity="multi",
@@ -350,13 +352,14 @@ def test_r10a_exact_mode_matrix_and_executable_head_parity(tmp_path: Path, monke
         extxyz_policy=multi_policies.extxyz,
         method=multi_method,
         mace_architecture=multi_policies.mace_architecture,
-        foundation_model=multi_policies.foundation_model,
         foundation_head=multi_policies.foundation_head,
         multiheads_finetuning=True,
         replay_train=SimpleNamespace(relative_path="replay-train.extxyz"),
         replay_monitor=SimpleNamespace(relative_path="replay-monitor.extxyz"),
     )
-    executable = post_selection_mace_run_configuration(multi_internal)
+    executable = post_selection_mace_run_configuration(
+        multi_internal, foundation_model_path=multi_policies.foundation_model
+    )
     assert executable["multiheads_finetuning"] is True
     assert executable["pt_train_file"] == "replay-train.extxyz"
     assert executable["pt_valid_file"] == "replay-monitor.extxyz"

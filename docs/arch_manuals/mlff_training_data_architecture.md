@@ -880,8 +880,10 @@ replace the prescribed endpoint merely because its metric is better.
 
 The current public screen owns the complete restartable continuation. Generated
 campaigns default to `(n1,n2,n3) = (1,3,10)`; fresh final production has its
-independent `[training].max_num_epochs` horizon. Screen checkpoints and CV
-checkpoints are never production parents.
+own independent role horizon `H_prod_i`, frozen per selected size when the
+downstream design is frozen rather than read from `[training].max_num_epochs`
+at execution time. Screen checkpoints and CV checkpoints are never production
+parents.
 
 After selection, CV and final production run under the accepted method. CV
 uses fold partitions of exactly `T_selected`, with fresh model/optimizer
@@ -1307,7 +1309,7 @@ Changes that are *not* target-size identity invalidate only their own descendant
 
 Cross-validation performs the whole-collection freeze at its own admission boundary and then runs the existing methodology once per frozen size, in frozen selection order, each consuming exactly its own `T_N` - complete coverage, no unselected sibling frame, no held-out outer frame, and no frame borrowed from another selected size.
 
-The size dimension sits *outside* everything below it: fold construction, seeds, evaluation, and the acceptance predicate are unchanged, and there is no cross-size reducer. Outer iteration over sizes is serial and shares the one effective resource allocation the existing fold/seed/MACE/library concurrency already owns; no new scheduler exists and no size claims the machine independently. Campaign cross-validation is accepted only when **every** frozen size is accepted; a rejected size stays visibly rejected and no selected size is ever silently dropped.
+The size dimension sits *outside* everything below it: fold construction, seeds, evaluation, and the acceptance predicate are unchanged, and there is no cross-size reducer. Outer iteration over sizes is serial and shares the one effective resource allocation the existing fold/seed/MACE/library concurrency already owns; no new scheduler exists and no size claims the machine independently. Every frozen size receives its own valid cross-validation verdict before any campaign-level reduction happens: a methodological rejection of one size is recorded and the remaining frozen sizes are still cross-validated, because the frozen collection *is* the experiment the operator requested. Campaign cross-validation is accepted only when **every** frozen size is accepted; a rejected size stays visibly rejected and no selected size is ever silently dropped. A hard execution, corruption, lineage, or authority failure is not a scientific verdict and may still abort the invocation.
 
 It validates the **training method**, not the size:
 
@@ -1319,6 +1321,8 @@ It validates the **training method**, not the size:
 - valid completed sibling evidence stays reusable on retry under the existing currentness and restart rules.
 
 Supported training modes remain exactly `scratch`, `naive_fine_tuning`, and `multihead_replay`; the canonical post-selection heads remain `target_head` and `pt_head`; and the foundation checkpoint head remains a separate foundation-owned concept. Method, foundation, replay, and content identity all fail closed.
+
+Foundation **identity** is the authenticated checkpoint content, selected head, and family; the configured filesystem path is a runtime locator only. One canonical interpretation resolves that locator for every downstream owner - `~` expands to the user home, a relative value is anchored to the campaign configuration directory rather than the process working directory - so one `campaign.toml` cannot mean different files to environment checks, method identity, execution, and qualification. Relocating byte-identical content with the same selected head therefore preserves the method and stays executable after reauthentication, while changed bytes, head, or family still invalidate stale descendants fail-closed.
 
 ## Fresh final production
 
@@ -1849,7 +1853,7 @@ quarantined/reprepared rather than translated.
 | provisional downstream design | operator, through `select-target-size` | qualified candidate set, `pi_train`, configured/overridden horizons | one mutable ordered collection of per-size entries `(N, T_N identity, H_cv, H_prod)`, unique by `N` | immutable ancestry; running screen work; choosing a release product among sizes |
 | frozen downstream design | `cross-validate` admission | the current proposal and authenticated P2 order | frozen ordered collection of per-size bindings (`N_selected`, exact `T_N`, role horizons) | re-deciding size afterwards |
 | post-selection method acceptance | post-selection CV owner | frozen target collection, protected relations, `K >= 2`, CV seeds | all-required-fold target-only verdict across each admitted size | changing selected sizes |
-| fresh final production | final-production owner | accepted method, complete selected dataset(s), required final seeds | complete executed run evidence / model artifacts | target-size or CV authority (publication is P7) |
+| fresh final production | final-production owner | accepted method, complete selected dataset(s), required final seeds | complete executed run evidence / model artifacts, and the final-production publication decision | target-size or CV authority (qualification is a downstream consumer of the publication, never its author) |
 | target monitor | current monitor policy | authorized development role | deterministic monitor | target membership |
 | replay monitor | replay policy | authorized replay evidence | deterministic replay monitor | target ranking or method acceptance credit |
 | execution/provider lifetime | current stage owners | authenticated plans and resource budgets | bounded task/cache/provider state | scientific decisions |
@@ -1968,8 +1972,8 @@ current selected binding
 Cross-validation evaluates the frozen selected collection, preserves P1 protected relations,
 requires every configured fold and seed, and accepts or rejects the method.
 It cannot alter the frozen target design. Final production starts fresh from the accepted
-foundation and trains the complete selected dataset(s) under
-`[training].max_num_epochs`; it cannot continue a screen or CV run.
+foundation and trains the complete selected dataset(s) under each size's own
+frozen production horizon `H_prod_i`; it cannot continue a screen or CV run.
 
 ### The final-production publication decision
 
@@ -2043,7 +2047,13 @@ deliberately not part of that lifecycle:
 qualification status | qualification run | qualification activate-locked
 ```
 
-`advance` never runs qualification and never opens locked evidence.
+`advance` may route ordinary nonlocked `qualification run` once a single-size
+campaign has a current final publication, because that step is repeatable and
+consumes only evidence the campaign already owns. It never opens locked
+evidence: `qualification activate-locked` is irreversible one-shot disclosure
+and stays an explicit operator act. For a multi-size frozen design the completed
+experiment is terminal and non-release-qualified, so no qualification attempt is
+routed or created at all.
 
 ## Downstream qualification ownership
 

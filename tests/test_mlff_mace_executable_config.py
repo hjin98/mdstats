@@ -166,7 +166,6 @@ def _canonical_post_selection_config(*, multihead: bool) -> dict:
         "mace_architecture": architecture,
     }
     if multihead:
-        config["foundation_model"] = "foundation.model"
         config["multiheads_finetuning"] = True
         config["pt_train_file"] = "replay-train.extxyz"
         config["pt_valid_file"] = "replay-monitor.extxyz"
@@ -270,9 +269,9 @@ def test_c2_post_selection_non_multihead_config_parses(
     """Scratch and naive-fine-tuning post-selection runs reach the parser."""
 
     source = _canonical_post_selection_config(multihead=False)
-    if foundation is not None:
-        source["foundation_model"] = foundation
-    config = post_selection_mace_run_configuration(source)
+    config = post_selection_mace_run_configuration(
+        source, foundation_model_path=foundation
+    )
 
     args = _parse_config(tmp_path, config)
 
@@ -286,6 +285,9 @@ def test_c2_post_selection_non_multihead_config_parses(
     assert args.heads is None
     assert "schema" not in config
     assert set(config) <= _parser_option_names()
+    # The runtime locator reaches MACE only from the authenticated request; the
+    # immutable configuration never carries it.
+    assert "foundation_model" not in source
     if foundation is None:
         assert "foundation_model" not in config
     else:

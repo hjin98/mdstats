@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -339,7 +340,7 @@ def build_post_selection_contexts(
         resolved_trainer = MacePostSelectionTrainer(
             wrapper_path=_ensure_local_wrappers(paths)["mdstats-mace-train"]
         )
-    policies = resolve_post_selection_method_policies(cfg)
+    policies = resolve_post_selection_method_policies(cfg, config_dir=paths.config_dir)
     method = resolve_post_selection_method_identity(cfg, policies=policies)
     contexts = []
     for selected in selected_contexts:
@@ -672,6 +673,7 @@ def evaluate_post_selection_run_candidates(
             summary=summary,
             evaluation_model_state=evaluation_model_state,
             allow_forward_override=context.inference_evaluator is not None,
+            foundation_model_path=context.method_policies.foundation_model,
         )
         replay_candidate_rmse = None
         replay_foundation_rmse = None
@@ -742,11 +744,16 @@ def evaluate_post_selection_run_candidates(
                     "Replay admissibility evaluation requires a configured foundation model."
                 )
 
-            foundation_content_digest = (
-                foundation_identity.canonical_content_digest
-                if foundation_identity is not None
-                else digest({"foundation_model": foundation_model})
-            )
+            if foundation_identity is None:
+                # A foundation-backed replay evaluation without authenticated
+                # foundation identity has nothing scientific to key its baseline
+                # on.  Substituting the runtime locator would reintroduce
+                # location into what is content/head identity.
+                raise PostSelectionExecutionError(
+                    "Replay admissibility evaluation requires canonical "
+                    "foundation identity."
+                )
+            foundation_content_digest = foundation_identity.canonical_content_digest
             cache_key = digest(
                 {
                     "foundation_content_digest": foundation_content_digest,
@@ -859,6 +866,42 @@ def execute_post_selection_run(
         )
 
 
+def _reclaim_unaccepted_materialization(
+    run_root: Path, material_directory: Path
+) -> None:
+    """Release execution-local materialization scratch no evidence depends on.
+
+    Materialization is published immutably, so a run root left behind by a
+    *failed* attempt whose materialization no longer matches what this owner
+    would write today would otherwise be permanently unusable and would have to
+    be deleted by hand before the campaign could be retried.
+
+    Reclamation is deliberately narrow.  It runs only while this run root's
+    activity lease is held, so no other writer owns the tree, and only while the
+    run root carries no terminal evidence and no TRAIN2 checkpoint state at all.
+    Under those two conditions the materialization is pure unaccepted scratch
+    that the real owner rebuilds deterministically from frozen authority; the
+    moment any accepted or restart-authenticatable progress exists it is kept
+    untouched and a genuine conflict stays a typed failure.
+    """
+
+    if not material_directory.is_dir():
+        return
+    for name in (
+        FOLD_ACCEPTANCE_FILENAME,
+        RUN_EVIDENCE_FILENAME,
+        RUN_COMPLETION_ANCHOR_FILENAME,
+        RUN_TOPOLOGY_MANIFEST_FILENAME,
+        RUN_MEMBER_MANIFEST_FILENAME,
+    ):
+        if (run_root / name).exists():
+            return
+    checkpoints = run_root / "checkpoints"
+    if checkpoints.is_dir() and any(checkpoints.iterdir()):
+        return
+    shutil.rmtree(material_directory)
+
+
 def _execute_post_selection_run_locked(
     context: PostSelectionContext,
     *,
@@ -874,6 +917,7 @@ def _execute_post_selection_run_locked(
     selected = context.selected
     material_directory = run_root / "materialization"
     checkpoint_directory = run_root / "checkpoints"
+    _reclaim_unaccepted_materialization(run_root, material_directory)
     checkpoint_directory.mkdir(parents=True, exist_ok=True)
     optimizer_policy = _optimizer_policy_for(
         context, seed=run_plan.optimizer_seed, planned_epochs=run_plan.planned_epochs
@@ -902,7 +946,6 @@ def _execute_post_selection_run_locked(
         output_directory=material_directory,
         common_training_policy=context.method_policies.common_training,
         mace_architecture=context.method_policies.mace_architecture,
-        foundation_model=context.method_policies.foundation_model,
         foundation_head=context.method_policies.foundation_head,
         multiheads_finetuning=(
             context.method_policies.training_mode == "multihead_replay"
@@ -1002,6 +1045,7 @@ def _execute_post_selection_run_locked(
                 planned_epochs=run_plan.planned_epochs,
             ),
             allow_forward_override=context.inference_evaluator is not None,
+            foundation_model_path=context.method_policies.foundation_model,
         )
         try:
             outer_metrics = evaluate_post_selection_dataset(
@@ -2257,9 +2301,11 @@ def execute_current_cross_validate(args: Any) -> int:
             continue
         # A rejected size stays visibly rejected and keeps its place in the
         # design. Sibling evidence already gathered stays valid and reusable;
-        # what is refused is calling the campaign accepted.
+        # what is refused is calling the campaign accepted.  The frozen
+        # collection defines the experiment, so a methodological rejection of
+        # one size never removes a later size from it: every requested size is
+        # cross-validated and only then is the campaign verdict reduced.
         rejected.append((n_selected, tuple(acceptance.rejection_reasons)))
-        break
     if rejected:
         detail = "; ".join(
             f"N={size}: {list(reasons)}" for size, reasons in rejected

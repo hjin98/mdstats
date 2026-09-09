@@ -599,12 +599,21 @@ def canonicalize_mace_candidate_architecture(
     return _validate_mace_candidate_architecture(value)
 
 
-def build_mace_model_from_configuration(config_payload: Mapping[str, Any]) -> Any:
+def build_mace_model_from_configuration(
+    config_payload: Mapping[str, Any],
+    *,
+    foundation_model_path: str | Path | None = None,
+) -> Any:
     """Construct one real MACE 0.3.16 model from candidate configuration.
 
     This is the shared construction owner used by target-size EVAL2.  It uses
     MACE's own parser/configuration builder and never consumes a checkpoint
     state dictionary or a continuation companion as an architecture source.
+
+    A foundation-backed configuration reaches its checkpoint through
+    ``foundation_model_path``, the caller's currently authenticated runtime
+    locator.  The immutable configuration owns which checkpoint *content* and
+    head the method selected; where that file currently lives is not part of it.
     """
 
     if not isinstance(config_payload, Mapping):
@@ -743,7 +752,7 @@ def build_mace_model_from_configuration(config_payload: Mapping[str, Any]) -> An
         z_table = tools.AtomicNumberTable(list(atomic_numbers))
 
         foundation_model = None
-        foundation_path = config_payload.get("foundation_model")
+        foundation_path = foundation_model_path
         if foundation_path:
             foundation_path = Path(str(foundation_path)).resolve()
             if not foundation_path.is_file():
