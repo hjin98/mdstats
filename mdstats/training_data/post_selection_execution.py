@@ -780,39 +780,54 @@ class PostSelectionTrainer(Protocol):
         ...
 
 
-def _mace_execution_frame_uid_set_digest(artifact: Any) -> str | None:
-    """Resolve the UID set the dependency-facing MACE loader will observe.
+def _mace_execution_frame_uid_set_digest(
+    artifact: Any,
+    *,
+    role: str = "target",
+) -> str | None:
+    """Resolve the exact membership token set consumed by the MACE loader.
 
-    DATA8 artifacts retain explicit frame UIDs.  ReplayFileArtifact is an
-    existing path/content authority whose scientific record stores geometry
-    identities instead, so recover the already-exported ``frame_uid`` metadata
-    from that authenticated file at the launch boundary.  No UID is inferred
-    from geometry or regenerated when the exported identity is unavailable.
+    Target DATA8 artifacts already carry their authenticated ``frame_uids``.
+    Replay artifacts are resolved through the existing file metadata adapter:
+    single-source views use ``replay_geometry_identity`` and supported legacy
+    files retain their explicit ``frame_uid`` domain.  No token is inferred
+    from order, count, pathname, or a newly generated replay namespace.
     """
 
-    from .mace_compatibility import mace_frame_uid_set_digest
+    from .mace_compatibility import (
+        _mace_execution_membership_values,
+        mace_frame_uid_set_digest,
+    )
 
-    values = getattr(artifact, "frame_uids", None)
-    if values is None:
+    if role not in {"target", "replay"}:
+        raise PostSelectionExecutionError(
+            f"Unsupported MACE execution membership role: {role!r}."
+        )
+    if role == "target":
+        values = getattr(artifact, "frame_uids", None)
+        if values is None:
+            path_value = getattr(artifact, "path", None)
+            if path_value is None:
+                return None
+            values = _mace_execution_membership_values(
+                path_value,
+                role="target",
+                head_name="target",
+            )
+    else:
         path_value = getattr(artifact, "path", None)
         if path_value is None:
             return None
-        try:
-            from ase.io import iread
-
-            values = tuple(
-                str(atoms.info.get("frame_uid"))
-                for atoms in iread(
-                    Path(str(path_value)).expanduser().resolve(),
-                    index=":",
-                    format="extxyz",
-                )
-            )
-        except Exception as exc:
-            raise PostSelectionExecutionError(
-                "Authenticated replay training input could not expose its "
-                "exported frame-UID metadata."
-            ) from exc
+        values = _mace_execution_membership_values(
+            path_value,
+            role="replay",
+            head_name="replay",
+        )
+    expected_count = getattr(artifact, "configuration_count", None)
+    if expected_count is not None and len(tuple(values)) != int(expected_count):
+        raise TrainingDataInputError(
+            f"MACE {role} execution membership count differs from its artifact."
+        )
     return mace_frame_uid_set_digest(values)
 
 
@@ -832,7 +847,10 @@ def _build_post_selection_mace_execution_authority(
     )
 
     target_train_art = materialization.target_train_artifact
-    target_uid_digest = _mace_execution_frame_uid_set_digest(target_train_art)
+    target_uid_digest = _mace_execution_frame_uid_set_digest(
+        target_train_art,
+        role="target",
+    )
     internal_multihead = bool(internal_payload.get("multiheads_finetuning"))
     if internal_multihead:
         replay_count = int(
@@ -857,7 +875,10 @@ def _build_post_selection_mace_execution_authority(
         replay_count = 0
     replay_uid_digest = None
     if replay_train_artifact is not None:
-        replay_uid_digest = _mace_execution_frame_uid_set_digest(replay_train_artifact)
+        replay_uid_digest = _mace_execution_frame_uid_set_digest(
+            replay_train_artifact,
+            role="replay",
+        )
 
     # Production projections always contain these canonical optimizer fields. A
     # few pre-launch guard fixtures intentionally stop at a minimal config

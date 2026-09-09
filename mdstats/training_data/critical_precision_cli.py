@@ -269,15 +269,35 @@ def _annotate_mace_collections_with_exported_uids(*, head_configs: Any) -> None:
 
     MACE 0.3.16 intentionally reduces ASE ``Atoms.info`` to its fixed
     ``Configuration`` fields and therefore does not preserve arbitrary
-    ``frame_uid`` metadata.  The wrapper re-associates the authenticated UID
-    sequence with the corresponding collection immediately after MACE's own
-    dataset loader returns.  A length/order mismatch fails closed; no UID is
+    membership metadata.  The wrapper re-associates the authenticated target
+    ``frame_uid`` or replay ``replay_geometry_identity`` sequence with the
+    corresponding collection immediately after MACE's own dataset loader
+    returns.  A length/order/identity-domain mismatch fails closed; no token is
     inferred from a position or regenerated locally.
     """
 
-    from ase.io import iread
+    from .mace_compatibility import _mace_execution_membership_values
+
+    authority = _mace_execution_authority()
+    if authority is None:
+        raise RuntimeError(
+            "MACE execution membership annotation ran without launch authority."
+        )
+    target_name = str(authority["target_head_name"])
+    replay_name = str(authority["replay_head_name"])
+    multihead = bool(authority["multiheads_finetuning"])
 
     for head_config in head_configs:
+        head_name = str(getattr(head_config, "head_name", ""))
+        if head_name == target_name:
+            role = "target"
+        elif multihead and head_name == replay_name:
+            role = "replay"
+        else:
+            raise RuntimeError(
+                f"MACE execution cannot classify training head {head_name!r} "
+                "against the authenticated authority."
+            )
         train_files = getattr(head_config, "train_file", None)
         collections = getattr(head_config, "collections", None)
         train_collection = None if collections is None else getattr(collections, "train", None)
@@ -288,28 +308,16 @@ def _annotate_mace_collections_with_exported_uids(*, head_configs: Any) -> None:
             )
         if isinstance(train_files, (str, os.PathLike)):
             train_files = [train_files]
-        exported_uids: list[str] = []
-        for raw_path in train_files:
-            path = Path(str(raw_path)).expanduser()
-            if not path.is_file():
-                raise RuntimeError(
-                    f"MACE execution cannot authenticate missing training file: {path}"
-                )
-            try:
-                frames = iread(path, index=":", format="extxyz")
-                for atoms in frames:
-                    uid = atoms.info.get("frame_uid")
-                    if uid in (None, ""):
-                        raise RuntimeError(
-                            f"MACE training file {path} contains a frame without frame_uid."
-                        )
-                    exported_uids.append(str(uid))
-            except RuntimeError:
-                raise
-            except Exception as exc:
-                raise RuntimeError(
-                    f"MACE execution could not read exported UID metadata from {path}."
-                ) from exc
+        try:
+            exported_uids = _mace_execution_membership_values(
+                train_files,
+                role=role,
+                head_name=head_name,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"MACE {head_name} training membership could not be authenticated."
+            ) from exc
         collection_values = list(train_collection)
         if len(collection_values) != len(exported_uids):
             raise RuntimeError(
@@ -321,7 +329,7 @@ def _annotate_mace_collections_with_exported_uids(*, head_configs: Any) -> None:
                 "MACE exported training files contain duplicate frame UIDs."
             )
         for item, uid in zip(collection_values, exported_uids):
-            setattr(item, "frame_uid", uid)
+            item.frame_uid = uid
 
 
 def _validate_mace_execution_loader(

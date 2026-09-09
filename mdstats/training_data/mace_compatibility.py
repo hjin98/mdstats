@@ -660,6 +660,113 @@ def mace_frame_uid_set_digest(frame_uids: Any) -> str:
     return digest({"frame_uids": sorted(values)})
 
 
+def _mace_execution_membership_values(
+    paths: Any,
+    *,
+    role: str,
+    head_name: str,
+) -> tuple[str, ...]:
+    """Resolve the one identity domain exported to the MACE collection.
+
+    Target DATA8 views expose target ``frame_uid`` values.  Single-source
+    replay views expose the already-authoritative
+    ``replay_geometry_identity`` instead, while supported legacy replay files
+    continue to expose their historical ``frame_uid`` values.  A replay file
+    must use exactly one of those domains for every frame; selecting a
+    per-frame fallback would make the membership digest depend on transport
+    accidents rather than on the authenticated replay authority.
+    """
+
+    if role not in {"target", "replay"}:
+        raise TrainingDataInputError(
+            f"MACE execution membership role is unsupported: {role!r}."
+        )
+    if isinstance(paths, (str, os.PathLike)):
+        path_values = (paths,)
+    else:
+        try:
+            path_values = tuple(paths)
+        except TypeError as exc:
+            raise TrainingDataInputError(
+                f"MACE {head_name} training files are not a path sequence."
+            ) from exc
+    if not path_values:
+        raise TrainingDataInputError(
+            f"MACE {head_name} training files are empty."
+        )
+
+    try:
+        from ase.io import iread
+    except ModuleNotFoundError as exc:  # pragma: no cover - dependency gate
+        raise TrainingDataInputError(
+            "ASE is required to resolve MACE execution membership."
+        ) from exc
+
+    values: list[str] = []
+    replay_identity_field: str | None = None
+    for raw_path in path_values:
+        path = Path(str(raw_path)).expanduser()
+        if not path.is_file():
+            raise TrainingDataInputError(
+                f"MACE {head_name} training file is missing: {path}"
+            )
+        try:
+            frames = iread(path, index=":", format="extxyz")
+            for frame_index, atoms in enumerate(frames):
+                info = getattr(atoms, "info", None)
+                if not isinstance(info, Mapping):
+                    raise TrainingDataInputError(
+                        f"MACE {head_name} frame {frame_index} has no metadata mapping."
+                    )
+                if role == "target":
+                    value = info.get("frame_uid")
+                    if value in (None, "") or not str(value).strip():
+                        raise TrainingDataInputError(
+                            f"MACE {head_name} target frame {frame_index} lacks frame_uid."
+                        )
+                else:
+                    present = tuple(
+                        field
+                        for field in ("frame_uid", "replay_geometry_identity")
+                        if field in info
+                    )
+                    if len(present) != 1:
+                        raise TrainingDataInputError(
+                            f"MACE {head_name} replay frame {frame_index} must expose "
+                            "exactly one of frame_uid or replay_geometry_identity."
+                        )
+                    field = present[0]
+                    if replay_identity_field is None:
+                        replay_identity_field = field
+                    elif replay_identity_field != field:
+                        raise TrainingDataInputError(
+                            f"MACE {head_name} replay training files mix identity "
+                            "domains."
+                        )
+                    value = info.get(field)
+                    if value in (None, "") or not str(value).strip():
+                        raise TrainingDataInputError(
+                            f"MACE {head_name} replay frame {frame_index} has an "
+                            f"empty {field}."
+                        )
+                    if field == "replay_geometry_identity":
+                        validate_digest(str(value), name=field)
+                values.append(str(value))
+        except TrainingDataInputError:
+            raise
+        except Exception as exc:
+            raise TrainingDataInputError(
+                f"MACE {head_name} execution could not read membership metadata "
+                f"from {path}."
+            ) from exc
+
+    # Keep the existing exact-set validation as the single digest/uniqueness
+    # owner.  The returned sequence is only used to associate the same tokens
+    # with MACE's in-memory Configuration objects before this digest is made.
+    mace_frame_uid_set_digest(values)
+    return tuple(values)
+
+
 def _execution_integer(
     value: Any,
     *,

@@ -1125,7 +1125,10 @@ def _validate_post_selection_continuation_execution_evidence(
         )
 
     try:
-        target_uid_digest = _mace_execution_frame_uid_set_digest(target_artifact)
+        target_uid_digest = _mace_execution_frame_uid_set_digest(
+            target_artifact,
+            role="target",
+        )
         if target_uid_digest is None:
             raise TrainingDataInputError(
                 "P5 materialization target training artifact has no frame-UID authority."
@@ -1136,7 +1139,10 @@ def _validate_post_selection_continuation_execution_evidence(
                 raise TrainingDataInputError(
                     "P5 replay materialization has no authenticated training input."
                 )
-            replay_uid_digest = _mace_execution_frame_uid_set_digest(replay_artifact)
+            replay_uid_digest = _mace_execution_frame_uid_set_digest(
+                replay_artifact,
+                role="replay",
+            )
             if replay_uid_digest is None:
                 raise TrainingDataInputError(
                     "P5 replay materialization has no exported frame-UID authority."
