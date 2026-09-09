@@ -194,6 +194,29 @@ def test_foundation_path_forms_execute_and_survive_relocation(
     harness = fx.PostSelectionHarness()
     assert fx.run_cross_validate(config, harness) == 0
     assert harness.requests
+    # The campaign seam above proves the canonical request.  Drive that exact
+    # request through the production dependency-facing trainer as well; only
+    # the subprocess below it is bounded to the existing toy TRAIN2 seam.
+    import mdstats.training_data.post_selection_execution as execution
+    import yaml
+
+    request = harness.requests[0]
+
+    def bounded_mace_process(*_args, **_kwargs):
+        fx.train_like_mace(request)
+        return SimpleNamespace(returncode=0, stderr="")
+
+    monkeypatch.setattr(execution.subprocess, "run", bounded_mace_process)
+    execution.MacePostSelectionTrainer(
+        wrapper_path=tmp_path / "bounded-mace-wrapper"
+    )(request)
+    executable_payload = yaml.safe_load(
+        (
+            request.materialization_directory / "mace_run_config.yaml"
+        ).read_text(encoding="utf-8")
+    )
+    assert executable_payload["foundation_model"] == str(foundation.resolve())
+    assert executable_payload["foundation_head"] == "default"
     for request in harness.requests:
         assert Path(request.foundation_model_path) == foundation.resolve()
         # The immutable execution representation never carries the locator.
@@ -594,6 +617,136 @@ class _PauseAfterFirstEpoch:
         return fx.train_like_mace(request)
 
 
+def _paused_foundation_workspace(tmp_path: Path):
+    """Create one real P5 run with authenticated partial TRAIN2 progress."""
+
+    campaign_root = tmp_path / "campaign-root"
+    campaign_root.mkdir()
+    store_dir = tmp_path / "foundation-store"
+    store_dir.mkdir()
+    foundation = store_dir / "foundation.model"
+    config = _foundation_backed_campaign(
+        campaign_root,
+        foundation=foundation,
+        spelling="../foundation-store/foundation.model",
+    )
+    pauser = _PauseAfterFirstEpoch()
+    with pytest.raises(AssertionError, match="bounded interruption"):
+        p4d._run(
+            config,
+            "cross-validate",
+            _external_post_selection_trainer=pauser,
+            _external_inference_evaluator=fx.PostSelectionHarness().evaluate,
+        )
+    assert pauser.requests
+    return config, foundation, Path(pauser.requests[0].checkpoint_directory).parent, pauser
+
+
+def _paused_multihead_workspace(tmp_path: Path):
+    """Create a real replay-enabled P5 run with authenticated partial progress."""
+
+    import tests.test_mlff_target_size_p5_r9_guards as r9
+
+    root = tmp_path / "campaign-root"
+    root.mkdir()
+    foundation = root / "foundation.model"
+    pseudo_train = root / "replay-pseudo-train.extxyz"
+    pseudo_monitor = root / "replay-pseudo-monitor.extxyz"
+    true_root = root / "true-replay"
+    r9._write_tiny_mace_foundation(foundation)
+    r9._write_replay_file(pseudo_train, [0, 1], energy_offset=0.25)
+    r9._write_replay_file(pseudo_monitor, [2, 3], energy_offset=0.25)
+    r9._write_replay_file(
+        true_root / "true_labels" / "replay_train.extxyz", [0, 1], energy_offset=0.0
+    )
+    r9._write_replay_file(
+        true_root / "true_labels" / "replay_monitor.extxyz", [2, 3], energy_offset=0.0
+    )
+
+    config_text = fx.fixture_config_text().replace(
+        'training_root = "{training_root}"',
+        "\n".join(
+            (
+                'training_root = "{training_root}"',
+                f'foundation_model = "{foundation}"',
+                f'replay_train = "{pseudo_train}"',
+                f'replay_monitor = "{pseudo_monitor}"',
+                f'replay_true_labels = "{true_root}"',
+            )
+        ),
+    )
+    config_text = config_text.replace(
+        "seeds = [1, 2]", "seeds = [1, 2]\nmode = \"multihead_replay\"", 1
+    )
+    config_text += """
+
+[replay]
+mode = "external_pseudolabel"
+seed = 42
+allow_small_corpus = true
+minimum_train_configurations = 1
+minimum_monitor_configurations = 1
+require_target_elements = false
+
+[foundation]
+family = "mace_mpa_0"
+head = "default"
+legacy_normalized = true
+"""
+    config, _workspace = fx.build_selected_campaign(
+        tmp_path / "campaign", config_text=config_text
+    )
+    pauser = _PauseAfterFirstEpoch()
+    with pytest.raises(AssertionError, match="bounded interruption"):
+        p4d._run(
+            config,
+            "cross-validate",
+            _external_post_selection_trainer=pauser,
+            _external_inference_evaluator=fx.PostSelectionHarness().evaluate,
+        )
+    assert pauser.requests
+    return config, Path(pauser.requests[0].checkpoint_directory).parent, pauser
+
+
+def _file_tree_bytes(root: Path) -> dict[str, bytes]:
+    """Snapshot regular files below a test-owned recovery tree."""
+
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+
+
+def _rewrite_continuation_mace_evidence(
+    run_root: Path, *, field: str, value: str
+) -> None:
+    """Change one persisted evidence field while keeping both TRAIN2 copies shaped."""
+
+    import torch
+
+    from mdstats.training_data.train2_runtime import Train2RuntimeSummary
+
+    summary_path = run_root / "checkpoints" / "train2_runtime.json"
+    summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    evidence = dict(summary_payload["mace_execution_evidence"])
+    evidence[field] = value
+    evidence["evidence_digest"] = digest(
+        {key: item for key, item in evidence.items() if key != "evidence_digest"}
+    )
+    summary_payload["mace_execution_evidence"] = evidence
+    summary_payload.pop("content_digest", None)
+    summary = Train2RuntimeSummary.from_dict(summary_payload)
+    summary_path.write_text(
+        json.dumps(summary.to_dict(), indent=2, sort_keys=True), encoding="utf-8"
+    )
+
+    companion_path = run_root / "checkpoints" / "train2_runtime.pt"
+    companion = torch.load(companion_path, map_location="cpu", weights_only=False)
+    companion["mace_execution_evidence"] = evidence
+    torch.save(companion, companion_path)
+
+
 @pytest.mark.slow
 def test_authenticated_train2_continuation_is_resumed_by_the_real_p5_owner(
     tmp_path: Path,
@@ -623,6 +776,228 @@ def test_authenticated_train2_continuation_is_resumed_by_the_real_p5_owner(
     assert fx.run_cross_validate(config, resumed) == 0
     assert resumed.requests
     assert resumed.requests[0].start_epoch == 1
+
+
+@pytest.mark.slow
+def test_durable_continuation_without_materialization_fails_closed_and_preserves_state(
+    tmp_path: Path,
+) -> None:
+    """Authenticated TRAIN2 state cannot cause P5 to rebuild absent DATA8."""
+
+    config, _foundation, run_root, _pauser = _paused_foundation_workspace(tmp_path)
+    checkpoint_before = _file_tree_bytes(run_root / "checkpoints")
+    material_directory = run_root / "materialization"
+    preserved_materialization = run_root / "materialization.preserved"
+    material_directory.rename(preserved_materialization)
+    material_before = _file_tree_bytes(preserved_materialization)
+
+    harness = fx.PostSelectionHarness()
+    with pytest.raises(PostSelectionExecutionError, match="materialization is absent"):
+        fx.run_cross_validate(config, harness)
+
+    assert not material_directory.exists()
+    assert _file_tree_bytes(preserved_materialization) == material_before
+    assert _file_tree_bytes(run_root / "checkpoints") == checkpoint_before
+    assert harness.requests == []
+
+
+@pytest.mark.slow
+def test_durable_continuation_with_incomplete_materialization_fails_closed_without_rebuild(
+    tmp_path: Path,
+) -> None:
+    """A missing final DATA8 record is integrity failure once TRAIN2 is durable."""
+
+    config, _foundation, run_root, _pauser = _paused_foundation_workspace(tmp_path)
+    material_directory = run_root / "materialization"
+    record_path = material_directory / "materialization.json"
+    record_path.unlink()
+    material_before = _file_tree_bytes(material_directory)
+    checkpoint_before = _file_tree_bytes(run_root / "checkpoints")
+
+    harness = fx.PostSelectionHarness()
+    with pytest.raises(
+        PostSelectionExecutionError, match="publication is incomplete"
+    ):
+        fx.run_cross_validate(config, harness)
+
+    assert _file_tree_bytes(material_directory) == material_before
+    assert _file_tree_bytes(run_root / "checkpoints") == checkpoint_before
+    assert harness.requests == []
+
+
+class _PauseAfterFullHorizon:
+    """Persist every epoch, then interrupt before P5 EVAL2 publication."""
+
+    def __init__(self) -> None:
+        self.first = True
+        self.requests: list[object] = []
+
+    def __call__(self, request):
+        self.requests.append(request)
+        if self.first:
+            self.first = False
+            return fx.train_like_mace(
+                request,
+                stop_after_epoch=request.plan.execution_epoch_limit - 1,
+                fail_after_persist=True,
+            )
+        return fx.train_like_mace(request)
+
+
+class _ResumeFirstThenFailSecond:
+    """Finish the paused sibling, then leave the next sibling post-materialization."""
+
+    def __init__(self) -> None:
+        self.requests: list[object] = []
+
+    def __call__(self, request):
+        self.requests.append(request)
+        if len(self.requests) == 1:
+            return fx.train_like_mace(request)
+        raise AssertionError("bounded interruption after materialization")
+
+
+class _RecordingEvaluationHarness(fx.PostSelectionHarness):
+    """Record whether the guarded retry ever reaches the EVAL2 seam."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.evaluation_calls = 0
+
+    def evaluate(self, provider, atoms_list):
+        self.evaluation_calls += 1
+        return super().evaluate(provider, atoms_list)
+
+
+@pytest.mark.slow
+def test_full_horizon_continuation_recloses_only_after_joint_authentication(
+    tmp_path: Path,
+) -> None:
+    """A complete durable horizon may skip zero-epoch training after exact auth."""
+
+    campaign_root = tmp_path / "campaign-root"
+    campaign_root.mkdir()
+    store_dir = tmp_path / "foundation-store"
+    store_dir.mkdir()
+    foundation = store_dir / "foundation.model"
+    config = _foundation_backed_campaign(
+        campaign_root,
+        foundation=foundation,
+        spelling="../foundation-store/foundation.model",
+    )
+    pauser = _PauseAfterFullHorizon()
+    with pytest.raises(AssertionError, match="bounded interruption"):
+        p4d._run(
+            config,
+            "cross-validate",
+            _external_post_selection_trainer=pauser,
+            _external_inference_evaluator=fx.PostSelectionHarness().evaluate,
+        )
+    full_run_identity = pauser.requests[0].run_plan.run_identity
+    assert pauser.requests[0].plan.execution_epoch_limit == 2
+
+    resumed = fx.PostSelectionHarness()
+    assert fx.run_cross_validate(config, resumed) == 0
+    assert all(
+        request.run_plan.run_identity != full_run_identity
+        for request in resumed.requests
+    )
+
+
+@pytest.mark.slow
+def test_foreign_sibling_continuation_with_equal_runtime_shape_fails_before_eval2(
+    tmp_path: Path,
+) -> None:
+    """A copied sibling continuation cannot be attached by coarse plan equality."""
+
+    import shutil
+
+    config, _foundation, paused_root, _pauser = _paused_foundation_workspace(tmp_path)
+    staged = _ResumeFirstThenFailSecond()
+    with pytest.raises(AssertionError, match="after materialization"):
+        p4d._run(
+            config,
+            "cross-validate",
+            _external_post_selection_trainer=staged,
+            _external_inference_evaluator=fx.PostSelectionHarness().evaluate,
+        )
+
+    assert len(staged.requests) == 2
+    first, sibling = staged.requests
+    assert first.plan.to_dict() == sibling.plan.to_dict()
+    assert first.run_plan.run_identity != sibling.run_plan.run_identity
+    sibling_root = Path(sibling.checkpoint_directory).parent
+    assert sibling_root != paused_root
+    assert (sibling_root / "materialization" / "materialization.json").is_file()
+
+    # Copy a fully authenticated continuation from the completed first sibling
+    # into the second sibling, leaving the second sibling's own materialization
+    # intact. The current TRAIN2 plan is intentionally equal for both folds.
+    shutil.copytree(
+        first.checkpoint_directory,
+        sibling.checkpoint_directory,
+        dirs_exist_ok=True,
+    )
+
+    guarded = _RecordingEvaluationHarness()
+    with pytest.raises(PostSelectionExecutionError, match="MACE authority"):
+        fx.run_cross_validate(config, guarded)
+
+    assert guarded.requests == []
+    assert guarded.evaluation_calls == 0
+    assert not (sibling_root / "fold-acceptance.json").exists()
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("authority_config_digest", "f" * 64),
+        ("target_frame_uid_set_digest", "e" * 64),
+    ],
+)
+def test_persisted_mace_execution_evidence_mismatch_is_typed_and_preserved(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    """Continuation evidence must bind both config and target membership."""
+
+    config, _foundation, run_root, _pauser = _paused_foundation_workspace(tmp_path)
+    _rewrite_continuation_mace_evidence(run_root, field=field, value=value)
+    checkpoint_before = _file_tree_bytes(run_root / "checkpoints")
+    material_before = _file_tree_bytes(run_root / "materialization")
+
+    with pytest.raises(
+        PostSelectionExecutionError, match="preserving diagnostic state"
+    ) as failure:
+        fx.run_cross_validate(config, fx.PostSelectionHarness())
+
+    if field == "target_frame_uid_set_digest":
+        assert "target_frame_uid_set_digest" in str(failure.value.__cause__)
+    else:
+        assert "authority" in str(failure.value).lower()
+
+    assert _file_tree_bytes(run_root / "checkpoints") == checkpoint_before
+    assert _file_tree_bytes(run_root / "materialization") == material_before
+
+
+@pytest.mark.slow
+def test_persisted_mace_replay_uid_evidence_mismatch_is_typed_and_preserved(
+    tmp_path: Path,
+) -> None:
+    """Replay-enabled continuation evidence also binds its exact UID set."""
+
+    config, run_root, _pauser = _paused_multihead_workspace(tmp_path)
+    _rewrite_continuation_mace_evidence(
+        run_root, field="replay_frame_uid_set_digest", value="d" * 64
+    )
+    with pytest.raises(
+        PostSelectionExecutionError, match="preserving diagnostic state"
+    ) as failure:
+        fx.run_cross_validate(config, fx.PostSelectionHarness())
+
+    assert "replay_frame_uid_set_digest" in str(failure.value.__cause__)
+    assert (run_root / "checkpoints" / "train2_runtime.pt").is_file()
+    assert (run_root / "materialization" / "materialization.json").is_file()
 
 
 @pytest.mark.slow

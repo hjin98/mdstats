@@ -76,10 +76,13 @@ from .post_selection_execution import (
     PostSelectionRunEvidence,
     PostSelectionRungRequest,
     _post_selection_mace_config,
+    _build_post_selection_mace_execution_authority,
+    _mace_execution_frame_uid_set_digest,
     authenticate_post_selection_provider,
     evaluate_post_selection_dataset,
     fit_post_selection_preparation,
     materialize_post_selection_run,
+    post_selection_mace_run_configuration,
     post_selection_checkpoint_candidates,
     post_selection_runtime_plan,
 )
@@ -1053,6 +1056,124 @@ def _authenticate_post_selection_continuation(
     return summary, int(summary.completed_epochs)
 
 
+def _validate_post_selection_continuation_execution_evidence(
+    context: PostSelectionContext,
+    *,
+    materialization: PostSelectionMaterialization,
+    config_payload: Mapping[str, Any],
+    continuation_summary: Any,
+    replay_resolution: Any | None,
+    optimizer_policy: Any,
+) -> None:
+    """Bind persisted MACE execution facts to the current materialization.
+
+    TRAIN2 authenticates its own continuation shape and tensor state.  The P5
+    materialization is the owner of the exact DATA8 workload, however, so a
+    continuation is not reusable until the existing MACE evidence also names
+    this materialization's configuration and training membership.  This is an
+    owner-local compatibility check, not another restart record or identity.
+    """
+
+    from .mace_compatibility import (
+        MACE_EXECUTION_EVIDENCE_SCHEMA,
+        MACE_EXECUTION_SEMANTICS_VERSION,
+        record_mace_execution_evidence,
+    )
+
+    evidence = getattr(continuation_summary, "mace_execution_evidence", None)
+    if not isinstance(evidence, Mapping):
+        _post_selection_recovery_error(
+            "TRAIN2 continuation has no persisted MACE execution evidence bound "
+            "to the current P5 materialization; preserving diagnostic state."
+        )
+    evidence = dict(evidence)
+    if evidence.get("schema") != MACE_EXECUTION_EVIDENCE_SCHEMA:
+        _post_selection_recovery_error(
+            "TRAIN2 continuation carries an unsupported MACE execution-evidence "
+            "schema; preserving diagnostic state."
+        )
+    if evidence.get("execution_semantics_version") != MACE_EXECUTION_SEMANTICS_VERSION:
+        _post_selection_recovery_error(
+            "TRAIN2 continuation carries an unsupported MACE execution-semantics "
+            "revision; preserving diagnostic state."
+        )
+    if evidence.get("role") != "post_selection":
+        _post_selection_recovery_error(
+            "TRAIN2 continuation MACE execution evidence is not for post-selection; "
+            "preserving diagnostic state."
+        )
+    evidence_digest = evidence.get("evidence_digest")
+    if evidence_digest is None or str(evidence_digest) != digest(
+        {key: value for key, value in evidence.items() if key != "evidence_digest"}
+    ):
+        _post_selection_recovery_error(
+            "TRAIN2 continuation MACE execution evidence content is inconsistent; "
+            "preserving diagnostic state."
+        )
+
+    target_artifact = materialization.target_train_artifact
+    multihead = bool(config_payload.get("multiheads_finetuning", False))
+    replay_artifact = None
+    if replay_resolution is not None:
+        replay_artifact = getattr(replay_resolution, "train_artifact", None)
+
+    expected_config_digest = materialization.mace_config_digest
+    if evidence.get("authority_config_digest") != expected_config_digest:
+        _post_selection_recovery_error(
+            "TRAIN2 continuation MACE authority does not match the current P5 "
+            "materialization configuration; preserving diagnostic state."
+        )
+
+    try:
+        target_uid_digest = _mace_execution_frame_uid_set_digest(target_artifact)
+        if target_uid_digest is None:
+            raise TrainingDataInputError(
+                "P5 materialization target training artifact has no frame-UID authority."
+            )
+        replay_uid_digest = None
+        if multihead:
+            if replay_artifact is None:
+                raise TrainingDataInputError(
+                    "P5 replay materialization has no authenticated training input."
+                )
+            replay_uid_digest = _mace_execution_frame_uid_set_digest(replay_artifact)
+            if replay_uid_digest is None:
+                raise TrainingDataInputError(
+                    "P5 replay materialization has no exported frame-UID authority."
+                )
+        executable_payload = post_selection_mace_run_configuration(
+            config_payload,
+            foundation_model_path=context.method_policies.foundation_model,
+        )
+        authority = _build_post_selection_mace_execution_authority(
+            materialization=materialization,
+            internal_payload=config_payload,
+            executable_payload=executable_payload,
+            optimizer_policy=optimizer_policy,
+            replay_train_artifact=replay_artifact,
+        )
+        authenticated = record_mace_execution_evidence(authority, evidence)
+        resolved = authenticated.get("resolved_evidence")
+        if not isinstance(resolved, Mapping):
+            raise TrainingDataInputError(
+                "MACE execution authority did not produce resolved evidence."
+            )
+        if resolved.get("target_frame_uid_set_digest") != target_uid_digest:
+            raise TrainingDataInputError(
+                "Persisted MACE target frame membership differs from P5 materialization."
+            )
+        if resolved.get("replay_frame_uid_set_digest") != replay_uid_digest:
+            raise TrainingDataInputError(
+                "Persisted MACE replay frame membership differs from P5 materialization."
+            )
+    except Exception as exc:
+        _post_selection_recovery_error(
+            "TRAIN2 continuation MACE execution evidence is incompatible with the "
+            "current P5 materialization; preserving diagnostic state.",
+            exc,
+        )
+
+
 def _validate_post_selection_materialization_artifacts(
     selected: CurrentSelectedTrainingContext,
     *,
@@ -1180,6 +1301,11 @@ def _classify_post_selection_materialization(
             "P5 materialization is a symlink; preserving it."
         )
     if not material_directory.exists():
+        if continuation_summary is not None:
+            _post_selection_recovery_error(
+                "TRAIN2 continuation is durable but its P5 materialization is "
+                "absent; preserving both sides and refusing to rebuild it."
+            )
         return None, False, False
     if not material_directory.is_dir():
         _post_selection_recovery_error(
@@ -1189,6 +1315,11 @@ def _classify_post_selection_materialization(
     record_path = material_directory / "materialization.json"
     if not record_path.exists():
         _assert_owned_materialization_tree(material_directory, record=None)
+        if continuation_summary is not None:
+            _post_selection_recovery_error(
+                "TRAIN2 continuation is durable but P5 materialization publication "
+                "is incomplete; preserving both sides and refusing to rebuild it."
+            )
         # No final authenticated record means interrupted publication, not a
         # completed record whose bytes failed validation.
         return None, True, False
@@ -1273,6 +1404,16 @@ def _classify_post_selection_materialization(
             "P5 materialization MACE configuration is corrupt or inconsistent; "
             "preserving diagnostic state.",
             exc,
+        )
+
+    if continuation_summary is not None:
+        _validate_post_selection_continuation_execution_evidence(
+            context,
+            materialization=record,
+            config_payload=config_payload,
+            continuation_summary=continuation_summary,
+            replay_resolution=replay_resolution,
+            optimizer_policy=optimizer_policy,
         )
 
     expected_config = _post_selection_mace_config(

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 from contextlib import ExitStack
 from pathlib import Path
 from types import SimpleNamespace
@@ -235,6 +236,15 @@ def train_like_mace(
     from torch_ema import ExponentialMovingAverage
 
     from mdstats.training_data import train2_runtime as runtime_mod
+    from mdstats.training_data.mace_compatibility import (
+        MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE,
+        mace_execution_authority_to_environment,
+        record_mace_execution_evidence,
+    )
+    from mdstats.training_data.post_selection_execution import (
+        _build_post_selection_mace_execution_authority,
+        post_selection_mace_run_configuration,
+    )
 
     seed = int(request.run_plan.optimizer_seed)
     random.seed(seed)
@@ -255,18 +265,92 @@ def train_like_mace(
     )
     optimizer = torch.optim.SGD(model.parameters(), lr=base_lr, momentum=0.9)
     ema = ExponentialMovingAverage(model.parameters(), decay=0.95)
-    runtime = runtime_mod._Train2Runtime(
-        request.plan,
-        model=model,
-        optimizer=optimizer,
-        lr_scheduler=p3c._NoStepScheduler(),
-        ema=ema,
-        train_loader=train_loader,
-        current_epoch=request.start_epoch,
-        checkpoint_handler=handler,
-        logger_path=str(metrics),
-        rank=0,
-    )
+    runtime_environment = ExitStack()
+    # Full campaign requests are produced by the real P5 owner and therefore
+    # can derive the same authority as MacePostSelectionTrainer. The existing
+    # dependency-facing dummy wrapper intentionally passes only a minimal
+    # TRAIN2 request; it inherits the authority that the real trainer placed in
+    # its child environment instead of reconstructing a second request here.
+    if hasattr(request, "materialization") and hasattr(request, "optimizer_policy"):
+        internal_payload = json.loads(
+            (
+                request.materialization_directory
+                / request.materialization.mace_config_relative_path
+            ).read_text(encoding="utf-8")
+        )
+        executable_payload = post_selection_mace_run_configuration(
+            internal_payload,
+            foundation_model_path=request.foundation_model_path,
+        )
+        multihead = bool(internal_payload.get("multiheads_finetuning", False))
+        replay_artifact = request.replay_train_artifact if multihead else None
+        authority = _build_post_selection_mace_execution_authority(
+            materialization=request.materialization,
+            internal_payload=internal_payload,
+            executable_payload=executable_payload,
+            optimizer_policy=request.optimizer_policy,
+            replay_train_artifact=replay_artifact,
+        )
+        authority = record_mace_execution_evidence(
+            authority,
+            {
+                "role": "post_selection",
+                "loss_family": authority["loss_family"],
+                "loss_class": "mace.modules.loss.WeightedEnergyForcesStressLoss",
+                "learning_rate": authority["learning_rate"],
+                "ema": authority["ema"],
+                "ema_decay": authority["ema_decay"],
+                "multiheads_finetuning": authority["multiheads_finetuning"],
+                "force_mh_ft_lr": (
+                    authority["force_mh_ft_lr"]
+                    if authority["multiheads_finetuning"]
+                    else None
+                ),
+                "real_pt_data_ratio_threshold": (
+                    authority["real_pt_data_ratio_threshold"]
+                    if authority["multiheads_finetuning"]
+                    else None
+                ),
+                "target_train_count": authority["target_train_count"],
+                "replay_train_count": authority["replay_train_count"],
+                "target_duplication_factor": 1,
+                "target_batch_size": authority["batch_size"],
+                "target_updates_per_epoch": authority["target_updates_per_epoch"],
+                "target_drop_last": authority["target_drop_last"],
+                "distributed": False,
+                "target_frame_uid_set_digest": authority[
+                    "target_frame_uid_set_digest"
+                ],
+                "replay_frame_uid_set_digest": authority[
+                    "replay_frame_uid_set_digest"
+                ],
+                "combined_train_count": authority["target_train_count"]
+                + authority["replay_train_count"],
+            },
+        )
+        runtime_environment.enter_context(
+            patch.dict(
+                os.environ,
+                {
+                    MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE: (
+                        mace_execution_authority_to_environment(authority)
+                    )
+                },
+            )
+        )
+    with runtime_environment:
+        runtime = runtime_mod._Train2Runtime(
+            request.plan,
+            model=model,
+            optimizer=optimizer,
+            lr_scheduler=p3c._NoStepScheduler(),
+            ema=ema,
+            train_loader=train_loader,
+            current_epoch=request.start_epoch,
+            checkpoint_handler=handler,
+            logger_path=str(metrics),
+            rank=0,
+        )
     summary = None
     stop = request.plan.execution_epoch_limit
     if stop_after_epoch is not None:
