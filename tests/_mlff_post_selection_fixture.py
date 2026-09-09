@@ -215,7 +215,13 @@ def _seeded_raw_checkpoint(
     return path
 
 
-def train_like_mace(request, *, real_mace_checkpoint: bool = False):
+def train_like_mace(
+    request,
+    *,
+    real_mace_checkpoint: bool = False,
+    stop_after_epoch: int | None = None,
+    fail_after_persist: bool = False,
+):
     """Play MACE for one post-selection run through the real TRAIN2 runtime.
 
     The TRAIN2 runtime, its epoch history, its continuation companion, and its
@@ -262,7 +268,10 @@ def train_like_mace(request, *, real_mace_checkpoint: bool = False):
         rank=0,
     )
     summary = None
-    for epoch in range(request.start_epoch, request.plan.execution_epoch_limit):
+    stop = request.plan.execution_epoch_limit
+    if stop_after_epoch is not None:
+        stop = min(stop, int(stop_after_epoch) + 1)
+    for epoch in range(request.start_epoch, stop):
         for _ in train_loader:
             p3c._step(model, optimizer, ema)
         _seeded_raw_checkpoint(
@@ -281,6 +290,10 @@ def train_like_mace(request, *, real_mace_checkpoint: bool = False):
                 + "\n"
             )
         summary = runtime.persist_epoch(epoch=epoch)
+        if stop_after_epoch is not None and epoch >= int(stop_after_epoch):
+            if fail_after_persist:
+                raise AssertionError("bounded interruption after authenticated epoch")
+            return summary
     return summary
 
 

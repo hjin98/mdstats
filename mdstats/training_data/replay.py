@@ -12,8 +12,14 @@ import math
 
 import numpy as np
 
-from ._common import sha256_file_cached
-from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
+from ._common import (
+    TrainingDataInputError,
+    TrainingDataSerializationError,
+    digest,
+    resolve_configured_path,
+    sha256_file_cached,
+    validate_digest,
+)
 from .replay_index import (
     ReplaySourceIndex,
     iter_indexed_replay_frames,
@@ -196,10 +202,20 @@ def single_source_replay_config_from_campaign(
                 "Single-source replay requires [replay].label_mode = true_dft or foundation_pseudolabel."
             )
 
-    source = Path(str(replay_set)).expanduser()
-    if base_directory is not None and not source.is_absolute():
-        source = Path(base_directory).expanduser().resolve() / source
-    source = source.resolve()
+    raw_source = Path(str(replay_set)).expanduser()
+    if base_directory is None and not raw_source.is_absolute():
+        raise TrainingDataInputError(
+            "A relative [paths].replay_set requires the campaign configuration "
+            "directory for canonical resolution."
+        )
+    # This is the same configured-path owner used by campaign doctor, P5
+    # foundation resolution, and P7 reference roots.  The returned value is a
+    # canonical locator; replay scientific identity remains content/label/split
+    # based in the downstream owners.
+    source = resolve_configured_path(
+        str(replay_set),
+        Path.cwd() if base_directory is None else base_directory,
+    )
     try:
         label_mode = ReplayLabelMode(str(raw_label_mode))
     except ValueError as exc:
