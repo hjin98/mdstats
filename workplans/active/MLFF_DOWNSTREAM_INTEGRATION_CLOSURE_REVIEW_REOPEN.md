@@ -5,7 +5,7 @@ parent_workplan_id: CODE-MLFF-DOWNSTREAM-INTEGRATION-CLOSURE
 protocol_version: 5.16.0
 status: reopened
 created_date: 2026-09-08
-last_design_closure_review_date: 2026-09-08
+last_design_closure_review_date: 2026-09-09
 reviewed_candidate_head: 8c0e2426ce6f9248bf6b958d48570c140bcef147
 reviewed_implementation_commit: cbfd43cabfbd5e26095a564b6bb4a9c9f3787638
 reviewed_generated_docs_commit: 8c0e2426ce6f9248bf6b958d48570c140bcef147
@@ -15,232 +15,268 @@ precedence: This file is the current binding review amendment to MLFF_DOWNSTREAM
 
 # MLFF downstream integration closure — implementation review reopen 1
 
-## 0. Current verdict and routing
+## 0. Current verdict and remote-SDP reconciliation
 
 **NO-PASS / REOPENED.**
 
-A second design-closure pass over the unchanged executable candidate confirms that the original implementation materially improved the downstream architecture, but the current handoff still has several implementation and acceptance gaps that must be closed before another independent Review.
+This amendment has been re-reviewed against the current remote `software-development-protocol` Software Design role and Protocol `5.16.0`. The executable candidate under review is unchanged; this pass corrects and strengthens the implementation handoff itself.
 
-No Frozen MLFF scientific or high-level architecture decision needs to change. The remaining defects are all Tier-2 integration/ownership errors under already accepted authority:
+No Frozen MLFF scientific or high-level architecture decision needs to change. The remaining code blocker is still the P5 recovery/materialization owner, but the remote-protocol review changes one conclusion from the previous wording:
 
-1. recovery currently treats unaccepted materialization as broadly disposable and does not distinguish valid obsolete representation from corruption/foreign state;
-2. the recovery shortcut treats any nonempty checkpoint directory as restart-authenticatable progress instead of asking the existing TRAIN2 continuation owner;
-3. foundation locator/identity separation was corrected, but the same path-overbinding defect remains sideways in replay: `pt_train_file` / `pt_valid_file` runtime locators are still hashed into immutable P5 materialization and authorized by pathname equality even though replay method/lineage identity is path-free;
-4. the full foundation path-form execution matrix and structural negative oracle remain incomplete;
-5. final affected pytest/static/integration evidence is still unavailable for the reviewed executable candidate.
+- the previous amendment was correct to require replay **scientific method/lineage identity** to remain path-free;
+- it was **too broad** to promote arbitrary relocation of generated replay train/monitor execution files (`pt_train_file` / `pt_valid_file`) into a new product requirement merely because those files carry path-independent content identity;
+- current P5 authority explicitly freezes arbitrary relocation for the **foundation checkpoint locator**, and the replay-source authority explicitly permits relocation/rebinding of the externally configured replay source locator; it does not independently freeze arbitrary relocation of every generated replay execution view.
 
-Repair these in the existing owners. Do **not** add a migration database, compatibility registry, second materialization pointer, restart state machine, cleanup daemon, path alias table, second replay identity, or another lock/lease layer. Where the current helper shape makes safe classification awkward, alter/move/remove that helper rather than building machinery around it.
+Accordingly, this amendment **retracts the earlier requirement that P5 must remove `pt_train_file` / `pt_valid_file` from immutable execution representation or support arbitrary relocation of those generated view files.** Their exact internal representation remains delegated unless a real supported lifecycle exposes a concrete contradiction. Replay path-free method/lineage semantics remain mandatory.
 
-## 1. Accepted implementation surfaces — preserve unless new evidence invalidates them
+The remaining blocking work is:
 
-The following source behavior is accepted and must survive the repair:
+1. make P5 recovery distinguish current valid scratch, supported internally valid pre-fix locator-only representation, incomplete run-owned publication, corruption/foreign state, and genuinely authenticated TRAIN2 continuation;
+2. stop using file/directory presence as a proxy for resumability;
+3. complete the real-owner configured-path acceptance for foundation and the affected **externally configured replay source** path semantics;
+4. strengthen structural/failure-path acceptance so the repaired owner cannot pass by deleting evidence or by bypassing the real recovery/currentness owner;
+5. execute final affected pytest/static/integration evidence on one exact final executable candidate.
 
-1. **Canonical configured-path owner.** `_common.resolve_configured_path()` is the shared campaign path semantic; `_campaign_cli_core` consumes it and P5 receives `paths.config_dir` for configured foundation resolution.
-2. **Foundation locator/identity separation.** Immutable P5 MACE configuration no longer stores `foundation_model`. The current locator reaches `MacePostSelectionTrainer` through the authenticated request; the trainer hashes the reached checkpoint and checks canonical foundation identity/head before creating transient parser-facing configuration.
-3. **Checkpoint/provider reconstruction.** P5/P7 provider reconstruction receives the current authenticated foundation locator explicitly rather than reading a stale immutable foundation pathname.
-4. **Replay cleanup — partially accepted.** Removal of consumerless `PostSelectionMethodPolicies.replay_context`, config-directory-aware single-source policy parsing, canonical source/split lineage, and removal of the path-derived foundation-baseline digest fallback are accepted. **Replay execution locator handling is not accepted yet:** Section 3 below closes the remaining `pt_train_file` / `pt_valid_file` overbinding.
-5. **Multi-size CV.** Methodological rejections are accumulated and later frozen sizes continue to valid per-size CV verdicts before campaign rejection is reduced. Hard execution/corruption/authority failures remain fail-fast.
-6. **P7 reference-root path semantics.** Explicit qualification reference root uses the shared configured-path resolver and preserves the multi-size qualification boundary.
-7. **Architecture documentation.** The authoritative 40/50/80 chapters now state frozen `H_prod_i`, P5 publication ownership/P7 consumer ownership, and ordinary-nonlocked-versus-locked `advance` routing consistently; the assembled manual/PDF was regenerated through the documentation workflow.
-8. **Single-source replay lineage adapter.** The earlier runtime `source` / `split` rewire remains mandatory and fail-closed.
-9. **P5 scientific replay semantics.** Replay training exposure remains distinct from independent TRUE_DFT replay admissibility; replay receives no target-ranking credit; current P5 method identity and replay lineage remain path-free and content/label/source/split based.
-
-The repair must not reopen these surfaces merely because they are nearby.
+Repair these in existing owners. Do **not** add a migration database, compatibility registry, second materialization pointer, restart state machine, cleanup daemon, path alias table, second replay identity, or another lock/lease layer. If the current helper shape obstructs safe classification, alter/move/remove the helper rather than surrounding it with machinery.
 
 ---
 
-## 2. R1 — make P5 materialization recovery integrity-aware, not deletion-by-absence
+## 1. Authority classification and accepted surfaces
+
+### 1.1 Tier-1 / Frozen product and scientific semantics
+
+The parent workplan remains authoritative for the downstream product contract. In particular:
+
+- configured user paths touched by this work have one deterministic `expanduser -> config-directory-relative -> resolve` interpretation;
+- foundation checkpoint path is a runtime locator only; authenticated checkpoint content/head/family owns foundation scientific identity and byte-identical relocation is supported;
+- every frozen selected size receives its own valid CV verdict unless execution fails before a scientific verdict exists;
+- campaign CV accepts only when every frozen size accepts;
+- final-production admission is collection-wide and final training is fresh under each frozen `H_prod_i`;
+- P5 owns final publication/currentness and P7 consumes it read-only;
+- multi-size completion remains terminal/non-release-qualified;
+- ordinary single-size nonlocked qualification may route downstream, while locked activation remains explicit-only;
+- restart/currentness is fail-closed and accepted/restart-authenticatable work is not discarded merely to make a representation convenient;
+- replay training exposure and independent TRUE_DFT replay admissibility remain distinct;
+- replay method and replay-lineage identities remain path-free and content/label/source/split based;
+- full long real-data/GPU/CuEq/LAMMPS qualification remains deferred.
+
+### 1.2 Accepted implementation behavior to preserve
+
+The following reviewed source behavior is accepted and must survive the repair unless new evidence invalidates it:
+
+1. `_common.resolve_configured_path()` is the shared configured-path semantic owner for the affected campaign fields.
+2. P5 receives `paths.config_dir` for configured foundation resolution.
+3. Immutable P5 MACE configuration no longer stores `foundation_model`; `MacePostSelectionTrainer` receives the current locator in the authenticated request and re-hashes the reached checkpoint against canonical foundation identity/head before transient parser-facing projection.
+4. P5/P7 provider reconstruction receives the current authenticated foundation locator explicitly rather than trusting a stale stored pathname.
+5. Consumerless `PostSelectionMethodPolicies.replay_context` is removed; single-source policy parsing is config-directory-aware; source/split replay lineage remains canonical and fail-closed; replay foundation-baseline cache identity no longer falls back to a path digest.
+6. Methodological CV rejection is accumulated and later frozen sizes continue to valid per-size verdicts; hard execution/corruption/authority failures remain fail-fast.
+7. Explicit P7 qualification reference root uses canonical configured-path semantics and the existing multi-size qualification boundary remains intact.
+8. The canonical 40/50/80 architecture sources and generated manual/PDF already express frozen `H_prod_i`, P5 publication ownership/P7 consumption, and ordinary-nonlocked-versus-locked `advance` routing consistently.
+9. The earlier single-source runtime `source` / `split` lineage rewire remains mandatory.
+
+### 1.3 Deliberately delegated behavior
+
+The following are not Frozen merely because current code or tests use them:
+
+- `_reclaim_unaccepted_materialization` name, signature, existence, and call position;
+- exact module/function that performs recovery classification;
+- exact internal representation of generated replay train/monitor execution locators;
+- exact helper used for TRAIN2 continuation validation, provided the final real owner authenticates equivalent continuation semantics;
+- fixture factoring and low-level bounded numerical doubles;
+- exact wording/layout of already-reconciled documentation.
+
+If an equivalent simpler owner replaces a named Tier-2 helper, acceptance must be remapped to the new real owner rather than treating the helper name as authority.
+
+---
+
+## 2. R1 — recovery must classify state before destructive reconciliation
 
 ### 2.1 Current defect
 
-`campaign_post_selection_runtime._reclaim_unaccepted_materialization(run_root, material_directory)` currently behaves approximately as:
+`campaign_post_selection_runtime._reclaim_unaccepted_materialization()` currently protects a materialization directory when selected terminal filenames exist or when the checkpoint directory is merely nonempty; otherwise it recursively deletes the materialization directory.
 
-```text
-if materialization absent: return
-if selected terminal files exist: preserve
-if checkpoint directory contains anything: preserve
-otherwise: delete materialization directory recursively
-```
+This violates the accepted recovery outcome in two directions:
 
-This is insufficient in two directions:
+- malformed/checksum-inconsistent/foreign immutable materialization can be silently converted into absence before an owner authenticates it;
+- arbitrary checkpoint residue is treated as restartable merely because a filename exists, even though the existing TRAIN2 continuation owner authenticates plan/protocol/optimizer/budget/LR identities, checkpoint SHA, companion state, and continuation-state digests.
 
-- it can erase malformed/checksum-inconsistent/foreign immutable materialization and silently turn corruption into absence;
-- it treats the mere presence of any checkpoint-directory entry as proof that state is restart-authenticatable, so partial/truncated/foreign checkpoint residue can permanently block the intended same-workspace repair.
+File existence is not a validity or completion contract.
 
-The parent O4 requirement remains authoritative: **corrupt state is a typed failure, not stale scratch.** The supported recovery need is narrower: internally valid unaccepted state whose only incompatible representation is a locator-only field retired by this closure must not block forever.
+### 2.2 Recovery classification boundary
 
-### 2.2 Do not freeze the current helper or its call order
+While holding the existing `post_selection_run_activity_lease(run_root)`, the real P5 recovery/materialization owner must classify the run root without destructive mutation first.
 
-The current helper is called before the owner has constructed enough of the current expected run/materialization context to compare old and new semantics. Its name, signature, existence, and early call position are Tier 2.
+Required semantic classes are:
 
-Implementation may move the classification into the materialization/create-or-verify boundary, pass the already-resolved expected run/materialization facts into a narrower helper, or remove the helper entirely in favor of direct owner-local reconciliation. Prefer the location where **both existing authenticated state and current expected state are available**. Do not add an outer recovery state machine.
+1. **No materialization publication exists** — ordinary current materialization proceeds.
+2. **Current internally valid unaccepted materialization for the exact logical run** — ordinary idempotent create-or-verify/reuse succeeds; do not delete it gratuitously.
+3. **Internally valid pre-fix foundation-locator-only materialization for the exact logical run** — if the only relevant incompatibility is the retired `foundation_model` locator representation and all other protected semantics match the current expected run, reconcile/rebuild the minimum necessary run-owned scratch so retry proceeds without operator deletion.
+4. **Incomplete run-owned materialization publication** — distinguish an interrupted publication from a corrupt completed record. If ownership is certain, no accepted/restart-authenticatable progress exists, and the state is demonstrably incomplete scratch (for example, publication stopped before the final authenticated materialization record), it may be cleaned/rebuilt through existing ownership. Do not relabel a present-but-malformed final record as merely incomplete.
+5. **Malformed, checksum/digest-inconsistent, unsupported-schema, or internally inconsistent completed materialization** — raise an existing typed P5/input/serialization error and preserve diagnostic evidence.
+6. **Internally valid materialization belonging to a different run/method/preparation/artifact/semantic configuration** — typed failure and preserve it. Do not generalize locator-only compatibility into a migration mechanism.
+7. **Valid restart-authenticatable TRAIN2 progress exists** — preserve and resume/reuse through the real continuation owner. Never delete it merely to obtain newer materialization spelling.
+8. **Checkpoint files exist but do not authenticate as a current continuation** — presence is not resumability. Distinguish owner-proven incomplete/disposable attempt scratch from corrupt/foreign durable continuation state using existing TRAIN2/P5 semantics. Corrupt/foreign state fails typed and remains diagnostic evidence; run-owned incomplete scratch may be reclaimed only when ownership and non-authoritativeness are established.
+9. **Another live writer owns the run root** — the existing activity lease remains the liveness boundary. Do not add another lock.
 
-### 2.3 Required classification
+### 2.3 Classification must be non-destructive until authenticity is known
 
-While holding the existing `post_selection_run_activity_lease(run_root)`, the real P5 owner must distinguish:
+Do not discover compatibility by deleting the old tree and seeing whether regeneration succeeds. Do not write current expected bytes over or into an existing ambiguous materialization before classifying the existing final record and protected progress.
 
-1. **No materialization exists** — ordinary current materialization proceeds.
-2. **Current internally valid unaccepted materialization for this exact run** — ordinary idempotent create-or-verify/reuse succeeds; do not delete it gratuitously.
-3. **Internally valid pre-fix locator-only materialization for this exact run** — if its only relevant difference from the current representation is a locator field retired by this closure, reconcile/rebuild the minimum necessary run-owned scratch so retry proceeds without operator deletion.
-4. **Malformed, checksum/digest-inconsistent, unsupported-schema, or internally inconsistent materialization** — raise an existing typed P5/input/serialization error and preserve the evidence for diagnosis.
-5. **Internally valid materialization belonging to a different run/method/preparation/artifact/semantic config** — typed failure and preserve it. Do not relabel it as locator-only compatibility.
-6. **Valid restart-authenticatable TRAIN2 progress exists** — preserve and resume/reuse through existing TRAIN2/P5 owners. Never delete it merely to obtain a newer materialization spelling.
-7. **Checkpoint files exist but do not authenticate as current continuation** — presence alone is not resumability. Use the existing TRAIN2 continuation authentication/currentness owner to distinguish valid continuation from partial/corrupt/foreign checkpoint state. Corrupt/foreign durable state fails typed and remains available for diagnosis unless an existing owner already classifies a specific file as disposable run-owned temporary scratch.
-8. **Another live process owns the run root** — the existing activity lease is the liveness boundary. Do not add another lock.
+If implementation needs current expected materialization/config semantics for comparison, derive them in memory or in clearly run-owned temporary state and compare before publication/destruction. Any replacement publication must follow existing transactional/create-or-verify rules.
 
-Where applicable, reuse `PostSelectionMaterialization.from_dict`, immutable config SHA/content verification, run-plan identity, and existing TRAIN2 continuation validation rather than inventing parallel classifiers.
+This is an integrity constraint, not a mandate for a new migration transaction framework.
 
-### 2.4 Exact comparison boundary
+### 2.4 Existing authority to reuse
 
-Do not add a new selected-binding field merely to make recovery convenient. Authenticate and compare through existing ownership:
+Prefer the current authoritative records/checks rather than parallel classifiers:
 
-- `PostSelectionMaterialization` schema/content digest;
-- `run_plan_digest` and `run_identity`;
-- `preparation_digest`;
-- target/monitor/outer artifact identities and bytes as required by the existing owner;
-- immutable internal MACE config SHA/content digest and its **path-free semantic content**;
-- current run-plan/method/replay lineage already owning upstream binding/currentness.
+- `PostSelectionMaterialization.from_dict` and its content digest;
+- immutable internal MACE-config bytes, SHA256, schema, and content digest;
+- `run_plan_digest`, `run_identity`, `preparation_digest`, and existing role artifact identities;
+- current run-plan/method/replay-lineage owners;
+- the existing TRAIN2 continuation validator or an equivalent final real owner that authenticates the same continuation state.
 
-A field absent from the existing authoritative graph is not a reason to duplicate it into materialization.
+Do not add a duplicate selected-binding/materialization identity merely to simplify recovery.
 
-### 2.5 Minimum destructive scope
+### 2.5 Destructive scope and external-input safety
 
-After authentication proves a supported obsolete locator-only representation, destroy/rewrite only what must change. Deleting the whole materialization tree is permitted only if it is demonstrably run-owned, unaccepted, and simpler/safer than preserving its valid generated artifacts. Do not use broad `shutil.rmtree` as the default substitute for classification.
+After authentication proves state is run-owned, unaccepted, and safely replaceable, destroy/rewrite only what must change. Whole-materialization-tree deletion is permitted only when it is demonstrably the minimum safe/simple action over disposable run-owned scratch.
 
-This is a Tier-2 simplicity constraint, not a requirement to build partial-artifact reuse machinery.
+Recovery must never delete or rewrite externally configured foundation checkpoints, replay source files, legacy replay inputs, qualification reference inputs, or other authoritative user/source data. Run-root cleanup authority does not extend through locators to external inputs.
 
-### 2.6 Required recovery/failure tests through the real owner
+### 2.6 Required real-owner recovery/failure tests
 
-Use deterministic bounded failure injection below the real P5 recovery/materialization owner. Required cases:
+Keep the real P5 run/recovery/materialization owner live; expensive MACE arithmetic may remain bounded below it.
 
-- **faithful pre-fix foundation-locator materialization:** old immutable config **and matching materialization record** are internally self-consistent; no accepted/checkpoint progress; corrected retry succeeds in the same workspace without harness deletion;
-- **faithful pre-fix replay-locator materialization** if Section 3 retires replay locators from immutable config; corrected replay-enabled retry succeeds under the same rules;
-- **corrupt config bytes:** mutate immutable config without updating its record; retry fails typed and does not delete/rewrite it;
-- **corrupt materialization record:** malformed/unsupported/digest-mismatched record fails typed and remains present;
-- **foreign internally valid materialization:** change a protected semantic beyond the explicitly retired locator-only fields while keeping the record internally consistent; retry fails typed and preserves it;
+Required cases:
+
+- **faithful pre-fix foundation-locator materialization:** old immutable config and matching `materialization.json` are internally self-consistent; no accepted/checkpoint progress; corrected retry succeeds in the same workspace without harness deletion;
 - **current unaccepted materialization:** idempotent current retry succeeds without destructive churn;
-- **valid restartable continuation:** authenticate through existing TRAIN2 continuation owner and preserve/resume;
-- **partial checkpoint residue:** representative lone/truncated/mismatched summary, companion, or raw checkpoint must not be treated as restart-authenticatable merely because the checkpoint directory is nonempty;
-- **foreign checkpoint continuation:** plan/protocol/budget/LR/SHA mismatch fails typed and remains diagnostic evidence;
-- **live-writer exclusion:** reuse existing run-activity-lease coverage if it reaches this exact destructive boundary; otherwise add one bounded real-owner concurrency case.
+- **interrupted/incomplete materialization publication:** representative run-owned partial publication is classified as incomplete rather than accepted/corrupt-by-default, and the documented safe recovery outcome occurs;
+- **corrupt config bytes:** mutate immutable config without updating its authenticated materialization record; retry fails typed and preserves evidence;
+- **corrupt final materialization record:** malformed/unsupported/digest-mismatched record fails typed and remains present;
+- **foreign internally valid materialization:** alter a protected non-locator semantic while keeping the record internally consistent; retry fails typed and preserves it;
+- **valid restartable continuation:** authenticate through the real continuation owner and preserve/resume;
+- **partial checkpoint state:** representative lone/truncated/missing-summary-or-companion state is not treated as restartable merely because the directory is nonempty;
+- **foreign/corrupt continuation:** plan/protocol/budget/LR/SHA/content mismatch fails typed and is preserved unless an existing owner specifically classifies a file as disposable temporary scratch;
+- **live-writer exclusion:** reuse existing activity-lease evidence if it reaches the destructive boundary; otherwise add one bounded production-owner concurrency case;
+- **external input safety:** at least one failure-path regression proves recovery does not delete the configured foundation/replay source reached through a locator.
 
-A helper-only test that directly constructs arbitrary directories cannot close the recovery claim.
+For failpoint-based cases, establish trigger liveness when practical; a green test whose interruption seam never fired is not acceptance evidence.
+
+A helper-only test that directly calls `_reclaim_unaccepted_materialization()` on arbitrary directories cannot close the recovery claim.
 
 ---
 
-## 3. R2 — finish locator/identity separation for replay execution
+## 3. R2 — complete configured replay-source path semantics without inventing generated-view relocation
 
-### 3.1 Evidence and governing authority
+### 3.1 Governing replay contract
 
-Current P5 authority already freezes these facts:
-
-```text
-replay method identity is path-free
-exact replay bytes belong to replay plan/lineage
-current replay lineage binds train/monitor content identity + SHA
-single-source lineage additionally binds source content/SHA + split manifest
-no replay lineage payload contains filesystem paths
-```
-
-`ReplaySourceArtifact` and `ReplayFileArtifact` likewise compute `content_digest` without their `path` field, and the replay source/index contract explicitly permits relocation of identical source content.
-
-The current P5 execution representation nevertheless stores replay runtime locators in immutable config:
+Current P5/replay authority establishes:
 
 ```text
-pt_train_file = replay_resolution.train_path
-pt_valid_file = replay_resolution.monitor_path
+replay method identity: path-free
+replay lineage: train/monitor content identity + SHA + label semantics
+single-source lineage: additionally source content digest + source SHA + split manifest
+external replay source locator: not scientific identity; identical source may rebind/relocate
 ```
 
-Those strings enter `mace_config_sha256`, `mace_config_digest`, and therefore immutable `PostSelectionMaterialization`. `MacePostSelectionTrainer` then resolves the stored paths and requires pathname equality with the current authenticated request paths. This makes relocation of byte-identical replay artifacts change/block immutable execution identity even though the accepted replay scientific authority is path-free.
-
-This is the same semantic family as the already-fixed foundation locator defect and must close in the same workplan.
+This is sufficient to require canonical user-configured replay-source path handling and source relocation equivalence. It does **not** by itself require arbitrary relocation of generated materialized replay train/monitor execution files.
 
 ### 3.2 Required end state
 
-For `multihead_replay`:
+For the canonical single-source replay interface:
+
+- `[paths].replay_set` obeys the same `~` / config-directory-relative / canonical-resolution semantics independent of invocation CWD;
+- the real P5 replay-policy/context/lineage owners consume that canonical source meaning rather than recomputing a CWD-relative interpretation;
+- moving/copying the external replay source to another valid configured locator with identical bytes and unchanged label/split semantics does not change the path-free P5 method/replay-lineage identity;
+- changing source bytes, labels, split membership/seed, or other governed replay semantics continues to invalidate/fail closed;
+- existing legacy replay path behavior remains covered by affected regression and must not regress.
+
+### 3.3 Explicitly retracted overreach
+
+Do **not** modify `pt_train_file` / `pt_valid_file`, replay materialization digests, or pathname-equality checks solely to satisfy the previous amendment's generated-view relocation requirement. Such a change is permitted only if Implementation discovers a concrete supported current lifecycle in which those internal locators create an actual contradiction with existing Tier-1/Frozen semantics.
+
+If such evidence appears, return it as affected-surface evidence under the existing parent contract; do not assume every path-bearing execution field is scientific identity.
+
+### 3.4 Required acceptance
+
+Use a bounded real single-source replay fixture from a CWD different from the configuration directory. Exercise at least:
 
 ```text
-replay train/TRUE_DFT monitor content + labels + source/split lineage
-        -> scientific / authorization identity
-
-current replay train/monitor filesystem locator
-        -> authenticated runtime address only
-        -> transient dependency-facing MACE config / TRAIN2 true-replay environment
+absolute replay_set
+~/... replay_set
+../... config-relative replay_set
 ```
 
-Concretely:
+For each representation prove the same intended source reaches:
 
-- immutable P5 scientific/materialization identity must not authorize replay by absolute runtime pathname;
-- trainer/request still requires both canonical replay artifacts and current locators;
-- immediately before launch, trainer authenticates the current train/monitor files against their artifact SHA/content/label contracts and runtime-plan TRUE_DFT SHA exactly as today or more strongly;
-- the transient parser-facing MACE config receives the **current authenticated** replay train and monitor locators;
-- `MDSTATS_TRAIN2_TRUE_REPLAY_PATH` likewise receives the current authenticated TRUE_DFT monitor locator;
-- remove pathname-equality authorization against an immutable `pt_train_file` / `pt_valid_file` rather than adding aliases/fallback lookup;
-- replay source/train/monitor byte or lineage changes continue to invalidate/fail closed according to existing currentness rules;
-- target/replay head names and MACE multihead configuration semantics remain unchanged.
+- canonical campaign replay-source resolution;
+- P5 method-policy resolution;
+- the real P5 replay resolution/lineage owner used by CV/final currentness.
 
-The exact internal config representation is delegated. A clean realization may omit runtime replay locator fields from the immutable config and inject them only into the transient executable projection, analogous to foundation. Do not create a second replay context or locator registry.
+Then perform an authority-backed relocation counterfactual on the **external source**:
 
-### 3.3 Scope
+1. record P5 method and replay-lineage identities;
+2. copy/move the exact replay source bytes to a different configured locator;
+3. update only the configured source locator;
+4. re-resolve through the real campaign/P5 replay owners;
+5. prove method/replay-lineage identities remain unchanged;
+6. mutate source bytes or another governed replay semantic and prove invalidation/fail-closed behavior.
 
-Cover both currently supported P5 replay interfaces where they reach the same execution owner:
-
-- canonical single-source replay;
-- supported legacy split replay.
-
-Do not expand replay scientific modes or revive unsupported historical compatibility paths.
-
-### 3.4 Replay relocation and mutation acceptance
-
-Add real-owner metamorphic evidence with expensive MACE arithmetic bounded below the trainer/inference seam:
-
-1. resolve a replay-enabled current P5 context and record method/replay-lineage identities;
-2. relocate/copy the authenticated replay train and independent TRUE_DFT monitor bytes to different valid current locators without changing bytes/content/label semantics;
-3. re-resolve the real replay owner so artifacts point at the new locators;
-4. prove method identity and replay-lineage identity are unchanged;
-5. prove an interrupted/unaccepted P5 run can re-execute/recover using the new locators through `MacePostSelectionTrainer` / dependency projection without manual deletion;
-6. prove parser-facing `pt_train_file`, `pt_valid_file`, and TRAIN2 TRUE-replay environment use the new authenticated locators;
-7. mutate train bytes, monitor bytes, label/source/split identity, or monitored SHA as appropriate and prove authentication/currentness fails closed rather than accepting relocation as semantic equivalence.
-
-Exercise at least one replay-enabled final-production/restart path or demonstrate through an existing real final-production test that the same `execute_post_selection_run` materialization/trainer owner is reached. CV-only evidence is insufficient to claim downstream closure through final production/publication.
+The test must not simulate this by manually constructing the final replay-lineage digest in the harness.
 
 ---
 
-## 4. R3 — complete the configured foundation path-form execution matrix
+## 4. R3 — complete the foundation path-form execution matrix
 
 Parent O1/8.1 requires absolute, tilde, and config-relative foundation spellings to agree through `doctor`, P5 identity/context, **P5 trainer request, and dependency-facing launch** from a foreign CWD.
 
-The existing matrix checks all three spellings through path resolution/policies/method identity, while the real P5 execution/relocation test exercises only config-relative spelling.
+The current test matrix checks all three forms through path resolution/policies/method identity, while real P5 execution/relocation covers only the config-relative form.
 
-Parameterize/reuse the existing real-owner foundation-backed campaign test so all three spellings reach the trainer/dependency projection and assert the same canonical locator. Keep expensive numerical work below the accepted seam. Do not add another path framework.
+Parameterize/reuse the existing real-owner foundation-backed campaign test so all three spellings reach the trainer/dependency-facing projection and assert the same canonical locator. Keep expensive numerical work below the accepted seam. Do not add another path framework.
 
----
+The relocation relation remains Frozen for foundation:
 
-## 5. R4 — strengthen structural/absence evidence over the actual defect families
+```text
+identical bytes + same canonical head/family at locator A/B
+    -> same method identity
+    -> executable/recoverable after reauthentication
 
-Serena/Semgrep were not available in the review environment; implementation should use them if available and directly suitable. Otherwise use a bounded AST/source fallback with known-positive/known-negative self-tests.
-
-The acceptance scan must be strong enough to reject representative variants of these forbidden families in the affected P5/P7 owners:
-
-1. direct or wrapped raw configured-path resolution that bypasses `resolve_configured_path`, including `Path(raw).resolve()`, `Path(str(raw)).resolve()`, subscript/attribute-fed values, and renamed variables;
-2. immutable P5 `foundation_model` runtime locator reintroduced into scientific/materialization config;
-3. replay runtime locator strings (`pt_train_file` / `pt_valid_file`) reintroduced as immutable authorization rather than transient executable inputs after R2;
-4. pathname-equality authorization between immutable replay paths and current request paths;
-5. path-derived foundation/replay scientific identity fallback;
-6. consumerless `PostSelectionMethodPolicies.replay_context` or equivalent duplicate replay transport authority;
-7. `nonempty checkpoint directory == restart-authenticatable` shortcuts in the repaired recovery owner.
-
-Known-positive rule tests must include representative former P5 foundation, former P7 reference-root, replay-path-overbinding, and checkpoint-presence patterns. Known-negative examples must include canonical configured-path resolution, content/SHA-based replay authentication, and existing TRAIN2 continuation validation.
-
-Keep scan scope bounded to the affected owners and state limitations honestly. Do not introduce a repository-wide linter or architecture registry solely for this workplan.
+changed bytes/head/family
+    -> invalidate/reject stale descendants
+```
 
 ---
 
-## 6. R5 — final affected regression, integration, and exact candidate identity
+## 5. R4 — structural/absence evidence must model the actual forbidden families
 
-The reviewed executable commit `cbfd43cabfbd5e26095a564b6bb4a9c9f3787638` has only a successful documentation check recorded on GitHub. Source inspection is not functional acceptance.
+Serena/Semgrep are preferred when available and their backend models the relation. The current review harness exposes neither capability, so this review used bounded repository/source inspection. Implementation should use the specialized tool when available; otherwise use a bounded AST/source fallback.
 
-After R1-R4 are implemented, execute the parent workplan's minimum suites plus the new closure tests. At minimum:
+Acceptance-critical structural rules must be validated against representative known-positive and known-negative examples and must state scan scope/limitations.
+
+The affected-owner scan must be able to reject at least these forbidden families:
+
+1. direct or wrapped raw configured-path resolution that bypasses the canonical configured-path owner, including `Path(raw).resolve()`, `Path(str(raw)).resolve()`, subscript/attribute-fed values, and renamed variables in affected P5/P7 campaign configuration paths;
+2. immutable P5 `foundation_model` runtime locator reintroduced as scientific/materialization authorization;
+3. path-derived foundation or replay **scientific** identity fallback;
+4. consumerless `PostSelectionMethodPolicies.replay_context` or equivalent duplicate replay-policy authority;
+5. `nonempty checkpoint directory == restart-authenticatable` shortcuts;
+6. recovery code that deletes ambiguous/corrupt completed materialization before authenticating it.
+
+Known-positive examples must include the former P5 foundation raw-path pattern, former P7 reference-root pattern, current directory-presence recovery shortcut, and an unsafe delete-before-authenticate pattern. Known-negative examples must include canonical configured-path resolution, content/SHA-based replay scientific authentication, and real TRAIN2 continuation validation.
+
+Do **not** add a structural rule that bans `pt_train_file` / `pt_valid_file` merely for existing in execution configuration; that would reintroduce the requirement-expansion error corrected in Section 3.
+
+Do not create a repository-wide linter or architecture registry solely for this workplan.
+
+---
+
+## 6. R5 — final affected regression, integration, and candidate identity
+
+The reviewed executable commit `cbfd43cabfbd5e26095a564b6bb4a9c9f3787638` has no available final pytest/static/integration completion evidence. Source inspection cannot substitute for functional acceptance.
+
+After R1-R4 are implemented, execute the parent workplan's required focused and downstream suites plus the new closure tests. At minimum:
 
 ```bash
 pytest -q \
@@ -263,38 +299,53 @@ pytest -q \
 
 Also run:
 
-- the relevant TRAIN2 continuation/restart tests because R1 now depends on authenticated continuation rather than directory presence;
-- relevant storage/run-lease integration if recovery ownership changes;
-- current replay-unification/replay-lineage tests affected by R2;
-- final-production/publication/currentness tests proving locator-only changes do not alter published scientific ancestry;
-- the repository's configured fast Python lint/type/static checks where available;
-- the final re-derived broader affected P5/P7/campaign/storage/replay regression surface.
+- relevant TRAIN2 continuation/restart tests because R1 depends on authenticated continuation rather than directory presence;
+- affected storage/run-lease tests if recovery ownership changes;
+- current single-source and legacy replay-unification/lineage/path tests affected by R2;
+- P5 final-production/publication/currentness tests proving the repair does not weaken accepted ancestry/currentness;
+- repository-configured fast Python lint/type/static checks where available;
+- final re-derived broader P5/P7/campaign/storage/replay affected regression.
 
-A required slow/real-owner test that did not execute remains incomplete acceptance.
+### Stage-local closure
 
-### Candidate/evidence identity
+After each material executable stage, run focused checks plus the affected regression subset for that stage before dependent work proceeds. Do not defer every failure/recovery regression until the final pass.
 
-Final Review must name one exact Git commit/tree. If documentation generation produces a child commit that changes only derived documentation/PDF artifacts, executable evidence from its parent may be reused **only after verifying the child's executable/test/config tree is byte-identical in all dimensions relevant to that evidence**. Documentation builder/verification evidence belongs to the generated-doc child. Any later executable, test, static-config, or acceptance-harness change that could alter a claim invalidates and requires the affected evidence to be rerun.
+### Exact candidate/evidence identity
 
-Long real-data/GPU/CuEq/LAMMPS production qualification remains deferred exactly as in the parent plan.
+Final Review must name one exact Git commit/tree whose executable/test/static-configuration dimensions match the evidence.
+
+If documentation generation produces a child commit changing only canonical derived documentation/PDF artifacts, executable evidence from its parent may be reused only after verifying the child did not alter any executable/test/configuration/acceptance dimension relevant to those claims. Documentation builder/verification evidence belongs to the generated-doc child. Any later material executable/test/harness change invalidates the affected evidence and requires rerun.
+
+A required real-owner check that did not execute is incomplete acceptance, not a pass.
+
+Long real-data/GPU/CuEq/LAMMPS production qualification remains deferred.
 
 ---
 
-## 7. Repair sequence
+## 7. Implementation sequence
 
-### Stage R1 — recovery authority and faithful counterfactuals
+### Stage R1 — recovery authority and faithful failure states
 
-Close Section 2 first. Replace directory-presence heuristics with existing materialization/TRAIN2 authentication and establish faithful pre-fix, corrupt, foreign, partial-checkpoint, restartable, and live-writer outcomes through the real P5 owner.
+Close Section 2 first. Move/narrow/remove the current reclamation helper as needed so classification occurs where both existing authenticated state and current expected semantics are available. Establish current, faithful pre-fix, incomplete publication, corrupt, foreign, partial-checkpoint, restartable, external-input-safety, and live-writer outcomes through the real P5 owner.
 
-### Stage R2 — replay locator separation
+Run focused recovery/materialization/TRAIN2/run-lease regressions before dependent work.
 
-Close Section 3 as the sibling of the already-accepted foundation locator repair. Reuse existing replay artifact/lineage authentication and dependency-facing projection; remove pathname authorization rather than adding compatibility aliases.
+### Stage R2 — configured-path acceptance closure
 
-### Stage R3 — acceptance closure
+Close Sections 3-4:
 
-Complete the foundation path matrix and structural family checks, re-derive the final affected surface, run complete affected regression/integration/static checks on one unchanged executable candidate, and regenerate documentation only if authoritative docs actually changed.
+- real single-source replay `replay_set` absolute/tilde/config-relative semantics plus external-source relocation/mutation;
+- real foundation absolute/tilde/config-relative dependency-facing execution plus existing foundation relocation/mutation.
 
-Do not request another comprehensive Software Design closure review before R1-R3 are complete unless implementation hits a parent redesign trigger.
+Do not alter generated replay-view locator semantics without a concrete supported-lifecycle defect.
+
+Run affected replay/P5/path tests plus Stage R1 shared-owner regressions.
+
+### Stage R3 — structural/final assembled acceptance
+
+Close Sections 5-6, re-derive the final affected surface, run complete affected regression/integration/static checks on one unchanged executable candidate, and regenerate documentation only if authoritative current docs actually changed.
+
+Do not request another comprehensive Software Design review before R1-R3 are complete unless implementation reaches a genuine parent redesign trigger.
 
 ---
 
@@ -303,41 +354,68 @@ Do not request another comprehensive Software Design closure review before R1-R3
 Software Design may close the parent workplan only when all are true:
 
 ```text
-[ ] accepted O1/O2/O3/O6/O7/O8/O9 behavior remains intact
+[ ] parent O1/O2/O3/O6/O7/O8/O9 accepted behavior remains intact
 [ ] accepted replay source/split lineage and path-derived-baseline cleanup remain intact
-[ ] recovery does not delete arbitrary unaccepted materialization merely because terminal/checkpoint evidence is absent
+[ ] recovery authenticates/classifies existing state before destructive reconciliation
 [ ] faithful internally consistent pre-fix foundation locator-only materialization recovers in place
-[ ] faithful internally consistent pre-fix replay locator-only materialization recovers if replay locator representation changed
-[ ] checksum/digest-corrupt or unsupported materialization fails typed and is preserved
-[ ] internally valid foreign/non-locator semantic mismatch fails typed and is preserved
 [ ] current unaccepted materialization remains idempotent
+[ ] interrupted owner-proven partial materialization publication has a defined safe recovery outcome
+[ ] checksum/digest-corrupt or unsupported completed materialization fails typed and is preserved
+[ ] internally valid foreign/non-locator semantic mismatch fails typed and is preserved
 [ ] valid TRAIN2 continuation is authenticated and reusable
 [ ] partial/corrupt/foreign checkpoint residue is not treated as restartable by file presence
 [ ] live-writer exclusion remains effective through the existing run activity lease
-[ ] replay train/TRUE_DFT monitor paths are runtime locators, not scientific/materialization pathname authorization
-[ ] replay relocation with identical authenticated content preserves method/replay-lineage identity and executes through real P5 owner
-[ ] replay byte/label/source/split mutations still invalidate/fail closed
-[ ] transient MACE pt_train_file / pt_valid_file and TRAIN2 TRUE-replay path use current authenticated locators
-[ ] at least one final-production/restart path exercises the repaired locator/materialization owner
+[ ] destructive recovery cannot delete externally configured foundation/replay/source inputs
+[ ] failure-injection acceptance proves the intended interruption/failpoint actually fired when practical
+[ ] single-source replay_set absolute/tilde/config-relative forms are CWD-independent through the real P5 replay owner
+[ ] byte-identical external replay-source relocation preserves P5 method/replay-lineage identity
+[ ] replay source/label/split mutation still invalidates/fails closed
+[ ] no unsupported requirement was introduced for arbitrary relocation of generated pt_train_file / pt_valid_file views
 [ ] absolute/tilde/config-relative foundation forms all reach real P5 trainer/dependency projection from a foreign CWD
-[ ] structural absence checks reject representative former P5/P7 raw-path, replay-path-overbinding, and checkpoint-presence shortcuts
+[ ] foundation same-bytes/head relocation remains executable and changed bytes/head remain fail-closed
+[ ] structural absence checks reject representative raw-path, delete-before-authenticate, and checkpoint-presence shortcuts
 [ ] baseline single-source replay-lineage behavior remains green
 [ ] multi-size CV completeness and collection-wide production barrier remain green
 [ ] P5 final publication/currentness and P7 consumer-only qualification remain green
 [ ] final affected pytest/static/integration evidence executed on the exact final executable candidate
-[ ] generated-doc evidence is tied to the exact derived child and does not conceal executable drift
+[ ] generated-document evidence is tied to its exact derived child and does not conceal executable drift
 [ ] no new migration database, compatibility registry, materialization pointer, replay identity, path registry, state machine, cleanup daemon, or lock layer was introduced
 ```
 
-No Frozen architecture reconsideration is currently warranted. If implementation evidence shows that safe recovery of a supported durable P5 format genuinely requires a persistent migration mechanism, or that replay pathname is actually a scientific identity contrary to the current P5/replay authorities, stop and return to Software Design under the parent's redesign triggers rather than adding such machinery silently.
+No Frozen architecture reconsideration is currently warranted. If implementation evidence shows that safe recovery of a supported durable P5 format genuinely requires persistent migration machinery, or that a replay execution pathname is itself product/scientific identity contrary to the current replay authorities, stop and return to Software Design with that evidence rather than silently adding machinery.
 
 ---
 
-## 9. Deliberately non-blocking observations
+## 9. Snapshot-loss and closeout requirements
 
-The closure review noticed two path-bearing records outside the current blocker contract:
+### 9.1 Snapshot-loss check before Implementation handoff
 
-- `ReplaySingleSourceConfig.content_digest` includes its configured replay-set path, but current P5 method/replay-lineage authority does not consume that digest as scientific authorization; do not broaden this work merely to normalize an unused transport/config digest unless implementation evidence finds a real current consumer that violates the path-free replay contract.
-- `PostSelectionMaterialization.output_directory` participates in materialization serialization. This review found no current product/Frozen requirement for arbitrary whole-workspace relocation. Do not invent such a requirement in this repair unless existing storage/restore authority demonstrates that it is already governed.
+The current supplied handoff is the parent workplan plus this amendment plus the current referenced MLFF architecture/P5/P7 authorities under Protocol `5.16.0`. Implementation must not depend on prior chat, superseded amendment wording, or unavailable Git archaeology for any still-binding task-specific semantic.
 
-These observations are recorded only to prevent speculative scope growth.
+The parent and this amendment together must recover:
+
+- product/Frozen invariants;
+- accepted behavior that must be preserved;
+- delegated solution space;
+- recovery/path acceptance boundaries;
+- real-owner/test-double rules;
+- final evidence/candidate requirements;
+- redesign/simplification triggers.
+
+If Implementation finds a still-binding requirement that exists only in historical discussion, reconcile it into the current supplied authority before relying on it.
+
+### 9.2 Post-PASS lifecycle closeout
+
+After independent Software Design Review actually passes, reconcile the active workplan lifecycle state: retire/archive the completed parent/amendment according to repository policy and update `workplans/active/README.md` so a reopened plan does not remain advertised as current authority. This is closeout, not executable product work, and must not mutate product behavior.
+
+---
+
+## 10. Deliberately non-blocking observations
+
+The remote-protocol pass records these only to prevent speculative scope growth:
+
+1. `ReplaySingleSourceConfig.content_digest` includes its configured source path, but current P5 method/replay-lineage authority does not use that digest as the scientific authorization described above. Do not redesign that record merely for aesthetic path-freedom unless a real current consumer is shown to violate the governed replay identity.
+2. `PostSelectionMaterialization.output_directory` participates in materialization serialization. This task does not define arbitrary whole-workspace relocation as a product capability. Do not broaden the repair into workspace-relocation semantics without existing authority/evidence.
+3. Generated replay train/monitor execution locators may remain in the immutable execution representation if they are part of the supported execution layout and do not contradict an existing product/Frozen relocation/currentness contract. Their presence alone is not a defect.
+
+These are scope guards, not acceptance shortcuts.

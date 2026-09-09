@@ -10,13 +10,16 @@ Its current binding implementation-review amendment is:
 
 - `workplans/active/MLFF_DOWNSTREAM_INTEGRATION_CLOSURE_REVIEW_REOPEN.md`
 
-Independent Software Design review of implementation commit `cbfd43cabfbd5e26095a564b6bb4a9c9f3787638` with generated-document head `8c0e2426ce6f9248bf6b958d48570c140bcef147` remains **NO-PASS / REOPENED** after a second workplan-closure review. The original foundation configured-path/identity fix, multi-size CV completion, P7 path handling, architecture reconciliation, and single-source source/split lineage repair remain accepted preservation constraints.
+Independent Software Design review of implementation commit `cbfd43cabfbd5e26095a564b6bb4a9c9f3787638` with generated-document head `8c0e2426ce6f9248bf6b958d48570c140bcef147` remains **NO-PASS / REOPENED**. The handoff was re-reviewed on 2026-09-09 against the current remote `software-development-protocol` Software Design role and Protocol `5.16.0`.
 
-The binding amendment now closes the complete remaining defect family rather than only the first observed recovery symptom:
+The remote-protocol pass preserves the accepted foundation configured-path/identity fix, multi-size CV completion, P7 path handling, architecture reconciliation, and single-source source/split lineage repair, while tightening the remaining recovery and acceptance contract:
 
-- P5 materialization recovery must authenticate and distinguish valid obsolete locator-only state, current state, corruption/foreign state, and real TRAIN2 restartable progress instead of deleting by absence or treating a nonempty checkpoint directory as proof of resumability;
-- replay train and TRUE_DFT monitor filesystem paths must follow the same locator-versus-content rule already accepted for the foundation checkpoint: replay method/lineage identity is path-free, while current authenticated locators reach only the dependency-facing execution boundary;
-- absolute/tilde/config-relative foundation execution, structural absence checks, replay relocation/mutation, final-production/restart coverage, and final affected regression/integration/static evidence are required before re-review.
+- P5 recovery must authenticate and distinguish current valid scratch, faithful internally valid pre-fix foundation-locator representation, incomplete run-owned publication, corrupt/foreign completed state, and genuinely authenticated TRAIN2 continuation before destructive reconciliation;
+- file/directory presence is not proof of resumability, and recovery must not delete externally configured foundation/replay/source inputs;
+- absolute/tilde/config-relative foundation execution must reach the real P5 trainer/dependency-facing path from a foreign CWD;
+- the externally configured single-source replay locator (`[paths].replay_set`) must have the same CWD-independent path semantics, and byte-identical replay-source relocation must preserve path-free P5 method/replay-lineage identity;
+- the previous amendment's broader requirement for arbitrary relocation/removal of generated `pt_train_file` / `pt_valid_file` execution locators has been retracted as unsupported requirement expansion; those internal execution-layout details remain delegated unless a concrete supported lifecycle exposes a contradiction;
+- structural/failure-path evidence plus final affected pytest/static/integration evidence on one exact executable candidate remain required before re-review.
 
 The parent plan plus this amended review file is the snapshot-complete current handoff for downstream MLFF integration closure from post-selection cross-validation through final production/publication, restart/currentness, and qualification entry. Implementation continues on `fix/mlff-downstream-integration-closure`.
 
@@ -31,3 +34,5 @@ The most recently closed target-size integration plan before these repairs is:
 - `workplans/archive/MLFF_TARGET_SIZE_INTEGRATION_CLOSURE_REPAIR_WORKPLAN.md`
 
 Full long-running real-data/GPU/CuEq/LAMMPS production qualification remains separate from the bounded implementation/regression work coordinated here.
+
+After independent Software Design Review passes, the completed parent/amendment must be retired from active coordination and this index reconciled as lifecycle closeout.
