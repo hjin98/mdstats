@@ -2,14 +2,20 @@
 
 Active workplans are temporary engineering coordination and do not define current mdstats behavior by themselves.
 
-There are currently no active MLFF implementation workplans in this directory.
+There is currently one active MLFF implementation workplan:
 
-The most recently closed target-size integration plan is:
+- `workplans/active/MLFF_DOWNSTREAM_INTEGRATION_CLOSURE_WORKPLAN.md`
+
+It is the snapshot-complete next-round handoff for downstream MLFF integration closure from post-selection cross-validation through final production/publication, restart/currentness, and qualification entry. The current baseline is `0dcb43611409b540b85089912761ffc0394f166c` on `fix/mlff-p5-single-source-replay-lineage-adapter`; implementation proceeds on `fix/mlff-downstream-integration-closure`.
+
+The narrow single-source replay-lineage adapter repair is implemented and retired to:
+
+- `workplans/archive/MLFF_P5_SINGLE_SOURCE_REPLAY_LINEAGE_ADAPTER_REPAIR_WORKPLAN.md`
+
+Its source/split adapter fix remains accepted baseline behavior and is incorporated as a preservation requirement in the broader active plan.
+
+The most recently closed target-size integration plan before these repairs is:
 
 - `workplans/archive/MLFF_TARGET_SIZE_INTEGRATION_CLOSURE_REPAIR_WORKPLAN.md`
 
-Independent Software Design review round 6 accepted candidate `03ff58f9e839edf345e52b8a4aeef612dbd1b092` / executable `add7fcfe647b2d7f91e0fe94e8fc9c64a710fa75` with **PASS**. The final repair restored the P2 nonnegative optimizer-seed invariant, completed the V1-wire/current-V3 binding isolation oracle, and closed the complete P2/P5/P7 affected regression surface.
-
-The exact accepted P5A6 historical workspace remains supported through native parent -> child compatibility semantics without preload migration or descendant-to-ancestor reconstruction.
-
-Full long-running real-data/GPU/CuEq/LAMMPS production qualification remains separate and deferred to the established final-release/user-machine qualification stage; it is not an open blocker on the closed implementation workplan.
+Full long-running real-data/GPU/CuEq/LAMMPS production qualification remains separate from the bounded implementation/regression work coordinated here.
