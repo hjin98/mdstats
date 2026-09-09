@@ -10,29 +10,26 @@ Its current binding implementation-review amendment is:
 
 - `workplans/active/MLFF_DOWNSTREAM_INTEGRATION_CLOSURE_REVIEW_REOPEN.md`
 
-Independent Software Design review of implementation commit `cbfd43cabfbd5e26095a564b6bb4a9c9f3787638` with generated-document head `8c0e2426ce6f9248bf6b958d48570c140bcef147` remains **NO-PASS / REOPENED**. The handoff was re-reviewed on 2026-09-09 against the current remote `software-development-protocol` Software Design role and Protocol `5.16.0`.
+Remote-SDP Software Design review of implementation commit `12ad13413e7d4a346c80b576be57633914219d97` returned **NO-PASS / REOPENED** on 2026-09-09 under Protocol `5.16.0`.
 
-The remote-protocol pass preserves the accepted foundation configured-path/identity fix, multi-size CV completion, P7 path handling, architecture reconciliation, and single-source source/split lineage repair, while tightening the remaining recovery and acceptance contract:
+Most earlier downstream repairs are accepted and must be preserved: canonical configured-path semantics, foundation locator/content-identity separation, path-free replay source/split lineage, complete multi-size CV verdicts, collection-wide final-production admission, P5 publication ownership/P7 consumption, P7 reference-root canonicalization, and the reconciled architecture documentation.
 
-- P5 recovery must authenticate and distinguish current valid scratch, faithful internally valid pre-fix foundation-locator representation, incomplete run-owned publication, corrupt/foreign completed state, and genuinely authenticated TRAIN2 continuation before destructive reconciliation;
-- file/directory presence is not proof of resumability, and recovery must not delete externally configured foundation/replay/source inputs;
-- absolute/tilde/config-relative foundation execution must reach the real P5 trainer/dependency-facing path from a foreign CWD;
-- the externally configured single-source replay locator (`[paths].replay_set`) must have the same CWD-independent path semantics, and byte-identical replay-source relocation must preserve path-free P5 method/replay-lineage identity;
-- the previous amendment's broader requirement for arbitrary relocation/removal of generated `pt_train_file` / `pt_valid_file` execution locators has been retracted as unsupported requirement expansion; those internal execution-layout details remain delegated unless a concrete supported lifecycle exposes a contradiction;
-- structural/failure-path evidence plus final affected pytest/static/integration evidence on one exact executable candidate remain required before re-review.
+The remaining blocking work is narrow but integrity-critical:
 
-The parent plan plus this amended review file is the snapshot-complete current handoff for downstream MLFF integration closure from post-selection cross-validation through final production/publication, restart/currentness, and qualification entry. Implementation continues on `fix/mlff-downstream-integration-closure`.
+- P5 currently authenticates TRAIN2 continuation separately from the materialization/execution authority that produced it. Because `Train2RuntimePlan` does not identify the exact run/materialization, a foreign continuation with a coincidentally equal runtime plan can be attached to another valid materialization; the full-horizon fast path may then skip `MacePostSelectionTrainer` and reach EVAL2 without reconciling persisted MACE execution evidence with the current materialization.
+- A durable continuation must never cause absent/incomplete materialization to be rebuilt beneath it. Continuation reuse must require an intact authenticated compatible materialization and the existing persisted execution authority; otherwise fail typed and preserve evidence.
+- Repair this by consolidating/reducing the split recovery decision in existing owners, not by adding another recovery state machine, compatibility record, pointer, registry, lock, or wrapper.
+- The absolute/tilde/config-relative foundation acceptance matrix still needs to pass each real campaign-produced request through real `MacePostSelectionTrainer` and prove the dependency-facing `mace_run_config.yaml` receives the current canonical foundation locator.
+- Final affected pytest/static/integration evidence is still required on one exact repaired executable candidate; the reviewed implementation commit has no available GitHub check-run evidence.
+
+Implementation continues on `fix/mlff-downstream-integration-closure`. Full long-running real-data/GPU/CuEq/LAMMPS production qualification remains deferred until the final release qualification package.
 
 The narrow single-source replay-lineage adapter repair is implemented and retired to:
 
 - `workplans/archive/MLFF_P5_SINGLE_SOURCE_REPLAY_LINEAGE_ADAPTER_REPAIR_WORKPLAN.md`
 
-Its source/split adapter fix remains accepted baseline behavior and is incorporated as a preservation requirement in the broader active plan.
-
 The most recently closed target-size integration plan before these repairs is:
 
 - `workplans/archive/MLFF_TARGET_SIZE_INTEGRATION_CLOSURE_REPAIR_WORKPLAN.md`
 
-Full long-running real-data/GPU/CuEq/LAMMPS production qualification remains separate from the bounded implementation/regression work coordinated here.
-
-After independent Software Design Review passes, the completed parent/amendment must be retired from active coordination and this index reconciled as lifecycle closeout.
+After independent Software Design Review passes, retire/archive the completed active plan/amendment according to repository policy and reconcile this index as lifecycle closeout.
