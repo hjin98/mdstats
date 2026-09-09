@@ -493,8 +493,8 @@ def _resolve_post_selection_replay_resolution(
                 "Single-source replay did not produce an independent TRUE_DFT "
                 "monitor artifact."
             )
-        source_art = single_ctx.get("replay_source")
-        split_manifest = single_ctx.get("replay_split_manifest")
+        source_art = single_ctx["source"]
+        split_manifest = single_ctx["split"]
         return PostSelectionReplayResolution(
             interface="single_source",
             train_path=str(training_path),
@@ -503,14 +503,10 @@ def _resolve_post_selection_replay_resolution(
             monitor_artifact=monitor_artifact,
             training_label_mode=getattr(training_artifact, "label_mode", None),
             true_label_mode=getattr(monitor_artifact, "label_mode", None),
-            source_path=(None if source_art is None else str(source_art.path)),
-            source_content_digest=(
-                None if source_art is None else source_art.content_digest
-            ),
-            source_sha256=None if source_art is None else source_art.sha256,
-            split_manifest_digest=(
-                None if split_manifest is None else split_manifest.content_digest
-            ),
+            source_path=str(source_art.path),
+            source_content_digest=source_art.content_digest,
+            source_sha256=source_art.sha256,
+            split_manifest_digest=split_manifest.content_digest,
         )
 
     # Legacy split replay has one canonical training plan and a separate true
