@@ -281,6 +281,8 @@ def _annotate_mace_collections_with_exported_uids(*, head_configs: Any) -> None:
     """
 
     from .mace_compatibility import (
+        MACE_REPLAY_IDENTITY_DOMAIN_CANONICAL,
+        MACE_REPLAY_IDENTITY_DOMAIN_LEGACY,
         _mace_execution_membership_values,
         mace_frame_uid_set_digest,
     )
@@ -344,60 +346,78 @@ def _annotate_mace_collections_with_exported_uids(*, head_configs: Any) -> None:
                         head_name=head_name,
                     )
                 else:
-                    # ReplayFileArtifact owns the authenticated geometry
-                    # sequence. The actual loaded MACE Configuration is the
-                    # child-side proof of what MACE will train, so derive the
-                    # existing identity directly from these objects rather
-                    # than reparsing replay ExtXYZ bytes or accepting a
-                    # count-only match. Persisted v3/v4 replay artifacts use
-                    # the historical wrapped-fractional identity; new
-                    # single-source authorities use the raw canonical one.
-                    canonical_geometry = tuple(
-                        canonical_replay_geometry_identity(item)
-                        for item in collection_values
-                    )
-                    if (
-                        mace_frame_uid_set_digest(canonical_geometry)
-                        == expected_replay_digest
-                    ):
-                        exported_uids = canonical_geometry
-                    else:
-                        # Only persisted legacy artifacts need the historical
-                        # wrapped-fractional schema. Keep that compatibility
-                        # calculation lazy so a valid canonical non-periodic
-                        # geometry (whose cell may be absent/singular) is not
-                        # rejected merely because it has no legacy identity.
-                        historical_geometry = tuple(
+                    identity_domain = authority.get("replay_identity_domain")
+                    if identity_domain == MACE_REPLAY_IDENTITY_DOMAIN_CANONICAL:
+                        # Current single-source P5 carries its authenticated
+                        # split domain through the existing launch authority.
+                        # The loaded Configuration is the only child-side
+                        # realization proof: do not retry a historical domain
+                        # or reopen replay ExtXYZ after this comparison fails.
+                        exported_uids = tuple(
+                            canonical_replay_geometry_identity(item)
+                            for item in collection_values
+                        )
+                    elif identity_domain == MACE_REPLAY_IDENTITY_DOMAIN_LEGACY:
+                        # Persisted legacy split artifacts own the historical
+                        # wrapped-fractional geometry identity. Keep this
+                        # compatibility path bounded to that one domain.
+                        exported_uids = tuple(
                             historical_replay_geometry_identity(item)
                             for item in collection_values
                         )
+                    elif identity_domain is None:
+                        # Older manually-authenticated launch fixtures did not
+                        # carry a discriminator. Preserve their compatibility
+                        # boundary, but keep it separate from current P5,
+                        # whose authority always selects one explicit domain.
+                        canonical_geometry = tuple(
+                            canonical_replay_geometry_identity(item)
+                            for item in collection_values
+                        )
                         if (
-                            mace_frame_uid_set_digest(historical_geometry)
+                            mace_frame_uid_set_digest(canonical_geometry)
                             == expected_replay_digest
                         ):
-                            exported_uids = historical_geometry
+                            exported_uids = canonical_geometry
                         else:
-                            # Older manually-authenticated/legacy launch
-                            # fixtures may intentionally authenticate replay
-                            # through their exported frame_uid metadata. Keep
-                            # that compatibility route only after the loaded
-                            # geometry domains have both failed; current
-                            # single-source P5 never reaches this file scan.
-                            metadata_uids = _mace_execution_membership_values(
-                                train_files,
-                                role=role,
-                                head_name=head_name,
+                            historical_geometry = tuple(
+                                historical_replay_geometry_identity(item)
+                                for item in collection_values
                             )
                             if (
-                                mace_frame_uid_set_digest(metadata_uids)
+                                mace_frame_uid_set_digest(historical_geometry)
                                 == expected_replay_digest
                             ):
-                                exported_uids = metadata_uids
+                                exported_uids = historical_geometry
                             else:
-                                raise RuntimeError(
-                                    "MACE changed replay geometry membership, order, or "
-                                    "identity domain after authenticated launch."
+                                metadata_uids = _mace_execution_membership_values(
+                                    train_files,
+                                    role=role,
+                                    head_name=head_name,
                                 )
+                                if (
+                                    mace_frame_uid_set_digest(metadata_uids)
+                                    == expected_replay_digest
+                                ):
+                                    exported_uids = metadata_uids
+                                else:
+                                    raise RuntimeError(
+                                        "MACE changed replay geometry membership, order, or "
+                                        "identity domain after authenticated launch."
+                                    )
+                    else:
+                        raise RuntimeError(
+                            "MACE replay execution authority carries an unsupported "
+                            "identity domain."
+                        )
+                    if (
+                        mace_frame_uid_set_digest(exported_uids)
+                        != expected_replay_digest
+                    ):
+                        raise RuntimeError(
+                            "MACE changed replay geometry membership, order, or "
+                            "identity domain after authenticated launch."
+                        )
         except Exception as exc:
             raise RuntimeError(
                 f"MACE {head_name} training membership could not be authenticated."

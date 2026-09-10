@@ -82,7 +82,6 @@ from .post_selection_execution import (
     evaluate_post_selection_dataset,
     fit_post_selection_preparation,
     materialize_post_selection_run,
-    post_selection_mace_run_configuration,
     post_selection_checkpoint_candidates,
     post_selection_runtime_plan,
 )
@@ -1233,10 +1232,13 @@ def _validate_post_selection_continuation_execution_evidence(
                 raise TrainingDataInputError(
                     "P5 replay materialization has no exported frame-UID authority."
                 )
-        executable_payload = post_selection_mace_run_configuration(
-            config_payload,
-            foundation_model_path=context.method_policies.foundation_model,
-        )
+        # This is continuation authentication, not a new launch. Keep the
+        # persisted executable payload intact: projecting it through the
+        # current parser would turn an absent historical
+        # ``compute_avg_num_neighbors`` control into today's explicit False
+        # and would therefore erase the distinction the recovery classifier
+        # still has to make.
+        executable_payload = dict(config_payload)
         authority = _build_post_selection_mace_execution_authority(
             materialization=materialization,
             internal_payload=config_payload,
@@ -1267,6 +1269,35 @@ def _validate_post_selection_continuation_execution_evidence(
             "current P5 materialization; preserving diagnostic state.",
             exc,
         )
+
+
+def _post_selection_current_training_architecture(
+    context: PostSelectionContext,
+    *,
+    current_config: Mapping[str, Any],
+) -> tuple[str, str | None]:
+    """Reconstruct the current authorized TRAIN2 architecture once.
+
+    The persisted continuation supplies the historical fact. This helper only
+    realizes the current frozen configuration through the existing MACE model
+    and CuEq/OEq conversion owners; it creates no restart or architecture
+    record of its own.
+    """
+
+    from .model_features import (
+        build_mace_model_from_configuration,
+        mace_model_execution_architecture_digest,
+        realize_mace_training_model,
+    )
+
+    portable_model = build_mace_model_from_configuration(
+        current_config,
+        foundation_model_path=context.method_policies.foundation_model,
+    )
+    training_model, realization = realize_mace_training_model(
+        portable_model, current_config
+    )
+    return mace_model_execution_architecture_digest(training_model), realization
 
 
 def _validate_post_selection_materialization_artifacts(
@@ -1540,9 +1571,12 @@ def _classify_post_selection_materialization(
     if current:
         return record, False, False
 
-    # The only supported pre-fix compatibility is the retired runtime locator
-    # field. The record, artifacts, method, and every other config field have
-    # already authenticated above; the stale locator is never consulted.
+    # The only supported pre-fix compatibility is the exact representation
+    # immediately before the explicit local-neighbor control was published:
+    # the control is absent, and the retired runtime locator may be present.
+    # The record, artifacts, method, and every other config field have already
+    # authenticated above; neither the stale locator nor a missing control is
+    # consulted as a current execution setting.
     legacy_payload = dict(config_payload)
     legacy_locator = legacy_payload.pop("foundation_model", None)
     faithful_pre_fix = (
@@ -1555,6 +1589,61 @@ def _classify_post_selection_materialization(
         if continuation_summary is not None:
             return record, False, True
         return record, True, False
+
+    historical_payload = dict(config_payload)
+    historical_locator = historical_payload.pop("foundation_model", None)
+    if "compute_avg_num_neighbors" not in historical_payload:
+        valid_historical_locator = historical_locator is None or (
+            context.method_policies.foundation_potential_identity is not None
+            and isinstance(historical_locator, str)
+            and bool(historical_locator.strip())
+        )
+        expected_historical = dict(expected_config)
+        expected_historical.pop("compute_avg_num_neighbors", None)
+        if valid_historical_locator and historical_payload == expected_historical:
+            if continuation_summary is None:
+                # No durable TRAIN2 state exists, so the authenticated
+                # pre-fix materialization is disposable interrupted scratch.
+                return record, True, False
+
+            persisted_architecture = getattr(
+                continuation_summary, "model_architecture_digest", None
+            )
+            if not isinstance(persisted_architecture, str) or not persisted_architecture:
+                _post_selection_recovery_error(
+                    "P5 pre-fix TRAIN2 continuation has no persisted model architecture "
+                    "authority; preserving diagnostic state."
+                )
+            try:
+                current_architecture, realization = _post_selection_current_training_architecture(
+                    context,
+                    current_config=expected_config,
+                )
+            except (
+                OSError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+                TrainingDataInputError,
+            ) as exc:
+                _post_selection_recovery_error(
+                    "P5 pre-fix TRAIN2 architecture could not be reconstructed through "
+                    "the current MACE training-realization owner; preserving diagnostic state.",
+                    exc,
+                )
+            if persisted_architecture == current_architecture:
+                # The only difference is the retired configuration spelling;
+                # the authenticated actual training realization is current.
+                # Reuse the immutable materialization and let the corrected
+                # EVAL2 path consume the authenticated continuation.
+                return record, False, True
+            realization_name = realization or "portable-e3nn"
+            _post_selection_recovery_error(
+                "P5 pre-fix TRAIN2 model architecture differs from the current "
+                f"authorized {realization_name} training realization; preserving "
+                "the old materialization/checkpoint and requiring recomputation "
+                "of this affected run under current authority."
+            )
     _post_selection_recovery_error(
         "P5 materialization is internally valid but its protected executable "
         "configuration is foreign to the current run; preserving it."
@@ -1693,6 +1782,9 @@ def _execute_post_selection_run_locked(
 ) -> tuple[PostSelectionRunEvidence, Any, Any]:
     """The run body, executed while this run root's activity lease is held."""
 
+    from ._campaign_cli_core import _cfg
+
+    context_cfg = getattr(context, "cfg", None)
     selected = context.selected
     setup = _prepare_post_selection_run(
         context,
@@ -1706,7 +1798,6 @@ def _execute_post_selection_run_locked(
     checkpoint_directory = setup.checkpoint_directory
     optimizer_policy = setup.optimizer_policy
     extxyz_policy = setup.extxyz_policy
-    admissibility = setup.admissibility
     replay_resolution = setup.replay_resolution
     preparation = setup.preparation
     runtime_plan = setup.runtime_plan
@@ -1804,6 +1895,16 @@ def _execute_post_selection_run_locked(
                 progress_callback=progress_callback,
                 progress_observer=progress_observer,
                 telemetry_ref=telemetry_ref,
+                optimizer_activity_timeout_seconds=float(
+                    120.0
+                    if context_cfg is None
+                    else _cfg(
+                        context_cfg,
+                        "execution",
+                        "parallel_training_epoch_activity_timeout_seconds",
+                        120.0,
+                    )
+                ),
             )
         )
     if summary is None:
@@ -2785,6 +2886,14 @@ def _post_selection_training_concurrency_policy(
                 10.0,
             )
         ),
+        epoch_activity_timeout_seconds=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_epoch_activity_timeout_seconds",
+                120.0,
+            )
+        ),
     )
 
 
@@ -2882,7 +2991,10 @@ def _execute_post_selection_pending_runs(
             "completed_updates": 0,
             "completed_epochs": 0,
             "true_epoch": False,
-            "phase": "queued",
+            # ``phase`` is child-reported MACE execution state only. The
+            # active-future mapping below is the scheduler's liveness owner;
+            # submission/completion must not overwrite this observation field.
+            "phase": "launching",
         }
         for task in ordered_pending
     }
@@ -2923,9 +3035,8 @@ def _execute_post_selection_pending_runs(
         with state_lock:
             active_count = len(active)
             true_epoch_count = sum(
-                bool(state.get("true_epoch"))
-                for state in states.values()
-                if state.get("phase") not in {"queued", "completed"}
+                bool(states[task.slot].get("true_epoch"))
+                for task in active.values()
             )
         snapshot = outer_tracker.snapshot(
             completed=completed_count,
@@ -2997,8 +3108,6 @@ def _execute_post_selection_pending_runs(
                 telemetry_ref=telemetry_ref,
             )
             active[future] = task
-            with state_lock:
-                states[task.slot]["phase"] = "running"
 
     executor = ThreadPoolExecutor(
         max_workers=max(1, int(concurrency_plan.maximum_jobs)),
@@ -3018,8 +3127,6 @@ def _execute_post_selection_pending_runs(
                 task = active.pop(future)
                 result = future.result()
                 results[task.slot] = result
-                with state_lock:
-                    states[task.slot]["phase"] = "completed"
                 completed_count += 1
 
             now = time.monotonic()
@@ -3029,9 +3136,8 @@ def _execute_post_selection_pending_runs(
                 with state_lock:
                     active_count = len(active)
                     true_epoch_count = sum(
-                        bool(state.get("true_epoch"))
-                        for state in states.values()
-                        if state.get("phase") == "running"
+                        bool(states[task.slot].get("true_epoch"))
+                        for task in active.values()
                     )
                 decision = controller.observe(
                     sample,

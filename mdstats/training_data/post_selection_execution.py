@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import math
 import os
 import shutil
 import signal
@@ -42,20 +43,22 @@ from .campaign_post_selection import (
     PostSelectionError,
 )
 from .mace_compatibility import (
-    MACE_REPLAY_FORCE_MH_FT_LR,
-    MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
     MACE_EXECUTABLE_LOSS_FAMILY as _MACE_EXECUTABLE_LOSS_FAMILY,
 )
-from .progress_timing import (
-    ProgressRateTracker,
-    format_progress_fraction,
-    format_progress_timing_fields,
+from .mace_compatibility import (
+    MACE_REPLAY_FORCE_MH_FT_LR,
+    MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
 )
 from .post_selection_identity import (
     POST_SELECTION_REPLAY_HEAD_NAME,
     POST_SELECTION_TARGET_HEAD_NAME,
     PostSelectionMethodIdentity,
     canonical_post_selection_head_names,
+)
+from .progress_timing import (
+    ProgressRateTracker,
+    format_progress_fraction,
+    format_progress_timing_fields,
 )
 
 POST_SELECTION_PREPARATION_SCHEMA = "mdstats.post-selection-fitted-preparation.v2"
@@ -789,6 +792,10 @@ class PostSelectionRungRequest:
     progress_callback: Callable[[str], None] | None = None
     progress_observer: Callable[[Mapping[str, Any]], None] | None = None
     telemetry_ref: Any | None = None
+    # Runtime-only freshness bound for optimizer liveness. It is resolved
+    # from the existing execution configuration and is not serialized into any
+    # scientific or restart identity.
+    optimizer_activity_timeout_seconds: float = 120.0
 
 
 class PostSelectionTrainer(Protocol):
@@ -876,6 +883,8 @@ def _build_post_selection_mace_execution_authority(
     """Build the one MACE authority used by launch and continuation checks."""
 
     from .mace_compatibility import (
+        MACE_REPLAY_IDENTITY_DOMAIN_CANONICAL,
+        MACE_REPLAY_IDENTITY_DOMAIN_LEGACY,
         build_mace_execution_authority,
         mace_frame_uid_set_digest,
     )
@@ -977,6 +986,15 @@ def _build_post_selection_mace_execution_authority(
             else POST_SELECTION_SINGLE_HEAD_NAME
         ),
         replay_head_name=POST_SELECTION_REPLAY_HEAD_NAME,
+        replay_identity_domain=(
+            MACE_REPLAY_IDENTITY_DOMAIN_CANONICAL
+            if internal_multihead and replay_geometry_identities is not None
+            else (
+                MACE_REPLAY_IDENTITY_DOMAIN_LEGACY
+                if internal_multihead
+                else None
+            )
+        ),
     )
 
 
@@ -1057,6 +1075,22 @@ class _PostSelectionTrainingProgress:
         )
         self.metric_remainder = ""
         self.optimizer_updates_since_launch = 0
+        try:
+            self.optimizer_activity_timeout_seconds = float(
+                getattr(request, "optimizer_activity_timeout_seconds", 120.0)
+            )
+        except (TypeError, ValueError) as exc:
+            raise PostSelectionExecutionError(
+                "Post-selection optimizer activity timeout is invalid."
+            ) from exc
+        if (
+            self.optimizer_activity_timeout_seconds < 0.0
+            or not math.isfinite(self.optimizer_activity_timeout_seconds)
+        ):
+            raise PostSelectionExecutionError(
+                "Post-selection optimizer activity timeout must be finite and non-negative."
+            )
+        self.last_optimizer_update_monotonic: float | None = None
         # MACE 0.3.16 does not serialize an optimizer-update ID.  Retain the
         # last optimizer record's canonical content only long enough to avoid
         # counting an identical duplicate row for the same update; a distinct
@@ -1065,6 +1099,7 @@ class _PostSelectionTrainingProgress:
         self.last_loss: Any | None = None
         self.last_metric_epoch: int | None = None
         self.phase = "launching"
+        self.execution_phase = "launching"
         self.summary = initial_summary
         self.summary_signature: tuple[int, int] | None = None
         self.completed_updates = self._launch_completed_updates
@@ -1185,8 +1220,11 @@ class _PostSelectionTrainingProgress:
                 self._last_optimizer_record_digest = record_digest
                 self.optimizer_updates_since_launch += 1
                 self.phase = "training"
+                self.execution_phase = "training"
+                self.last_optimizer_update_monotonic = time.monotonic()
             elif mode == "eval":
                 self.phase = "validation"
+                self.execution_phase = "validation"
             if "loss" in record:
                 self.last_loss = record.get("loss")
             if record.get("epoch") is not None:
@@ -1213,8 +1251,14 @@ class _PostSelectionTrainingProgress:
                 else:
                     self.summary_signature = signature
         phase = getattr(self.summary, "phase", None)
-        if phase:
+        if phase and self.execution_phase == "launching":
+            # A durable TRAIN2 phase may describe a learning-rate phase such
+            # as ``adaptation``. Keep it visible until the first live MACE
+            # record, but never treat that summary phase as optimizer-active
+            # scheduler evidence.
             self.phase = str(phase)
+            if str(phase) in {"training", "validation"}:
+                self.execution_phase = str(phase)
         learning_rate = getattr(
             self.summary, "instantaneous_learning_rate", self.last_learning_rate
         )
@@ -1237,13 +1281,21 @@ class _PostSelectionTrainingProgress:
         epochs = getattr(self.summary, "completed_epochs", None)
         if epochs is not None:
             self.completed_epochs = max(self.completed_epochs, int(epochs))
+        now = time.monotonic()
+        last_update = self.last_optimizer_update_monotonic
+        optimizer_active = (
+            self.execution_phase == "training"
+            and self.optimizer_updates_since_launch > 0
+            and last_update is not None
+            and 0.0 <= now - last_update <= self.optimizer_activity_timeout_seconds
+        )
         return {
             "completed_updates": int(self.completed_updates),
             "planned_updates": self.planned_updates,
             "completed_epochs": int(self.completed_epochs),
             "planned_epochs": int(self.planned_epochs),
             "phase": self.phase,
-            "true_epoch": bool(self.completed_epochs > 0),
+            "true_epoch": bool(optimizer_active),
             "loss": self.last_loss,
             "learning_rate": self.last_learning_rate,
             "optimizer_updates_since_launch": int(
@@ -1342,6 +1394,7 @@ class MacePostSelectionTrainer:
     def __call__(self, request: PostSelectionRungRequest) -> Any:
         import os
         import subprocess
+
         import yaml
 
         from ._common import sha256_file_cached

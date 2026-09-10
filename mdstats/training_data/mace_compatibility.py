@@ -45,6 +45,11 @@ MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD = 0.0
 MACE_EXECUTION_AUTHORITY_SCHEMA = "mdstats.mace-execution-authority.v1"
 MACE_EXECUTION_EVIDENCE_SCHEMA = "mdstats.mace-execution-evidence.v1"
 MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE = "MDSTATS_MACE_EXECUTION_AUTHORITY"
+# This discriminator routes the already-authenticated replay membership
+# through one representation at the MACE loader boundary. It is process-local
+# execution transport, not replay lineage or a second identity namespace.
+MACE_REPLAY_IDENTITY_DOMAIN_CANONICAL = "canonical_geometry"
+MACE_REPLAY_IDENTITY_DOMAIN_LEGACY = "legacy_geometry"
 
 MACE_SELECTED_HEAD_COMPATIBILITY_POLICY_SCHEMA = "mdstats.mace-selected-head-compatibility-policy.v1"
 MACE_MH1_SELECTED_HEAD_SHIM_VERSION = "mdstats.mh1-selected-head-reconstruction.2026-08.v1"
@@ -861,6 +866,16 @@ def _normalize_mace_execution_authority(
     else:
         force_mh_ft_lr = None
         ratio_threshold = None
+    replay_identity_domain = payload.get("replay_identity_domain")
+    if replay_identity_domain is not None:
+        replay_identity_domain = str(replay_identity_domain)
+        if not multihead or replay_identity_domain not in {
+            MACE_REPLAY_IDENTITY_DOMAIN_CANONICAL,
+            MACE_REPLAY_IDENTITY_DOMAIN_LEGACY,
+        }:
+            raise TrainingDataInputError(
+                "MACE replay identity domain is invalid for this execution authority."
+            )
     target_count = _execution_integer(
         payload.get("target_train_count"), name="target count", minimum=1
     )
@@ -954,6 +969,7 @@ def _normalize_mace_execution_authority(
         "distributed_allowed": distributed_allowed,
         "target_frame_uid_set_digest": target_uid_digest,
         "replay_frame_uid_set_digest": replay_uid_digest,
+        "replay_identity_domain": replay_identity_domain,
         "target_head_name": target_head_name,
         "replay_head_name": replay_head_name,
         "source_probe_digest": source_probe_digest,

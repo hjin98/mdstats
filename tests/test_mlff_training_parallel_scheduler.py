@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+from mdstats.training_data.post_selection_execution import (
+    _PostSelectionTrainingProgress,
+)
 from mdstats.training_data.resources import GpuResourceSnapshot, SystemResourceSnapshot
 from mdstats.training_data.training_parallel import (
     AdaptiveTrainingConcurrency,
@@ -211,6 +218,81 @@ def test_cpu_auto_mode_remains_serial() -> None:
     )
     assert plan.initial_jobs == 1
     assert plan.maximum_jobs == 1
+
+
+def _progress_request(*, timeout: float = 10.0, initial_summary=None):
+    request = SimpleNamespace(
+        plan=SimpleNamespace(
+            budget_policy=SimpleNamespace(planned_epochs=2),
+            replay_monitor_enabled=False,
+            structures_per_epoch=1,
+        ),
+        materialization=SimpleNamespace(
+            target_train_artifact=SimpleNamespace(configuration_count=1)
+        ),
+        replay_train_artifact=None,
+        optimizer_policy=SimpleNamespace(batch_size=1),
+        optimizer_activity_timeout_seconds=timeout,
+    )
+    return request, initial_summary
+
+
+def test_p5_progress_readiness_uses_fresh_optimizer_activity_not_epoch_count(
+    tmp_path: Path,
+) -> None:
+    """The real progress observer exposes the scheduler's current-work facts."""
+
+    checkpoint_directory = tmp_path / "checkpoints"
+    checkpoint_directory.mkdir()
+    metric_path = tmp_path / "results" / "train.txt"
+    metric_path.parent.mkdir()
+    request, initial_summary = _progress_request(
+        timeout=10.0,
+        initial_summary=SimpleNamespace(
+            completed_updates=1,
+            completed_epochs=1,
+            planned_updates=2,
+            phase="validation",
+        ),
+    )
+    progress = _PostSelectionTrainingProgress(
+        request,
+        metric_path=metric_path,
+        initial_summary=initial_summary,
+        summary_loader=lambda _directory: initial_summary,
+    )
+
+    # A resumed completed epoch is not current optimizer activity.
+    assert progress.refresh(checkpoint_directory)["true_epoch"] is False
+
+    metric_path.write_text(
+        json.dumps({"mode": "opt", "epoch": 1, "loss": 0.25}) + "\n",
+        encoding="utf-8",
+    )
+    ready = progress.refresh(checkpoint_directory)
+    assert ready["phase"] == "training"
+    assert ready["true_epoch"] is True
+
+    # One ordinary poll without a new optimizer record remains ready inside
+    # the configured activity window.
+    assert progress.refresh(checkpoint_directory)["true_epoch"] is True
+
+    with metric_path.open("a", encoding="utf-8") as stream:
+        stream.write(
+            json.dumps({"mode": "eval", "epoch": 1, "loss": 0.20}) + "\n"
+        )
+    validating = progress.refresh(checkpoint_directory)
+    assert validating["phase"] == "validation"
+    assert validating["true_epoch"] is False
+
+    with metric_path.open("a", encoding="utf-8") as stream:
+        stream.write(
+            json.dumps({"mode": "opt", "epoch": 2, "loss": 0.15}) + "\n"
+        )
+    assert progress.refresh(checkpoint_directory)["true_epoch"] is True
+
+    progress.last_optimizer_update_monotonic -= 11.0
+    assert progress.refresh(checkpoint_directory)["true_epoch"] is False
 
 
 def test_fluctuating_epoch_utilization_is_averaged_not_waited_out() -> None:
