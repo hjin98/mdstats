@@ -4,15 +4,19 @@ Implement the current repair from exactly one snapshot-complete workplan:
 
 - `MLFF_REPLAY_MACE_P5_EXECUTION_RECOVERY_CONSOLIDATED_WORKPLAN.md`
 
-That consolidated handoff supersedes the earlier replay-membership parent workplan and its implementation-review, progress-recovery, and scheduler/architecture amendments **for implementation purposes**. Those files remain provenance only; an implementation agent should not treat them as separate stages or independently selectable repair packages.
+That consolidated handoff supersedes earlier replay-membership/review/progress/scheduler amendments for implementation purposes. Those files remain provenance only.
 
-The consolidated workplan covers, in one D4 implementation stage:
+Independent Protocol 6 review of executable candidate `577908bf117d033357e2bfb1847e5ed16047d288` accepts and freezes the candidate's scheduler-liveness, bounded optimizer-readiness, explicit current replay-identity-domain routing, serial selected-size topology, and persisted-architecture comparison direction. Preserve those changes.
 
-1. canonical single-source replay membership identity through the real P5/MACE boundary;
-2. elimination of redundant parent/child full replay ExtXYZ reparsing;
-3. recovery of the historical supervised TRAIN progress reporter for both `cross-validate` and `train-production`;
-4. recovery of the existing adaptive GPU-utilization/VRAM scheduler for both paths;
-5. exact TRAIN2/EVAL2 architecture parity, including transient CuEq training realization versus portable e3nn evaluation representation and frozen `avg_num_neighbors` realization;
-6. same-workspace/restart preservation, adversarial counterfactuals, multi-size composition, and one final affected-surface regression/integration/static evidence set.
+The remaining D4 work is narrow:
 
-No separate review should be requested between those sub-repairs unless a reopen trigger in the consolidated workplan fires. Full production-scale GPU/CuEq/LAMMPS/MLIAP qualification remains deferred to the final release package.
+1. remove content-based deduplication from the append-only MACE optimizer metrics observer so every newly consumed complete `mode="opt"` line counts exactly once;
+2. after exact classification of an immediately-pre-fix architecture-stale run, use existing run-owned recovery mechanics to replace/recompute only that run instead of raising forever on every retry;
+3. add bounded proxy-proof integration through the real per-size scheduler and real `MacePostSelectionTrainer` down to an owned tiny wrapper subprocess, and prove real TRAIN2 persistence supplies the architecture digest consumed by recovery;
+4. execute the final affected regression/integration/static evidence set on one unchanged candidate.
+
+The existing pinned real MACE parser/loader test remains the owner-level replay representation oracle; do not create another loader or replay identity mechanism unless that test actually fails.
+
+Do not add a new scheduler, cross-size queue, progress daemon, compatibility database, replay/checkpoint/update registry, wrapper layer, migration framework, restart state machine, or durable progress authority. Selected sizes remain serial at the accepted outer D3 boundary.
+
+No further Design round is required before implementation unless a genuine escalation trigger in the consolidated workplan fires. Full production-scale GPU/CuEq/LAMMPS/MLIAP qualification remains deferred to the final release package.
