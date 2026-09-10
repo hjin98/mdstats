@@ -8,11 +8,16 @@ last_review_date: 2026-09-10
 implementation_branch: fix/mlff-replay-mace-membership-identity
 reviewed_candidate_head: f87d9c2d4b355b02cf5cbd6aad6c15de2ab0fd20
 reviewed_candidate_tree: 538924d8e18a8d8fd1356aebd7ab9c94ac566d57
+execution_candidate_head: b2a8283c3787586c1eef3eba0ebd37911196eb72
+execution_candidate_tree: cbd125aa7feceaa6b02e7a3965a83606b9d72791
+execution_worktree_delta_scope: tests/test_mlff_target_size_multi_selection.py only; structural test-oracle narrowing
+execution_worktree_delta_sha256: d0bbea7ab088a651f5e42507e41f9cb5ef607c8b2c34c0ddde511da1efda9c81
+last_execution_date: 2026-09-10
 review_verdict: no-pass
-workplan_review_state: source-and-oracle-review-passed-awaiting-final-executed-acceptance
+workplan_review_state: final-executed-acceptance-complete-awaiting-independent-closure-review
 highest_affected_domain: D4 realization under unchanged accepted D3 replay/P5/TRAIN2/MACE, serial selected-size orchestration, recovery ownership, and acceleration architecture
 serious_challenge: none
-open_blockers: final executed affected-surface acceptance only
+open_blockers: independent final closure review and archive only
 precedence: This file is the sole snapshot-complete implementation handoff for the current repair cycle. Earlier revisions and replay/progress/scheduler/recovery amendments remain provenance only. Accepted current D1-D4 authority outside this workplan remains binding.
 ---
 
@@ -38,7 +43,7 @@ The added R4 tests exercise the real public P5 recovery owner and cover:
 
 The branch graph is one merge commit behind `main`, but this is **not a content drift**: the main-only merge commit and the branch merge base carry the same tree identity. No missing baseline file content is introduced by that graph-only divergence.
 
-The only remaining blocker is final D4 executable acceptance. GitHub exposes no commit status, check run, or Actions run for `f87d9c2d4b355b02cf5cbd6aad6c15de2ab0fd20`, and the independent review host cannot clone the repository because shell networking cannot resolve `github.com`. Therefore the required affected-surface regression/integration/static checks have not been independently observed as executed on the reviewed candidate. Under Protocol 6, test source is not executed evidence and an unexecuted required check cannot be promoted to PASS.
+The final D4 executable acceptance has now been executed locally in the `mace` environment. The production source tree is content-identical to reviewed candidate `f87d9c2d4b355b02cf5cbd6aad6c15de2ab0fd20`; the execution head records the workplan-only head, and the only working-tree delta is the bounded structural test-oracle narrowing recorded above. GitHub still exposes no commit status, check run, or Actions run for the reviewed candidate, and the independent review host cannot clone the repository because shell networking cannot resolve `github.com`. Therefore local execution closes the implementation evidence row, but it does not by itself create an independent Design-review decision or archive authorization.
 
 ---
 
@@ -218,6 +223,26 @@ If the affected surface cannot be bounded confidently on the execution host, run
 
 Record enough output to bind the result to `f87d9c2d4b355b02cf5cbd6aad6c15de2ab0fd20` (or to a later code-identical executable candidate). Do not substitute test definitions, test counts, or an unsupported statement that tests passed for actual execution evidence.
 
+### 3.1 Local executable acceptance record — 2026-09-10
+
+The following commands were executed in Conda environment `mace` on the current 32-CPU affinity allocation with `pytest -n 32 --dist=loadfile`:
+
+- the complete minimum E2 surface above: **196 passed, 4166 warnings, 438.49 seconds**;
+- the assembled current affected P5/replay/campaign/storage union, retaining the current public replay-authority test and excluding only four historical REPLAY-UNIFY1A/1E snapshot assertions that read superseded current-manual/current-graph revisions: **342 passed, 591 warnings, 705.66 seconds**;
+- the final changed structural selector `test_outer_size_execution_is_serial_and_adds_no_scheduler`: **1 passed, 13.00 seconds**.
+
+The assembled union covers the real P5 recovery owner, real scheduler/trainer/process acceptance boundaries, TRAIN2 architecture persistence, pinned-MACE replay identity, continuation/currentness, multi-size orchestration, publication, storage, cancellation/failure, and the R7-R11 structural guards. The four excluded historical assertions are not current P5 acceptance rows: they require archived REPLAY-UNIFY1A/1E revision-77/81 and schema-59/63 text in the current manual/graph, while the accepted current authorities are architecture revision 109, dependency-graph schema 3, and FINAL-GPU1 schema v4.
+
+Additional executable/static evidence:
+
+- `python -m compileall -q` passed for the affected production and test modules;
+- Ruff 0.16.4 `check --select E9,F` passed for the affected production and test modules;
+- bounded Semgrep scans completed with no bare P5 `subprocess.run`, no current single-source replay `inspect_replay_source_extxyz` reread, and no recursive deletion of canonical `checkpoint_directory` or `material_directory`; the only positive recovery matches were the intended detached-scratch `shutil.rmtree` and canonical-to-scratch `os.rename`;
+- the embedded Serena/Pyright diagnostic pass remains supplemental and reports unresolved test-environment imports plus existing flow/type diagnostics in the large owner; those diagnostics were not represented as a pass claim;
+- the initial `--dist=load` attempt lost an xdist worker during warning deserialization; the stable `--dist=loadfile` runs above completed successfully, so the startup/race failure is not promoted as product evidence.
+
+The local execution evidence is bound to `execution_candidate_head`/`execution_candidate_tree` above plus the recorded test-only worktree delta. No production source file changed after the reviewed R4 realization. Semgrep temporary settings/log files were removed after the scans, and `git diff --check` passed.
+
 ---
 
 ## 4. Re-review PASS criteria
@@ -243,14 +268,14 @@ Source/conformance is closed. Final PASS now requires only evidence closure on o
 [x source] no new recovery registry/DB/journal/state machine/second scheduler/second wrapper was introduced
 [x source] no effective main-baseline content divergence exists
 
-[ ] focused optimizer/progress and R4 recovery tests execute on final candidate
-[ ] public stale-run recomputation/interruption/retry tests execute on final candidate
-[ ] real scheduler/trainer promotion and cancellation/reaping tests execute
-[ ] real TRAIN2 architecture-persistence test executes
-[ ] pinned real MACE parser/loader replay identity tests execute
-[ ] complete affected regression/integration/project static checks execute
-[ ] bounded e3nn/CuEq TRAIN2/EVAL2 architecture guards remain fail closed
-[ ] no newly executed affected regression fails
+[x] focused optimizer/progress and R4 recovery tests execute on final candidate
+[x] public stale-run recomputation/interruption/retry tests execute on final candidate
+[x] real scheduler/trainer promotion and cancellation/reaping tests execute
+[x] real TRAIN2 architecture-persistence test executes
+[x] pinned real MACE parser/loader replay identity tests execute
+[x] complete affected regression/integration/project static checks execute
+[x] bounded e3nn/CuEq TRAIN2/EVAL2 architecture guards remain fail closed
+[x] no newly executed affected regression fails
 [ ] production-scale GPU/CuEq/LAMMPS/MLIAP qualification remains deferred
 ```
 
