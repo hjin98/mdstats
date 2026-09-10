@@ -2,9 +2,11 @@
 kind: implementation-workplan
 workplan_id: CODE-MLFF-P5-TRAIN2-CUDA-LIFETIME-ZERO-SAFE-ADMISSION
 protocol_version: 6.1.0
-status: ready-for-implementation
+status: reopened - independent implementation review blockers
 target_branch: fix/mlff-p5-train2-cuda-lifetime-zero-safe-admission
 baseline_commit: d2d9051b56d83bcae18db71452c363276c118e3f
+implementation_commit: cf75ac37922ec1ec60e0adab0903f2c0342a52d8
+reviewed_candidate: 88e92650317687248221505b9fd7023954a8b2e4
 highest_affected_domain: D3 software architecture -> D4 implementation
 serious_challenge: none
 trigger: target-host P5 cross-validation CUDA OOM after scheduler restoration
@@ -13,39 +15,58 @@ predecessor_context: archived MLFF P5 replay/MACE execution-recovery work
 
 # MLFF P5 TRAIN2 CUDA lifetime, zero-safe admission, and phase-ownership repair
 
-## Background and terminology
+## 0. Independent implementation review disposition
 
-The **Scientific Software Development Protocol (SSDP)** governs this workplan under Protocol 6.1. The highest materially affected domain is D3 software architecture because the current accepted execution rule that CUDA training always starts with one job is disproven by target-host resource evidence. The D4 implementation must concretize the corrected resource architecture without altering D1 scientific meaning or D2 numerical/training-method semantics.
+Independent implementation review of candidate `88e92650317687248221505b9fd7023954a8b2e4` is **NO-PASS**. The implementation substantially closes the original lifetime, zero-safe-admission, phase-ownership, and diagnostic defects, but two executable failure-path defects and two acceptance/closeout obligations remain blocking.
+
+No Serious Challenge is active. The accepted scientific and numerical method remains coherent, and no current evidence establishes that the exact frozen `batch_size=2` CuEq training method is intrinsically incompatible with a clean 24 GiB target device. Reopen only this bounded D3/D4 resource-execution surface unless the clean exact-method target-host gate below proves otherwise.
+
+The blocking repair strategy deliberately reduces or alters existing control flow. Do not add a second scheduler, selective-victim allocator, out-of-memory (OOM) parser, persistent graphics-processing-unit (GPU) lease registry, recovery database, resource state machine, or scientific fallback.
+
+### Retained implementation that must not be regressed
+
+The following implemented corrections are accepted as directionally conforming and remain binding through rework:
+
+1. `_post_selection_current_training_architecture()` drops temporary portable and accelerator-realized MACE models in `finally` and reuses shared accelerator-residency cleanup rather than creating a second lifetime subsystem.
+2. Hard host random-access memory (RAM) and video random-access memory (VRAM) feasibility may resolve to zero jobs; the planner and submission loop no longer force a one-job floor.
+3. The 24 GiB / 20.2 GiB baseline / 90% envelope / 6 GiB reservation case is represented as zero safe admission and launches no TRAIN2 work in the real P5 scheduling owner.
+4. Missing utilization telemetry with a trustworthy current device-memory observation permits only conservative serial training; missing trustworthy memory observability blocks automatic admission.
+5. One training scheduler future stops at the authenticated TRAIN2 summary. Post-TRAIN EVAL2 is serial and outside the TRAIN scheduler lifetime, using the existing durable TRAIN2 continuation rather than a new handoff record.
+6. Scheduler reporting uses actual queued/active/completed/failed ownership rather than reconstructing pending work from a formula that can count failed submitted slots again.
+7. Current documentation/history distinguishes TRAIN2 zero-safe admission from the separate EVAL2/inference serial-floor contract.
+
+## 1. Background and terminology
+
+The **Scientific Software Development Protocol (SSDP)** governs this workplan under Protocol 6.1. The highest materially affected domain is D3 software architecture because the former execution rule that CUDA training always starts with one job was falsified by target-host resource evidence. D4 implementation must concretize the corrected resource architecture without altering D1 scientific meaning or D2 numerical/training-method semantics.
 
 **Video random-access memory (VRAM)** is accelerator memory visible to CUDA workloads. **Out of memory (OOM)** means an accelerator allocation cannot be satisfied. **TRAIN2** is the current authenticated MACE training execution path. **EVAL2** is the current authenticated checkpoint/model evaluation path. **CuEq** is the cuequivariance-backed transient MACE execution representation used by the configured training backend.
 
-A **baseline** is accelerator memory already occupied before a new training job is admitted. It may belong to the current mdstats process, an owned child, an unrelated process, or the accelerator/runtime itself. A **zero-safe-admission state** means pending work exists but no new training job can presently fit inside the governing resource envelope. Zero safe admission is not equivalent to zero work, CUDA unavailability, or queue completion.
+A **baseline** is accelerator memory already occupied before a new training job is admitted. A **zero-safe-admission state** means pending work exists but no new training job can presently fit inside the governing resource envelope. Zero safe admission is not equivalent to zero work, CUDA unavailability, or queue completion.
 
-## 1. Target outcome, governing authority, and non-goals
-
-### Stakeholder/product outcome
+## 2. Target outcome and governing invariants
 
 Repair post-selection cross-validation and final-production execution so that:
 
-1. temporary parent-process MACE/CuEq objects do not retain accelerator memory after their final consumer;
-2. the training scheduler can truthfully represent zero currently safe training jobs;
-3. CUDA memory safety is evaluated independently of optimizer-activity readiness;
-4. TRAIN2 concurrency does not accidentally authorize overlapping post-TRAIN EVAL2 accelerator ownership;
-5. an intrinsically too-large scientific training method fails explicitly rather than silently changing batch size, precision, backend, replay membership, or another scientific parameter.
+- temporary parent-process MACE/CuEq objects do not retain model-scale accelerator memory after their final consumer;
+- TRAIN2 admission truthfully represents zero currently safe jobs;
+- GPU memory safety is evaluated independently of optimizer-activity readiness and remains valid after adaptive promotion above one job;
+- TRAIN2 concurrency cannot accidentally authorize post-TRAIN EVAL2 accelerator overlap;
+- any TRAIN2 wave failure terminates that invocation's training/evaluation transition cleanly, preserving durable completed TRAIN2 state for later restart rather than beginning fresh GPU evaluation after failure;
+- an intrinsically too-large scientific method fails explicitly rather than silently changing batch size, precision, backend, replay membership, optimizer semantics, or model architecture.
 
-### Accepted D3 architecture being reconsidered narrowly
+### Corrected D3 cycle-scoped architecture
 
-The current execution architecture states that CUDA training begins with one job and adapts upward. Target-host evidence establishes a counterexample: current aggregate occupancy can leave insufficient safe headroom for even the first configured training job. The cycle-scoped corrected architecture is therefore:
+> CUDA starts with one TRAIN2 job only when one job is currently resource-admissible. Zero safe admission is a valid execution state. Once TRAIN2 work is active, sustained aggregate VRAM occupancy at or above the configured training envelope is an execution-safety condition independent of active-job count and independent of true-epoch calibration readiness.
 
-> CUDA starts with one TRAIN2 job only when one job is currently resource-admissible. Zero safe admission is a valid execution state.
+> A TRAIN scheduler slot owns TRAIN2 only. EVAL2 begins only after the TRAIN wave has completed successfully and released TRAIN ownership. If the TRAIN wave fails, the invocation terminates after cancellation/reaping; authenticated completed TRAIN2 summaries remain the restart boundary for a later invocation.
 
-This workplan does not silently promote every implementation mechanism below that statement into durable D3 authority. Durable Architecture Manual updates require the normal independent D3 falsification/acceptance path.
+These are cycle-scoped D3 decisions for this repair. Durable Architecture Manual authority requires the normal independent D3 falsification/acceptance boundary before final closeout.
 
-### Applicable D1/D2 invariants preserved
+### D1/D2 invariants that must remain unchanged
 
-The repair must not change:
+Do not change:
 
-- any frozen selected size or exact `T_selected` membership;
+- frozen selected size(s) or exact `T_selected` membership;
 - cross-validation folds, purge/exclusion relationships, seeds, or horizons;
 - replay training membership or independent TRUE_DFT replay-monitor membership;
 - target/replay head semantics;
@@ -53,37 +74,18 @@ The repair must not change:
 - optimizer family or optimizer-state semantics;
 - `batch_size=2` or validation batch size;
 - learning-rate schedule;
-- exponential moving average (EMA);
-- AMSGrad, weight decay, or clipping;
+- exponential moving average (EMA), AMSGrad, weight decay, or clipping;
 - model dtype/precision policy;
 - configured training backend;
 - checkpoint-selection or EVAL2 metric semantics;
 - target-only fold acceptance;
 - fresh final-production semantics.
 
-An OOM is not authority to halve batch size, change gradient accumulation, switch CuEq to e3nn, change precision, reduce replay membership, or alter model architecture. Any such change must be routed to its real D2/D3 owner.
+An OOM is not authority to halve batch size, change gradient accumulation, switch CuEq to e3nn, change precision, reduce replay membership, or alter model architecture. Such evidence must be routed to the actual D2/D3 owner.
 
-### Explicit non-goals
+## 3. Governing runtime evidence
 
-Do not:
-
-- increase the 90% training VRAM fraction merely to hide the defect;
-- hard-code the observed ~19-20 GiB as a new per-job estimate from the contaminated run;
-- globally call `torch.cuda.empty_cache()` repeatedly during ordinary training;
-- introduce a second scheduler, resource database, persistent GPU lease registry, recovery state machine, or model representation;
-- delete valid checkpoints merely to avoid the historical-classification path;
-- globally serialize unrelated inference paths;
-- redesign target-size selection, CV science, replay science, or final-production authorization.
-
-## 2. Governing runtime evidence and diagnosis
-
-### E1 - the failing run had one active training job
-
-The supplied target-host run reports five CV training runs, `target_jobs=1`, `ceiling=1`, and one active job throughout the failure. The OOM occurs before any fold completes, so concurrent sibling EVAL2 execution is not required to explain this specific failure.
-
-### E2 - the GPU was already near the configured envelope before TRAIN2 launch
-
-Before the first training future was submitted, scheduler telemetry reported approximately:
+The target-host failure that opened this work established:
 
 ```text
 device total                 24.0 GiB
@@ -93,420 +95,196 @@ safe envelope remaining       1.4 GiB
 configured job estimate       6.0 GiB
 ```
 
-The existing planner nevertheless produced `initial=1, ceiling=1`.
+The historical planner nevertheless launched one job. That one TRAIN2 job later failed roughly 2,411 optimizer updates into epoch 0 inside CuEq backward while requesting another approximately 646 MiB allocation. Concurrent sibling EVAL2 was not required for this failure.
 
-### E3 - the current planner manufactures a one-job floor
+The implementation correctly repairs the original forced-one admission and temporary preflight model lifetime. The independent review found the remaining defects below.
 
-Current `build_training_concurrency_plan()` computes a GPU process limit, then applies a minimum of one even when the resource calculation produces zero. It later forces final maximum concurrency to at least one. The P5 submission loop independently floors the controller target to one. A zero-safe resource state therefore cannot propagate to execution.
+## 4. Blocking repair R1 - sustained multi-job memory hazard must fail closed
 
-### E4 - memory safety is currently subordinated to optimizer-readiness calibration
+### Finding
 
-The target-host run exceeded the configured 21.6 GiB memory envelope during initialization/validation, before true optimizer activity, yet scheduler decisions remained focused on waiting for true-epoch compute and averaging true-epoch telemetry. True optimizer activity is a valid prerequisite for estimating scalable training demand and promoting concurrency above one. It is not a prerequisite for recognizing a hard memory hazard.
+Current `AdaptiveTrainingConcurrency.observe()` evaluates aggregate memory safety before true-epoch readiness, but only converts sustained over-envelope occupancy into `memory_hazard=True` when `active_jobs == 1`. With two or more active TRAIN2 jobs, the code deliberately keeps all running jobs alive and relies on the later stable-calibration path to reduce only future replacement concurrency.
 
-### E5 - actual failure is TRAIN2 CuEq backward
+A regression test explicitly asserts that two running jobs may remain above the VRAM envelope without producing a memory hazard.
 
-The supplied failure occurs after approximately 2,411 optimizer updates in epoch 0 at `loss.backward()`, inside `cuequivariance.uniform_1d` backward, when CUDA requests another roughly 646 MiB allocation. The configured training batch size is two. Because the failure occurs well into the shuffled epoch, initialization or a handful of early batches cannot prove worst-case batch/graph feasibility.
+This is blocking. It reopens the same physical OOM class after adaptive promotion: rare high-water batches, initialization/validation transitions, or a changed external baseline can push aggregate occupancy above the configured memory envelope after multiple jobs are active. Lowering only the future replacement target cannot make the current unsafe allocation disappear before a physical OOM occurs. The later true-epoch averaging path may also be unavailable while jobs initialize or validate.
 
-### E6 - P5 recovery/preflight can itself realize a CUDA training model
+### Required end state
 
-Before authoritative training admission, P5 recovery logic can call `_post_selection_current_training_architecture()`. That helper builds a portable MACE model, realizes the configured CuEq/OEq training model on the configured device, computes an architecture digest, and returns without an explicit accelerator-retirement boundary. This is a likely source of parent-process baseline contamination and is independently inconsistent with explicit accelerator lifetime ownership even if target-host attribution later shows the 20.2 GiB baseline had multiple owners.
+Use the existing memory-hazard debounce uniformly for **any positive active TRAIN2 count**:
 
-### E7 - cross-fold phase ownership remains a latent sibling defect
+- while occupancy is below the envelope, ordinary operation continues;
+- a transient excursion above the envelope may remain a nonterminal unsafe observation during the existing bounded grace interval;
+- if aggregate occupancy remains at or above the envelope through the grace interval and at least one owned TRAIN2 job is active, return a hard memory hazard regardless of whether one, two, or more jobs are active;
+- the scheduler then uses the already existing cancellation event/process supervision path to stop and reap the whole current TRAIN2 wave;
+- GPU-utilization saturation remains a soft concurrency/promotion signal and may still throttle future replacements without killing running jobs when memory itself remains safe.
 
-The adaptive training scheduler currently submits `execute_post_selection_run()` as a future. That future spans materialization, TRAIN2, checkpoint authentication, candidate EVAL2, replay/foundation EVAL2, outer evaluation, and publication. Therefore, when concurrency exceeds one on a clean GPU, a completed fold may enter EVAL2 while another TRAIN2 child remains active. This did not cause the supplied OOM, but it is inconsistent with a scheduler whose resource model is specifically a training-job model and should be closed in the same shared-owner repair.
+Do **not** introduce selective victim choice, a second reservation algorithm, or a new scheduler. The simplest conforming repair is to remove the `active == 1` exception from the existing hard-memory hazard decision and preserve the existing soft utilization/replacement logic below it.
 
-## 3. Cycle-scoped D3 decisions and delegated D4 concretization
+### Required evidence
 
-### Cycle-scoped decisions
+Replace the test that encodes "running work must not be killed" under sustained multi-job VRAM violation with evidence that distinguishes:
 
-1. TRAIN2 admission may resolve to zero currently safe jobs.
-2. A configured minimum training concurrency is subordinate to current resource feasibility.
-3. Positive `parallel_training_jobs` is a maximum cap, never permission to bypass admission.
-4. Current aggregate GPU occupancy counts regardless of process ownership.
-5. GPU memory safety is evaluated independently of true-epoch/optimizer calibration readiness.
-6. TRAIN2 adaptive concurrency owns TRAIN2 lifecycle only; post-TRAIN EVAL2 must not inherit a TRAIN scheduler slot merely because the outer fold future remains live.
-7. Actual scientific method changes are forbidden as an implicit OOM fallback.
+1. multi-job transient over-envelope spike before grace expiry -> `memory_safe=False`, no terminal hazard yet;
+2. multi-job sustained over-envelope occupancy after grace expiry -> `memory_hazard=True`;
+3. real P5 scheduler owner receives that hazard, cancels/reaps active TRAIN2 work, starts no EVAL2, and publishes no CV acceptance.
 
-### Delegated D4 concretization
+Clarification: the existing requirement that "active jobs consuming capacity wait/re-evaluate rather than collapse to idle zero admission" applies to ordinary active saturation **inside the safety envelope** or to a transient memory excursion before debounce expiry. It never authorizes indefinite execution above the hard VRAM safety envelope.
 
-Implementation may choose equivalent local mechanisms for:
+## 5. Blocking repair R2 - any TRAIN2 wave failure must terminate before EVAL2
 
-- exact helper boundaries used to retire temporary architecture models;
-- internal representation of zero-safe plans;
-- controller decision/status record details;
-- bounded debounce of transient VRAM spikes;
-- exact factoring of the TRAIN2-only orchestration boundary;
-- test factoring and deterministic resource fixtures.
+### Finding
 
-Do not freeze replaceable helper names or local data structures unless required by an existing supported contract.
+`MacePostSelectionTrainer` reports any nonzero MACE child exit, including an actual CUDA OOM, as the existing generic `PostSelectionExecutionError`. The scheduler immediately re-raises `TrainingResourceError`, cancellation, and process-exit control exceptions, but stores other TRAIN failures in `train_failure`, completes EVAL2 for already trained slots, and only then re-raises the original failure.
 
-### Active simplification
+Therefore a real CUDA OOM from the MACE child can still enter fresh GPU EVAL2 work because it is not typed as `TrainingResourceError`. This contradicts the workplan's failure rule and couples failure classification to an exception type that does not distinguish physical CUDA OOM.
 
-Prefer rewiring and narrowing current machinery:
+### Required end state
 
-- remove hard `max(1, ...)` resource floors where they counterfeit feasibility;
-- narrow the training scheduler future from whole-fold lifetime to the existing TRAIN2 completion boundary;
-- reuse existing provider/model cleanup semantics instead of adding another lifetime subsystem;
-- reuse authenticated TRAIN2 summary/continuation as the post-training durable boundary instead of inventing a handoff record.
+Simplify the TRAIN/EVAL transition instead of adding an OOM parser or exception wrapper:
 
-## 4. Implementation obligations and gates
+- **any exception from the TRAIN2 scheduling wave** stops new admission, signals cancellation, cancels/reaps owned active children using the current supervision path, reports failure, and re-raises before `complete_eval2_for_trained_slots()`;
+- EVAL2 is entered only after the entire TRAIN2 wave completes successfully;
+- authenticated TRAIN2 summaries already completed before the failure remain durable and reusable on the next invocation;
+- the next invocation reclassifies/reuses those summaries through the existing continuation owner and resumes outstanding TRAIN2/EVAL2 work normally;
+- no new failure-state record, retry database, OOM-message classifier, or handoff artifact is introduced.
 
-### G0 - bind the observed failure and attribute the pre-launch baseline
+Remove the `train_failure` "evaluate siblings then raise" branch. This is both simpler and safer than teaching the scheduler to parse MACE stderr for CUDA OOM text.
 
-Before semantic repair, establish the execution ordering on the current target-host path.
+### Required evidence
 
-Capture, without deleting valid restart evidence:
+Exercise the real P5 owner with at least:
 
-1. GPU occupancy immediately before P5 recovery preflight;
-2. GPU occupancy immediately after recovery preflight;
-3. GPU occupancy at authoritative TRAIN admission;
-4. whether `_post_selection_current_training_architecture()` ran;
-5. process/PID attribution where available.
+1. one TRAIN2 slot reaches a durable authenticated summary, then a later TRAIN2 slot raises a representative generic training execution error; assert no EVAL2 executes in that failing invocation;
+2. rerun with a healthy trainer; assert completed TRAIN2 state is reused rather than retrained and the remaining campaign can resume;
+3. where concurrent TRAIN2 children exist, a failure stops admission and owned siblings are cancelled/reaped through the existing process/cancellation semantics;
+4. no partial CV acceptance or final-production publication is exposed after the failed invocation.
 
-Classify the baseline as current mdstats parent, owned orphan/stale mdstats child, unrelated external process, mixed, or unknown.
+A test may include CUDA-OOM text in the representative child failure to protect the historical symptom, but production code must not parse that text to decide whether EVAL2 is safe.
 
-Process attribution is diagnostic. Aggregate occupancy remains authoritative for admission.
+## 6. Blocking repair R3 - reconcile the new memory-hazard grace configuration surface
 
-If an owned orphan is found, reopen only the existing process-lifetime/cancellation surface needed to fix it. Never kill or commandeer an unrelated process.
+### Finding
 
-### G1 - close temporary architecture-realization lifetime
+The implementation reads `execution.parallel_training_memory_hazard_grace_seconds` with a default of 60 seconds, but the checked-in campaign example/current operator-facing execution configuration does not declare or explain that key. The debounce mechanism was delegated implementation detail in the workplan; public configurability was not required.
 
-Repair `_post_selection_current_training_architecture()` at its natural ownership boundary.
+### Required end state
 
-Required end state:
+Prefer the lower-complexity option unless existing product authority proves operator tuning is required:
 
-- temporary portable and CuEq/OEq models are exception-safely retired immediately after the digest is computed;
-- no model-scale accelerator allocation remains owned by that helper;
-- reuse the existing synchronization/garbage-collection/unused-cache-release semantics already established for MACE provider retirement where applicable;
-- do not create a provider merely to obtain cleanup;
-- do not create a persistent architecture cache as a workaround.
+- remove the new TOML/configuration lookup and keep the bounded debounce as an implementation-local `TrainingConcurrencyPolicy` default/test parameter; or
+- if operator configurability is already a genuine supported requirement, retain the key and document/validate it alongside the other training scheduler settings, including the fact that it controls only transient-memory debounce and does not weaken the envelope itself.
 
-Preferred concretization is direct deterministic lifetime cleanup, such as `try/finally`, around the temporary realization. A different isolation mechanism requires evidence that direct retirement is insufficient for the third-party conversion path.
+Do not keep an undocumented public safety-affecting configuration key merely because it makes tests convenient.
 
-Acceptance:
+## 7. Blocking acceptance R4 - execute current evidence and the bounded target-host gate
 
-- repeated architecture-classification calls do not monotonically increase GPU residency;
-- post-call occupancy returns to the pre-call allocator/context baseline within a bounded justified CUDA-context tolerance;
-- cleanup occurs on conversion/digest exception paths;
-- the resulting architecture digest remains semantically identical.
+### Current evidence status
 
-### G2 - make zero-safe TRAIN admission representable
+Source inspection finds relevant new regression specifications, but the reviewed branch has no recorded Python regression/integration CI result. The only observed GitHub Actions run for the implementation candidate is documentation PDF generation. Tests present in source are not an executed evidence realization.
 
-Repair `TrainingConcurrencyPlan`, planner, controller, and P5 submission semantics so nonempty work may legitimately produce zero admissible jobs.
+The new architecture-classification CUDA test uses real PyTorch CUDA allocation but substitutes the actual MACE/CuEq conversion with a bounded cyclic tensor stand-in. That is useful owner-lifetime evidence, but it cannot establish that the real third-party CuEq conversion leaves no unexpected process-global/model-scale residency.
 
-Remove semantic one-job floors from hard RAM/VRAM feasibility.
+### Required final evidence
 
-Interpret `minimum_parallel_training_jobs=1` as:
+After R1-R3, execute fresh evidence on the final candidate:
 
-> once at least one job is resource-feasible, automatic operation does not voluntarily target less than one.
+- focused `training_parallel` and P5 zero-safe/phase-ownership tests;
+- P5 recovery, cancellation/process-supervision, provider-lifetime, R7-R11, multi-size/currentness, downstream integration, and every other materially affected regression re-derived from the final diff;
+- repository/project-required Python checks;
+- bounded target-host G0/G6 evidence through the real current MACE/CuEq path.
 
-It must not mean:
-
-> launch one regardless of resource feasibility.
-
-Close the same hard-memory floor for host RAM where the current planner would otherwise manufacture one feasible process from zero memory capacity. Do not broaden this into unrelated CPU worker redesign.
-
-### G3 - define trustworthy initial GPU admission
-
-For CUDA TRAIN admission, use existing authorities in this order:
-
-1. current aggregate GPU memory telemetry when available;
-2. existing `SystemResourceSnapshot` current free/total GPU memory as a memory-only fallback;
-3. if no trustworthy current memory observation exists, block automatic TRAIN admission with a typed resource-observability error.
-
-Device availability and telemetry availability are separate facts.
-
-If utilization telemetry is unavailable but current memory capacity is known, one memory-safe serial job may execute, but no parallel promotion is authorized until required utilization evidence exists.
-
-For one proposed job:
+The bounded target-host run must record enough existing diagnostics to establish:
 
 ```text
-current baseline
-+ conservative configured/observed job reservation
-<= configured training VRAM envelope
+pre-recovery/preflight occupancy
+ -> post-recovery/admission occupancy
+ -> one exact frozen-method TRAIN2 admission or correct zero-safe rejection
+ -> observed aggregate high-water / outcome
+ -> no parent-preflight model-scale residue
+ -> no CUDA OOM if admitted
+ -> restart/currentness remains valid
 ```
 
-must hold before launch.
+Process/PID attribution is diagnostic and should use existing host tooling where available; do not build a persistent profiling subsystem.
 
-The observed 20.2 GiB baseline plus 6 GiB configured job estimate under a 21.6 GiB ceiling must resolve to zero admissible jobs.
+If the exact clean-baseline `batch_size=2` CuEq method still OOMs or cannot fit the supported target-device envelope, stop D4 repair and reopen D3/D2 method/device compatibility. Do not silently change batch size, precision, backend, replay exposure, optimizer accumulation, or model architecture.
 
-Do not change the 90% default to make this case pass.
+Full production GPU performance qualification remains deferred to release closeout. This gate is only the bounded hardware evidence necessary to close this concrete OOM/resource-safety defect.
 
-### G4 - decouple memory safety from true-epoch readiness
+## 8. Retained implementation obligations and final regression matrix
 
-Preserve true optimizer/epoch activity as the prerequisite for estimating scalable utilization and promoting concurrency above one.
+After the blocking repairs, the final candidate must still prove all of the following:
 
-Evaluate memory safety on every trustworthy sample regardless of child phase.
+1. 24 GiB GPU, 20.2 GiB baseline, 90% ceiling, 6 GiB estimate -> zero jobs and no launch.
+2. Safe low baseline -> ordinary one-job startup.
+3. Safe measured workload -> adaptive promotion remains possible.
+4. Positive configured job cap cannot override zero-safe admission.
+5. Insufficient host RAM -> zero safe training jobs rather than forced one.
+6. Active jobs with no additional safe slot remain live and wait/re-evaluate while aggregate VRAM remains inside the safety envelope.
+7. Transient over-envelope memory excursions are debounced; sustained over-envelope occupancy with any active-job count becomes a terminal memory hazard.
+8. Idle pending queue + zero feasible jobs -> typed failure without spin.
+9. Memory safety is observed before true-epoch readiness.
+10. Unavailable utilization telemetry + known current memory capacity -> conservative serial/no promotion.
+11. Unavailable trustworthy current memory capacity -> no automatic TRAIN launch.
+12. Repeated temporary architecture classification has bounded post-cleanup residency; exception cleanup also holds.
+13. Architecture digest semantics are unchanged by lifetime cleanup.
+14. TRAIN scheduler future ends at authenticated TRAIN2-summary ownership.
+15. EVAL2 cannot overlap sibling TRAIN2 under the repaired P5 path.
+16. Completed TRAIN2 state is reused after interruption before EVAL2.
+17. Any TRAIN-wave exception prevents EVAL2 in that invocation, cancels/reaps owned siblings, and preserves restartable completed TRAIN2 state.
+18. Scheduler failure reporting counts queued/active/completed/failed work truthfully.
+19. Cross-validation scientific identities/results are invariant to the resource-control repair.
+20. Final production uses the same corrected TRAIN admission/supervision owner.
 
-The controller/supervisor must distinguish:
+Acceptance must exercise the real planner/controller/orchestration owner. Resource probes and expensive MACE numerics may be bounded/faked below that owner when the claim is scheduler semantics. Planner-only tests cannot close end-to-end admission, failure, or restart behavior.
 
-- promotion readiness;
-- memory safety;
-- child liveness.
+## 9. Documentation, authority, evidence, and impact closure
 
-Initialization or validation above the configured memory safety envelope must not be reported merely as waiting for true epoch compute.
+Current documentation must remain consistent with final executable behavior:
 
-A sustained or unequivocal unsafe memory condition during initial calibration must stop the owned execution through existing child termination/failure semantics instead of knowingly continuing toward CUDA OOM. Exact debounce mechanics are delegated, but the supplied case, which remains above the envelope for minutes, must not survive until the eventual allocation failure.
-
-GPU utilization remains an expansion signal, not a memory kill criterion.
-
-### G5 - separate TRAIN scheduler lifetime from EVAL2 lifetime
-
-Correct `_execute_post_selection_pending_runs()` so one training scheduler slot corresponds to TRAIN2 ownership rather than the complete fold lifecycle.
-
-Preferred minimum-complexity realization:
-
-1. factor/reuse the existing run path through authenticated TRAIN2-summary completion;
-2. schedule only that training-completion portion concurrently;
-3. retain the already durable TRAIN2 summary/materialization;
-4. after TRAIN scheduling releases accelerator ownership, invoke the existing run path to complete EVAL2;
-5. existing fully-completed continuation logic skips redundant training.
-
-No new persistent handoff record is permitted; the authenticated TRAIN2 summary is already the durable boundary.
-
-Post-training EVAL2 should remain serial/non-overlapping by default under this repair. Future EVAL throughput optimization belongs to the existing inference-admission owner, not a second P5 scheduler.
-
-Acceptance:
-
-- a fold entering EVAL2 cannot overlap an independently admitted TRAIN2 child;
-- sibling EVAL providers cannot coexist merely because multiple TRAIN futures completed;
-- scheduler VRAM calibration samples describe TRAIN2 rather than mixed TRAIN/EVAL phases;
-- completion order cannot alter canonical CV reduction;
-- completed TRAIN2 work survives interruption before EVAL2.
-
-### G6 - characterize clean-baseline single-job demand before changing method
-
-After G1-G5, run one exact current-method CUDA TRAIN2 job from a clean/admissible baseline.
-
-Do not use the contaminated 20.2 GiB observation to redefine the per-job estimate.
-
-Observe, where economical and without altering scientific execution:
-
-- post-cleanup baseline;
-- aggregate peak/high-water VRAM;
-- process-local PyTorch allocated/reserved high-water;
-- materially relevant non-PyTorch/device occupancy;
-- active training phase;
-- high-water/failing batch identity;
-- atom count and graph/edge footprint of high-demand batches;
-- target versus replay head/source role when relevant.
-
-Because the supplied OOM occurs well into epoch 0, do not infer safety solely from initialization or a handful of early batches.
-
-If the exact isolated job fits safely, measured incremental demand may update execution-only admission evidence. It does not enter scientific identity.
-
-If the isolated exact job still OOMs or persistently requires more than the supported safety envelope, stop D4 repair and invoke the D2/D3 method/device compatibility reopen rule in Section 8.
-
-### G7 - failure, cancellation, and restart behavior
-
-For resource-admission failure or actual OOM:
-
-- stop admitting new work immediately;
-- cancel/reap owned children through existing process-group semantics;
-- do not retry the same profile by silently mutating batch/backend/precision;
-- preserve authenticated completed sibling and continuation evidence;
-- derive pending work on rerun from existing P5 authority;
-- publish no partial CV acceptance or final-production publication.
-
-An idle queue with pending work and zero feasible slots must fail explicitly rather than busy-loop.
-
-### G8 - diagnostics and progress truthfulness
-
-Scheduler diagnostics must distinguish:
-
-- baseline occupancy;
-- configured VRAM envelope;
-- available headroom;
-- per-job configured/observed reservation;
-- zero-safe admission;
-- waiting because active work consumes capacity;
-- unavailable utilization telemetry;
-- unavailable memory observability;
-- actual CUDA OOM;
-- resource stop before OOM.
-
-Fix the observed failure-report inconsistency where, after the first run fails and is removed from `active`, `pending_jobs` is reported as five again. Report queued, active, completed, and failed counts from actual scheduler ownership rather than a derived formula that can count an already-submitted failed slot as pending.
-
-Diagnostics are not scientific or completion authority.
-
-### G9 - focused and affected acceptance
-
-At minimum add/update evidence for:
-
-1. 24 GiB GPU, 20.2 GiB baseline, 90% ceiling, 6 GiB estimate -> zero jobs and no launch;
-2. safe low baseline -> ordinary one-job startup;
-3. safe measured workload -> adaptive promotion remains possible;
-4. positive configured job cap cannot override zero-safe admission;
-5. insufficient host RAM -> zero safe training jobs rather than forced one;
-6. active jobs consuming capacity -> wait/re-evaluate rather than terminal idle-zero failure;
-7. idle pending queue + zero feasible jobs -> typed failure without spin;
-8. GPU memory hazard is detected before true-epoch readiness;
-9. unavailable utilization telemetry + known memory capacity -> conservative serial/no promotion;
-10. unavailable trustworthy memory capacity -> no automatic TRAIN launch;
-11. repeated temporary CuEq architecture reconstruction has bounded post-cleanup residency;
-12. cleanup executes on exception;
-13. architecture digest semantics are unchanged by lifetime cleanup;
-14. TRAIN scheduler future ends at TRAIN2-summary ownership;
-15. EVAL2 cannot overlap sibling TRAIN2 under the repaired P5 path;
-16. completed TRAIN2 state is reused after interruption before EVAL2;
-17. actual child OOM cancels/reaps owned siblings and preserves restartable state;
-18. scheduler failure reporting counts failed/queued work truthfully;
-19. CV scientific identities/results are invariant to the resource-control repair;
-20. final-production uses the same corrected TRAIN admission owner.
-
-Retain applicable current scheduler, replay, TRAIN2 architecture, P5 R7-R11, multi-size, currentness, recovery, cancellation, provider-lifetime, and downstream integration suites.
-
-Acceptance must exercise the real planner/controller/orchestration owner. Resource probes and expensive MACE execution may be bounded/faked below the owner where the claim is scheduler semantics. A planner-only unit test cannot close end-to-end admission or recovery behavior.
-
-### G10 - documentation and semantic-evolution closure
-
-Update current documentation that states or implies `CUDA always starts with one job` to the corrected invariant:
-
-> CUDA starts with one training job only when one job is currently resource-admissible; zero safe admission is a valid execution state.
-
-Inspect/update as applicable:
-
-- `campaign.toml.example`;
+- `campaign.toml.example` and generated/default configuration comments;
 - `mdstats/training_data/training_parallel.py` comments/docstrings;
 - P5 execution/performance Architecture Manual material;
-- user-facing scheduler documentation;
-- generated/default configuration comments.
+- README/user-facing scheduler documentation;
+- `docs/history/mlff/train2_admission_evolution.md` and its index.
 
-Preserve the distinct EVAL2/inference serial-floor contract. Do not mechanically apply TRAIN2 zero-safe semantics to inference, whose accepted calibration rules have a different owner and history.
+Preserve the distinct EVAL2/inference serial-floor contract; do not mechanically apply TRAIN2 zero-safe semantics to inference.
 
-Record concise semantic-evolution rationale explaining that target-host evidence invalidated the former unconditional one-TRAIN-job floor.
+Because this cycle mutates durable D3 Architecture Manual resource semantics, final accepted-current D3 promotion requires an **independent falsification pass by a reviewer/context that did not author the proposed D3 change**. The present review authored the governing workplan earlier in the same context and therefore cannot satisfy that independence gate by itself. After R1-R4 close, obtain a fresh independent D3 review before marking the workplan closed/accepted-current.
 
-## 5. Evidence specifications, realizations, and dependencies
+Prior D1/D2 scientific evidence remains admissible because method semantics are frozen. Prior D4 evidence touching scheduler admission, memory-hazard handling, TRAIN/EVAL phase ownership, failure transition, cleanup, configuration, or restart is review-required and must be rerun/remapped on the final candidate. Preserve unaffected evidence with an explicit applicability rationale.
 
-### Evidence target versus execution dependency
+## 10. Reopen and Serious Challenge triggers
 
-The main governed propositions are:
+Remain within this workplan for:
 
-- unsafe initial VRAM state cannot force-launch TRAIN2;
-- temporary architecture classification releases its accelerator resources;
-- TRAIN scheduler resource observations describe TRAIN2 ownership only;
-- failure/cancellation/restart remains correct;
-- scientific identities and numerical method remain unchanged.
-
-Execution dependencies include PyTorch, MACE 0.3.16, cuequivariance/CuEq, CUDA/NVML or equivalent resource probes, target-host GPU capacity, and the current P5 continuation/recovery machinery. They are evidence dependencies, not new scientific authority.
-
-### Evidence applicability
-
-Prior D1/D2 scientific evidence remains admissible because this workplan forbids method changes.
-
-Prior D4 tests touching training scheduler admission, resource floors, scheduler lifetime, architecture-realization cleanup, failure counts, and TRAIN/EVAL overlap are review-required and must be rerun/remapped against the assembled candidate.
-
-Provider-lifetime evidence unrelated to the newly temporary architecture-realization owner may remain reusable where inspection proves the claim is unaffected, but final assembled affected regression remains fresh.
-
-The supplied OOM trace is admissible evidence against the former unconditional one-job D3 rule for the observed 24 GiB environment. It is not proof of the clean isolated per-job VRAM requirement because the pre-launch baseline was already heavily occupied.
-
-## 6. Expected affected surface
-
-Primary production surface:
-
-- `mdstats/training_data/campaign_post_selection_runtime.py`
-- `mdstats/training_data/training_parallel.py`
-
-Likely supporting surface:
-
-- `mdstats/training_data/model_features.py` only if existing accelerator-retirement semantics need factoring/reuse;
-- configuration/default comments in `_campaign_cli_core.py` and `campaign.toml.example`;
-- P5 execution/performance architecture and user documentation.
-
-Expected tests include:
-
-- `tests/test_mlff_training_parallel_scheduler.py`;
-- current P5 replay/MACE execution-recovery tests;
-- P5 R7-R11 guards;
-- TRAIN2 execution/continuation tests;
-- multi-size CV/final-production tests;
-- provider-lifetime and downstream integration tests.
-
-This list is provisional. Re-derive the complete affected surface from the final assembled candidate before closure.
-
-## 7. Stage dependency order and evidence reuse
-
-Execute in this dependency order unless implementation evidence proves an equivalent simpler ordering:
-
-1. G0 baseline attribution and current-path binding;
-2. G1 temporary-model lifetime cleanup;
-3. G2-G4 zero-safe planning/admission and phase-independent memory safety;
-4. G5 TRAIN/EVAL ownership narrowing;
-5. G6 clean-baseline exact-method characterization;
-6. G7-G8 failure/restart/diagnostic closure;
-7. G9 final affected regression/integration;
-8. G10 documentation/history/impact closure.
-
-Do not optimize MACE internals before removing parent-side contamination and correcting admission ownership. Otherwise an intrinsic-memory investigation can merely compensate for a scheduler/lifetime defect.
-
-Full production GPU performance qualification remains deferred to release closeout. This workplan requires only bounded target-host GPU evidence necessary to close this concrete OOM/resource-safety defect.
-
-## 8. Reopen, Serious Challenge, and simplification triggers
-
-### D4/D3 resource-concretization work that stays within this plan
-
-Remain within this plan for:
-
-- parent allocator/model retention;
-- resource-floor logic;
-- scheduler phase ownership;
-- missing live-memory guard;
+- parent accelerator/model retention;
+- zero-safe resource-floor logic;
+- TRAIN scheduler phase ownership;
+- live-memory safety and debounce;
 - ordinary process/cancellation lifetime;
-- execution-only workload estimation.
+- TRAIN-wave failure transition;
+- execution-only resource observability/estimation.
 
-### D3/D2 method/device compatibility reopen
+Reopen D3/D2 only if clean exact-method target-host evidence shows that the frozen method itself cannot safely execute on the supported device without changing scientific/numerical semantics.
 
-Stop implementation and return to Design if, after parent cleanup and correct isolated admission, the exact frozen training method itself cannot safely execute on the target device.
+Raise a Serious Challenge only if evidence shows accepted D1/D2 authority or simultaneous D3 constraints are materially contradictory, false, or impossible to concretize. No such evidence exists at this review.
 
-Examples:
+## 11. Final closure criteria
 
-- exact `batch_size=2` current method still OOMs on a clean 24 GiB target device;
-- exact CuEq backward representation intrinsically exceeds available VRAM for admissible batches;
-- fixing the problem requires batch semantics, precision, optimizer accumulation, replay exposure, model architecture, or numerically consequential backend changes.
+PASS requires:
 
-Do not bless such a change as a memory optimization.
+- R1-R3 implemented without additive substitute machinery;
+- R4 fresh affected regression/integration and bounded target-host evidence complete;
+- temporary P5 architecture classification leaves no model-scale accelerator residue under the real relevant path;
+- zero-safe TRAIN admission remains end-to-end;
+- sustained aggregate VRAM violation stops owned TRAIN2 for any active-job count before known unsafe work is allowed to continue;
+- no EVAL2 begins after any failed TRAIN2 wave in the same invocation;
+- successful TRAIN waves still transition to serial EVAL2 and resume correctly from authenticated TRAIN2 summaries;
+- no D1/D2 method identity or numerical behavior changed;
+- failure diagnostics, cancellation/reaping, restart, currentness, and publication remain truthful;
+- affected documentation/history/configuration surfaces agree with implementation;
+- final independent D3 falsification accepts the durable Architecture Manual mutation.
 
-### External-baseline case
-
-If G0 proves the original 20.2 GiB belongs entirely to an unrelated process, the zero-safe admission repair remains required. No mdstats cleanup code may terminate the unrelated owner.
-
-### Owned-orphan case
-
-If G0 proves baseline occupancy belongs to an mdstats child that should already have been reaped, reopen the smallest existing process-supervision/lifetime surface and close that defect before final acceptance.
-
-### Serious Challenge condition
-
-No Serious Challenge is currently active. Raise one only if evidence shows accepted D1/D2 authority or simultaneous D3 constraints are materially contradictory, false, or impossible to concretize. Do not convert an ordinary resource implementation defect into upstream challenge merely because it manifests as OOM.
-
-## 9. Impact closure and final acceptance
-
-PASS requires all of the following:
-
-- temporary P5 architecture classification leaves no model-scale accelerator residue;
-- zero-safe TRAIN admission is representable end to end;
-- the observed 20.2 GiB-baseline case launches zero jobs under the same 90%/6 GiB policy;
-- safe low-baseline operation still launches and can adapt upward;
-- memory safety no longer waits for true-epoch readiness;
-- TRAIN2 and EVAL2 accelerator ownership cannot accidentally overlap through one fold future;
-- no scientific/method identity changes occurred;
-- restart/currentness behavior remains exact;
-- failure diagnostics and scheduler counts are truthful;
-- complete affected regression/integration passes on the assembled candidate;
-- affected documentation and semantic-evolution history agree with the corrected architecture.
-
-The bounded target-host CUDA acceptance must finally demonstrate either:
-
-```text
-clean baseline
- -> one admitted exact TRAIN2 job
- -> bounded VRAM
- -> no parent-preflight residue
- -> no OOM
- -> normal checkpoint/restart behavior
-```
-
-or a clean typed resource rejection before unsafe work is launched.
-
-A run that survives only because the GPU happens to have more free memory is not closure.
-
-Before closing the workplan, account for every materially affected descendant, evidence specification/realization, documentation/current dependency record, cleanup action, and history update. Preserve unaffected prior evidence only with an explicit applicability rationale; stale passing evidence cannot close the current candidate.
+Until all of these close, the workplan remains reopened and the branch is **NO-PASS**.
