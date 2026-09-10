@@ -8,377 +8,384 @@ last_review_date: 2026-09-09
 implementation_branch: fix/mlff-replay-mace-membership-identity
 source_candidate_under_repair: a4d722d6de6dda59f7f1a20eb9b583e4a756f12a
 review_verdict: no-pass
-highest_affected_domain: D4 realization under unchanged accepted D3 replay/P5/TRAIN2/MACE and acceleration architecture
+workplan_review_state: reconciled
+highest_affected_domain: D4 realization under unchanged accepted D3 replay/P5/TRAIN2/MACE, serial selected-size orchestration, and acceleration architecture
 serious_challenge: none
 precedence: This file is the sole snapshot-complete implementation handoff for the current repair cycle. Earlier replay-membership/review/progress/scheduler amendments remain provenance only. Accepted current D1-D4 authority outside this workplan remains binding.
 ---
 
-# MLFF P5 replay/MACE execution recovery — consolidated workplan, Protocol 6 review reopen
+# MLFF P5 replay/MACE execution recovery — consolidated final repair workplan
 
-## 0. Review disposition
+## 0. Disposition after workplan re-review
 
-**NO-PASS / REOPENED** after independent Software Design review of executable candidate
-`a4d722d6de6dda59f7f1a20eb9b583e4a756f12a`.
+Executable candidate `a4d722d6de6dda59f7f1a20eb9b583e4a756f12a` remains **NO-PASS / repair required**. This workplan itself has now been re-reviewed against current SSDP 6.0.0 and current mdstats architecture/specification authority and is reconciled for the next D4 implementation pass.
 
-The candidate closes several important parts of the prior failure family and those corrections should be preserved. However, the adaptive scheduler is not behaviorally functional as assembled, its scope remains per-size rather than command-wide, the replay child path still contains an ambiguity/fallback route capable of reintroducing the prohibited full replay reread, and the stakeholder's pre-fix completed workspace cannot be classified under the newly frozen `compute_avg_num_neighbors=False` realization. Required real-owner/executed acceptance is also absent for these surfaces.
+No Serious Challenge is active. D1 scientific formulation, D2 numerical method, and accepted D3 P5/TRAIN2/MACE architecture remain unchanged.
 
-No Serious Challenge is active. Do **not** reopen D1 scientific formulation, D2 numerical method, or the accepted D3 P5/TRAIN2/MACE architecture. The remaining work is a bounded D4 owner-consolidation repair.
+One requirement from the preceding workplan revision is explicitly **retracted**: do **not** lift adaptive training admission across selected sizes. Current accepted D3 states that the selected-size dimension sits outside fold/seed/MACE execution and remains serial; each selected size uses the one effective fold/seed/MACE resource allocation before the next size proceeds. The prior command-wide cross-size scheduler requirement was an unjustified workplan expansion, not a product requirement.
 
-This review deliberately does **not** reopen accepted mainline storage/run-completion topology machinery or existing accelerator-conversion synchronization merely because those surfaces are present in the candidate tree. They pre-exist this implementation candidate and are outside the causal repair unless the next implementation produces direct evidence otherwise.
-
----
-
-## 1. Core problem of concern and global invariants
-
-The product outcome remains one current P5 execution path in which replay membership, TRAIN supervision/progress, adaptive resource admission, TRAIN2 continuation, and EVAL2 reconstruction compose without duplicated authority or hidden expensive work.
-
-Preserve all of the following:
-
-1. **Scientific invariants**
-   - exact selected target membership `T_N`;
-   - frozen per-size CV and production horizons;
-   - CV fold construction and all-required acceptance;
-   - optimizer/loss/weighting/batching semantics;
-   - replay training exposure versus independent TRUE_DFT replay admissibility;
-   - foundation scientific identity;
-   - checkpoint ranking/evaluation conventions;
-   - multi-size experiment semantics and collection-wide production admission.
-
-2. **Identity/lineage invariants**
-   - target execution membership uses exact target `frame_uid`;
-   - canonical single-source replay uses existing replay geometry/source/split authority;
-   - generated replay ExtXYZ is transport, not a new scientific identity;
-   - actual MACE-loaded membership is authenticated exactly;
-   - replay source/split/view/method lineage does not churn merely to satisfy adapter bookkeeping;
-   - TRAIN2 continuation remains bound to exact MACE execution evidence.
-
-3. **Execution/control invariants**
-   - scheduler controls resource admission only;
-   - reporter describes live execution only;
-   - neither becomes scientific/completion authority;
-   - concurrency may change wall-clock completion order only;
-   - CV reduction and final publication remain in canonical frozen order;
-   - no duplicate concurrent launch of one run identity;
-   - hard failure/interruption stops new admission and reaps owned children.
-
-4. **Acceleration/model invariants**
-   - source/evaluation/deployment remain portable e3nn where current policy says so;
-   - TRAIN2 may use the configured transient CuEq/OEq realization;
-   - `only_cueq=false` remains a portable-product policy;
-   - architecture authentication remains fail closed;
-   - model-affecting values already frozen by P5, including `avg_num_neighbors`, must be realized exactly and not recomputed from fold-local data.
-
-5. **Minimum-complexity rule**
-   - do not add a new scheduler, queue DB, progress daemon, replay registry, checkpoint registry, compatibility DB, state machine, second wrapper, or persistent recovery representation;
-   - repair by removing conflated state, lifting the existing scheduler to the correct owner, and using explicit existing identity domains rather than fallback chains.
+The remaining repair is therefore smaller: make the existing per-size P5 scheduler behave correctly, keep replay identity-domain handling exact without redundant parsing, preserve live TRAIN supervision/reporting, and classify the pre-fix completed TRAIN2 run from actual authenticated architecture rather than from current configuration spelling.
 
 ---
 
-## 2. Accepted parts of `a4d722d6...` — preserve unless repair evidence proves otherwise
+## 1. Governing current architecture and problem of concern
 
-The following implementation directions are accepted and should not be backed out merely to fix the blockers below:
+The current post-selection chain remains:
 
-- canonical single-source replay can reach P5 without target-domain `frame_uid`;
-- `PostSelectionReplayResolution` carries the already-authoritative ordered replay geometry membership process-locally;
-- parent expected replay membership can therefore be constructed without a full replay ExtXYZ scan;
-- `canonical_replay_geometry_identity()` can operate on MACE-loaded configuration geometry while preserving the existing replay identity definition;
-- TRAIN progress uses incremental append-only metrics consumption rather than rereading the full metrics file;
+```text
+frozen ordered selected-size collection
+ -> serial outer selected-size iteration
+      -> one size's exact pending CV folds/seeds or production members
+      -> existing adaptive TRAIN admission for those independent jobs
+      -> supervised MACE/TRAIN2 execution
+      -> authenticated checkpoint/EVAL2
+      -> canonical per-size CV reduction or production publication
+ -> campaign-level CV/status aggregation where already defined
+```
+
+For final production there is one additional precondition: the complete frozen selected-size collection is preflighted before any **new** production job is admitted. Every selected size must already hold current accepted CV ancestry under its own binding/horizon. This collection-wide barrier does not create cross-size training scheduling or transactional rollback of independently valid per-size evidence.
+
+The core concern is exact composition at the shared per-size TRAIN execution boundary:
+
+- target and replay membership must retain their distinct identity domains;
+- single-source replay membership must not be recovered by repeated full-corpus parsing;
+- TRAIN supervision/progress must reflect actual execution without becoming completion authority;
+- adaptive CUDA admission must observe real current optimizer activity and resource telemetry;
+- TRAIN2 continuation and EVAL2 reconstruction must authenticate the same model realization;
+- pre-fix completed state must be classified before destructive replacement or retraining.
+
+---
+
+## 2. Frozen invariants and non-goals
+
+### 2.1 Scientific/method invariants
+
+Do not change:
+
+- exact selected target membership `T_N`;
+- frozen per-size CV and production horizons;
+- CV folds, seeds, all-required acceptance, or target-only acceptance semantics;
+- optimizer, loss, objective weighting, batching, EMA, checkpoint ranking, or evaluation conventions;
+- replay training exposure versus independent TRUE_DFT replay admissibility;
+- foundation scientific identity;
+- multi-size identity/currentness semantics;
+- final-production freshness/currentness/publication semantics.
+
+### 2.2 Identity and lineage invariants
+
+- target execution membership uses exact target `frame_uid`;
+- canonical single-source replay uses existing replay source/split/canonical geometry identity;
+- generated replay ExtXYZ views are transport, not new scientific authority;
+- actual MACE-loaded membership must equal authenticated expected membership exactly;
+- replay source/split/view/method lineage must not churn merely to repair transport/control logic;
+- TRAIN2 continuation remains bound to exact run/materialization/MACE execution evidence;
+- progress, scheduler readiness, and resource telemetry are transient execution observations and enter no scientific identity.
+
+### 2.3 Orchestration invariants
+
+- selected sizes remain serial at the outer current D3 boundary;
+- within one selected size, independent folds/seeds or production members may be admitted concurrently by the existing scheduler;
+- scheduler controls resource admission only;
+- reporter describes live execution only;
+- completion order never changes canonical reduction/publication order;
+- no duplicate concurrent launch of one run identity;
+- methodological CV rejection of one size is recorded and remaining frozen sizes are still cross-validated before campaign-level reduction;
+- an execution/runtime failure stops new admission for the affected active scheduler and must not create acceptance/publication for incomplete work;
+- already-authenticated evidence belonging to completed sibling runs/sizes remains valid according to its own identity/currentness and is not rolled back merely because later work fails.
+
+### 2.4 Acceleration/model invariants
+
+- source/evaluation/deployment representation remains portable e3nn where current policy says so;
+- TRAIN2 may use configured transient CuEq/OEq execution;
+- `only_cueq=false` requires the portable product representation;
+- architecture authentication remains fail closed;
+- model-affecting values frozen by P5, including `avg_num_neighbors`, must reach MACE exactly and must not be recomputed from fold-local data.
+
+### 2.5 Forbidden machinery
+
+Do not add a new scheduler, persistent queue, progress daemon, replay registry, checkpoint registry, compatibility database, migration framework, restart state machine, second MACE wrapper, cross-size scheduler, or durable recovery representation. Prefer removal, direct routing, and reuse of existing owners.
+
+---
+
+## 3. Accepted implementation direction from `a4d722d6...`
+
+Preserve these directions unless executable evidence proves a concrete defect:
+
+- canonical single-source replay can execute without target-domain `frame_uid`;
+- `PostSelectionReplayResolution` carries authenticated ordered single-source replay geometry membership process-locally;
+- parent expected replay membership can therefore avoid a full replay ExtXYZ scan;
+- existing `canonical_replay_geometry_identity()` can be applied to loaded MACE configuration geometry;
+- TRAIN progress incrementally tails MACE's append-only metrics stream;
 - optimizer records advance gradient-update progress while evaluation records do not;
-- P5 training uses supervised `Popen` rather than the old blocking `subprocess.run(..., capture_output=True)` path;
-- cancellation, process-group cleanup, bounded stdout/stderr capture, disk stop, and configured visible progress cadence are directionally restored;
-- `compute_avg_num_neighbors=False` is now explicit in current P5 executable configuration;
-- independent checkpoint reconstruction distinguishes transient training realization from portable evaluation representation and keeps the architecture guard;
-- current e3nn/CuEq conversion authority should continue to be reused rather than inventing another model/checkpoint representation.
+- `MacePostSelectionTrainer` supervises a `Popen` child instead of a blind blocking `subprocess.run(..., capture_output=True)` path;
+- cancellation/process-group cleanup, bounded stdout/stderr diagnostics, disk stop, timeout, and configured visible cadence remain part of the shared trainer owner;
+- current P5 executable configuration explicitly disables local `avg_num_neighbors` recomputation;
+- EVAL2 reconstruction keeps the fail-closed architecture guard and distinguishes transient accelerator realization from portable representation;
+- existing e3nn/CuEq conversion authority is reused instead of creating another model/checkpoint representation.
 
-These accepted pieces still require final executed regression/integration evidence after the blockers are repaired.
-
----
-
-## 3. Blocking repair R1 — eliminate scheduler lifecycle/training-phase state conflation
-
-### 3.1 Defect
-
-The current scheduler stores one dictionary per slot with a key named `phase`. Submission writes:
-
-```text
-phase = running
-```
-
-but the shared child progress observer then updates the same key with MACE/reporting phase values such as:
-
-```text
-launching
-training
-validation
-```
-
-Scheduler admission later counts true-epoch jobs only for states whose `phase == "running"`. Consequently the first live child observation removes that slot from the scheduler's active-epoch count. The existing `AdaptiveTrainingConcurrency` then observes `0/N` true-epoch jobs and cannot perform its intended 1 -> 2 -> ... promotion.
-
-This is a direct behavioral failure of the restored scheduler, not a presentation issue.
-
-### 3.2 Required end state
-
-Do not add another lifecycle enum/state machine. The scheduler already owns the authoritative transient relation:
-
-```text
-active Future -> pending task
-```
-
-Use that relation to identify active slots. Keep the per-child `phase` field exclusively for actual TRAIN/MACE phase reporting.
-
-Conceptually:
-
-```text
-active_slots := slots named by current active futures
-scheduler_active_jobs := len(active_slots)
-scheduler_epoch_active_jobs := fresh optimizer-active observations among active_slots
-```
-
-A future leaving `active` is completed/failed regardless of the last MACE phase value. Do not duplicate that fact into another synchronized lifecycle field unless a demonstrable need remains after simplification.
-
-### 3.3 Acceptance
-
-A real-owner bounded scheduler composition test must prove that a child can report `phase=training` and still count as active for admission, and that safe telemetry can actually promote target concurrency above one.
+These accepted source directions still require final executed evidence after the remaining blockers are repaired.
 
 ---
 
-## 4. Blocking repair R2 — scheduler readiness must mean **fresh current optimizer activity**, not a sticky completed-epoch flag
+## 4. Blocking repair R1 — remove scheduler lifecycle/phase conflation
 
-### 4.1 Defect
+### Defect
 
-The recovered progress observer currently exports:
+The current per-task state overloads `phase`: submission writes `phase="running"`, then child observations overwrite the same field with MACE/reporting phase such as `launching`, `training`, or `validation`. Admission later counts true-epoch work only where `phase == "running"`, so the first child heartbeat can make a genuinely active job disappear from scheduler readiness accounting.
+
+### Required end state
+
+Do not add another lifecycle state machine. The existing transient `active Future -> task` relation already owns scheduler task liveness.
+
+Use:
 
 ```text
-true_epoch = completed_epochs > 0
+active slots        := slots represented by active futures
+active job count    := len(active futures)
+reported MACE phase := child observation only
 ```
 
-This does not match the historical scheduler contract.
+A future leaving `active` is completed/failed independently of its last reporting phase. Keep the reporting `phase` field exclusively for actual execution phase.
 
-It is false during the entire first epoch even while optimizer updates are streaming, so calibration is delayed unnecessarily. Once one epoch completes it becomes permanently true, including during long validation/evaluation phases. If used for admission, low utilization during validation can therefore be averaged as though the GPU were executing steady optimizer work.
+### Acceptance
 
-Historical authority requires admission calibration only when **every active job is producing fresh optimizer updates**. Initialization, graph construction, and validation idleness must not authorize extra jobs.
+Through the real per-size P5 scheduler/supervisor path, prove that a live child reporting `phase=training` remains scheduler-active and that safe telemetry can actually promote concurrency above one.
 
-### 4.2 Required end state
+---
 
-Reuse the already-recovered live metrics probe. At each scheduler observation interval, derive optimizer activity from fresh progress since the prior scheduler observation (for example, an increase in the existing completed-update/optimizer-update counter) together with the current TRAIN phase. This state is transient scheduler observation only and must not be persisted.
+## 5. Blocking repair R2 — define true-epoch readiness from bounded fresh optimizer activity
+
+### Defect
+
+The candidate reports scheduler readiness as `completed_epochs > 0`. This is false during first-epoch optimizer work and becomes sticky after one epoch, including during long validation. Neither behavior matches the existing true-epoch admission contract.
+
+The preceding workplan revision also overcorrected by suggesting that an optimizer counter must increase on every scheduler observation. A legitimate optimizer step may span more than one telemetry interval. The repository already exposes `parallel_training_epoch_activity_timeout_seconds` as the bounded freshness control; do not replace it with an implicit one-poll timeout.
+
+### Required end state
+
+Use only transient facts already available from the incremental metrics observer:
+
+- current MACE phase;
+- accepted optimizer-update count;
+- time of the most recent newly observed optimizer update;
+- existing configured activity-freshness timeout.
+
+For scheduler admission, one active job is true-epoch/optimizer-active only when:
+
+1. it is currently in optimizer/training phase, not initialization or validation;
+2. at least one real optimizer update has been observed for the current execution/resume; and
+3. the most recently observed optimizer update is still within the configured `parallel_training_epoch_activity_timeout_seconds` freshness window.
+
+The timestamp/counter comparison is process-local observation only; do not persist a readiness record.
+
+Consequences:
+
+- first-epoch optimizer work becomes eligible after the first real optimizer update;
+- a normal slow step may remain eligible across multiple telemetry polls while still inside the activity timeout;
+- validation/evaluation is immediately non-ready even if the last update is recent;
+- no fresh optimizer progress beyond the activity timeout is non-ready;
+- whenever any active job is non-ready, the existing controller's calibration window is held/reset through its normal `epoch_active_jobs < active_jobs` path;
+- returning to fresh optimizer work restarts the existing fixed-duration calibration window;
+- visible progress cadence must not alter admission semantics.
+
+### Acceptance
+
+Real-owner bounded evidence must show:
+
+1. first-epoch optimizer updates establish readiness without waiting for epoch completion;
+2. no new update on one ordinary telemetry poll does not falsely revoke readiness while still within the configured activity timeout;
+3. validation phase revokes readiness immediately and cannot authorize promotion;
+4. stale optimizer activity beyond the timeout revokes readiness;
+5. resumed optimizer activity re-establishes calibration;
+6. existing controller promotion, projection, fluctuation averaging, saturation throttling, and CPU-serial tests remain green.
+
+---
+
+## 6. Binding correction — preserve serial selected-size orchestration
+
+The previous revision's command-wide cross-size scheduler requirement is withdrawn.
+
+Current accepted D3 states:
+
+```text
+selected size N1
+ -> its fold/seed or production-member scheduler/work
+ -> its canonical reduction/publication
+selected size N2
+ -> its fold/seed or production-member scheduler/work
+ -> its canonical reduction/publication
+...
+```
+
+Do not flatten jobs from different selected sizes into one scheduler session and do not introduce a cross-size resource queue.
+
+For CV:
+
+- each size still obtains every required fold/seed verdict;
+- a methodological rejection does not truncate the remaining selected-size experiment;
+- campaign CV passes only when every frozen selected size is accepted.
+
+For production:
+
+- perform the existing collection-wide accepted-CV preflight before any new production job;
+- after admission, execute/publish each selected size through its existing per-size owner in frozen order;
+- if a later size fails, do not publish that incomplete size and do not mark the overall production stage complete, but do not delete or counterfeit-invalid previously authenticated per-size evidence.
+
+No Architecture Manual mutation is required by this workplan.
+
+---
+
+## 7. Blocking repair R3 — one explicit replay identity domain, no cascading fallback
+
+### Defect
+
+The current child adapter can try canonical loaded-geometry identity, then historical geometry identity, then reread replay-file metadata and accept whichever digest matches. This can hide a broken current single-source boundary and reintroduce the full replay parse that the repair is supposed to eliminate.
+
+### Required end state
+
+Choose the replay identity domain once from existing authenticated replay/interface authority and execute only that domain.
+
+For current canonical `single_source`:
+
+```text
+expected = authenticated split's canonical replay geometry identities
+actual   = canonical_replay_geometry_identity(MACE-loaded configuration) for each loaded replay item
+result   = exact set/membership authentication or typed failure
+```
+
+No historical-identity retry and no replay-file metadata reread are allowed for current single-source execution.
+
+For supported `legacy_split`, use the one legacy identity domain already authorized by that artifact/interface and keep that compatibility bounded.
+
+Prefer deriving the domain from information already present in the current replay request/artifact/resolution. If the child process genuinely needs a discriminator that is not otherwise reconstructable at its boundary, carry only the minimum discriminator through the **existing process-local MACE execution authority**. Do not create a side channel, registry, new replay identity, or gratuitous durable schema family. The discriminator itself is execution routing, not scientific lineage, and must not invalidate otherwise authentic replay source/split/view/method identity.
+
+### Representation-equivalence requirement
+
+Because current single-source authentication now relies on geometry reconstructed from MACE-loaded `Configuration` objects, prove that the existing canonical identity is representation-stable across the source -> MACE loader boundary. Use representative periodic and non-periodic geometries; do not invent another hash.
+
+### Acceptance
+
+- canonical single-source success performs zero redundant full replay membership scans in the parent and zero replay-file membership rereads after MACE's necessary load;
+- canonical identity computed from source authority equals the identity reconstructed from the corresponding real MACE-loaded configuration for representative periodic and non-periodic frames;
+- a geometry mutation beyond the existing identity quantization changes identity and rejects;
+- canonical loaded-geometry mismatch fails before training evidence acceptance rather than entering a legacy/file fallback;
+- supported legacy behavior remains explicit and green;
+- partial/mixed identity domains fail typed;
+- replay mutation and mismatched continuation remain fail closed;
+- seed/fold count does not multiply avoidable replay membership parsing.
+
+---
+
+## 8. Blocking repair R4 — classify the pre-fix completed TRAIN2 run from actual architecture
+
+### Defect
+
+The stakeholder's completed run was produced immediately before the current explicit `compute_avg_num_neighbors=False` P5 configuration spelling. Its immutable config can therefore differ from today's expected config even when much of the run is otherwise authentic.
+
+Current recovery reaches current-config equality too early. More importantly, current reconstruction treats a missing `compute_avg_num_neighbors` key using today's disabled-recomputation behavior; that must not be used to infer what the old run actually realized. Historical absence and current explicit `False` are not automatically semantically equivalent because pinned MACE historically defaults local recomputation on.
+
+### Required end state
+
+Do not migrate, rewrite, or broadly whitelist old configuration.
+
+Recognize only the exact immediately-pre-fix internally authenticated state relevant to this defect, then classify it from **persisted actual TRAIN2 architecture authority** before current-config spelling is allowed to reject or replace it:
+
+1. authenticate the old materialization, run plan, artifacts, TRAIN2 summary/continuation, MACE execution evidence, and checkpoint as recorded;
+2. reconstruct the **current authorized training realization** from the current frozen P5 method, including the configured transient CuEq/OEq realization when applicable;
+3. compare the persisted actual TRAIN2 `model_architecture_digest` with that current authorized training-realization architecture using the existing canonical architecture descriptor/digest;
+4. when diagnostics are needed, compare recoverable architecture dimensions such as heads and realized `avg_num_neighbors`, but do not create another architecture authority;
+5. if the actual persisted training architecture equals the current authorized training realization, treat the config difference as non-model representation/spelling and permit reuse of the authenticated TRAIN2 state through the corrected EVAL2 path;
+6. if the architecture differs, preserve the old run and recompute only that affected run under current authority;
+7. never normalize a missing historical control into today's value as proof of equivalence;
+8. never delete/rewrite the old materialization or checkpoint before classification.
+
+For phase-separated CuEq with `only_cueq=false`, compare like with like at the transient training-realization boundary, then project the authenticated state back through the existing qualified conversion to the portable e3nn EVAL2 provider.
+
+### Acceptance
+
+Through the real recovery/checkpoint/architecture owners, provide both counterfactuals:
+
+- immediately-pre-fix config representation + persisted actual training architecture equal to current authorized realization -> reuse without rewriting scientific materialization or retraining;
+- immediately-pre-fix representation + persisted actual architecture genuinely different (for example different realized `avg_num_neighbors`/head topology) -> typed preserved rejection and recomputation.
+
+Also prove that an unrelated foreign/corrupt old config is not admitted merely because this bounded classification exists.
+
+---
+
+## 9. Reporter, failure propagation, and architecture parity — proof still required
+
+The current direction is acceptable but not yet closed without executed real-owner evidence.
+
+### 9.1 Progress denominator and restart accounting
+
+Progress is observational and never completion authority.
 
 Required behavior:
 
-- optimizer updates during the first epoch can establish readiness;
-- no new optimizer progress during validation/evaluation makes that active job non-ready for admission calibration;
-- when any active job leaves current optimizer compute, the existing controller's calibration window is held/reset through its normal `epoch_active_jobs < active_jobs` semantics;
-- returning to fresh optimizer compute starts/restarts the existing fixed-duration calibration window;
-- reporting cadence must not change admission semantics.
+- optimizer records are the numerator; evaluation/validation records never increment it;
+- before a durable TRAIN2 summary is available, any projected denominator must match the exact authorized MACE training-loader geometry, including target + replay combined-loader and current drop-last semantics when multihead replay is active;
+- once authenticated TRAIN2 `planned_updates` exists, it supersedes launch-time projection;
+- restart begins from authenticated completed updates and tails only new metrics bytes; historical metrics are not double-counted;
+- if exact progress is not yet knowable, report liveness/phase with unknown ETA rather than fabricate completion percentage.
 
-Do not introduce an independently maintained `ready`, `true_epoch`, or GPU-stage state machine if the existing metric counter/phase plus active-future relation are sufficient.
+### 9.2 Failure/cancellation orchestration
 
-### 4.3 Acceptance
+Use bounded failure injection through the real per-size scheduler and real supervised trainer owner:
 
-Through the real P5 supervisor -> scheduler observation path:
+- one active child fails or is interrupted while another child is active and at least one task remains queued;
+- scheduler stops new admission immediately;
+- cancellation reaches owned active siblings and their subprocess groups are reaped;
+- already-authenticated TRAIN2 continuation/checkpoint evidence remains reusable;
+- no incomplete fold/size obtains acceptance and no incomplete production run is published;
+- previously completed sibling evidence remains untouched.
 
-1. first-epoch fresh optimizer records establish active optimizer work;
-2. a long evaluation interval does not count as active optimizer work and cannot promote concurrency;
-3. resumed optimizer activity can re-establish calibration;
-4. existing `AdaptiveTrainingConcurrency` promotion and saturation-throttle unit tests remain green.
+Do not add retry/queue state to satisfy this test.
 
----
+### 9.3 Architecture parity
 
-## 5. Blocking repair R3 — lift one scheduler session to the command-wide multi-size P5 owner
+Retain and prove:
 
-### 5.1 Defect
+- ordinary e3nn training-reconstruction architecture equality;
+- deliberate model-architecture mutation rejection;
+- two distinguishable P5 memberships/folds receive the same frozen authorized `avg_num_neighbors` rather than fold-local recomputation;
+- bounded real CuEq TRAIN2 realization -> reconstruction -> authenticated state -> portable e3nn EVAL2 parity when the qualified CuEq stack is available.
 
-The consolidated contract requires the exact pending job set to enter one P5 training admission surface:
-
-```text
-cross-validate  -> pending (N, seed, fold) jobs
-train-production -> pending (N, member/seed) jobs
-```
-
-The implementation instead creates a new scheduler inside `execute_post_selection_cross_validation(context)` / `execute_final_production(context)` for one selected size at a time, while the public command retains a serial outer loop over `contexts`.
-
-The source even states that the outer size iteration is deliberately serial and that the size dimension adds no scheduler. That contradicts the consolidated C2/E15 contract and prevents independent jobs from different selected sizes from sharing otherwise available GPU capacity.
-
-### 5.2 Required end state
-
-Move/lift the **existing** scheduler admission session to the public command scope that already owns the frozen selected-size collection. Do not create a second or multi-size-specific scheduler class.
-
-Preferred decomposition:
-
-```text
-per-size P5 owner:
-    derive/validate plan
-    classify reusable evidence
-    produce exact pending run tasks + canonical slot metadata
-
-public command owner:
-    combine pending context-bearing tasks across all frozen sizes
-    execute them through one existing adaptive scheduler/supervisor session
-
-per-size P5 owner:
-    reassemble results by canonical run-plan slot
-    reduce CV or publish final production using existing deterministic owners
-```
-
-The exact helper names are delegated. The important constraints are:
-
-- all plans/run identities/currentness decisions remain owned by their existing per-size P5 authorities;
-- scheduler only admits already-authorized independent tasks;
-- completion order is never reduction/publication order;
-- a methodological CV rejection still follows the current collection-wide reduction semantics;
-- production still performs the existing collection-wide CV admission barrier before **any** new production work;
-- hard child failure remains command-level fail-fast with no partial acceptance/publication.
-
-### 5.3 Acceptance
-
-Use at least two selected sizes with different horizons and enough independent jobs to demonstrate:
-
-- one scheduler controller/session observes jobs from both sizes;
-- safe resource conditions can fill capacity with jobs from different sizes;
-- every required run executes/restores exactly once;
-- per-size CV reductions and production publications remain canonical regardless of completion order;
-- no first-size-only or per-size capacity reset remains.
+If the CuEq stack required for that concrete functional bug test is unavailable on the implementation host, mark this implementation-acceptance claim unavailable/blocking. Do not substitute mock-only evidence. Full long-running production GPU qualification remains deferred.
 
 ---
 
-## 6. Blocking repair R4 — remove cascading replay identity fallback from the current single-source child path
-
-### 6.1 Defect
-
-The child membership adapter currently tries, in order:
-
-1. canonical replay geometry identity from MACE-loaded configuration;
-2. historical replay geometry identity from the same loaded configuration;
-3. replay metadata recovered by rereading the training file.
-
-It chooses whichever digest happens to match the launch authority. This is exactly the fallback-chain shape the consolidated plan forbids. In particular, if canonical single-source loaded-geometry reconstruction is wrong or drifts, the code can silently reopen the full replay ExtXYZ and still pass, reintroducing the performance regression rather than exposing the broken composed boundary.
-
-A comment saying current single-source P5 never reaches the file scan is not an enforced invariant.
-
-### 6.2 Required end state
-
-Select the replay membership domain **once from existing authenticated interface/artifact authority before child validation** and execute exactly that domain.
-
-For canonical `single_source`:
+## 10. Final intended control shape
 
 ```text
-expected membership = existing split/canonical replay geometry identities
-actual membership   = canonical geometry identities reconstructed from MACE-loaded collection
-mismatch             = typed failure
+public cross-validate / train-production
+ -> establish collection-level freeze/admission rules
+ -> serial selected-size iteration (accepted D3)
+      -> derive this size's exact plans, reusable evidence, pending tasks
+      -> ONE existing AdaptiveTrainingConcurrency session for this size
+           -> active futures own task liveness
+           -> supervised MACE child per admitted task
+                -> one incremental metrics probe
+                -> phase + update freshness feed scheduler/reporting
+           -> one GPU telemetry sample per scheduler interval reused for admission/reporting
+      -> canonical per-size result ordering
+      -> existing CV reduction or final-production publication
+      -> existing TRAIN2/EVAL2 authentication/projection
 ```
 
-No historical-identity retry and no replay-file metadata reread are permitted for that interface.
+Replay:
 
-For currently supported legacy replay, use the one identity domain already authorized for that legacy artifact/interface. If a small discriminator must cross the existing MACE execution-authority boundary, add it as an explicit field to that existing authority/evidence contract rather than creating a new side channel or registry. It is an execution-domain discriminator, not a new scientific identity.
+```text
+single_source -> authenticated canonical split identity -> MACE-loaded canonical geometry -> exact compare/fail
+legacy_split  -> explicitly authorized existing legacy identity domain -> exact compare/fail
+```
 
-Do not choose an identity domain independently per frame and do not use a cascading try-until-match policy.
-
-### 6.3 Acceptance
-
-- canonical single-source loaded-geometry mismatch fails before training evidence is accepted and performs **zero** replay ExtXYZ rereads for membership;
-- canonical success performs zero redundant parent/child membership scans beyond MACE's necessary data load;
-- legacy supported behavior remains explicit and green;
-- partial/mixed identity domains fail typed;
-- replay geometry mutation and mismatched continuation remain fail closed.
+No cross-size scheduler and no cascading replay identity fallback.
 
 ---
 
-## 7. Blocking repair R5 — classify the stakeholder's pre-fix completed workspace before applying the new config spelling
+## 11. Required executable evidence
 
-### 7.1 Defect
-
-The stakeholder's long completed run was created by the immediately preceding P5 realization, whose immutable config did not include the new explicit `compute_avg_num_neighbors=False` field. Candidate `a4d722d6...` now requires that field in current executable/reconstruction projection.
-
-Current materialization recovery still recognizes only the earlier retired `foundation_model` locator compatibility. A completed pre-fix config missing `compute_avg_num_neighbors=False` therefore becomes foreign to the current expected config. With durable continuation, execution-evidence reauthentication also projects the old config through the new translator, which rejects local average-neighbor recomputation before the code can answer the workplan's required question:
-
-```text
-Was the completed model only represented differently,
-or did it actually train with a model-affecting avg_num_neighbors different from the frozen P5 method?
-```
-
-That is a failure to implement the required D5/E14 classification boundary.
-
-### 7.2 Required end state
-
-Do **not** add a general old-config compatibility/migration rule and do not rewrite the old materialization.
-
-Before applying current-config equality as authorization, recognize only the exact immediately-pre-fix internally authenticated P5 representation relevant to this defect and classify the **realized model architecture**:
-
-1. authenticate the existing materialization bytes, artifacts, run plan, TRAIN2 continuation/evidence, and raw checkpoint exactly as recorded;
-2. identify that the only config-representation difference under consideration is the absent explicit `compute_avg_num_neighbors=False` control (plus any already-authorized transient CuEq/e3nn representation distinction);
-3. reproduce/inspect the actual pre-fix training realization under its real parser/construction semantics sufficiently to compare its authenticated `model_architecture_digest` and the realized `avg_num_neighbors`/other model-affecting dimensions against the frozen current P5 architecture;
-4. if the realized architecture is exactly the authorized frozen architecture and the only remaining difference is representation/spelling, reuse the authenticated TRAIN2 state and proceed through the corrected EVAL2 realization without retraining;
-5. if the old run actually realized a different neighbor normalization/head/topology/other model-affecting architecture, fail typed, preserve it, and recompute only that affected run under current authority;
-6. never delete/rewrite the old materialization/checkpoint before classification.
-
-One-time bounded work required to authenticate an old completed run is acceptable; do not create a migration framework or durable compatibility registry.
-
-### 7.3 Acceptance
-
-Provide two counterfactual fixtures through the real recovery/checkpoint owner:
-
-- old config representation + realized architecture equal to frozen architecture -> reauthenticate/reuse without rewriting old scientific materialization or retraining;
-- old config representation + realized `avg_num_neighbors` (or another model field) genuinely different -> typed preserved rejection and recomputation required.
-
----
-
-## 8. Accepted architecture parity and reporter work that still needs proof
-
-The current direction for TRAIN2/EVAL2 architecture parity is acceptable in source: reconstruct portable e3nn, realize the configured transient training backend, compare against TRAIN2 architecture authority, apply authenticated state, and restore the portable provider when policy requires it. Likewise current P5 config explicitly freezes `compute_avg_num_neighbors=False`.
-
-Do not redesign these pieces absent failing evidence. Close them with the missing real-owner tests:
-
-- ordinary e3nn reconstruction/checkpoint parity;
-- deliberate architecture mutation rejection;
-- tiny bounded real CuEq TRAIN2 -> reconstruction -> authenticated state -> portable e3nn EVAL2 parity where the qualified CuEq stack is available;
-- two distinguishable fold memberships proving `avg_num_neighbors` remains the one frozen method value;
-- live reporter heartbeat before child exit;
-- evaluation records do not increment update progress;
-- long validation remains visibly alive;
-- restart progress resumes from authenticated completed work without double counting;
-- interruption reaps owned child and leaves valid restart evidence.
-
-If the CuEq stack is unavailable on the implementation host, the required bounded real CuEq owner test remains an explicit implementation-acceptance blocker; do not replace it with mock-only evidence. This is functional bug closure, not production-scale GPU qualification.
-
----
-
-## 9. Required implementation shape — simplify, do not layer
-
-The final control shape should be:
-
-```text
-public P5 CV / final-production collection owner
- -> derive exact per-size plans + reusable evidence + pending authorized tasks
- -> ONE existing AdaptiveTrainingConcurrency session for the command
-      -> existing supervised MACE trainer per admitted task
-           -> one incremental MACE metrics probe
-           -> fresh optimizer activity supplied to scheduler
-           -> progress/phase supplied to reporter
-      -> one GPU telemetry sample per scheduler interval reused for admission/reporting
- -> group completed evidence back by context + canonical slot
- -> existing per-size CV reduction / production publication
- -> existing TRAIN2 checkpoint authentication + EVAL2 provider projection
-```
-
-For replay membership:
-
-```text
-single_source
- -> parent expected identity from authenticated split authority
- -> child actual identity from MACE-loaded canonical geometry
- -> exact compare or fail
-
-legacy_split
- -> explicitly authorized existing legacy identity domain
- -> exact compare or fail
-```
-
-There must be no try-canonical/try-historical/then-reread fallback for current single-source execution.
-
----
-
-## 10. Test and evidence requirements
-
-The final unchanged executable candidate must run the complete affected surface. At minimum include:
+After all material executable edits, run one unchanged final candidate through the complete affected surface. At minimum include:
 
 ```text
 tests/test_mlff_replay_unify1b.py
@@ -402,90 +409,95 @@ tests/test_mlff_train2b_runtime.py
 relevant TRAIN2 continuation/checkpoint-state tests
 
 tests/test_mlff_training_parallel_scheduler.py
-new/current real P5 scheduler-supervisor integration tests
+new/current real per-size P5 scheduler-supervisor integration tests
 current multi-size CV/final-production/currentness/publication tests
 ```
 
-Add explicit owner-level tests for R1-R5. In particular, controller unit tests alone cannot close P5 scheduler wiring.
+Add real-owner tests for R1-R4 and section 9. Controller-only tests cannot close scheduler wiring; direct helper reconstruction cannot close public recovery/orchestration claims.
 
-Structural closure should use Semgrep when available; otherwise use a bounded validated AST/source fallback with known-positive/known-negative examples. Establish at minimum:
+Use Semgrep when available, otherwise bounded validated AST/source checks with known-positive/known-negative cases, for structural claims that runtime tests cannot establish cheaply. Protect at minimum:
 
-- no current single-source replay fallback to full replay-file membership reread;
+- no current single-source replay membership file-reread fallback;
 - no bare blocking P5 training subprocess path;
-- no duplicate GPU polling for scheduler and reporter at one observation interval;
-- no new durable scheduler/progress/replay/checkpoint authority machinery;
+- no duplicate GPU poller for scheduler versus reporter within one observation interval;
+- no new durable scheduler/progress/replay/checkpoint compatibility machinery;
 - no dataset-local recomputation of frozen P5 `avg_num_neighbors`;
-- no scheduler lifecycle decision derived from the reporter's human-readable phase token.
+- scheduler task liveness is not derived from human-readable MACE phase text;
+- outer selected-size iteration remains serial unless D3 is deliberately reopened in a future task.
 
-Run configured fast Python lint/type/static checks and re-derive the final affected surface after repair.
+Run configured fast Python lint/type/static checks. Re-derive the final affected surface from the final candidate; this list is a floor, not a substitute for impact analysis.
 
-GitHub currently carries no check-run/status evidence for candidate `a4d722d6...`; source review therefore cannot substitute for the required executed final evidence.
+A required test/check that does not execute is a blocker. Production-scale GPU/CuEq/LAMMPS/MLIAP runs are not required here except the tiny real CuEq functional check described above when needed for the concrete architecture bug.
 
 ---
 
-## 11. Re-review PASS criteria
+## 12. Re-review PASS criteria
 
-All rows must be true:
+All must be true:
 
 ```text
-[ ] canonical single-source replay without frame_uid reaches real P5/MACE owners
 [ ] target frame_uid exactness remains intact
-[ ] parent expected replay membership uses existing split authority with no redundant full scan
-[ ] child single-source membership uses canonical loaded geometry only; mismatch fails instead of fallback reread
-[ ] supported legacy replay identity remains explicit and bounded
-[ ] replay mutation and mismatched continuation fail closed
-[ ] same prepared replay source/split/view lineage remains stable
+[ ] canonical single-source replay executes through real P5/MACE owners without target frame_uid
+[ ] parent single-source expected replay membership comes from existing split authority with no redundant full scan
+[ ] child single-source membership uses the canonical loaded-geometry domain only and fails instead of entering legacy/file fallback
+[ ] source-vs-MACE canonical replay identity equivalence is demonstrated on representative periodic/non-periodic frames
+[ ] supported legacy replay remains explicit, bounded, and green
+[ ] replay mutation / mixed domain / mismatched continuation fail closed
+[ ] replay source/split/view/method lineage remains stable
 
-[ ] P5 TRAIN uses live supervised child execution in CV and production
-[ ] progress uses incremental metrics, correct gradient-update accounting, validation phase, cadence, restart accounting
-[ ] interruption/failure reaps owned children and preserves valid continuation
+[ ] P5 TRAIN uses supervised child execution for CV and final production
+[ ] progress numerator/denominator/validation/restart/cadence semantics are exact and observational only
+[ ] interruption/failure stops new admission, reaps owned children, preserves valid continuation, and creates no incomplete acceptance/publication
 
-[ ] scheduler active membership comes from actual active task ownership, not overloaded TRAIN phase text
-[ ] scheduler readiness uses fresh current optimizer progress, not completed_epochs > 0 or another sticky flag
-[ ] validation/initialization idleness cannot authorize added GPU jobs
-[ ] safe optimizer-phase telemetry can actually promote 1 -> 2 through the real P5 wiring
-[ ] saturation throttling remains effective
-[ ] one scheduler session covers pending jobs from all frozen selected sizes for each public command
-[ ] completion order cannot alter CV reduction or production publication
-[ ] reporter and scheduler share child observations/GPU telemetry without competing control planes
+[ ] scheduler active membership comes from actual active task ownership
+[ ] scheduler readiness uses current training phase plus bounded fresh optimizer activity, not completed_epochs > 0
+[ ] a slow legitimate optimizer step within the configured activity timeout does not reset readiness merely because one telemetry poll saw no new record
+[ ] initialization/validation/stale activity cannot authorize added jobs
+[ ] safe optimizer-phase telemetry promotes 1 -> 2 through real per-size P5 wiring
+[ ] VRAM/utilization projection, fluctuation averaging, saturation throttling, CPU/RAM limits remain intact
+[ ] scheduler/reporting share child observations and GPU telemetry without competing control planes
+[ ] selected sizes remain serial at the accepted outer D3 boundary
+[ ] every frozen size still receives its required CV verdict before campaign reduction
+[ ] production retains collection-wide CV preflight and per-size publication/currentness semantics
 
 [ ] current P5 freezes avg_num_neighbors and other model-affecting architecture fields
-[ ] e3nn TRAIN2/EVAL2 architecture parity passes
-[ ] bounded real CuEq transient-realization -> portable-provider parity passes where required
-[ ] architecture guard remains fail closed
-[ ] old stakeholder pre-fix completed run is classified by actual realized architecture before current-config rejection/deletion
-[ ] representation-only old run can reuse authentic TRAIN2 state; genuinely different model realization is preserved/recomputed
+[ ] e3nn TRAIN2/EVAL2 architecture parity passes and mutation rejects
+[ ] bounded real CuEq transient-realization -> portable-provider parity passes where required/available
+[ ] old pre-fix completed run is classified from persisted actual TRAIN2 architecture before current-config rejection/deletion
+[ ] architecture-equal old run can reuse authentic state; architecture-different run is preserved/recomputed
+[ ] unrelated foreign/corrupt historical state remains rejected
 
-[ ] no new registry/DB/daemon/queue/state machine/second scheduler/second wrapper is introduced
+[ ] no new registry/DB/daemon/queue/state machine/second scheduler/second wrapper/cross-size scheduler is introduced
 [ ] final focused + affected regression + integration + static evidence executes on one unchanged candidate
-[ ] full production-scale GPU/CuEq/LAMMPS/MLIAP qualification remains deferred to the final release package
+[ ] full production-scale GPU/CuEq/LAMMPS/MLIAP qualification remains deferred to final release
 ```
 
-Any unchecked row remains a blocker. Do not manufacture closure by narrowing the claim.
+Any unchecked row remains a blocker. Do not narrow the claim or weaken an oracle to manufacture closure.
 
 ---
 
-## 12. Reopen/escalation triggers
+## 13. Genuine reopen/escalation triggers
 
-Return to Software Design only if implementation evidence shows one of the following:
+Return to Software Design only if implementation evidence shows one of these:
 
-1. canonical loaded MACE geometry cannot reproduce current single-source replay identity without changing accepted replay authority;
-2. one command-wide adaptive admission surface cannot safely schedule independent per-size jobs without changing scientific ordering/currentness semantics;
-3. exact transient accelerator realization cannot be reconstructed/authenticated through existing MACE conversion authority and would require a new persistent model/checkpoint representation;
-4. the old completed workspace cannot be classified without changing accepted P5 scientific/model authority;
-5. a discovered construction difference proves accepted D3 architecture itself contradictory rather than D4 realization drift.
+1. canonical identity cannot be reconstructed exactly from real MACE-loaded single-source replay geometry without changing accepted replay authority;
+2. correct true-epoch activity cannot be established from the existing metrics/phase/freshness controls without a materially new execution-state architecture;
+3. exact transient accelerator realization cannot be reconstructed/authenticated through existing MACE conversion owners and would require a new persistent model/checkpoint representation;
+4. the pre-fix completed run cannot be classified without changing accepted P5 scientific/model authority;
+5. a newly demonstrated resource/performance requirement shows the accepted serial outer selected-size D3 topology itself is inadequate rather than merely slower than an ungoverned alternative;
+6. another discovered construction difference proves accepted D3 architecture contradictory or unable to preserve D1/D2 semantics.
 
-Absent one of these triggers, keep the work in D4 and repair the existing owners rather than adding machinery.
+Absent one of these triggers, keep the work in D4 and repair/reduce the existing owners.
 
 ---
 
-## 13. Deferred qualification
+## 14. Deferred final-release qualification
 
 Still deferred until the complete final release package:
 
 - production-scale GPU throughput/capacity qualification;
 - long CuEq numerical/performance qualification;
-- LAMMPS / MLIAP target-machine deployment qualification;
+- LAMMPS/MLIAP target-machine deployment qualification;
 - full stakeholder production campaign qualification.
 
-A tiny bounded real CuEq execution/reconstruction test required to close the concrete D4 checkpoint-realization defect is **not** deferred release qualification.
+The tiny bounded real CuEq execution/reconstruction test required to close the concrete checkpoint-realization defect is implementation functional evidence, not production qualification.
