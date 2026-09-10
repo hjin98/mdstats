@@ -10,26 +10,23 @@ There is one current Protocol 6 implementation handoff:
 
 `workplans/active/CURRENT_IMPLEMENTATION_ENTRYPOINT.md` points to the same file. Earlier replay-membership, review-reopen, progress-recovery, and scheduler/architecture workplans/amendments remain provenance only and are not separate implementation stages.
 
-### Current review state
+### Current independent review state
 
-Executable candidate `a4d722d6de6dda59f7f1a20eb9b583e4a756f12a` remains **NO-PASS / REOPENED**. The consolidated workplan itself has been re-reviewed and reconciled against current Scientific Software Development Protocol 6.0.0 and current mdstats architecture/specification authority. No Serious Challenge is active; D1 scientific formulation, D2 numerical method, and accepted D3 replay/P5/TRAIN2/MACE architecture remain unchanged.
+Executable candidate `577908bf117d033357e2bfb1847e5ed16047d288` is **NO-PASS / REOPENED** after independent SSDP 6 Software Design review. No Serious Challenge is active; D1 scientific formulation, D2 numerical method, and accepted D3 replay/P5/TRAIN2/MACE plus serial selected-size architecture remain unchanged.
 
-A prior workplan requirement has been retracted: **do not schedule across selected sizes**. Current accepted D3 keeps the selected-size dimension serial outside fold/seed/MACE execution. The existing adaptive scheduler is to operate correctly within each selected size's independent CV folds/seeds or production members. Cross-validation still records every frozen size's verdict before campaign reduction; final production still performs the collection-wide accepted-CV preflight before any new production work, then retains per-size publication/currentness semantics.
+The implementation closes the prior scheduler-source defects: task liveness now comes from active futures rather than human-readable MACE phase, and true-epoch readiness now uses current training phase plus bounded fresh optimizer activity under the existing activity-timeout control. Current single-source replay also selects the canonical replay identity domain once and no longer enters legacy/file-reread fallback on a canonical mismatch. Preserve those corrections.
 
-Accepted implementation direction to preserve includes canonical single-source replay geometry identity without target `frame_uid`, process-local transport of authenticated replay split membership, incremental MACE metrics probing, supervised `Popen` child ownership, explicit current `compute_avg_num_neighbors=False`, and TRAIN2/EVAL2 transient-accelerator versus portable-model reconstruction with the fail-closed architecture guard retained.
+Remaining blockers are narrower:
 
-Remaining blocking D4 repairs are:
+1. the canonical replay representation-equivalence test manually constructs `mace.data.Configuration`; it must instead prove the same identity through MACE's real pinned ExtXYZ/dataset loader for periodic and non-periodic fixtures;
+2. the pre-fix TRAIN2 recovery tests currently rewrite the historical summary/companion to inject `model_architecture_digest`; real-owner acceptance must obtain the decisive architecture from authentic TRAIN2/MACE persistence/checkpoint evidence without rewriting history;
+3. an authentic architecture-different pre-fix run currently raises a preserved recovery error on every retry, so the required bounded replacement/recompute of only that classified noncurrent run is not yet operationally reachable;
+4. final focused/affected regression, integration, real-owner, lint/type/static, and structural evidence must execute on one unchanged candidate. GitHub currently exposes no check-runs/statuses for the reviewed candidate.
 
-1. scheduler task liveness is conflated with the human-readable MACE `phase`, so a training heartbeat can remove a live task from admission accounting;
-2. scheduler readiness is the sticky `completed_epochs > 0` flag; it must instead use current training phase plus bounded fresh optimizer activity under the existing `parallel_training_epoch_activity_timeout_seconds` control, so first-epoch work is visible, validation cannot authorize promotion, and one slow legitimate step does not lose readiness merely because a telemetry poll saw no new record;
-3. canonical single-source replay still has a cascading canonical -> historical -> file-reread membership fallback; the identity domain must be selected once from existing authenticated interface authority, with source-to-real-MACE-loaded canonical identity equivalence proven and mismatch failing closed;
-4. the immediately-pre-fix completed stakeholder run must be classified from its persisted actual TRAIN2 architecture against the current authorized training realization before current-config spelling can cause rejection/deletion; absence of the historical `compute_avg_num_neighbors` control must never be silently normalized into today's value as proof of equivalence;
-5. final real-owner reporter, failure-propagation, architecture-parity, affected regression, integration, and static evidence must execute on the unchanged final candidate.
-
-The repair strategy is subtractive: derive liveness from the existing active-future relation, reuse the existing metrics probe and activity-timeout policy for scheduler readiness, preserve serial outer size orchestration, replace replay fallback selection with one explicit existing identity domain, and compare old state through existing TRAIN2/MACE architecture authority. Do not add a scheduler, cross-size queue, progress daemon, compatibility database, replay/checkpoint registry, wrapper, migration system, or restart state machine.
+Repair only those boundaries. Do not rework the scheduler, introduce cross-size scheduling, add a compatibility database/migration framework, or create another replay/checkpoint/recovery authority.
 
 Implementation/review coordination remains on:
 
 - `fix/mlff-replay-mace-membership-identity`
 
-Full production-scale GPU/CuEq/LAMMPS/MLIAP target-machine qualification remains deferred until the complete final release package. A tiny bounded real CuEq functional reproduction remains required where needed to close the concrete checkpoint-realization defect and is not a release-performance qualification claim.
+Full production-scale GPU/CuEq/LAMMPS/MLIAP target-machine qualification remains deferred until the complete final release package. Tiny real MACE/CuEq functional boundary tests needed for concrete bug closure are implementation evidence, not production qualification.
