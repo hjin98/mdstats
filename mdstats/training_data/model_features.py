@@ -265,6 +265,117 @@ def mace_model_execution_architecture_digest(model: Any) -> str:
     return digest(_mace_model_execution_architecture_descriptor(model))
 
 
+def mace_model_execution_architecture_first_difference(
+    expected_model: Any, observed_model: Any
+) -> str | None:
+    """Return the first bounded architecture dimension that differs.
+
+    The diagnostic deliberately reports only the descriptor dimension, never
+    learned tensors or a serialized state dictionary.  Callers use it when a
+    representation round-trip or independent reconstruction fails the existing
+    digest gate.
+    """
+
+    expected = _mace_model_execution_architecture_descriptor(expected_model)
+    observed = _mace_model_execution_architecture_descriptor(observed_model)
+    for dimension in (
+        "model_class",
+        "primary_dtype",
+        "heads",
+        "interaction_avg_num_neighbors",
+        "modules",
+        "parameters",
+        "buffers",
+    ):
+        if expected.get(dimension) != observed.get(dimension):
+            return dimension
+    return None
+
+
+def _mace_accelerator_realization(config_payload: Mapping[str, Any]) -> str | None:
+    """Resolve the transient MACE training realization from executable flags."""
+
+    # MACE 0.3.16 gives CuEq precedence when both flags are enabled.  The
+    # production-qualified phase-separated path is ``only_cueq=false``; with
+    # ``only_cueq=true`` run_train leaves the configured model portable and the
+    # existing direct authentication path remains the truthful one.
+    if bool(config_payload.get("enable_cueq")) and not bool(
+        config_payload.get("only_cueq")
+    ):
+        return "cueq"
+    if bool(config_payload.get("enable_oeq")):
+        return "oeq"
+    return None
+
+
+def realize_mace_training_model(
+    portable_model: Any, config_payload: Mapping[str, Any]
+) -> tuple[Any, str | None]:
+    """Apply MACE's existing transient accelerator conversion to one model.
+
+    The returned model is an in-memory TRAIN2 realization only.  No second
+    checkpoint or persistent representation identity is introduced.
+    """
+
+    realization = _mace_accelerator_realization(config_payload)
+    if realization is None:
+        return portable_model, None
+    device = str(config_payload.get("device", "cpu"))
+    try:
+        if realization == "cueq":
+            from mace.cli.convert_e3nn_cueq import run
+        else:
+            from mace.cli.convert_e3nn_oeq import run
+    except ModuleNotFoundError as exc:  # pragma: no cover - optional acceleration
+        raise TrainingDataInputError(
+            f"MACE {realization} training realization is unavailable."
+        ) from exc
+    with _MACE_ACCELERATOR_CONVERSION_LOCK:
+        try:
+            realized = run(portable_model, device=device, return_model=True)
+        except (AssertionError, AttributeError, RuntimeError, TypeError, ValueError) as exc:
+            raise TrainingDataInputError(
+                f"MACE {realization} training realization could not be reconstructed."
+            ) from exc
+    if realized is None:
+        raise TrainingDataInputError(
+            f"MACE {realization} training realization returned no model."
+        )
+    return realized, realization
+
+
+def restore_mace_portable_model(
+    realized_model: Any, config_payload: Mapping[str, Any]
+) -> Any:
+    """Project one transient MACE realization back through its native owner."""
+
+    realization = _mace_accelerator_realization(config_payload)
+    if realization is None:
+        return realized_model
+    try:
+        if realization == "cueq":
+            from mace.cli.convert_cueq_e3nn import run
+        else:
+            from mace.cli.convert_oeq_e3nn import run
+    except ModuleNotFoundError as exc:  # pragma: no cover - optional acceleration
+        raise TrainingDataInputError(
+            f"MACE {realization} portable conversion is unavailable."
+        ) from exc
+    device = str(config_payload.get("device", "cpu"))
+    with _MACE_ACCELERATOR_CONVERSION_LOCK:
+        try:
+            portable = run(realized_model, device=device, return_model=True)
+        except (AssertionError, AttributeError, RuntimeError, TypeError, ValueError) as exc:
+            raise TrainingDataInputError(
+                f"MACE {realization} realization could not be converted back to portable e3nn."
+            ) from exc
+    if portable is None:
+        raise TrainingDataInputError(
+            f"MACE {realization} portable conversion returned no model."
+        )
+    return portable
+
+
 def _mace_candidate_architecture_from_args(args: Any) -> dict[str, Any]:
     """Project the pinned MACE parser namespace into JSON-safe architecture data."""
 
@@ -740,6 +851,14 @@ def build_mace_model_from_configuration(
         args.use_last_readout_only = architecture["use_last_readout_only"]
         args.embedding_specs = architecture["embedding_specs"]
         args.avg_num_neighbors = architecture["avg_num_neighbors"]
+        # ``avg_num_neighbors`` is a frozen architecture value. MACE's
+        # training path must not replace it with a value computed from the
+        # collection currently being loaded.
+        if config_payload.get("compute_avg_num_neighbors", False) is not False:
+            raise TrainingDataInputError(
+                "MACE model reconstruction must disable local average-neighbor recomputation."
+            )
+        args.compute_avg_num_neighbors = False
         args.scaling = architecture["scaling"]
         args.mean = architecture["mean"]
         args.std = architecture["std"]

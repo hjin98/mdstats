@@ -202,11 +202,21 @@ def test_foundation_path_forms_execute_and_survive_relocation(
 
     request = harness.requests[0]
 
+    class _BoundedMaceProcess:
+        returncode = 0
+        pid = 0
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout=None):
+            return self.returncode
+
     def bounded_mace_process(*_args, **_kwargs):
         fx.train_like_mace(request)
-        return SimpleNamespace(returncode=0, stderr="")
+        return _BoundedMaceProcess()
 
-    monkeypatch.setattr(execution.subprocess, "run", bounded_mace_process)
+    monkeypatch.setattr(execution.subprocess, "Popen", bounded_mace_process)
     execution.MacePostSelectionTrainer(
         wrapper_path=tmp_path / "bounded-mace-wrapper"
     )(request)

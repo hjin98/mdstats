@@ -32,6 +32,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -82,7 +83,6 @@ from .post_selection_execution import (
     evaluate_post_selection_dataset,
     fit_post_selection_preparation,
     materialize_post_selection_run,
-    post_selection_mace_run_configuration,
     post_selection_checkpoint_candidates,
     post_selection_runtime_plan,
 )
@@ -184,6 +184,9 @@ class PostSelectionReplayResolution:
     source_sha256: str | None = None
     split_manifest_digest: str | None = None
     true_label_source_sha256: str | None = None
+    # Process-local ordered transport from the existing single-source split
+    # authority. It is not part of replay lineage or any scientific identity.
+    replay_geometry_identities: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         from .replay import ReplayLabelMode
@@ -265,6 +268,28 @@ class PostSelectionReplayResolution:
                 raise PostSelectionError(
                     "P5 replay TRUE_DFT source identity is not a valid SHA256."
                 ) from exc
+        if self.replay_geometry_identities is not None:
+            identities = tuple(str(value) for value in self.replay_geometry_identities)
+            if len(identities) != int(
+                getattr(self.train_artifact, "configuration_count", -1)
+            ):
+                raise PostSelectionError(
+                    "P5 replay geometry transport does not match the training artifact count."
+                )
+            try:
+                identities = tuple(
+                    validate_digest(value, name="replay_geometry_identity")
+                    for value in identities
+                )
+            except TrainingDataInputError as exc:
+                raise PostSelectionError(
+                    "P5 replay geometry transport contains an invalid identity."
+                ) from exc
+            if len(set(identities)) != len(identities):
+                raise PostSelectionError(
+                    "P5 replay geometry transport contains duplicate identities."
+                )
+            object.__setattr__(self, "replay_geometry_identities", identities)
         object.__setattr__(self, "train_path", str(self.train_path))
         object.__setattr__(self, "monitor_path", str(self.monitor_path))
         object.__setattr__(self, "training_label_mode", training_mode)
@@ -337,15 +362,46 @@ def build_post_selection_contexts(
     experiment dimension, not one more campaign.
     """
 
-    from ._campaign_cli_core import _ensure_local_wrappers
+    from ._campaign_cli_core import _cfg, _ensure_local_wrappers
 
     selected_contexts = load_current_selected_training_contexts(
         cfg, paths, store, admit=admit
     )
     resolved_trainer = trainer
     if resolved_trainer is None:
+        visible_interval = max(
+            0.05,
+            float(
+                _cfg(
+                    cfg,
+                    "execution",
+                    "training_progress_interval_seconds",
+                    10.0,
+                )
+            ),
+        )
+        timeout_value = float(
+            _cfg(cfg, "execution", "timeout_seconds", 0.0) or 0.0
+        )
+        disk_reserve_gib = float(
+            _cfg(cfg, "execution", "minimum_free_disk_gib", 20.0) or 0.0
+        )
         resolved_trainer = MacePostSelectionTrainer(
-            wrapper_path=_ensure_local_wrappers(paths)["mdstats-mace-train"]
+            wrapper_path=_ensure_local_wrappers(paths)["mdstats-mace-train"],
+            poll_interval_seconds=min(1.0, max(0.05, visible_interval / 4.0)),
+            visible_progress_interval_seconds=visible_interval,
+            minimum_free_disk_bytes=(
+                None
+                if disk_reserve_gib <= 0.0
+                else int(disk_reserve_gib * 1024**3)
+            ),
+            timeout_seconds=(None if timeout_value <= 0.0 else timeout_value),
+            terminate_grace_seconds=max(
+                0.1,
+                float(
+                    _cfg(cfg, "execution", "terminate_grace_seconds", 30.0)
+                ),
+            ),
         )
     policies = resolve_post_selection_method_policies(cfg, config_dir=paths.config_dir)
     method = resolve_post_selection_method_identity(cfg, policies=policies)
@@ -503,6 +559,7 @@ def _resolve_post_selection_replay_resolution(
             )
         source_art = single_ctx["source"]
         split_manifest = single_ctx["split"]
+        train_geometry_set = set(split_manifest.train_geometry_identities)
         return PostSelectionReplayResolution(
             interface="single_source",
             train_path=str(training_path),
@@ -515,6 +572,15 @@ def _resolve_post_selection_replay_resolution(
             source_content_digest=source_art.content_digest,
             source_sha256=source_art.sha256,
             split_manifest_digest=split_manifest.content_digest,
+            # The materializer writes source-index order. Preserve that order
+            # from the already-authenticated source authority so the child can
+            # compare its loaded Configuration sequence without reparsing the
+            # replay view or treating the split-rank order as transport order.
+            replay_geometry_identities=tuple(
+                identity
+                for identity in source_art.geometry_identities
+                if identity in train_geometry_set
+            ),
         )
 
     # Legacy split replay has one canonical training plan and a separate true
@@ -851,6 +917,11 @@ def execute_post_selection_run(
     training_frame_uids: Sequence[str],
     monitor_frame_uids: Sequence[str],
     outer_evaluation_frame_uids: Sequence[str] | None,
+    progress_context: Mapping[str, Any] | None = None,
+    cancellation_event: Any | None = None,
+    progress_callback: Callable[[str], None] | None = None,
+    progress_observer: Callable[[Mapping[str, Any]], None] | None = None,
+    telemetry_ref: Any | None = None,
 ) -> tuple[PostSelectionRunEvidence, Any, Any]:
     """Run one post-selection job end to end and return its bound evidence.
 
@@ -859,7 +930,6 @@ def execute_post_selection_run(
     all, so outer evidence cannot influence the checkpoint it judges.
     """
 
-    selected = context.selected
     run_root = context.run_root(run_plan.run_identity)
     with post_selection_run_activity_lease(run_root):
         return _execute_post_selection_run_locked(
@@ -870,6 +940,11 @@ def execute_post_selection_run(
             monitor_frame_uids=monitor_frame_uids,
             outer_evaluation_frame_uids=outer_evaluation_frame_uids,
             run_root=run_root,
+            progress_context=progress_context,
+            cancellation_event=cancellation_event,
+            progress_callback=progress_callback,
+            progress_observer=progress_observer,
+            telemetry_ref=telemetry_ref,
         )
 
 
@@ -886,6 +961,120 @@ _POST_SELECTION_MATERIALIZATION_FILES = frozenset(
         "outer_evaluation.extxyz.manifest.json",
     }
 )
+
+# These paths are disposable run-owned scratch only.  They are deliberately
+# deterministic so a retry can reclaim a directory left behind by an
+# interrupted recursive delete, but they never participate in any P5 identity
+# or completion decision.
+_POST_SELECTION_RETIREMENT_PREFIX = ".tmp_p5_retirement_"
+_POST_SELECTION_RETIREMENT_NAMES = ("checkpoints", "materialization")
+
+
+def _post_selection_retirement_path(run_root: Path, canonical_name: str) -> Path:
+    """Return the bounded scratch path for one detached canonical namespace."""
+
+    if canonical_name not in _POST_SELECTION_RETIREMENT_NAMES:
+        raise ValueError(f"Unsupported P5 retirement namespace: {canonical_name!r}.")
+    return run_root / f"{_POST_SELECTION_RETIREMENT_PREFIX}{canonical_name}"
+
+
+def _post_selection_directory_or_absent(path: Path, *, label: str) -> bool:
+    """Validate one retirement path without following links.
+
+    A canonical recovery namespace or its detached scratch must be a plain
+    directory.  In particular, a symlink at either name is never allowed to
+    turn a run-owned cleanup into deletion outside the run root.
+    """
+
+    try:
+        mode = os.lstat(path).st_mode
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        _post_selection_recovery_error(
+            f"Could not inspect P5 {label} path; preserving it.", exc
+        )
+    if stat.S_ISLNK(mode):
+        _post_selection_recovery_error(
+            f"P5 {label} path is a symlink; preserving it."
+        )
+    if not stat.S_ISDIR(mode):
+        _post_selection_recovery_error(
+            f"P5 {label} path is not a regular directory; preserving it."
+        )
+    return True
+
+
+def _reclaim_post_selection_retirement_scratch(
+    run_root: Path, canonical_directory: Path, *, canonical_name: str
+) -> None:
+    """Reclaim one already-detached scratch namespace, if present.
+
+    A scratch destination is only recognized as a retry residue when the live
+    canonical namespace is absent.  If both names exist, the destination is
+    unknown and this owner preserves both rather than replacing or deleting it.
+    """
+
+    scratch = _post_selection_retirement_path(run_root, canonical_name)
+    canonical_present = _post_selection_directory_or_absent(
+        canonical_directory, label=canonical_name
+    )
+    scratch_present = _post_selection_directory_or_absent(
+        scratch, label=f"{canonical_name} retirement scratch"
+    )
+    if not scratch_present:
+        return
+    if canonical_present:
+        _post_selection_recovery_error(
+            f"P5 {canonical_name} retirement scratch exists while its canonical "
+            "namespace is still present; preserving both paths."
+        )
+    # The canonical name was detached before this scratch could exist.  A
+    # recursive failure therefore leaves only disposable scratch behind and
+    # cannot manufacture a partial continuation/materialization namespace.
+    shutil.rmtree(scratch)
+
+
+def _detach_post_selection_namespace(
+    run_root: Path, canonical_directory: Path, *, canonical_name: str
+) -> None:
+    """Atomically detach one authenticated namespace, then reclaim its scratch.
+
+    The caller holds the run activity lease and has already completed the full
+    recovery authentication/classification.  ``os.rename`` is intentionally
+    used rather than ``os.replace``: an existing destination is an integrity
+    conflict, never something this owner may overwrite.  Supported P5 writers
+    are serialized by the lease, so the preflight and rename form one owner
+    transition; an external replacement is still detected on the next
+    authentication boundary.
+    """
+
+    scratch = _post_selection_retirement_path(run_root, canonical_name)
+    canonical_present = _post_selection_directory_or_absent(
+        canonical_directory, label=canonical_name
+    )
+    if _post_selection_directory_or_absent(
+        scratch, label=f"{canonical_name} retirement scratch"
+    ):
+        # A previous invocation detached this namespace and was interrupted
+        # during or after reclaim.  Finish only that disposable cleanup before
+        # considering the next canonical transition.
+        _reclaim_post_selection_retirement_scratch(
+            run_root, canonical_directory, canonical_name=canonical_name
+        )
+    if not canonical_present:
+        return
+
+    # The destination was checked absent above and all supported writers hold
+    # the same run lease.  Directory rename is the namespace commit point seen
+    # by the next invocation; recursive reclaim happens only after it.
+    os.rename(canonical_directory, scratch)
+    from .target_size_execution import fsync_parent_directory
+
+    fsync_parent_directory(canonical_directory)
+    _reclaim_post_selection_retirement_scratch(
+        run_root, canonical_directory, canonical_name=canonical_name
+    )
 
 
 def _post_selection_recovery_error(
@@ -1125,7 +1314,10 @@ def _validate_post_selection_continuation_execution_evidence(
         )
 
     try:
-        target_uid_digest = _mace_execution_frame_uid_set_digest(target_artifact)
+        target_uid_digest = _mace_execution_frame_uid_set_digest(
+            target_artifact,
+            role="target",
+        )
         if target_uid_digest is None:
             raise TrainingDataInputError(
                 "P5 materialization target training artifact has no frame-UID authority."
@@ -1136,21 +1328,40 @@ def _validate_post_selection_continuation_execution_evidence(
                 raise TrainingDataInputError(
                     "P5 replay materialization has no authenticated training input."
                 )
-            replay_uid_digest = _mace_execution_frame_uid_set_digest(replay_artifact)
+            replay_geometry_identities = getattr(
+                replay_resolution, "replay_geometry_identities", None
+            )
+            if replay_geometry_identities is None:
+                replay_uid_digest = _mace_execution_frame_uid_set_digest(
+                    replay_artifact,
+                    role="replay",
+                )
+            else:
+                from .mace_compatibility import mace_frame_uid_set_digest
+
+                replay_uid_digest = mace_frame_uid_set_digest(
+                    replay_geometry_identities
+                )
             if replay_uid_digest is None:
                 raise TrainingDataInputError(
                     "P5 replay materialization has no exported frame-UID authority."
                 )
-        executable_payload = post_selection_mace_run_configuration(
-            config_payload,
-            foundation_model_path=context.method_policies.foundation_model,
-        )
+        # This is continuation authentication, not a new launch. Keep the
+        # persisted executable payload intact: projecting it through the
+        # current parser would turn an absent historical
+        # ``compute_avg_num_neighbors`` control into today's explicit False
+        # and would therefore erase the distinction the recovery classifier
+        # still has to make.
+        executable_payload = dict(config_payload)
         authority = _build_post_selection_mace_execution_authority(
             materialization=materialization,
             internal_payload=config_payload,
             executable_payload=executable_payload,
             optimizer_policy=optimizer_policy,
             replay_train_artifact=replay_artifact,
+            replay_geometry_identities=getattr(
+                replay_resolution, "replay_geometry_identities", None
+            ),
         )
         authenticated = record_mace_execution_evidence(authority, evidence)
         resolved = authenticated.get("resolved_evidence")
@@ -1172,6 +1383,35 @@ def _validate_post_selection_continuation_execution_evidence(
             "current P5 materialization; preserving diagnostic state.",
             exc,
         )
+
+
+def _post_selection_current_training_architecture(
+    context: PostSelectionContext,
+    *,
+    current_config: Mapping[str, Any],
+) -> tuple[str, str | None]:
+    """Reconstruct the current authorized TRAIN2 architecture once.
+
+    The persisted continuation supplies the historical fact. This helper only
+    realizes the current frozen configuration through the existing MACE model
+    and CuEq/OEq conversion owners; it creates no restart or architecture
+    record of its own.
+    """
+
+    from .model_features import (
+        build_mace_model_from_configuration,
+        mace_model_execution_architecture_digest,
+        realize_mace_training_model,
+    )
+
+    portable_model = build_mace_model_from_configuration(
+        current_config,
+        foundation_model_path=context.method_policies.foundation_model,
+    )
+    training_model, realization = realize_mace_training_model(
+        portable_model, current_config
+    )
+    return mace_model_execution_architecture_digest(training_model), realization
 
 
 def _validate_post_selection_materialization_artifacts(
@@ -1278,14 +1518,18 @@ def _classify_post_selection_materialization(
     extxyz_policy: Any,
     replay_resolution: Any | None,
     continuation_summary: Any | None,
-) -> tuple[PostSelectionMaterialization | None, bool, bool]:
+) -> tuple[PostSelectionMaterialization | None, bool, bool, bool]:
     """Classify existing P5 materialization before any replacement is allowed.
 
-    Returns ``(record, rebuild, use_existing)``. ``rebuild`` is granted only
-    for absent/incomplete or authenticated disposable pre-fix scratch. A
-    faithful pre-fix record with valid TRAIN2 progress is returned for direct
-    reuse because immutable descendant state must not be deleted merely to
-    obtain the current configuration spelling.
+    Returns ``(record, rebuild, use_existing, replace_stale_continuation)``.
+    ``rebuild`` is granted only for absent/incomplete or authenticated
+    disposable pre-fix scratch. A faithful pre-fix record with valid TRAIN2
+    progress is returned for direct reuse because immutable descendant state
+    must not be deleted merely to obtain the current configuration spelling.
+    The final flag is granted only after the complete authenticated
+    immediately-pre-fix representation proves that its persisted actual
+    training architecture is stale. It is an execution-local decision; no
+    recovery state is persisted.
     """
 
     if any(
@@ -1306,7 +1550,7 @@ def _classify_post_selection_materialization(
                 "TRAIN2 continuation is durable but its P5 materialization is "
                 "absent; preserving both sides and refusing to rebuild it."
             )
-        return None, False, False
+        return None, False, False, False
     if not material_directory.is_dir():
         _post_selection_recovery_error(
             "P5 materialization is not a regular directory; preserving it."
@@ -1322,7 +1566,7 @@ def _classify_post_selection_materialization(
             )
         # No final authenticated record means interrupted publication, not a
         # completed record whose bytes failed validation.
-        return None, True, False
+        return None, True, False, False
     if record_path.is_symlink() or not record_path.is_file():
         _post_selection_recovery_error(
             "P5 materialization final record is not a regular file; preserving it."
@@ -1443,11 +1687,14 @@ def _classify_post_selection_materialization(
     ).encode("utf-8")
     current = config_payload == expected_config and config_bytes == expected_bytes
     if current:
-        return record, False, False
+        return record, False, False, False
 
-    # The only supported pre-fix compatibility is the retired runtime locator
-    # field. The record, artifacts, method, and every other config field have
-    # already authenticated above; the stale locator is never consulted.
+    # The only supported pre-fix compatibility is the exact representation
+    # immediately before the explicit local-neighbor control was published:
+    # the control is absent, and the retired runtime locator may be present.
+    # The record, artifacts, method, and every other config field have already
+    # authenticated above; neither the stale locator nor a missing control is
+    # consulted as a current execution setting.
     legacy_payload = dict(config_payload)
     legacy_locator = legacy_payload.pop("foundation_model", None)
     faithful_pre_fix = (
@@ -1458,16 +1705,85 @@ def _classify_post_selection_materialization(
     )
     if faithful_pre_fix:
         if continuation_summary is not None:
-            return record, False, True
-        return record, True, False
+            return record, False, True, False
+        return record, True, False, False
+
+    historical_payload = dict(config_payload)
+    historical_locator = historical_payload.pop("foundation_model", None)
+    if "compute_avg_num_neighbors" not in historical_payload:
+        valid_historical_locator = historical_locator is None or (
+            context.method_policies.foundation_potential_identity is not None
+            and isinstance(historical_locator, str)
+            and bool(historical_locator.strip())
+        )
+        expected_historical = dict(expected_config)
+        expected_historical.pop("compute_avg_num_neighbors", None)
+        if valid_historical_locator and historical_payload == expected_historical:
+            if continuation_summary is None:
+                # No durable TRAIN2 state exists, so the authenticated
+                # pre-fix materialization is disposable interrupted scratch.
+                return record, True, False, False
+
+            persisted_architecture = getattr(
+                continuation_summary, "model_architecture_digest", None
+            )
+            if not isinstance(persisted_architecture, str) or not persisted_architecture:
+                _post_selection_recovery_error(
+                    "P5 pre-fix TRAIN2 continuation has no persisted model architecture "
+                    "authority; preserving diagnostic state."
+                )
+            try:
+                current_architecture, _realization = _post_selection_current_training_architecture(
+                    context,
+                    current_config=expected_config,
+                )
+            except (
+                OSError,
+                RuntimeError,
+                TypeError,
+                ValueError,
+                TrainingDataInputError,
+            ) as exc:
+                _post_selection_recovery_error(
+                    "P5 pre-fix TRAIN2 architecture could not be reconstructed through "
+                    "the current MACE training-realization owner; preserving diagnostic state.",
+                    exc,
+                )
+            if persisted_architecture == current_architecture:
+                # The only difference is the retired configuration spelling;
+                # the authenticated actual training realization is current.
+                # Reuse the immutable materialization and let the corrected
+                # EVAL2 path consume the authenticated continuation.
+                return record, False, True, False
+            return record, True, False, True
     _post_selection_recovery_error(
         "P5 materialization is internally valid but its protected executable "
         "configuration is foreign to the current run; preserving it."
     )
-    return record, False, False
+    return record, False, False, False
 
 
-def _execute_post_selection_run_locked(
+@dataclass(frozen=True, slots=True)
+class _PostSelectionRunSetup:
+    """Authenticated, non-mutating setup shared by execution and preflight."""
+
+    material_directory: Path
+    checkpoint_directory: Path
+    optimizer_policy: Any
+    extxyz_policy: Any
+    admissibility: Any
+    replay_resolution: Any | None
+    preparation: Any | None
+    runtime_plan: Any
+    continuation_summary: Any | None
+    start_epoch: int
+    existing_materialization: Any | None
+    rebuild_materialization: bool
+    use_existing_materialization: bool
+    replace_stale_continuation: bool
+
+
+def _prepare_post_selection_run(
     context: PostSelectionContext,
     *,
     run_plan: Any,
@@ -1475,13 +1791,11 @@ def _execute_post_selection_run_locked(
     training_frame_uids: Sequence[str],
     monitor_frame_uids: Sequence[str],
     outer_evaluation_frame_uids: Sequence[str] | None,
-    run_root: Path,
-) -> tuple[PostSelectionRunEvidence, Any, Any]:
-    """The run body, executed while this run root's activity lease is held."""
+) -> _PostSelectionRunSetup:
+    """Authenticate one run's recoverable state without changing its files."""
 
-    selected = context.selected
-    material_directory = run_root / "materialization"
-    checkpoint_directory = run_root / "checkpoints"
+    material_directory = context.run_root(run_plan.run_identity) / "materialization"
+    checkpoint_directory = context.run_root(run_plan.run_identity) / "checkpoints"
     optimizer_policy = _optimizer_policy_for(
         context, seed=run_plan.optimizer_seed, planned_epochs=run_plan.planned_epochs
     )
@@ -1497,16 +1811,13 @@ def _execute_post_selection_run_locked(
                 "Could not resolve TRUE_DFT replay monitor artifact for replay-enabled run."
             )
 
-    # A first publication has no materialization to classify, so preserve the
-    # existing materialization owner as the preparation authority. When a
-    # durable record is present, fit the current preparation in memory before
-    # authenticating or replacing that record. This keeps recovery
-    # non-destructive without imposing the full current-context contract on
-    # first-publication test seams or on ordinary no-materialization runs.
+    # A durable materialization is fitted from current authority in memory
+    # before it is authenticated or replaced. This is the same recovery
+    # preparation used by the execution owner; setup itself publishes nothing.
     preparation = None
     if (material_directory / "materialization.json").exists():
         preparation = fit_post_selection_preparation(
-            selected,
+            context.selected,
             membership=training_frame_uids,
             owner_plan_digest=run_plan.content_digest,
             common_training_policy=context.method_policies.common_training,
@@ -1530,31 +1841,128 @@ def _execute_post_selection_run_locked(
         target_head_name=context.method_policies.target_head_name,
         replay_head_name=context.method_policies.replay_head_name,
     )
-
     continuation_summary, start_epoch = _authenticate_post_selection_continuation(
         checkpoint_directory,
         runtime_plan=runtime_plan,
     )
-    existing_materialization, rebuild_materialization, use_existing_materialization = (
-        _classify_post_selection_materialization(
-            context,
-            run_plan=run_plan,
-            material_directory=material_directory,
-            run_root=run_root,
-            training_frame_uids=training_frame_uids,
-            monitor_frame_uids=monitor_frame_uids,
-            outer_evaluation_frame_uids=outer_evaluation_frame_uids,
-            preparation=preparation,
-            optimizer_policy=optimizer_policy,
-            extxyz_policy=extxyz_policy,
-            replay_resolution=replay_resolution,
-            continuation_summary=continuation_summary,
-        )
+    (
+        existing_materialization,
+        rebuild_materialization,
+        use_existing_materialization,
+        replace_stale_continuation,
+    ) = _classify_post_selection_materialization(
+        context,
+        run_plan=run_plan,
+        material_directory=material_directory,
+        run_root=context.run_root(run_plan.run_identity),
+        training_frame_uids=training_frame_uids,
+        monitor_frame_uids=monitor_frame_uids,
+        outer_evaluation_frame_uids=outer_evaluation_frame_uids,
+        preparation=preparation,
+        optimizer_policy=optimizer_policy,
+        extxyz_policy=extxyz_policy,
+        replay_resolution=replay_resolution,
+        continuation_summary=continuation_summary,
     )
-    if rebuild_materialization:
-        # The classifier has already established that this is a local,
-        # run-owned, nonterminal scratch tree with no ambiguous descendant.
-        shutil.rmtree(material_directory)
+    if replace_stale_continuation:
+        # The classifier has authenticated the historical continuation and
+        # established that it is the narrowly recognized pre-fix representation
+        # with a different actual model architecture.  It must not be handed to
+        # the trainer as a resumable predecessor.
+        continuation_summary = None
+        start_epoch = 0
+        existing_materialization = None
+    return _PostSelectionRunSetup(
+        material_directory=material_directory,
+        checkpoint_directory=checkpoint_directory,
+        optimizer_policy=optimizer_policy,
+        extxyz_policy=extxyz_policy,
+        admissibility=admissibility,
+        replay_resolution=replay_resolution,
+        preparation=preparation,
+        runtime_plan=runtime_plan,
+        continuation_summary=continuation_summary,
+        start_epoch=start_epoch,
+        existing_materialization=existing_materialization,
+        rebuild_materialization=rebuild_materialization,
+        use_existing_materialization=use_existing_materialization,
+        replace_stale_continuation=replace_stale_continuation,
+    )
+
+
+def _execute_post_selection_run_locked(
+    context: PostSelectionContext,
+    *,
+    run_plan: Any,
+    budget_policy: Any,
+    training_frame_uids: Sequence[str],
+    monitor_frame_uids: Sequence[str],
+    outer_evaluation_frame_uids: Sequence[str] | None,
+    run_root: Path,
+    progress_context: Mapping[str, Any] | None = None,
+    cancellation_event: Any | None = None,
+    progress_callback: Callable[[str], None] | None = None,
+    progress_observer: Callable[[Mapping[str, Any]], None] | None = None,
+    telemetry_ref: Any | None = None,
+) -> tuple[PostSelectionRunEvidence, Any, Any]:
+    """The run body, executed while this run root's activity lease is held."""
+
+    from ._campaign_cli_core import _cfg
+
+    context_cfg = getattr(context, "cfg", None)
+    selected = context.selected
+    setup = _prepare_post_selection_run(
+        context,
+        run_plan=run_plan,
+        budget_policy=budget_policy,
+        training_frame_uids=training_frame_uids,
+        monitor_frame_uids=monitor_frame_uids,
+        outer_evaluation_frame_uids=outer_evaluation_frame_uids,
+    )
+    material_directory = setup.material_directory
+    checkpoint_directory = setup.checkpoint_directory
+    optimizer_policy = setup.optimizer_policy
+    extxyz_policy = setup.extxyz_policy
+    replay_resolution = setup.replay_resolution
+    preparation = setup.preparation
+    runtime_plan = setup.runtime_plan
+    continuation_summary = setup.continuation_summary
+    start_epoch = setup.start_epoch
+    existing_materialization = setup.existing_materialization
+    rebuild_materialization = setup.rebuild_materialization
+    use_existing_materialization = setup.use_existing_materialization
+    replace_stale_continuation = setup.replace_stale_continuation
+    # Finish any detached scratch left by an earlier interrupted invocation
+    # before entering the next canonical transition.  The helper refuses to
+    # touch a scratch destination while its canonical namespace is present,
+    # which keeps an unknown collision fail-closed.
+    for canonical_name in _POST_SELECTION_RETIREMENT_NAMES:
+        _reclaim_post_selection_retirement_scratch(
+            run_root,
+            run_root / canonical_name,
+            canonical_name=canonical_name,
+        )
+    if replace_stale_continuation:
+        # This occurs only after TRAIN2, materialization, MACE evidence, and
+        # the activity lease have all authenticated the stale continuation; no
+        # foreign/corrupt canonical state can reach this branch.  Retire the
+        # continuation first so the accepted checkpoint-before-materialization
+        # ordering remains explicit.
+        _detach_post_selection_namespace(
+            run_root,
+            checkpoint_directory,
+            canonical_name="checkpoints",
+        )
+    if rebuild_materialization or replace_stale_continuation:
+        # The classifier has established that this is local, run-owned,
+        # nonterminal scratch.  The live namespace is detached before any
+        # recursive reclaim, so an interruption cannot expose a partially
+        # destroyed canonical materialization to the next invocation.
+        _detach_post_selection_namespace(
+            run_root,
+            material_directory,
+            canonical_name="materialization",
+        )
     checkpoint_directory.mkdir(parents=True, exist_ok=True)
 
     if use_existing_materialization:
@@ -1629,6 +2037,26 @@ def _execute_post_selection_run_locked(
                     if replay_resolution is not None
                     and replay_resolution.monitor_path is not None
                     else None
+                ),
+                replay_geometry_identities=(
+                    None
+                    if replay_resolution is None
+                    else getattr(replay_resolution, "replay_geometry_identities", None)
+                ),
+                progress_context=progress_context,
+                cancellation_event=cancellation_event,
+                progress_callback=progress_callback,
+                progress_observer=progress_observer,
+                telemetry_ref=telemetry_ref,
+                optimizer_activity_timeout_seconds=float(
+                    120.0
+                    if context_cfg is None
+                    else _cfg(
+                        context_cfg,
+                        "execution",
+                        "parallel_training_epoch_activity_timeout_seconds",
+                        120.0,
+                    )
                 ),
             )
         )
@@ -1715,6 +2143,11 @@ def _execute_post_selection_run_locked(
     store.put(representative)
     store.put(monitor_metrics)
     store.put(evidence)
+    # Final-production evidence is independently restartable. Publish its
+    # run-root proof before the shared scheduler can observe a later sibling
+    # failure; CV still waits for its separate fold-acceptance authority.
+    if str(getattr(run_plan, "run_role", "")) == "final_production":
+        _record_completed_run_evidence(context, run_plan, evidence)
     return evidence, representative, outer_metrics
 
 
@@ -2500,6 +2933,396 @@ def _record_completed_run_evidence(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True, slots=True)
+class _PendingPostSelectionRun:
+    """One exact pending CV/final slot admitted to the shared scheduler."""
+
+    slot: int
+    run_plan: Any
+    training_frame_uids: tuple[str, ...]
+    monitor_frame_uids: tuple[str, ...]
+    outer_evaluation_frame_uids: tuple[str, ...] | None
+    progress_context: Mapping[str, Any]
+
+
+def _post_selection_training_concurrency_policy(
+    context: PostSelectionContext,
+) -> Any:
+    """Resolve the existing runtime-only adaptive training policy from config."""
+
+    from ._campaign_cli_core import _cfg
+    from .training_parallel import TrainingConcurrencyPolicy
+
+    return TrainingConcurrencyPolicy(
+        requested_jobs=int(_cfg(context.cfg, "execution", "parallel_training_jobs", 0)),
+        minimum_auto_jobs=int(
+            _cfg(context.cfg, "execution", "minimum_parallel_training_jobs", 1)
+        ),
+        maximum_auto_jobs=int(
+            _cfg(context.cfg, "execution", "maximum_parallel_training_jobs", 4)
+        ),
+        gpu_memory_fraction=float(
+            _cfg(context.cfg, "execution", "training_gpu_memory_fraction", 0.90)
+        ),
+        gpu_utilization_fraction=float(
+            _cfg(context.cfg, "execution", "training_gpu_utilization_fraction", 0.90)
+        ),
+        estimated_gpu_memory_mib_per_job=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "estimated_training_vram_mib_per_job",
+                6144.0,
+            )
+        ),
+        estimated_ram_mib_per_job=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "estimated_training_ram_mib_per_job",
+                8192.0,
+            )
+        ),
+        epoch_stabilization_seconds=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_epoch_stabilization_seconds",
+                60.0,
+            )
+        ),
+        stability_samples=int(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_epoch_stability_samples",
+                12,
+            )
+        ),
+        stability_relative_tolerance=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_stability_relative_tolerance",
+                0.10,
+            )
+        ),
+        utilization_stability_absolute_tolerance=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_utilization_stability_absolute_tolerance",
+                8.0,
+            )
+        ),
+        observed_memory_growth_margin=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_memory_growth_margin",
+                1.05,
+            )
+        ),
+        observed_utilization_growth_margin=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_utilization_growth_margin",
+                1.05,
+            )
+        ),
+        monitor_interval_seconds=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_monitor_interval_seconds",
+                10.0,
+            )
+        ),
+        epoch_activity_timeout_seconds=float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "parallel_training_epoch_activity_timeout_seconds",
+                120.0,
+            )
+        ),
+    )
+
+
+def _preflight_post_selection_pending_runs(
+    context: PostSelectionContext,
+    *,
+    pending: Sequence[_PendingPostSelectionRun],
+    budget_policy: Any,
+) -> None:
+    """Reject durable foreign continuations before any sibling reaches EVAL2."""
+
+    for task in sorted(pending, key=lambda item: int(item.slot)):
+        run_root = context.run_root(task.run_plan.run_identity)
+        checkpoint_directory = run_root / "checkpoints"
+        if not checkpoint_directory.exists() and not checkpoint_directory.is_symlink():
+            continue
+        if (
+            checkpoint_directory.is_dir()
+            and not _checkpoint_has_durable_entries(checkpoint_directory)
+        ):
+            continue
+        # Use the exact same setup/authentication owner as execution. Holding
+        # the existing activity lease makes this read-only classification safe
+        # against another P5 process while keeping it free of publication or
+        # replacement side effects.
+        with post_selection_run_activity_lease(run_root):
+            _prepare_post_selection_run(
+                context,
+                run_plan=task.run_plan,
+                budget_policy=budget_policy,
+                training_frame_uids=task.training_frame_uids,
+                monitor_frame_uids=task.monitor_frame_uids,
+                outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
+            )
+
+
+def _execute_post_selection_pending_runs(
+    context: PostSelectionContext,
+    *,
+    pending: Sequence[_PendingPostSelectionRun],
+    budget_policy: Any,
+) -> dict[int, tuple[PostSelectionRunEvidence, Any, Any]]:
+    """Run exact pending slots through the existing adaptive controller.
+
+    The caller constructs ``pending`` only after it has materialized every
+    canonical run plan and classified reusable evidence. This function owns
+    admission and supervision, but it never reorders or ranks the returned
+    scientific evidence: callers reduce results by the frozen slot number.
+    """
+
+    if not pending:
+        return {}
+
+    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+    import threading
+    import time
+
+    from ._campaign_cli_core import _cfg, _performance_resources
+    from .progress_timing import ProgressRateTracker, format_progress_fraction, format_progress_timing_fields
+    from .training_parallel import (
+        AdaptiveTrainingConcurrency,
+        build_training_concurrency_plan,
+        query_gpu_telemetry,
+    )
+
+    ordered_pending = tuple(sorted(pending, key=lambda item: int(item.slot)))
+    _preflight_post_selection_pending_runs(
+        context,
+        pending=ordered_pending,
+        budget_policy=budget_policy,
+    )
+    first_policy = _optimizer_policy_for(
+        context,
+        seed=ordered_pending[0].run_plan.optimizer_seed,
+        planned_epochs=ordered_pending[0].run_plan.planned_epochs,
+    )
+    device = str(context.method_policies.device)
+    resources = _performance_resources(context.cfg)
+    concurrency_policy = _post_selection_training_concurrency_policy(context)
+    initial_sample = query_gpu_telemetry(device)
+    concurrency_plan = build_training_concurrency_plan(
+        task_count=len(ordered_pending),
+        device=device,
+        loader_workers_per_job=int(getattr(first_policy, "num_workers", 0)),
+        resources=resources,
+        policy=concurrency_policy,
+        gpu_sample=initial_sample,
+    )
+    controller = AdaptiveTrainingConcurrency(concurrency_plan, concurrency_policy)
+    telemetry_ref: dict[str, Any] = {"sample": initial_sample}
+    cancellation_event = threading.Event()
+    state_lock = threading.Lock()
+    states: dict[int, dict[str, Any]] = {
+        task.slot: {
+            "completed_updates": 0,
+            "completed_epochs": 0,
+            "true_epoch": False,
+            # ``phase`` is child-reported MACE execution state only. The
+            # active-future mapping below is the scheduler's liveness owner;
+            # submission/completion must not overwrite this observation field.
+            "phase": "launching",
+        }
+        for task in ordered_pending
+    }
+    started = time.monotonic()
+    outer_tracker = ProgressRateTracker(completed=0, started_at=started)
+    completed_count = 0
+    next_task = 0
+    active: dict[Any, _PendingPostSelectionRun] = {}
+    results: dict[int, tuple[PostSelectionRunEvidence, Any, Any]] = {}
+    last_sample_at = started
+    last_report_at: float | None = None
+    last_decision_reason = "initial one-job admission"
+    visible_interval = max(
+        0.05,
+        float(
+            _cfg(
+                context.cfg,
+                "execution",
+                "training_progress_interval_seconds",
+                10.0,
+            )
+        ),
+    )
+    poll_interval = min(
+        1.0,
+        max(0.05, float(concurrency_policy.monitor_interval_seconds) / 4.0),
+    )
+
+    def report(status: str, *, force: bool = False) -> None:
+        nonlocal last_report_at
+        now = time.monotonic()
+        if (
+            not force
+            and last_report_at is not None
+            and now - last_report_at < visible_interval
+        ):
+            return
+        with state_lock:
+            active_count = len(active)
+            true_epoch_count = sum(
+                bool(states[task.slot].get("true_epoch"))
+                for task in active.values()
+            )
+        snapshot = outer_tracker.snapshot(
+            completed=completed_count,
+            total=len(ordered_pending),
+            now=now,
+        )
+        sample = telemetry_ref.get("sample")
+        if sample is None:
+            gpu_fields = ("gpu=unavailable", "vram=unavailable")
+        else:
+            gpu_fields = (
+                f"gpu={float(getattr(sample, 'utilization_percent', 0.0)):.0f}%",
+                f"vram={int(getattr(sample, 'used_bytes', 0)) / 1024**3:.1f}/"
+                f"{int(getattr(sample, 'total_bytes', 0)) / 1024**3:.1f}GiB",
+            )
+        plan_summary = concurrency_plan.summary().replace(";", ",")
+        timing = format_progress_timing_fields(
+            elapsed_seconds=snapshot.elapsed_seconds,
+            eta_seconds=snapshot.eta_seconds,
+            recent_rate=snapshot.recent_rate,
+            average_rate=snapshot.average_rate,
+            rate_unit="training-run/s",
+        )
+        line = "; ".join(
+            (
+                f"[TRAIN scheduler] status={status}",
+                f"progress={format_progress_fraction(completed_count, len(ordered_pending))}",
+                "unit=training-run",
+                f"active_jobs={active_count}",
+                f"true_epoch_jobs={true_epoch_count}",
+                f"target_jobs={controller.target_jobs}",
+                f"ceiling={concurrency_plan.maximum_jobs}",
+                f"pending_jobs={len(ordered_pending) - completed_count - active_count}",
+                timing,
+                *gpu_fields,
+                f"plan={plan_summary}",
+                f"last_decision={last_decision_reason.replace(';', ',')}",
+            )
+        )
+        print(line, flush=True)
+        last_report_at = now
+
+    def submit_available(executor: ThreadPoolExecutor) -> None:
+        nonlocal next_task
+        target = max(1, int(controller.target_jobs))
+        while next_task < len(ordered_pending) and len(active) < target:
+            task = ordered_pending[next_task]
+            next_task += 1
+
+            def observe(
+                observation: Mapping[str, Any],
+                *,
+                slot: int = task.slot,
+            ) -> None:
+                with state_lock:
+                    states[slot].update(dict(observation))
+
+            future = executor.submit(
+                execute_post_selection_run,
+                context,
+                run_plan=task.run_plan,
+                budget_policy=budget_policy,
+                training_frame_uids=task.training_frame_uids,
+                monitor_frame_uids=task.monitor_frame_uids,
+                outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
+                progress_context=task.progress_context,
+                cancellation_event=cancellation_event,
+                progress_observer=observe,
+                telemetry_ref=telemetry_ref,
+            )
+            active[future] = task
+
+    executor = ThreadPoolExecutor(
+        max_workers=max(1, int(concurrency_plan.maximum_jobs)),
+        thread_name_prefix="mdstats-p5-train",
+    )
+    report("planned", force=True)
+    try:
+        submit_available(executor)
+        report("running", force=True)
+        while active or next_task < len(ordered_pending):
+            done, _ = wait(
+                tuple(active),
+                timeout=poll_interval,
+                return_when=FIRST_COMPLETED,
+            ) if active else (set(), set())
+            for future in done:
+                task = active.pop(future)
+                result = future.result()
+                results[task.slot] = result
+                completed_count += 1
+
+            now = time.monotonic()
+            if now - last_sample_at >= float(concurrency_policy.monitor_interval_seconds):
+                sample = query_gpu_telemetry(device)
+                telemetry_ref["sample"] = sample
+                with state_lock:
+                    active_count = len(active)
+                    true_epoch_count = sum(
+                        bool(states[task.slot].get("true_epoch"))
+                        for task in active.values()
+                    )
+                decision = controller.observe(
+                    sample,
+                    active_jobs=active_count,
+                    epoch_active_jobs=true_epoch_count,
+                    now=now,
+                )
+                last_decision_reason = decision.reason
+                last_sample_at = now
+
+            submit_available(executor)
+            report("running", force=bool(done))
+            if not done and active:
+                report("running")
+        report("completed", force=True)
+    except BaseException as exc:
+        cancellation_event.set()
+        for future in active:
+            future.cancel()
+        report(
+            "cancelled"
+            if isinstance(exc, (KeyboardInterrupt, SystemExit))
+            else "failed",
+            force=True,
+        )
+        executor.shutdown(wait=True, cancel_futures=True)
+        raise
+    else:
+        executor.shutdown(wait=True, cancel_futures=True)
+    return results
+
+
 def execute_post_selection_cross_validation(
     context: PostSelectionContext,
 ) -> tuple[PostSelectionCvPlan, CvCampaignAcceptance]:
@@ -2552,8 +3375,11 @@ def execute_post_selection_cross_validation(
         )
 
     budget_policy = cv_training_budget_policy(context.method, context.cv_policy)
-    acceptances: list[CvFoldAcceptance] = []
-    for seed, fold_index in plan.required_run_matrix:
+    acceptances_by_slot: dict[int, CvFoldAcceptance] = {}
+    pending: list[_PendingPostSelectionRun] = []
+    required_runs = tuple(plan.required_run_matrix)
+    total_runs = len(required_runs)
+    for slot, (seed, fold_index) in enumerate(required_runs):
         fold = plan.fold(fold_index)
         run_plan = build_cv_fold_run_plan(
             plan,
@@ -2564,29 +3390,55 @@ def execute_post_selection_cross_validation(
         store.put(run_plan)
         completed = _completed_fold_acceptance(context, run_plan)
         if completed is not None:
-            acceptances.append(completed)
+            acceptances_by_slot[slot] = completed
+            print(
+                "[TRAIN] status=reused; "
+                f"N_selected={selected.n_selected}; run={slot + 1}/{total_runs}; "
+                f"seed={seed}; fold={fold_index + 1}/{plan.fold_count}; "
+                "restored=reused; phase=reused",
+                flush=True,
+            )
             continue
-        _evidence, representative, outer_metrics = execute_post_selection_run(
-            context,
-            run_plan=run_plan,
-            budget_policy=budget_policy,
-            training_frame_uids=fold.training_frame_uids,
-            monitor_frame_uids=fold.checkpoint_monitor_frame_uids,
-            outer_evaluation_frame_uids=fold.outer_evaluation_frame_uids,
+        pending.append(
+            _PendingPostSelectionRun(
+                slot=slot,
+                run_plan=run_plan,
+                training_frame_uids=tuple(fold.training_frame_uids),
+                monitor_frame_uids=tuple(fold.checkpoint_monitor_frame_uids),
+                outer_evaluation_frame_uids=tuple(fold.outer_evaluation_frame_uids),
+                progress_context={
+                    "N_selected": selected.n_selected,
+                    "run": f"{slot + 1}/{total_runs}",
+                    "seed": seed,
+                    "fold": f"{fold_index + 1}/{plan.fold_count}",
+                    "restored": "executing",
+                    "phase": "executing",
+                },
+            )
         )
+
+    results = _execute_post_selection_pending_runs(
+        context,
+        pending=pending,
+        budget_policy=budget_policy,
+    )
+    for task in pending:
+        _evidence, representative, outer_metrics = results[task.slot]
         if outer_metrics is None:
             raise PostSelectionError(
-                f"CV fold {fold_index} produced no held-out outer evaluation."
+                f"CV fold {task.run_plan.fold_index} produced no held-out outer evaluation."
             )
         acceptance = build_cv_fold_acceptance(
-            run_plan=run_plan,
+            run_plan=task.run_plan,
             representative=representative,
             outer_metrics=outer_metrics,
             policy=context.cv_policy,
         )
         store.put(acceptance)
-        _record_completed_fold_acceptance(context, run_plan, acceptance)
-        acceptances.append(acceptance)
+        _record_completed_fold_acceptance(context, task.run_plan, acceptance)
+        acceptances_by_slot[task.slot] = acceptance
+
+    acceptances = [acceptances_by_slot[slot] for slot in range(total_runs)]
 
     campaign = accept_post_selection_cv_campaign(plan, context.cv_policy, acceptances)
     with post_selection_publication_barrier(
@@ -2734,24 +3586,50 @@ def execute_final_production(
     budget_policy = final_production_training_budget_policy(
         context.method, context.production_policy
     )
-    evidence: list[PostSelectionRunEvidence] = []
-    for seed in final_plan.required_final_seeds:
+    evidence_by_slot: dict[int, PostSelectionRunEvidence] = {}
+    pending: list[_PendingPostSelectionRun] = []
+    required_seeds = tuple(final_plan.required_final_seeds)
+    total_runs = len(required_seeds)
+    for slot, seed in enumerate(required_seeds):
         run_plan = build_final_production_run_plan(final_plan, optimizer_seed=seed)
         store.put(run_plan)
         completed = _completed_run_evidence(context, run_plan)
         if completed is not None:
-            evidence.append(completed)
+            evidence_by_slot[slot] = completed
+            print(
+                "[TRAIN] status=reused; "
+                f"N_selected={selected.n_selected}; run={slot + 1}/{total_runs}; "
+                f"seed={seed}; restored=reused; phase=reused",
+                flush=True,
+            )
             continue
-        run_evidence, _representative, _outer = execute_post_selection_run(
-            context,
-            run_plan=run_plan,
-            budget_policy=budget_policy,
-            training_frame_uids=selected.selected_membership,
-            monitor_frame_uids=m3_membership,
-            outer_evaluation_frame_uids=None,
+        pending.append(
+            _PendingPostSelectionRun(
+                slot=slot,
+                run_plan=run_plan,
+                training_frame_uids=tuple(selected.selected_membership),
+                monitor_frame_uids=tuple(m3_membership),
+                outer_evaluation_frame_uids=None,
+                progress_context={
+                    "N_selected": selected.n_selected,
+                    "run": f"{slot + 1}/{total_runs}",
+                    "seed": seed,
+                    "restored": "executing",
+                    "phase": "executing",
+                },
+            )
         )
-        _record_completed_run_evidence(context, run_plan, run_evidence)
-        evidence.append(run_evidence)
+
+    results = _execute_post_selection_pending_runs(
+        context,
+        pending=pending,
+        budget_policy=budget_policy,
+    )
+    for task in pending:
+        run_evidence, _representative, _outer = results[task.slot]
+        evidence_by_slot[task.slot] = run_evidence
+
+    evidence = [evidence_by_slot[slot] for slot in range(total_runs)]
 
     # Deciding which of the completed seeds constitute the released product is
     # the last pre-qualification act, and it belongs here: every input it uses

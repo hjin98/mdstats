@@ -242,10 +242,35 @@ def canonical_replay_geometry_identity(atoms: Any) -> str:
     retain their prior wrapped-fractional-coordinate semantics.
     """
 
-    numbers = np.asarray(atoms.numbers, dtype="<i4")
-    positions = np.asarray(atoms.positions, dtype=np.float64)
-    cell = np.asarray(atoms.cell.array, dtype=np.float64)
-    pbc = np.asarray(atoms.pbc, dtype=np.uint8)
+    # ASE ``Atoms`` and MACE 0.3.16 ``Configuration`` are the two sides of
+    # the existing replay loader boundary.  The former exposes ``numbers``
+    # and an ASE ``Cell``; the latter exposes ``atomic_numbers`` and plain
+    # arrays (with ``cell``/``pbc`` allowed to be ``None``).  Normalize those
+    # representations here, at the canonical geometry-identity owner, rather
+    # than making the execution wrapper rescan ExtXYZ or inventing a second
+    # identity function for the child process.
+    numbers_value = getattr(atoms, "numbers", None)
+    if numbers_value is None:
+        numbers_value = getattr(atoms, "atomic_numbers", None)
+    if numbers_value is None:
+        raise TrainingDataInputError(
+            "Replay geometry does not expose atomic numbers."
+        )
+    numbers = np.asarray(numbers_value, dtype="<i4")
+    positions = np.asarray(getattr(atoms, "positions", None), dtype=np.float64)
+    raw_cell = getattr(atoms, "cell", None)
+    if raw_cell is None:
+        cell = np.zeros((3, 3), dtype=np.float64)
+    elif hasattr(raw_cell, "array"):
+        cell = np.asarray(raw_cell.array, dtype=np.float64)
+    else:
+        cell = np.asarray(raw_cell, dtype=np.float64)
+    raw_pbc = getattr(atoms, "pbc", None)
+    pbc = (
+        np.zeros((3,), dtype=np.uint8)
+        if raw_pbc is None
+        else np.asarray(raw_pbc, dtype=np.uint8)
+    )
     if positions.shape != (len(numbers), 3) or cell.shape != (3, 3) or pbc.shape != (3,):
         raise TrainingDataInputError("Replay geometry has an invalid positions/cell/PBC shape.")
     if not np.all(np.isfinite(positions)) or not np.all(np.isfinite(cell)):
@@ -261,6 +286,82 @@ def canonical_replay_geometry_identity(atoms: Any) -> str:
     h.update(q_cell.tobytes(order="C"))
     h.update(pbc.tobytes(order="C"))
     return h.hexdigest()
+
+
+def historical_replay_geometry_identity(atoms: Any) -> str:
+    """Reproduce the pre-UNIFY1A replay-file geometry identity from loaded data.
+
+    ``ReplayFileArtifact`` v3/v4 remains a supported persisted boundary. Its
+    historical identity used wrapped fractional coordinates, while the newer
+    single-source authority uses the raw canonical geometry digest. This
+    realization accepts an ASE ``Atoms`` or a MACE ``Configuration`` so a
+    child can authenticate a legacy artifact from the geometry MACE already
+    loaded, without opening the ExtXYZ a second time.
+    """
+
+    numbers_value = getattr(atoms, "numbers", None)
+    if numbers_value is None:
+        numbers_value = getattr(atoms, "atomic_numbers", None)
+    if numbers_value is None:
+        raise TrainingDataInputError(
+            "Replay geometry does not expose atomic numbers."
+        )
+    numbers = np.asarray(numbers_value, dtype=np.int64)
+    positions = np.asarray(getattr(atoms, "positions", None), dtype=np.float64)
+    raw_cell = getattr(atoms, "cell", None)
+    if raw_cell is None:
+        cell = np.zeros((3, 3), dtype=np.float64)
+    else:
+        cell = np.asarray(
+            raw_cell.array if hasattr(raw_cell, "array") else raw_cell,
+            dtype=np.float64,
+        )
+    raw_pbc = getattr(atoms, "pbc", None)
+    pbc = (
+        np.zeros((3,), dtype=bool)
+        if raw_pbc is None
+        else np.asarray(raw_pbc, dtype=bool)
+    )
+    if (
+        positions.shape != (len(numbers), 3)
+        or cell.shape != (3, 3)
+        or pbc.shape != (3,)
+    ):
+        raise TrainingDataInputError(
+            "Historical replay geometry has an invalid positions/cell/PBC shape."
+        )
+    if not np.all(np.isfinite(positions)) or not np.all(np.isfinite(cell)):
+        raise TrainingDataInputError(
+            "Historical replay geometry contains non-finite positions or cell values."
+        )
+    if hasattr(atoms, "get_scaled_positions"):
+        # Preserve the exact pre-UNIFY1A ASE owner, including its completion
+        # semantics for zero/partial cells and its periodic-direction wrapping.
+        scaled = np.asarray(
+            atoms.get_scaled_positions(wrap=True), dtype=np.float64
+        )
+    else:
+        # MACE Configuration retains the plain arrays but not ASE's Cell
+        # methods. Reuse ASE's completion algorithm for the same zero/partial
+        # cell behavior before applying the historical outer modulo.
+        try:
+            from ase.geometry import Cell
+
+            completed_cell = np.asarray(Cell(cell).complete(), dtype=np.float64)
+            scaled = np.linalg.solve(completed_cell.T, positions.T).T
+        except (ImportError, np.linalg.LinAlgError, ValueError) as exc:
+            raise TrainingDataInputError(
+                "Historical replay geometry cannot be converted to scaled positions."
+            ) from exc
+    scaled = np.mod(scaled, 1.0)
+    return digest(
+        {
+            "numbers": [int(value) for value in numbers],
+            "cell": np.round(cell, 10).tolist(),
+            "scaled_positions": np.round(scaled, 10).tolist(),
+            "pbc": [bool(value) for value in pbc],
+        }
+    )
 
 
 def _optional_replay_label(atoms: Any, keys: Sequence[str], *, array: bool) -> np.ndarray | None:
@@ -1216,16 +1317,11 @@ def _array_identity(values: np.ndarray) -> str:
 
 
 def _geometry_identity(atoms: Any) -> str:
-    cell = np.asarray(atoms.cell.array, dtype=np.float64)
-    scaled = np.mod(np.asarray(atoms.get_scaled_positions(wrap=True), dtype=np.float64), 1.0)
-    return digest(
-        {
-            "numbers": [int(v) for v in atoms.numbers],
-            "cell": np.round(cell, 10).tolist(),
-            "scaled_positions": np.round(scaled, 10).tolist(),
-            "pbc": [bool(v) for v in atoms.pbc],
-        }
-    )
+    # Keep the historical ReplayFileArtifact owner on the same implementation
+    # used to authenticate that identity from a MACE Configuration after the
+    # loader boundary.  The helper preserves the pre-UNIFY1A wrapped-fractional
+    # schema; it does not introduce another geometry hash.
+    return historical_replay_geometry_identity(atoms)
 
 
 @dataclass(frozen=True, slots=True)

@@ -7,6 +7,7 @@ import json
 import re
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import mdstats
@@ -43,6 +44,10 @@ from mdstats.training_data.post_selection_execution import (
     PostSelectionMaterialization,
     post_selection_mace_run_configuration,
 )
+from mdstats.training_data.mace_compatibility import (
+    _mace_execution_membership_values,
+    mace_frame_uid_set_digest,
+)
 from mdstats.training_data.model_features import (
     build_mace_model_from_configuration,
     mace_model_execution_architecture_digest,
@@ -55,6 +60,7 @@ from mdstats.training_data.target_size_execution.evaluation import (
     EVALUATION_MODEL_STATE_EMA,
     EVALUATION_MODEL_STATE_LIVE,
 )
+from mdstats.training_data.replay import canonical_replay_geometry_identity
 from tests._mlff_post_selection_fixture import (
     PostSelectionHarness,
     build_selected_campaign,
@@ -120,6 +126,34 @@ def _two_condition_data4_bundle(
         partition_role_budget=neutral_fixtures._data4_role_budget(),
     )
     return manifest, sources, frames, data4
+
+
+def _write_single_source_replay_file(path: Path, indices: list[int]) -> None:
+    """Write a true-label replay source with only its existing geometry identity."""
+
+    from ase import Atoms
+    from ase.io import write
+
+    frames = []
+    for index in indices:
+        atoms = Atoms(
+            "LiO",
+            positions=(
+                (0.8 + 0.35 * index, 0.8, 0.8),
+                (4.5, 4.5, 4.5),
+            ),
+            cell=np.eye(3) * 10.0,
+            pbc=True,
+        )
+        atoms.info["REF_energy"] = -10.0 + 0.01 * index
+        atoms.info["replay_geometry_identity"] = canonical_replay_geometry_identity(atoms)
+        atoms.arrays["REF_forces"] = np.asarray(
+            [[0.1 + 0.001 * index, 0.0, 0.0], [-0.1 - 0.001 * index, 0.0, 0.0]],
+            dtype=np.float64,
+        )
+        frames.append(atoms)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write(path, frames, format="extxyz")
 
 
 @pytest.mark.parametrize("mode", ["scratch", "naive_fine_tuning"])
@@ -714,5 +748,158 @@ legacy_normalized = true
         expected_loss = 2.0 * expected_energy + 7.0 * expected_forces + 3.0 * expected_stress
         assert observed_loss == pytest.approx(float(expected_loss))
         assert evidence.runtime_summary_digest == summary.content_digest
+    finally:
+        store.close()
+
+
+def test_p5_real_single_source_replay_preserves_geometry_membership_and_views(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The assembled P5 owner trains from one prepared geometry-identity source."""
+
+    root = tmp_path / "inputs"
+    foundation = root / "foundation.model"
+    replay_source = root / "replay-source.extxyz"
+    foundation.parent.mkdir(parents=True, exist_ok=True)
+    _write_tiny_mace_foundation(foundation)
+    _write_single_source_replay_file(replay_source, list(range(12)))
+
+    config_text = fixture_config_text()
+    config_text = config_text.replace(
+        'training_root = "{training_root}"',
+        "\n".join(
+            (
+                'training_root = "{training_root}"',
+                f'foundation_model = "{foundation}"',
+                f'replay_set = "{replay_source}"',
+            )
+        ),
+    )
+    config_text = config_text.replace(
+        "batch_size = 4",
+        "batch_size = 4\nlearning_rate = 0.0123\nema = true\nema_decay = 0.87",
+        1,
+    )
+    config_text = config_text.replace(
+        "seeds = [1, 2]",
+        "seeds = [1, 2]\nmode = \"multihead_replay\"",
+        1,
+    )
+    config_text = config_text.replace("partition_seed = 7", "partition_seed = 2", 1)
+    config_text += """
+
+[objective]
+energy_weight = 2.0
+forces_weight = 7.0
+stress_weight = 3.0
+
+[replay]
+label_mode = "true_dft"
+split_ratio = "5:1"
+split_seed = 42
+allow_small_corpus = true
+minimum_train_configurations = 1
+minimum_monitor_configurations = 1
+require_target_elements = false
+
+[foundation]
+family = "mace_mpa_0"
+head = "default"
+legacy_normalized = true
+"""
+
+    config, _workspace = build_selected_campaign(
+        tmp_path / "campaign",
+        config_text=config_text,
+        data4_bundle=_two_condition_data4_bundle,
+    )
+    monkeypatch.setattr(
+        cli,
+        "_ensure_local_wrappers",
+        lambda _paths: {"mdstats-mace-train": p3_real._wrapper(tmp_path)},
+    )
+
+    cfg, paths, store = load_context(config)
+    try:
+        context = build_post_selection_context(
+            cfg,
+            paths,
+            store,
+            inference_evaluator=PostSelectionHarness().evaluate,
+        )
+        assert context.method.training_mode == "multihead_replay"
+        resolution = _resolve_post_selection_replay_resolution(context)
+        assert resolution is not None
+        assert resolution.interface == "single_source"
+        assert resolution.train_artifact.configuration_count == 10
+        assert resolution.monitor_artifact.configuration_count == 2
+        assert resolution.source_path == str(replay_source.resolve())
+
+        source_bytes = Path(resolution.source_path).read_bytes()
+        train_path = Path(resolution.train_path)
+        train_bytes = train_path.read_bytes()
+        source_values = _mace_execution_membership_values(
+            train_path, role="replay", head_name="pt_head"
+        )
+        assert len(source_values) == 10
+        assert all(value != "None" for value in source_values)
+        assert mace_frame_uid_set_digest(source_values)
+
+        projection = build_selected_relation_projection(context.selected)
+        replay_lineage_digest = compute_replay_lineage_digest(resolution)
+        cv_plan = build_post_selection_cv_plan(
+            context.selected,
+            context.method,
+            context.cv_policy,
+            projection=projection,
+            replay_lineage_digest=replay_lineage_digest,
+        )
+        fold = cv_plan.fold(0)
+        run_plan = build_cv_fold_run_plan(
+            cv_plan,
+            fold_index=fold.fold_index,
+            optimizer_seed=context.cv_policy.required_cv_seeds[0],
+            planned_epochs=context.cv_policy.cv_max_num_epochs,
+        )
+        evidence, _representative, _outer_metrics = execute_post_selection_run(
+            context,
+            run_plan=run_plan,
+            budget_policy=cv_training_budget_policy(context.method, context.cv_policy),
+            training_frame_uids=fold.training_frame_uids,
+            monitor_frame_uids=fold.checkpoint_monitor_frame_uids,
+            outer_evaluation_frame_uids=None,
+        )
+
+        run_root = context.run_root(run_plan.run_identity)
+        summary = load_train2_runtime_summary(run_root / "checkpoints")
+        mace_evidence = summary.mace_execution_evidence
+        assert mace_evidence is not None
+        assert mace_evidence["multiheads_finetuning"] is True
+        assert mace_evidence["replay_train_count"] == 10
+        assert mace_evidence["replay_frame_uid_set_digest"] == mace_frame_uid_set_digest(
+            source_values
+        )
+        assert mace_evidence["target_train_count"] == len(fold.training_frame_uids)
+        assert mace_evidence["target_frame_uid_set_digest"] == mace_frame_uid_set_digest(
+            fold.training_frame_uids
+        )
+
+        # A second invocation is the real persisted TRAIN2/P5 continuation
+        # owner.  It must authenticate the same replay membership and reuse the
+        # already prepared source/views without regeneration.
+        resumed, _resumed_representative, _resumed_outer = execute_post_selection_run(
+            context,
+            run_plan=run_plan,
+            budget_policy=cv_training_budget_policy(context.method, context.cv_policy),
+            training_frame_uids=fold.training_frame_uids,
+            monitor_frame_uids=fold.checkpoint_monitor_frame_uids,
+            outer_evaluation_frame_uids=None,
+        )
+        assert resumed.content_digest == evidence.content_digest
+        assert Path(resolution.source_path).read_bytes() == source_bytes
+        assert train_path.read_bytes() == train_bytes
+        assert compute_replay_lineage_digest(
+            _resolve_post_selection_replay_resolution(context)
+        ) == replay_lineage_digest
     finally:
         store.close()

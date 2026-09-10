@@ -45,6 +45,11 @@ MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD = 0.0
 MACE_EXECUTION_AUTHORITY_SCHEMA = "mdstats.mace-execution-authority.v1"
 MACE_EXECUTION_EVIDENCE_SCHEMA = "mdstats.mace-execution-evidence.v1"
 MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE = "MDSTATS_MACE_EXECUTION_AUTHORITY"
+# This discriminator routes the already-authenticated replay membership
+# through one representation at the MACE loader boundary. It is process-local
+# execution transport, not replay lineage or a second identity namespace.
+MACE_REPLAY_IDENTITY_DOMAIN_CANONICAL = "canonical_geometry"
+MACE_REPLAY_IDENTITY_DOMAIN_LEGACY = "legacy_geometry"
 
 MACE_SELECTED_HEAD_COMPATIBILITY_POLICY_SCHEMA = "mdstats.mace-selected-head-compatibility-policy.v1"
 MACE_MH1_SELECTED_HEAD_SHIM_VERSION = "mdstats.mh1-selected-head-reconstruction.2026-08.v1"
@@ -660,6 +665,113 @@ def mace_frame_uid_set_digest(frame_uids: Any) -> str:
     return digest({"frame_uids": sorted(values)})
 
 
+def _mace_execution_membership_values(
+    paths: Any,
+    *,
+    role: str,
+    head_name: str,
+) -> tuple[str, ...]:
+    """Resolve the one identity domain exported to the MACE collection.
+
+    Target DATA8 views expose target ``frame_uid`` values.  Single-source
+    replay views expose the already-authoritative
+    ``replay_geometry_identity`` instead, while supported legacy replay files
+    continue to expose their historical ``frame_uid`` values.  A replay file
+    must use exactly one of those domains for every frame; selecting a
+    per-frame fallback would make the membership digest depend on transport
+    accidents rather than on the authenticated replay authority.
+    """
+
+    if role not in {"target", "replay"}:
+        raise TrainingDataInputError(
+            f"MACE execution membership role is unsupported: {role!r}."
+        )
+    if isinstance(paths, (str, os.PathLike)):
+        path_values = (paths,)
+    else:
+        try:
+            path_values = tuple(paths)
+        except TypeError as exc:
+            raise TrainingDataInputError(
+                f"MACE {head_name} training files are not a path sequence."
+            ) from exc
+    if not path_values:
+        raise TrainingDataInputError(
+            f"MACE {head_name} training files are empty."
+        )
+
+    try:
+        from ase.io import iread
+    except ModuleNotFoundError as exc:  # pragma: no cover - dependency gate
+        raise TrainingDataInputError(
+            "ASE is required to resolve MACE execution membership."
+        ) from exc
+
+    values: list[str] = []
+    replay_identity_field: str | None = None
+    for raw_path in path_values:
+        path = Path(str(raw_path)).expanduser()
+        if not path.is_file():
+            raise TrainingDataInputError(
+                f"MACE {head_name} training file is missing: {path}"
+            )
+        try:
+            frames = iread(path, index=":", format="extxyz")
+            for frame_index, atoms in enumerate(frames):
+                info = getattr(atoms, "info", None)
+                if not isinstance(info, Mapping):
+                    raise TrainingDataInputError(
+                        f"MACE {head_name} frame {frame_index} has no metadata mapping."
+                    )
+                if role == "target":
+                    value = info.get("frame_uid")
+                    if value in (None, "") or not str(value).strip():
+                        raise TrainingDataInputError(
+                            f"MACE {head_name} target frame {frame_index} lacks frame_uid."
+                        )
+                else:
+                    present = tuple(
+                        field
+                        for field in ("frame_uid", "replay_geometry_identity")
+                        if field in info
+                    )
+                    if len(present) != 1:
+                        raise TrainingDataInputError(
+                            f"MACE {head_name} replay frame {frame_index} must expose "
+                            "exactly one of frame_uid or replay_geometry_identity."
+                        )
+                    field = present[0]
+                    if replay_identity_field is None:
+                        replay_identity_field = field
+                    elif replay_identity_field != field:
+                        raise TrainingDataInputError(
+                            f"MACE {head_name} replay training files mix identity "
+                            "domains."
+                        )
+                    value = info.get(field)
+                    if value in (None, "") or not str(value).strip():
+                        raise TrainingDataInputError(
+                            f"MACE {head_name} replay frame {frame_index} has an "
+                            f"empty {field}."
+                        )
+                    if field == "replay_geometry_identity":
+                        validate_digest(str(value), name=field)
+                values.append(str(value))
+        except TrainingDataInputError:
+            raise
+        except Exception as exc:
+            raise TrainingDataInputError(
+                f"MACE {head_name} execution could not read membership metadata "
+                f"from {path}."
+            ) from exc
+
+    # Keep the existing exact-set validation as the single digest/uniqueness
+    # owner.  The returned sequence is only used to associate the same tokens
+    # with MACE's in-memory Configuration objects before this digest is made.
+    mace_frame_uid_set_digest(values)
+    return tuple(values)
+
+
 def _execution_integer(
     value: Any,
     *,
@@ -754,6 +866,16 @@ def _normalize_mace_execution_authority(
     else:
         force_mh_ft_lr = None
         ratio_threshold = None
+    replay_identity_domain = payload.get("replay_identity_domain")
+    if replay_identity_domain is not None:
+        replay_identity_domain = str(replay_identity_domain)
+        if not multihead or replay_identity_domain not in {
+            MACE_REPLAY_IDENTITY_DOMAIN_CANONICAL,
+            MACE_REPLAY_IDENTITY_DOMAIN_LEGACY,
+        }:
+            raise TrainingDataInputError(
+                "MACE replay identity domain is invalid for this execution authority."
+            )
     target_count = _execution_integer(
         payload.get("target_train_count"), name="target count", minimum=1
     )
@@ -847,6 +969,7 @@ def _normalize_mace_execution_authority(
         "distributed_allowed": distributed_allowed,
         "target_frame_uid_set_digest": target_uid_digest,
         "replay_frame_uid_set_digest": replay_uid_digest,
+        "replay_identity_domain": replay_identity_domain,
         "target_head_name": target_head_name,
         "replay_head_name": replay_head_name,
         "source_probe_digest": source_probe_digest,

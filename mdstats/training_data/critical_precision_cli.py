@@ -218,6 +218,10 @@ def _validate_mace_execution_arguments(
         raise RuntimeError(f"MACE {stage} learning rate differs from authority.")
     if bool(getattr(args, "ema", False)) != bool(authority["ema"]):
         raise RuntimeError(f"MACE {stage} EMA flag differs from authority.")
+    if bool(getattr(args, "compute_avg_num_neighbors", False)):
+        raise RuntimeError(
+            f"MACE {stage} retained forbidden local average-neighbor recomputation."
+        )
     if authority["ema"] and not np.isclose(
         float(getattr(args, "ema_decay", float("nan"))),
         float(authority["ema_decay"]),
@@ -269,15 +273,44 @@ def _annotate_mace_collections_with_exported_uids(*, head_configs: Any) -> None:
 
     MACE 0.3.16 intentionally reduces ASE ``Atoms.info`` to its fixed
     ``Configuration`` fields and therefore does not preserve arbitrary
-    ``frame_uid`` metadata.  The wrapper re-associates the authenticated UID
-    sequence with the corresponding collection immediately after MACE's own
-    dataset loader returns.  A length/order mismatch fails closed; no UID is
+    membership metadata.  The wrapper re-associates the authenticated target
+    ``frame_uid`` or replay ``replay_geometry_identity`` sequence with the
+    corresponding collection immediately after MACE's own dataset loader
+    returns.  A length/order/identity-domain mismatch fails closed; no token is
     inferred from a position or regenerated locally.
     """
 
-    from ase.io import iread
+    from .mace_compatibility import (
+        MACE_REPLAY_IDENTITY_DOMAIN_CANONICAL,
+        MACE_REPLAY_IDENTITY_DOMAIN_LEGACY,
+        _mace_execution_membership_values,
+        mace_frame_uid_set_digest,
+    )
+    from .replay import (
+        canonical_replay_geometry_identity,
+        historical_replay_geometry_identity,
+    )
+
+    authority = _mace_execution_authority()
+    if authority is None:
+        raise RuntimeError(
+            "MACE execution membership annotation ran without launch authority."
+        )
+    target_name = str(authority["target_head_name"])
+    replay_name = str(authority["replay_head_name"])
+    multihead = bool(authority["multiheads_finetuning"])
 
     for head_config in head_configs:
+        head_name = str(getattr(head_config, "head_name", ""))
+        if head_name == target_name:
+            role = "target"
+        elif multihead and head_name == replay_name:
+            role = "replay"
+        else:
+            raise RuntimeError(
+                f"MACE execution cannot classify training head {head_name!r} "
+                "against the authenticated authority."
+            )
         train_files = getattr(head_config, "train_file", None)
         collections = getattr(head_config, "collections", None)
         train_collection = None if collections is None else getattr(collections, "train", None)
@@ -288,29 +321,107 @@ def _annotate_mace_collections_with_exported_uids(*, head_configs: Any) -> None:
             )
         if isinstance(train_files, (str, os.PathLike)):
             train_files = [train_files]
-        exported_uids: list[str] = []
-        for raw_path in train_files:
-            path = Path(str(raw_path)).expanduser()
-            if not path.is_file():
-                raise RuntimeError(
-                    f"MACE execution cannot authenticate missing training file: {path}"
-                )
-            try:
-                frames = iread(path, index=":", format="extxyz")
-                for atoms in frames:
-                    uid = atoms.info.get("frame_uid")
-                    if uid in (None, ""):
-                        raise RuntimeError(
-                            f"MACE training file {path} contains a frame without frame_uid."
-                        )
-                    exported_uids.append(str(uid))
-            except RuntimeError:
-                raise
-            except Exception as exc:
-                raise RuntimeError(
-                    f"MACE execution could not read exported UID metadata from {path}."
-                ) from exc
         collection_values = list(train_collection)
+        try:
+            if role == "target":
+                # Target frame_uid is retained by the existing exporter-facing
+                # metadata adapter. Unlike replay geometry, it cannot be
+                # reconstructed from a MACE Configuration, so keep the exact
+                # target-file metadata check at this boundary.
+                exported_uids = _mace_execution_membership_values(
+                    train_files,
+                    role=role,
+                    head_name=head_name,
+                )
+            else:
+                expected_replay_digest = authority.get(
+                    "replay_frame_uid_set_digest"
+                )
+                if expected_replay_digest is None:
+                    # Compatibility for older manually-authenticated launch
+                    # fixtures that predate replay geometry authority.
+                    exported_uids = _mace_execution_membership_values(
+                        train_files,
+                        role=role,
+                        head_name=head_name,
+                    )
+                else:
+                    identity_domain = authority.get("replay_identity_domain")
+                    if identity_domain == MACE_REPLAY_IDENTITY_DOMAIN_CANONICAL:
+                        # Current single-source P5 carries its authenticated
+                        # split domain through the existing launch authority.
+                        # The loaded Configuration is the only child-side
+                        # realization proof: do not retry a historical domain
+                        # or reopen replay ExtXYZ after this comparison fails.
+                        exported_uids = tuple(
+                            canonical_replay_geometry_identity(item)
+                            for item in collection_values
+                        )
+                    elif identity_domain == MACE_REPLAY_IDENTITY_DOMAIN_LEGACY:
+                        # Persisted legacy split artifacts own the historical
+                        # wrapped-fractional geometry identity. Keep this
+                        # compatibility path bounded to that one domain.
+                        exported_uids = tuple(
+                            historical_replay_geometry_identity(item)
+                            for item in collection_values
+                        )
+                    elif identity_domain is None:
+                        # Older manually-authenticated launch fixtures did not
+                        # carry a discriminator. Preserve their compatibility
+                        # boundary, but keep it separate from current P5,
+                        # whose authority always selects one explicit domain.
+                        canonical_geometry = tuple(
+                            canonical_replay_geometry_identity(item)
+                            for item in collection_values
+                        )
+                        if (
+                            mace_frame_uid_set_digest(canonical_geometry)
+                            == expected_replay_digest
+                        ):
+                            exported_uids = canonical_geometry
+                        else:
+                            historical_geometry = tuple(
+                                historical_replay_geometry_identity(item)
+                                for item in collection_values
+                            )
+                            if (
+                                mace_frame_uid_set_digest(historical_geometry)
+                                == expected_replay_digest
+                            ):
+                                exported_uids = historical_geometry
+                            else:
+                                metadata_uids = _mace_execution_membership_values(
+                                    train_files,
+                                    role=role,
+                                    head_name=head_name,
+                                )
+                                if (
+                                    mace_frame_uid_set_digest(metadata_uids)
+                                    == expected_replay_digest
+                                ):
+                                    exported_uids = metadata_uids
+                                else:
+                                    raise RuntimeError(
+                                        "MACE changed replay geometry membership, order, or "
+                                        "identity domain after authenticated launch."
+                                    )
+                    else:
+                        raise RuntimeError(
+                            "MACE replay execution authority carries an unsupported "
+                            "identity domain."
+                        )
+                    if (
+                        mace_frame_uid_set_digest(exported_uids)
+                        != expected_replay_digest
+                    ):
+                        raise RuntimeError(
+                            "MACE changed replay geometry membership, order, or "
+                            "identity domain after authenticated launch."
+                        )
+        except Exception as exc:
+            raise RuntimeError(
+                f"MACE {head_name} training membership could not be authenticated."
+            ) from exc
         if len(collection_values) != len(exported_uids):
             raise RuntimeError(
                 "MACE dataset loading changed the authenticated training collection "
@@ -321,7 +432,7 @@ def _annotate_mace_collections_with_exported_uids(*, head_configs: Any) -> None:
                 "MACE exported training files contain duplicate frame UIDs."
             )
         for item, uid in zip(collection_values, exported_uids):
-            setattr(item, "frame_uid", uid)
+            item.frame_uid = uid
 
 
 def _validate_mace_execution_loader(

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -17,16 +18,19 @@ pytest.importorskip("mace")
 from ase import Atoms
 from ase.io import write
 
-from mdstats.training_data._common import digest
+from mdstats.training_data._common import TrainingDataInputError, digest
 from mdstats.training_data.campaign_target_size_runtime import (
     TARGET_SIZE_MACE_HEAD_NAME,
     mace_run_configuration,
 )
 from mdstats.training_data.critical_precision_cli import (
+    _annotate_mace_collections_with_exported_uids,
     _install_mace_restart_epoch_patch,
 )
 from mdstats.training_data.mace_compatibility import (
     MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE,
+    MACE_REPLAY_IDENTITY_DOMAIN_CANONICAL,
+    _mace_execution_membership_values,
     build_mace_execution_authority,
     mace_execution_authority_to_environment,
     mace_execution_evidence_from_environment,
@@ -41,8 +45,10 @@ from mdstats.training_data.post_selection_execution import (
     POST_SELECTION_MACE_CONFIG_SCHEMA,
     POST_SELECTION_REPLAY_HEAD_NAME,
     POST_SELECTION_TARGET_HEAD_NAME,
+    _mace_execution_frame_uid_set_digest,
     post_selection_mace_run_configuration,
 )
+from mdstats.training_data.replay import canonical_replay_geometry_identity
 from mdstats.training_data.target_size_execution import TARGET_SIZE_MACE_CONFIG_SCHEMA
 
 
@@ -110,6 +116,39 @@ def _write_frames(path: Path, *, count: int, prefix: str) -> tuple[str, ...]:
         frames.append(atoms)
     write(path, frames, format="extxyz")
     return tuple(uids)
+
+
+def _write_replay_geometry_frames(
+    path: Path, *, count: int, prefix: str
+) -> tuple[str, ...]:
+    """Write single-source-style replay transport without target frame UIDs."""
+
+    frames = []
+    identities = []
+    for index in range(count):
+        atoms = Atoms(
+            "H2",
+            positions=((0.0, 0.0, 0.0), (0.75 + 0.01 * index, 0.0, 0.0)),
+            cell=(8.0, 8.0, 8.0),
+            pbc=True,
+        )
+        identity = canonical_replay_geometry_identity(atoms)
+        identities.append(identity)
+        atoms.info.update(
+            {
+                "REF_energy": float(index) * 0.01,
+                "REF_stress": np.zeros(6, dtype=float),
+                "replay_geometry_identity": identity,
+                "config_weight": 1.0,
+                "config_energy_weight": 1.0,
+                "config_forces_weight": 1.0,
+                "config_stress_weight": 1.0,
+            }
+        )
+        atoms.arrays["REF_forces"] = np.zeros((2, 3), dtype=float)
+        frames.append(atoms)
+    write(path, frames, format="extxyz")
+    return tuple(identities)
 
 
 def _architecture() -> dict:
@@ -499,3 +538,231 @@ def test_real_multihead_run_train_retains_native_loss_and_replay_controls(
         2.0 * expected_energy + 7.0 * expected_forces + 3.0 * expected_stress
     )
     assert observed == pytest.approx(float(expected))
+
+
+def test_real_multihead_single_source_replay_uses_geometry_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real MACE loader authenticates replay geometry identity without UID metadata."""
+
+    target_uids = _write_frames(
+        tmp_path / "target.extxyz", count=5, prefix="target"
+    )
+    _write_frames(tmp_path / "target-valid.extxyz", count=2, prefix="target-valid")
+    replay_identities = _write_replay_geometry_frames(
+        tmp_path / "replay.extxyz", count=6, prefix="replay"
+    )
+    _write_replay_geometry_frames(
+        tmp_path / "replay-valid.extxyz", count=2, prefix="replay-valid"
+    )
+
+    from tests._mlff_tiny_mace import _tiny_mace
+
+    foundation = tmp_path / "foundation.model"
+    torch = pytest.importorskip("torch")
+    torch.save(
+        _tiny_mace(
+            atomic_numbers=(1,),
+            heads=[POST_SELECTION_TARGET_HEAD_NAME],
+            dtype=torch.float64,
+        ),
+        foundation,
+    )
+    internal = _post_selection_internal_config(
+        target=tmp_path / "target.extxyz",
+        valid=tmp_path / "target-valid.extxyz",
+        replay=tmp_path / "replay.extxyz",
+        replay_valid=tmp_path / "replay-valid.extxyz",
+        foundation=foundation,
+    )
+    config = post_selection_mace_run_configuration(
+        internal, foundation_model_path=foundation
+    )
+    authority = build_mace_execution_authority(
+        role="post_selection",
+        config_digest=digest(internal),
+        method_identity_digest=digest({"method": "single-source-replay-test"}),
+        loss_family="stress",
+        learning_rate=0.0123,
+        ema=True,
+        ema_decay=0.87,
+        multiheads_finetuning=True,
+        force_mh_ft_lr=True,
+        real_pt_data_ratio_threshold=0.0,
+        target_train_count=5,
+        replay_train_count=6,
+        batch_size=2,
+        target_updates_per_epoch=None,
+        target_drop_last=None,
+        distributed_allowed=True,
+        target_frame_uid_set_digest=mace_frame_uid_set_digest(target_uids),
+        replay_frame_uid_set_digest=mace_frame_uid_set_digest(replay_identities),
+        target_head_name=POST_SELECTION_TARGET_HEAD_NAME,
+        replay_head_name=POST_SELECTION_REPLAY_HEAD_NAME,
+    )
+    _args, evidence, _captured = _run_with_real_parser_and_loader(
+        monkeypatch,
+        config=config,
+        authority=authority,
+        config_path=tmp_path / "single-source-replay-config.yaml",
+    )
+    assert evidence["target_train_count"] == 5
+    assert evidence["replay_train_count"] == 6
+    assert evidence["target_frame_uid_set_digest"] == mace_frame_uid_set_digest(
+        target_uids
+    )
+    assert evidence["replay_frame_uid_set_digest"] == mace_frame_uid_set_digest(
+        replay_identities
+    )
+    assert _mace_execution_membership_values(
+        tmp_path / "replay.extxyz", role="replay", head_name="pt_head"
+    ) == replay_identities
+
+
+def test_replay_execution_membership_rejects_mixed_identity_domains(tmp_path: Path) -> None:
+    """A replay file cannot select identity fields independently per frame."""
+
+    path = tmp_path / "mixed-replay.extxyz"
+    _write_replay_geometry_frames(path, count=2, prefix="replay")
+    from ase.io import read, write
+
+    frames = read(path, index=":", format="extxyz")
+    frames[0].info["frame_uid"] = "legacy-frame-0"
+    write(path, frames, format="extxyz")
+    with pytest.raises(TrainingDataInputError, match="identity"):
+        _mace_execution_membership_values(
+            path, role="replay", head_name=POST_SELECTION_REPLAY_HEAD_NAME
+        )
+
+
+def test_post_selection_launch_resolves_single_source_replay_identity(
+    tmp_path: Path,
+) -> None:
+    """The P5 launch owner binds its replay artifact to existing geometry identity."""
+
+    path = tmp_path / "replay.extxyz"
+    identities = _write_replay_geometry_frames(path, count=3, prefix="replay")
+    artifact = SimpleNamespace(path=path, configuration_count=len(identities))
+
+    assert _mace_execution_frame_uid_set_digest(
+        artifact, role="replay"
+    ) == mace_frame_uid_set_digest(identities)
+
+
+@pytest.mark.parametrize("periodic", [False, True])
+def test_canonical_replay_identity_is_stable_across_mace_configuration_boundary(
+    periodic: bool,
+) -> None:
+    """The existing canonical identity survives source-to-MACE representation."""
+
+    from mace.data import Configuration
+
+    atoms = Atoms(
+        "H2",
+        positions=((0.0, 0.0, 0.0), (0.75, 0.0, 0.0)),
+        cell=(8.0, 8.0, 8.0) if periodic else None,
+        pbc=periodic,
+    )
+    loaded = Configuration(
+        atomic_numbers=np.asarray(atoms.numbers, dtype=np.int64),
+        positions=np.asarray(atoms.positions, dtype=np.float64),
+        properties={},
+        property_weights={},
+        cell=None if not periodic else np.asarray(atoms.cell.array, dtype=np.float64),
+        pbc=None if not periodic else tuple(bool(value) for value in atoms.pbc),
+    )
+    assert canonical_replay_geometry_identity(atoms) == canonical_replay_geometry_identity(
+        loaded
+    )
+
+
+def _canonical_domain_authority(*, target_digest: str, replay_digest: str) -> dict:
+    return build_mace_execution_authority(
+        role="post_selection",
+        config_digest="a" * 64,
+        method_identity_digest="b" * 64,
+        loss_family="stress",
+        learning_rate=0.0123,
+        ema=False,
+        ema_decay=None,
+        multiheads_finetuning=True,
+        force_mh_ft_lr=True,
+        real_pt_data_ratio_threshold=0.0,
+        target_train_count=1,
+        replay_train_count=1,
+        batch_size=1,
+        target_updates_per_epoch=None,
+        target_drop_last=None,
+        distributed_allowed=True,
+        target_frame_uid_set_digest=target_digest,
+        replay_frame_uid_set_digest=replay_digest,
+        target_head_name=POST_SELECTION_TARGET_HEAD_NAME,
+        replay_head_name=POST_SELECTION_REPLAY_HEAD_NAME,
+        replay_identity_domain=MACE_REPLAY_IDENTITY_DOMAIN_CANONICAL,
+    )
+
+
+def test_current_single_source_replay_domain_fails_without_file_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A canonical loaded-geometry mismatch cannot reopen replay ExtXYZ."""
+
+    import mdstats.training_data.mace_compatibility as compatibility
+
+    target_path = tmp_path / "target.extxyz"
+    target_uid = _write_frames(target_path, count=1, prefix="target")[0]
+    replay_path = tmp_path / "replay.extxyz"
+    replay_path.write_text("not reread", encoding="utf-8")
+    target_item = Atoms(
+        "H2",
+        positions=((0.0, 0.0, 0.0), (0.75, 0.0, 0.0)),
+        cell=(8.0, 8.0, 8.0),
+        pbc=True,
+    )
+    target_item.info["frame_uid"] = target_uid
+    replay_item = Atoms(
+        "H2",
+        positions=((0.0, 0.0, 0.0), (0.75, 0.0, 0.0)),
+        cell=(8.0, 8.0, 8.0),
+        pbc=True,
+    )
+    expected_replay = canonical_replay_geometry_identity(replay_item)
+    authority = _canonical_domain_authority(
+        target_digest=mace_frame_uid_set_digest((target_uid,)),
+        replay_digest=mace_frame_uid_set_digest((expected_replay,)),
+    )
+    monkeypatch.setenv(
+        MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE,
+        mace_execution_authority_to_environment(authority),
+    )
+    original_membership_values = compatibility._mace_execution_membership_values
+
+    def fail_replay_file_scan(paths, *, role, head_name):
+        if role == "replay":
+            raise AssertionError("current canonical replay reopened its ExtXYZ")
+        return original_membership_values(paths, role=role, head_name=head_name)
+
+    monkeypatch.setattr(
+        compatibility,
+        "_mace_execution_membership_values",
+        fail_replay_file_scan,
+    )
+    heads = [
+        SimpleNamespace(
+            head_name=POST_SELECTION_TARGET_HEAD_NAME,
+            train_file=[target_path],
+            collections=SimpleNamespace(train=[target_item]),
+        ),
+        SimpleNamespace(
+            head_name=POST_SELECTION_REPLAY_HEAD_NAME,
+            train_file=[replay_path],
+            collections=SimpleNamespace(train=[replay_item]),
+        ),
+    ]
+
+    _annotate_mace_collections_with_exported_uids(head_configs=heads)
+    assert replay_item.frame_uid == expected_replay
+
+    replay_item.positions[1, 0] += 1.0e-4
+    with pytest.raises(RuntimeError, match="could not be authenticated"):
+        _annotate_mace_collections_with_exported_uids(head_configs=heads)

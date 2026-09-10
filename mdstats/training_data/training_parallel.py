@@ -51,6 +51,10 @@ class TrainingConcurrencyPolicy:
     observed_memory_growth_margin: float = 1.05
     observed_utilization_growth_margin: float = 1.05
     monitor_interval_seconds: float = 10.0
+    # Runtime-only freshness bound for the child progress observer. This is
+    # deliberately separate from the controller's telemetry cadence: a
+    # legitimate optimizer step may span more than one telemetry poll.
+    epoch_activity_timeout_seconds: float = 120.0
 
     def __post_init__(self) -> None:
         if int(self.requested_jobs) < 0:
@@ -85,6 +89,12 @@ class TrainingConcurrencyPolicy:
             )
         if float(self.monitor_interval_seconds) <= 0.0:
             raise ValueError("monitor_interval_seconds must be positive.")
+        if not math.isfinite(float(self.epoch_activity_timeout_seconds)) or float(
+            self.epoch_activity_timeout_seconds
+        ) < 0.0:
+            raise ValueError(
+                "epoch_activity_timeout_seconds must be finite and non-negative."
+            )
 
 
 @dataclass(frozen=True, slots=True)

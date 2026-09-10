@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import tests._mlff_post_selection_fixture as fx
@@ -29,6 +30,7 @@ from mdstats.training_data.campaign_post_selection import (
     load_current_selected_training_contexts,
 )
 from mdstats.training_data.campaign_post_selection_runtime import (
+    _resolve_post_selection_replay_resolution,
     build_post_selection_contexts,
     resolve_current_cv_acceptance,
     resolve_current_cv_plan,
@@ -40,6 +42,8 @@ from mdstats.training_data.campaign_target_size_state import (
 from mdstats.training_data.post_selection_publication import (
     resolve_current_final_production_publication,
 )
+from mdstats.training_data.replay import canonical_replay_geometry_identity
+from tests.test_mlff_target_size_p5_r9_guards import _write_tiny_mace_foundation
 
 #: Two CV-feasible qualified sizes from the fixture ladder ``[2, 4, 8, 16]``.
 FIRST_SIZE = 8
@@ -75,6 +79,76 @@ def _two_size_campaign(tmp_path: Path) -> Path:
     assert _select(config, str(FIRST_SIZE), "--horizon", "2") == 0
     assert _select(config, str(SECOND_SIZE), "--horizon", "3") == 0
     return config
+
+
+def _write_single_source_replay(path: Path, count: int = 12) -> None:
+    from ase import Atoms
+    from ase.io import write
+
+    frames = []
+    for index in range(count):
+        atoms = Atoms(
+            "LiO",
+            positions=((0.8 + 0.35 * index, 0.8, 0.8), (4.5, 4.5, 4.5)),
+            cell=(10.0, 10.0, 10.0),
+            pbc=True,
+        )
+        atoms.info["REF_energy"] = -10.0 + 0.01 * index
+        atoms.info["replay_geometry_identity"] = canonical_replay_geometry_identity(atoms)
+        atoms.arrays["REF_forces"] = np.asarray(
+            [[0.1 + 0.001 * index, 0.0, 0.0], [-0.1 - 0.001 * index, 0.0, 0.0]],
+            dtype=np.float64,
+        )
+        frames.append(atoms)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write(path, frames, format="extxyz")
+
+
+def _two_size_single_source_replay_campaign(tmp_path: Path) -> tuple[Path, Path]:
+    from unittest.mock import patch
+
+    replay_source = tmp_path / "replay-source.extxyz"
+    foundation = tmp_path / "foundation.model"
+    _write_single_source_replay(replay_source)
+    _write_tiny_mace_foundation(foundation)
+    config_text = fx.fixture_config_text()
+    config_text = config_text.replace(
+        'training_root = "{training_root}"',
+        "\n".join(
+            (
+                'training_root = "{training_root}"',
+                f'foundation_model = "{foundation}"',
+                f'replay_set = "{replay_source}"',
+            )
+        ),
+    )
+    config_text = config_text.replace(
+        "seeds = [1, 2]",
+        "seeds = [1, 2]\nmode = \"multihead_replay\"",
+        1,
+    )
+    config_text += """
+
+[replay]
+label_mode = "true_dft"
+split_ratio = "5:1"
+split_seed = 42
+allow_small_corpus = true
+minimum_train_configurations = 1
+minimum_monitor_configurations = 1
+require_target_elements = false
+
+[foundation]
+family = "mace_mpa_0"
+head = "default"
+legacy_normalized = true
+"""
+    with patch.object(p4d, "_CONFIG", config_text):
+        config, _workspace = p4d._fixture_campaign(tmp_path / "fixture")
+    assert p4d._run(config, "prepare") == 0
+    assert _select(config, str(FIRST_SIZE), "--horizon", "2") == 0
+    assert _select(config, str(SECOND_SIZE), "--horizon", "3") == 0
+    return config, replay_source
 
 
 def _contexts(config: Path):
@@ -159,6 +233,42 @@ def test_cross_validate_then_production_covers_every_frozen_size(tmp_path: Path)
     # A size can never consume its sibling's evidence.
     with pytest.raises(PostSelectionError, match="descends from"):
         contexts[0].selected.require_binding(contexts[1].selected.binding)
+
+
+def test_replay_enabled_multi_size_uses_one_geometry_identity_source_per_size(
+    tmp_path: Path,
+):
+    """Replay membership stays shared while P5 still executes both sizes."""
+
+    config, replay_source = _two_size_single_source_replay_campaign(tmp_path)
+    source_bytes = replay_source.read_bytes()
+
+    cv_harness = fx.PostSelectionHarness()
+    assert fx.run_cross_validate(config, cv_harness) == 0
+    _cfg, _paths, contexts = _contexts(config)
+    assert [context.selected.n_selected for context in contexts] == [FIRST_SIZE, SECOND_SIZE]
+    for context in contexts:
+        assert context.method.training_mode == "multihead_replay"
+        resolution = _resolve_post_selection_replay_resolution(context)
+        assert resolution is not None
+        assert resolution.interface == "single_source"
+        assert resolution.train_artifact.configuration_count == 10
+        assert resolution.monitor_artifact.configuration_count == 2
+        assert Path(resolution.source_path) == replay_source.resolve()
+
+    production = fx.PostSelectionHarness()
+    assert fx.run_train_production(config, production) == 0
+    assert len(production.requests) == 2
+    assert {request.replay_train_artifact.configuration_count for request in production.requests} == {
+        10
+    }
+    assert replay_source.read_bytes() == source_bytes
+
+    _cfg, _paths, contexts = _contexts(config)
+    assert [
+        resolve_current_final_production_plan(context).n_selected
+        for context in contexts
+    ] == [FIRST_SIZE, SECOND_SIZE]
 
 
 def test_production_admits_nothing_while_any_selected_size_lacks_accepted_cv(
@@ -540,4 +650,3 @@ def test_t3_exact_acceptance_policy_ancestry(tmp_path: Path):
             method_identity_digest=context.method.content_digest,
             selected_binding_digest=context.selected.binding.content_digest,
         )
-

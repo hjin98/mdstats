@@ -20,8 +20,13 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import math
 import os
+import shutil
+import signal
 import subprocess
+import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
@@ -38,15 +43,22 @@ from .campaign_post_selection import (
     PostSelectionError,
 )
 from .mace_compatibility import (
+    MACE_EXECUTABLE_LOSS_FAMILY as _MACE_EXECUTABLE_LOSS_FAMILY,
+)
+from .mace_compatibility import (
     MACE_REPLAY_FORCE_MH_FT_LR,
     MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
-    MACE_EXECUTABLE_LOSS_FAMILY as _MACE_EXECUTABLE_LOSS_FAMILY,
 )
 from .post_selection_identity import (
     POST_SELECTION_REPLAY_HEAD_NAME,
     POST_SELECTION_TARGET_HEAD_NAME,
     PostSelectionMethodIdentity,
     canonical_post_selection_head_names,
+)
+from .progress_timing import (
+    ProgressRateTracker,
+    format_progress_fraction,
+    format_progress_timing_fields,
 )
 
 POST_SELECTION_PREPARATION_SCHEMA = "mdstats.post-selection-fitted-preparation.v2"
@@ -553,6 +565,11 @@ def _post_selection_mace_config(
         "default_dtype": str(method.default_dtype),
         "device": str(optimizer_policy.device),
         "method_identity_digest": method.content_digest,
+        # MACE 0.3.16 otherwise recomputes this from the local training
+        # collection. The fitted value is a common architecture input, so
+        # local data must not be allowed to change it between target sizes or
+        # replay/target representations.
+        "compute_avg_num_neighbors": False,
         "mace_architecture": arch,
         "target_head_name": POST_SELECTION_TARGET_HEAD_NAME,
         "replay_head_name": POST_SELECTION_REPLAY_HEAD_NAME,
@@ -765,6 +782,20 @@ class PostSelectionRungRequest:
     replay_train_path: Path | None = None
     replay_monitor_artifact: Any | None = None
     replay_monitor_path: Path | None = None
+    # Parent-side source/split sequence used to compose the authenticated
+    # replay set digest. It is not serialized into the child environment.
+    replay_geometry_identities: tuple[str, ...] | None = None
+    # The following values are execution-only supervision seams. They are not
+    # persisted in the TRAIN2 plan, materialization, or evidence identities.
+    progress_context: Mapping[str, Any] | None = None
+    cancellation_event: Any | None = None
+    progress_callback: Callable[[str], None] | None = None
+    progress_observer: Callable[[Mapping[str, Any]], None] | None = None
+    telemetry_ref: Any | None = None
+    # Runtime-only freshness bound for optimizer liveness. It is resolved
+    # from the existing execution configuration and is not serialized into any
+    # scientific or restart identity.
+    optimizer_activity_timeout_seconds: float = 120.0
 
 
 class PostSelectionTrainer(Protocol):
@@ -780,39 +811,62 @@ class PostSelectionTrainer(Protocol):
         ...
 
 
-def _mace_execution_frame_uid_set_digest(artifact: Any) -> str | None:
-    """Resolve the UID set the dependency-facing MACE loader will observe.
+def _mace_execution_frame_uid_set_digest(
+    artifact: Any,
+    *,
+    role: str = "target",
+) -> str | None:
+    """Resolve the exact membership token set consumed by the MACE loader.
 
-    DATA8 artifacts retain explicit frame UIDs.  ReplayFileArtifact is an
-    existing path/content authority whose scientific record stores geometry
-    identities instead, so recover the already-exported ``frame_uid`` metadata
-    from that authenticated file at the launch boundary.  No UID is inferred
-    from geometry or regenerated when the exported identity is unavailable.
+    Target DATA8 artifacts already carry their authenticated ``frame_uids``.
+    Replay artifacts are resolved through the existing file metadata adapter:
+    single-source views use ``replay_geometry_identity`` and supported legacy
+    files retain their explicit ``frame_uid`` domain.  No token is inferred
+    from order, count, pathname, or a newly generated replay namespace.
     """
 
-    from .mace_compatibility import mace_frame_uid_set_digest
+    from .mace_compatibility import (
+        _mace_execution_membership_values,
+        mace_frame_uid_set_digest,
+    )
 
-    values = getattr(artifact, "frame_uids", None)
-    if values is None:
-        path_value = getattr(artifact, "path", None)
-        if path_value is None:
-            return None
-        try:
-            from ase.io import iread
-
-            values = tuple(
-                str(atoms.info.get("frame_uid"))
-                for atoms in iread(
-                    Path(str(path_value)).expanduser().resolve(),
-                    index=":",
-                    format="extxyz",
-                )
+    if role not in {"target", "replay"}:
+        raise PostSelectionExecutionError(
+            f"Unsupported MACE execution membership role: {role!r}."
+        )
+    if role == "target":
+        values = getattr(artifact, "frame_uids", None)
+        if values is None:
+            path_value = getattr(artifact, "path", None)
+            if path_value is None:
+                return None
+            values = _mace_execution_membership_values(
+                path_value,
+                role="target",
+                head_name="target",
             )
-        except Exception as exc:
-            raise PostSelectionExecutionError(
-                "Authenticated replay training input could not expose its "
-                "exported frame-UID metadata."
-            ) from exc
+    else:
+        # ReplayFileArtifact already owns the canonical replay geometry
+        # identities. Reuse that authenticated sequence at the parent
+        # boundary; reparsing the same ExtXYZ here was the first half of the
+        # P5 defect and made the child repeat it after MACE loaded its
+        # Configuration objects. The path adapter remains the compatibility
+        # route for older minimal artifacts that predate geometry identities.
+        values = getattr(artifact, "geometry_identities", None)
+        if values is None:
+            path_value = getattr(artifact, "path", None)
+            if path_value is None:
+                return None
+            values = _mace_execution_membership_values(
+                path_value,
+                role="replay",
+                head_name="replay",
+            )
+    expected_count = getattr(artifact, "configuration_count", None)
+    if expected_count is not None and len(tuple(values)) != int(expected_count):
+        raise TrainingDataInputError(
+            f"MACE {role} execution membership count differs from its artifact."
+        )
     return mace_frame_uid_set_digest(values)
 
 
@@ -823,16 +877,23 @@ def _build_post_selection_mace_execution_authority(
     executable_payload: Mapping[str, Any],
     optimizer_policy: Any,
     replay_train_artifact: Any | None,
+    replay_geometry_identities: Sequence[str] | None = None,
     structures_per_epoch: int | None = None,
 ) -> dict[str, Any]:
     """Build the one MACE authority used by launch and continuation checks."""
 
     from .mace_compatibility import (
+        MACE_REPLAY_IDENTITY_DOMAIN_CANONICAL,
+        MACE_REPLAY_IDENTITY_DOMAIN_LEGACY,
         build_mace_execution_authority,
+        mace_frame_uid_set_digest,
     )
 
     target_train_art = materialization.target_train_artifact
-    target_uid_digest = _mace_execution_frame_uid_set_digest(target_train_art)
+    target_uid_digest = _mace_execution_frame_uid_set_digest(
+        target_train_art,
+        role="target",
+    )
     internal_multihead = bool(internal_payload.get("multiheads_finetuning"))
     if internal_multihead:
         replay_count = int(
@@ -857,7 +918,23 @@ def _build_post_selection_mace_execution_authority(
         replay_count = 0
     replay_uid_digest = None
     if replay_train_artifact is not None:
-        replay_uid_digest = _mace_execution_frame_uid_set_digest(replay_train_artifact)
+        if replay_geometry_identities is None:
+            replay_uid_digest = _mace_execution_frame_uid_set_digest(
+                replay_train_artifact,
+                role="replay",
+            )
+        else:
+            replay_geometry_identities = tuple(
+                validate_digest(str(value), name="replay_geometry_identity")
+                for value in replay_geometry_identities
+            )
+            if len(replay_geometry_identities) != int(
+                getattr(replay_train_artifact, "configuration_count", replay_count)
+            ):
+                raise PostSelectionExecutionError(
+                    "P5 replay geometry transport does not match its artifact count."
+                )
+            replay_uid_digest = mace_frame_uid_set_digest(replay_geometry_identities)
 
     # Production projections always contain these canonical optimizer fields. A
     # few pre-launch guard fixtures intentionally stop at a minimal config
@@ -909,7 +986,387 @@ def _build_post_selection_mace_execution_authority(
             else POST_SELECTION_SINGLE_HEAD_NAME
         ),
         replay_head_name=POST_SELECTION_REPLAY_HEAD_NAME,
+        replay_identity_domain=(
+            MACE_REPLAY_IDENTITY_DOMAIN_CANONICAL
+            if internal_multihead and replay_geometry_identities is not None
+            else (
+                MACE_REPLAY_IDENTITY_DOMAIN_LEGACY
+                if internal_multihead
+                else None
+            )
+        ),
     )
+
+
+def _terminate_post_selection_process(
+    process: subprocess.Popen[Any], *, grace_seconds: float
+) -> None:
+    """Stop one detached wrapper/process group without leaving descendants."""
+
+    if process.poll() is not None:
+        return
+    grace = max(0.1, float(grace_seconds))
+
+    def send(signal_number: int) -> None:
+        if os.name == "posix":
+            try:
+                os.killpg(process.pid, signal_number)
+            except ProcessLookupError:
+                return
+        else:  # pragma: no cover - Windows fallback
+            if signal_number == signal.SIGKILL:
+                process.kill()
+            else:
+                process.terminate()
+
+    send(signal.SIGINT)
+    try:
+        process.wait(timeout=grace)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    send(signal.SIGTERM)
+    try:
+        process.wait(timeout=grace)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    send(signal.SIGKILL)
+    process.wait()
+
+
+def _bounded_process_output(stream: Any, *, limit: int = 64 * 1024) -> str:
+    """Read only the diagnostic tail of one completed subprocess stream."""
+
+    try:
+        stream.flush()
+        stream.seek(0, os.SEEK_END)
+        size = int(stream.tell())
+        stream.seek(max(0, size - int(limit)), os.SEEK_SET)
+        raw = stream.read(int(limit))
+    except (OSError, ValueError):
+        return ""
+    if isinstance(raw, bytes):
+        return raw.decode("utf-8", errors="replace")
+    return str(raw)
+
+
+class _PostSelectionTrainingProgress:
+    """Observe the existing MACE metrics stream for one supervised child."""
+
+    def __init__(
+        self,
+        request: PostSelectionRungRequest,
+        *,
+        metric_path: Path,
+        initial_summary: Any | None,
+        summary_loader: Callable[[Path], Any],
+    ) -> None:
+        self.metric_path = metric_path
+        self.summary_loader = summary_loader
+        self._launch_completed_updates = max(
+            0,
+            int(getattr(initial_summary, "completed_updates", 0) or 0),
+        )
+        self.last_visible_monotonic: float | None = None
+        self.started_monotonic = time.monotonic()
+        self.metric_offset = (
+            metric_path.stat().st_size if metric_path.is_file() else 0
+        )
+        self.metric_remainder = ""
+        self.optimizer_updates_since_launch = 0
+        try:
+            self.optimizer_activity_timeout_seconds = float(
+                getattr(request, "optimizer_activity_timeout_seconds", 120.0)
+            )
+        except (TypeError, ValueError) as exc:
+            raise PostSelectionExecutionError(
+                "Post-selection optimizer activity timeout is invalid."
+            ) from exc
+        if (
+            self.optimizer_activity_timeout_seconds < 0.0
+            or not math.isfinite(self.optimizer_activity_timeout_seconds)
+        ):
+            raise PostSelectionExecutionError(
+                "Post-selection optimizer activity timeout must be finite and non-negative."
+            )
+        self.last_optimizer_update_monotonic: float | None = None
+        self.last_loss: Any | None = None
+        self.last_metric_epoch: int | None = None
+        self.phase = "launching"
+        self.execution_phase = "launching"
+        self.summary = initial_summary
+        self.summary_signature: tuple[int, int] | None = None
+        self.completed_updates = self._launch_completed_updates
+        planned = getattr(initial_summary, "planned_updates", None)
+        self.planned_updates = (
+            None if planned in (None, 0) else max(1, int(planned))
+        )
+        self.completed_epochs = max(
+            0,
+            int(getattr(initial_summary, "completed_epochs", 0) or 0),
+        )
+        self.planned_epochs = max(
+            0,
+            int(
+                getattr(
+                    getattr(request.plan, "budget_policy", None),
+                    "planned_epochs",
+                    0,
+                )
+                or 0
+            ),
+        )
+        if self.planned_updates is None:
+            structures = getattr(request.plan, "structures_per_epoch", None)
+            # The post-selection runtime plan retains the target-side
+            # structures-presented identity for compatibility.  MACE's
+            # multihead loader, however, takes one combined target+replay
+            # collection, so the launch-time progress projection must use that
+            # authenticated loader count until the durable summary publishes
+            # its exact ``len(train_loader)`` value.
+            target_artifact = getattr(
+                getattr(request.materialization, "target_train_artifact", None),
+                "configuration_count",
+                None,
+            )
+            replay_artifact = getattr(
+                request.replay_train_artifact, "configuration_count", None
+            )
+            if target_artifact is not None:
+                structures = int(target_artifact) + (
+                    int(replay_artifact)
+                    if bool(getattr(request.plan, "replay_monitor_enabled", False))
+                    and replay_artifact is not None
+                    else 0
+                )
+            batch_size = getattr(request.optimizer_policy, "batch_size", None)
+            if (
+                structures is not None
+                and batch_size is not None
+                and int(structures) > 0
+                and int(batch_size) > 0
+                and self.planned_epochs > 0
+            ):
+                # Current post-selection execution retains MACE's native
+                # ``drop_last=True`` training-loader geometry. The target-size
+                # owner has a separate authenticated ``drop_last=False``
+                # rewrite, but this shared P5 trainer does not; use the same
+                # floor update count that TRAIN2 will observe after MACE
+                # constructs the real loader. The durable summary still
+                # supersedes this launch-time projection when available.
+                projected_updates = (
+                    int(structures) // int(batch_size)
+                    * self.planned_epochs
+                )
+                # A small fold can be below MACE's native full-batch
+                # projection. Until TRAIN2 publishes the actual loader
+                # geometry, retain an unknown horizon rather than exposing a
+                # zero denominator that makes a live optimizer event look
+                # invalid (and cannot satisfy the progress contract).
+                if projected_updates > 0:
+                    self.planned_updates = projected_updates
+        self.last_learning_rate = getattr(
+            initial_summary, "instantaneous_learning_rate", None
+        )
+        self.tracker = ProgressRateTracker(
+            completed=self.completed_updates,
+            started_at=self.started_monotonic,
+        )
+
+    def _read_metrics(self) -> None:
+        if not self.metric_path.is_file():
+            return
+        try:
+            size = int(self.metric_path.stat().st_size)
+        except OSError:
+            return
+        if size < self.metric_offset:
+            raise PostSelectionExecutionError(
+                "MACE training metrics stream was truncated during execution."
+            )
+        if size == self.metric_offset:
+            return
+        with self.metric_path.open("rb") as stream:
+            stream.seek(self.metric_offset)
+            chunk = stream.read()
+        self.metric_offset += len(chunk)
+        text = self.metric_remainder + chunk.decode("utf-8", errors="replace")
+        lines = text.splitlines(keepends=True)
+        self.metric_remainder = ""
+        if lines and not lines[-1].endswith(("\n", "\r")):
+            self.metric_remainder = lines.pop()
+        for line in lines:
+            try:
+                record = json.loads(line)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(record, Mapping):
+                continue
+            mode = str(record.get("mode", ""))
+            if mode == "opt":
+                # MetricsLogger writes this record only after MACE's optimizer
+                # step returns. Validation records never enter this numerator.
+                self.optimizer_updates_since_launch += 1
+                self.phase = "training"
+                self.execution_phase = "training"
+                self.last_optimizer_update_monotonic = time.monotonic()
+            elif mode == "eval":
+                self.phase = "validation"
+                self.execution_phase = "validation"
+            if "loss" in record:
+                self.last_loss = record.get("loss")
+            if record.get("epoch") is not None:
+                try:
+                    self.last_metric_epoch = int(record["epoch"])
+                except (TypeError, ValueError):
+                    pass
+
+    def refresh(self, checkpoint_directory: Path) -> dict[str, Any]:
+        summary_path = checkpoint_directory / "train2_runtime.json"
+        if summary_path.is_file():
+            try:
+                stat = summary_path.stat()
+                signature = (int(stat.st_size), int(stat.st_mtime_ns))
+            except OSError:
+                signature = None
+            if signature is not None and signature != self.summary_signature:
+                try:
+                    self.summary = self.summary_loader(checkpoint_directory)
+                except Exception:
+                    # Atomic publication can briefly expose a partial file. The
+                    # next control poll retries it; the child remains supervised.
+                    pass
+                else:
+                    self.summary_signature = signature
+        phase = getattr(self.summary, "phase", None)
+        if phase and self.execution_phase == "launching":
+            # A durable TRAIN2 phase may describe a learning-rate phase such
+            # as ``adaptation``. Keep it visible until the first live MACE
+            # record, but never treat that summary phase as optimizer-active
+            # scheduler evidence.
+            self.phase = str(phase)
+            if str(phase) in {"training", "validation"}:
+                self.execution_phase = str(phase)
+        learning_rate = getattr(
+            self.summary, "instantaneous_learning_rate", self.last_learning_rate
+        )
+        if learning_rate is not None:
+            self.last_learning_rate = learning_rate
+        # Read after the durable summary so a current validation metric remains
+        # the visible phase during a long evaluation interval instead of being
+        # overwritten by the summary's learning-rate phase.
+        self._read_metrics()
+        durable_updates = int(
+            getattr(self.summary, "completed_updates", 0) or 0
+        )
+        self.completed_updates = max(
+            durable_updates,
+            self._launch_completed_updates + self.optimizer_updates_since_launch,
+        )
+        planned = getattr(self.summary, "planned_updates", None)
+        if planned not in (None, 0):
+            self.planned_updates = max(1, int(planned))
+        epochs = getattr(self.summary, "completed_epochs", None)
+        if epochs is not None:
+            self.completed_epochs = max(self.completed_epochs, int(epochs))
+        now = time.monotonic()
+        last_update = self.last_optimizer_update_monotonic
+        optimizer_active = (
+            self.execution_phase == "training"
+            and self.optimizer_updates_since_launch > 0
+            and last_update is not None
+            and 0.0 <= now - last_update <= self.optimizer_activity_timeout_seconds
+        )
+        return {
+            "completed_updates": int(self.completed_updates),
+            "planned_updates": self.planned_updates,
+            "completed_epochs": int(self.completed_epochs),
+            "planned_epochs": int(self.planned_epochs),
+            "phase": self.phase,
+            "true_epoch": bool(optimizer_active),
+            "loss": self.last_loss,
+            "learning_rate": self.last_learning_rate,
+            "optimizer_updates_since_launch": int(
+                self.optimizer_updates_since_launch
+            ),
+        }
+
+    def emit(
+        self,
+        request: PostSelectionRungRequest,
+        *,
+        checkpoint_directory: Path,
+        visible_interval_seconds: float,
+        status: str,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        observation = self.refresh(checkpoint_directory)
+        callback = request.progress_observer
+        if callback is not None:
+            callback({**observation, "status": status, "alive": status == "running"})
+        now = time.monotonic()
+        last_visible = getattr(self, "last_visible_monotonic", None)
+        interval = max(0.05, float(visible_interval_seconds))
+        should_emit = force or last_visible is None or now - last_visible >= interval
+        if not should_emit:
+            return observation
+        self.last_visible_monotonic = now
+        total = observation["planned_updates"]
+        if total is None:
+            progress = f"{observation['completed_updates']:,}/? (--.-%)"
+            timing_total = max(1, int(observation["completed_updates"]) + 1)
+        else:
+            progress = format_progress_fraction(
+                int(observation["completed_updates"]), int(total)
+            )
+            timing_total = int(total)
+        snapshot = self.tracker.snapshot(
+            completed=int(observation["completed_updates"]),
+            total=timing_total,
+            now=now,
+        )
+        eta = snapshot.eta_seconds if total is not None else None
+        timing = format_progress_timing_fields(
+            elapsed_seconds=snapshot.elapsed_seconds,
+            eta_seconds=eta,
+            recent_rate=snapshot.recent_rate,
+            average_rate=snapshot.average_rate,
+            rate_unit="gradient-update/s",
+        )
+        telemetry = None
+        if isinstance(request.telemetry_ref, Mapping):
+            telemetry = request.telemetry_ref.get("sample")
+        if telemetry is None:
+            gpu_fields = ("gpu=unavailable", "vram=unavailable")
+        else:
+            total_bytes = max(1, int(getattr(telemetry, "total_bytes", 0)))
+            used_bytes = max(0, int(getattr(telemetry, "used_bytes", 0)))
+            gpu_fields = (
+                f"gpu={float(getattr(telemetry, 'utilization_percent', 0.0)):.0f}%",
+                f"vram={used_bytes / 1024**3:.1f}/{total_bytes / 1024**3:.1f}GiB",
+            )
+        fields = [
+            f"[TRAIN] status={status}",
+            f"progress={progress}",
+            "unit=gradient-update",
+            f"phase={observation['phase']}",
+            f"epoch={observation['completed_epochs']}/{observation['planned_epochs']}",
+            timing,
+            *gpu_fields,
+        ]
+        if observation["loss"] is not None:
+            fields.append(f"loss={observation['loss']}")
+        if observation["learning_rate"] is not None:
+            fields.append(f"lr={observation['learning_rate']}")
+        for key, value in (request.progress_context or {}).items():
+            fields.append(f"{key}={value}")
+        line = "; ".join(fields)
+        if request.progress_callback is None:
+            print(line, flush=True)
+        else:
+            request.progress_callback(line)
+        return observation
 
 
 @dataclass(frozen=True, slots=True)
@@ -917,10 +1374,16 @@ class MacePostSelectionTrainer:
     """The production trainer: drives MACE through the accepted wrapper script."""
 
     wrapper_path: Path
+    poll_interval_seconds: float = 1.0
+    visible_progress_interval_seconds: float = 10.0
+    minimum_free_disk_bytes: int | None = None
+    timeout_seconds: float | None = None
+    terminate_grace_seconds: float = 30.0
 
     def __call__(self, request: PostSelectionRungRequest) -> Any:
         import os
         import subprocess
+
         import yaml
 
         from ._common import sha256_file_cached
@@ -1217,6 +1680,7 @@ class MacePostSelectionTrainer:
             executable_payload=executable_payload,
             optimizer_policy=request.optimizer_policy,
             replay_train_artifact=request.replay_train_artifact,
+            replay_geometry_identities=request.replay_geometry_identities,
             structures_per_epoch=getattr(request.plan, "structures_per_epoch", None),
         )
 
@@ -1248,18 +1712,142 @@ class MacePostSelectionTrainer:
                 Path(request.replay_monitor_path).resolve()
             )
 
-        proc = subprocess.run(
-            command,
-            cwd=str(request.materialization_directory),
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
+        # MACE's MetricsLogger is the existing live-training observation
+        # stream. Start at its current byte boundary so a restart's historical
+        # lines cannot be counted twice; the authenticated TRAIN2 summary
+        # supplies the durable predecessor numerator and exact denominator.
+        seed_value = internal_payload.get(
+            "seed", getattr(request.optimizer_policy, "seed", 0)
         )
-        if proc.returncode != 0:
+        try:
+            seed_text = str(int(seed_value))
+        except (TypeError, ValueError):
+            seed_text = str(seed_value)
+        metric_path = run_root / "results" / (
+            f"{internal_payload.get('name', 'post-selection')}_run-{seed_text}_train.txt"
+        )
+        initial_summary = None
+        if (request.checkpoint_directory / "train2_runtime.json").is_file():
+            try:
+                initial_summary = load_train2_runtime_summary(
+                    request.checkpoint_directory
+                )
+            except Exception:
+                # Continuation authentication above remains authoritative. A
+                # transient/legacy summary is simply not used for the first
+                # heartbeat and is retried by the observer after launch.
+                initial_summary = None
+        progress = _PostSelectionTrainingProgress(
+            request,
+            metric_path=metric_path,
+            initial_summary=initial_summary,
+            summary_loader=load_train2_runtime_summary,
+        )
+        process: subprocess.Popen[Any] | None = None
+        poll_interval = max(0.05, float(self.poll_interval_seconds))
+        try:
+            with tempfile.TemporaryFile(mode="w+b") as stdout_file, tempfile.TemporaryFile(
+                mode="w+b"
+            ) as stderr_file:
+                process = subprocess.Popen(
+                    command,
+                    cwd=str(request.materialization_directory),
+                    env=env,
+                    stdin=subprocess.DEVNULL,
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                    start_new_session=(os.name == "posix"),
+                )
+                while True:
+                    return_code = process.poll()
+                    if return_code is None:
+                        if (
+                            request.cancellation_event is not None
+                            and request.cancellation_event.is_set()
+                        ):
+                            _terminate_post_selection_process(
+                                process,
+                                grace_seconds=self.terminate_grace_seconds,
+                            )
+                            progress.emit(
+                                request,
+                                checkpoint_directory=request.checkpoint_directory,
+                                visible_interval_seconds=self.visible_progress_interval_seconds,
+                                status="cancelled",
+                                force=True,
+                            )
+                            raise PostSelectionExecutionError(
+                                "Post-selection MACE training was cancelled."
+                            )
+                        if self.minimum_free_disk_bytes is not None:
+                            try:
+                                free_bytes = int(shutil.disk_usage(run_root).free)
+                            except OSError:
+                                free_bytes = None
+                            if (
+                                free_bytes is not None
+                                and free_bytes < int(self.minimum_free_disk_bytes)
+                            ):
+                                _terminate_post_selection_process(
+                                    process,
+                                    grace_seconds=self.terminate_grace_seconds,
+                                )
+                                progress.emit(
+                                    request,
+                                    checkpoint_directory=request.checkpoint_directory,
+                                    visible_interval_seconds=self.visible_progress_interval_seconds,
+                                    status="stopped-disk",
+                                    force=True,
+                                )
+                                raise PostSelectionExecutionError(
+                                    "Post-selection MACE training stopped because the "
+                                    "configured free-disk reserve was reached."
+                                )
+                        if self.timeout_seconds is not None:
+                            elapsed = time.monotonic() - progress.started_monotonic
+                            if elapsed >= float(self.timeout_seconds):
+                                _terminate_post_selection_process(
+                                    process,
+                                    grace_seconds=self.terminate_grace_seconds,
+                                )
+                                progress.emit(
+                                    request,
+                                    checkpoint_directory=request.checkpoint_directory,
+                                    visible_interval_seconds=self.visible_progress_interval_seconds,
+                                    status="stopped-timeout",
+                                    force=True,
+                                )
+                                raise PostSelectionExecutionError(
+                                    "Post-selection MACE training exceeded its configured timeout."
+                                )
+                    progress.emit(
+                        request,
+                        checkpoint_directory=request.checkpoint_directory,
+                        visible_interval_seconds=self.visible_progress_interval_seconds,
+                        status=(
+                            "running"
+                            if return_code is None
+                            else ("completed" if return_code == 0 else "failed")
+                        ),
+                        force=return_code is not None,
+                    )
+                    if return_code is not None:
+                        stdout_tail = _bounded_process_output(stdout_file)
+                        stderr_tail = _bounded_process_output(stderr_file)
+                        break
+                    time.sleep(poll_interval)
+        except BaseException:
+            if process is not None and process.poll() is None:
+                _terminate_post_selection_process(
+                    process,
+                    grace_seconds=self.terminate_grace_seconds,
+                )
+            raise
+        if return_code != 0:
             raise PostSelectionExecutionError(
-                f"Post-selection MACE training failed (exit {proc.returncode}):\n"
-                f"{proc.stderr}"
+                f"Post-selection MACE training failed (exit {return_code}):\n"
+                f"stdout:\n{stdout_tail}\n"
+                f"stderr:\n{stderr_tail}"
             )
 
         try:
@@ -1368,6 +1956,7 @@ _MACE_CONFIG_PASSTHROUGH_KEYS = (
     "eval_interval",
     "enable_cueq",
     "only_cueq",
+    "compute_avg_num_neighbors",
 )
 
 
@@ -1441,6 +2030,11 @@ def post_selection_mace_run_configuration(
     # value explicitly as well, otherwise a no-replay P5/final request is
     # silently promoted into multihead execution.
     result["multiheads_finetuning"] = multihead
+    if config.get("compute_avg_num_neighbors", False) is not False:
+        raise PostSelectionExecutionError(
+            "Post-selection MACE execution must disable local average-neighbor recomputation."
+        )
+    result["compute_avg_num_neighbors"] = False
     if multihead:
         configured_force = config.get(
             "force_mh_ft_lr", POST_SELECTION_REPLAY_FORCE_MH_FT_LR

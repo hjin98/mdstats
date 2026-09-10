@@ -176,7 +176,12 @@ def load_context(config: Path):
 
 
 def _seeded_raw_checkpoint(
-    directory, epoch: int, optimizer_seed: int, *, real_mace_checkpoint: bool = False
+    directory,
+    epoch: int,
+    optimizer_seed: int,
+    *,
+    real_mace_checkpoint: bool = False,
+    model=None,
 ):
     """A toy checkpoint whose bytes actually depend on the optimizer seed.
 
@@ -195,6 +200,9 @@ def _seeded_raw_checkpoint(
 
     path = directory / f"model_run-7_epoch-{epoch}.pt"
     if real_mace_checkpoint:
+        if model is not None:
+            torch.save(model, path)
+            return path
         from tests._mlff_tiny_mace import _tiny_mace
         from mdstats.training_data.post_selection_identity import (
             POST_SELECTION_REPLAY_HEAD_NAME,
@@ -220,6 +228,7 @@ def train_like_mace(
     request,
     *,
     real_mace_checkpoint: bool = False,
+    real_mace_model: bool = False,
     stop_after_epoch: int | None = None,
     fail_after_persist: bool = False,
 ):
@@ -257,7 +266,24 @@ def train_like_mace(
         metrics.write_text("", encoding="utf-8")
     handler = SimpleNamespace(io=SimpleNamespace(directory=str(checkpoint_dir)))
     train_loader = [object()]
-    model = torch.nn.Linear(3, 2, dtype=torch.float64)
+    internal_payload = None
+    if real_mace_model:
+        from mdstats.training_data.model_features import (
+            build_mace_model_from_configuration,
+        )
+
+        internal_payload = json.loads(
+            (
+                request.materialization_directory
+                / request.materialization.mace_config_relative_path
+            ).read_text(encoding="utf-8")
+        )
+        model = build_mace_model_from_configuration(
+            internal_payload,
+            foundation_model_path=getattr(request, "foundation_model_path", None),
+        )
+    else:
+        model = torch.nn.Linear(3, 2, dtype=torch.float64)
     base_lr = (
         float(request.plan.learning_rate_policy.base_learning_rate)
         if hasattr(request, "plan") and hasattr(request.plan, "learning_rate_policy")
@@ -290,6 +316,9 @@ def train_like_mace(
             executable_payload=executable_payload,
             optimizer_policy=request.optimizer_policy,
             replay_train_artifact=replay_artifact,
+            replay_geometry_identities=getattr(
+                request, "replay_geometry_identities", None
+            ),
         )
         authority = record_mace_execution_evidence(
             authority,
@@ -359,7 +388,11 @@ def train_like_mace(
         for _ in train_loader:
             p3c._step(model, optimizer, ema)
         _seeded_raw_checkpoint(
-            checkpoint_dir, epoch, seed, real_mace_checkpoint=real_mace_checkpoint
+            checkpoint_dir,
+            epoch,
+            seed,
+            real_mace_checkpoint=(real_mace_checkpoint or real_mace_model),
+            model=(model if real_mace_model else None),
         )
         with metrics.open("a", encoding="utf-8") as handle:
             handle.write(
@@ -389,10 +422,12 @@ class PostSelectionHarness:
         force_offset: float = 1.0e-4,
         run_force_offsets: dict[str, float] | None = None,
         real_mace_checkpoint: bool = False,
+        real_mace_model: bool = False,
     ) -> None:
         #: Publish genuine MACE model bytes, for tests that must drive the real
         #: deployment/ML-IAP export owners from a published member.
         self.real_mace_checkpoint = bool(real_mace_checkpoint)
+        self.real_mace_model = bool(real_mace_model)
         self.runs: list[str] = []
         self.requests: list[object] = []
         self.force_offset = force_offset
@@ -418,7 +453,9 @@ class PostSelectionHarness:
             json.loads(config_path.read_text(encoding="utf-8"))
         )["train_file"]
         return train_like_mace(
-            request, real_mace_checkpoint=self.real_mace_checkpoint
+            request,
+            real_mace_checkpoint=self.real_mace_checkpoint,
+            real_mace_model=self.real_mace_model,
         )
 
     def _offset_for(self, provider) -> float:
