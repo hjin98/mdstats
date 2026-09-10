@@ -3077,14 +3077,6 @@ def _post_selection_training_concurrency_policy(
                 120.0,
             )
         ),
-        memory_hazard_grace_seconds=float(
-            _cfg(
-                context.cfg,
-                "execution",
-                "parallel_training_memory_hazard_grace_seconds",
-                60.0,
-            )
-        ),
     )
 
 
@@ -3174,7 +3166,7 @@ def _execute_post_selection_pending_runs(
         AdaptiveTrainingConcurrency,
         TrainingAdmissionBlockedError,
         TrainingMemorySafetyError,
-        TrainingResourceError,
+        TrainingResourceObservabilityError,
         build_training_concurrency_plan,
         query_gpu_telemetry,
     )
@@ -3240,6 +3232,9 @@ def _execute_post_selection_pending_runs(
     last_sample_at = started
     last_report_at: float | None = None
     last_decision_reason = "initial one-job admission"
+    # Set from the last control observation: admission stops on any unsafe or
+    # unobservable aggregate-memory state, including while nothing is owned.
+    admission_blocked = False
     visible_interval = max(
         0.05,
         float(
@@ -3318,6 +3313,12 @@ def _execute_post_selection_pending_runs(
 
     def submit_available(executor: ThreadPoolExecutor) -> None:
         nonlocal next_task
+        if admission_blocked:
+            # The last control observation was over the envelope or blind. No
+            # new accelerator work is admitted until a trustworthy safe
+            # observation returns; the controller decides whether the condition
+            # is transient or terminal.
+            return
         # A zero target is a truthful resource state, not a value to floor.
         target = max(0, int(controller.target_jobs))
         while next_task < len(ordered_pending) and len(active) < target:
@@ -3357,7 +3358,8 @@ def _execute_post_selection_pending_runs(
         The authenticated TRAIN2 summary lets the existing continuation logic
         skip retraining, so no second scheduler, lease, or handoff record is
         involved, and each run reaches its own durable publication boundary in
-        frozen slot order independently of any sibling's outcome.
+        frozen slot order. This runs only after the whole TRAIN wave succeeded:
+        a failed wave raises before any post-TRAIN evaluation begins.
         """
 
         completed: dict[int, tuple[PostSelectionRunEvidence, Any, Any]] = {}
@@ -3400,7 +3402,6 @@ def _execute_post_selection_pending_runs(
         )
         return completed
 
-    train_failure: BaseException | None = None
     executor = ThreadPoolExecutor(
         max_workers=max(1, int(concurrency_plan.maximum_jobs)),
         thread_name_prefix="mdstats-p5-train",
@@ -3454,10 +3455,19 @@ def _execute_post_selection_pending_runs(
                     now=now,
                 )
                 last_decision_reason = decision.reason
+                admission_blocked = decision.memory_safe is not True
                 last_sample_at = now
                 if decision.memory_hazard:
                     # A resource stop before CUDA exhausts the device, routed
-                    # through the existing cancellation/reaping path.
+                    # through the existing cancellation/reaping path. An unknown
+                    # ``memory_safe`` means the live observation itself was lost,
+                    # which is the observability failure rather than an observed
+                    # envelope violation.
+                    if decision.memory_safe is None:
+                        raise TrainingResourceObservabilityError(
+                            "Stopping owned TRAIN2 execution because live GPU "
+                            f"memory safety is unobservable: {decision.reason}"
+                        )
                     raise TrainingMemorySafetyError(
                         "Stopping owned TRAIN2 execution before CUDA out of "
                         f"memory: {decision.reason}"
@@ -3479,29 +3489,15 @@ def _execute_post_selection_pending_runs(
             force=True,
         )
         executor.shutdown(wait=True, cancel_futures=True)
-        # An interrupt must stop promptly, and a resource stop must not start new
-        # accelerator work on a device that was already unsafe or infeasible.
-        # Any other child failure still lets every already authenticated sibling
-        # reach its own durable publication boundary, exactly as it did when one
-        # future owned the whole fold lifecycle.
-        if isinstance(
-            exc, (KeyboardInterrupt, SystemExit, TrainingResourceError)
-        ):
-            raise
-        train_failure = exc
-    else:
-        executor.shutdown(wait=True, cancel_futures=True)
-
-    try:
-        results = complete_eval2_for_trained_slots()
-    except BaseException as eval_failure:
-        if train_failure is None:
-            raise
-        # The originating TRAIN2 failure stays the reported cause.
-        raise train_failure from eval_failure
-    if train_failure is not None:
-        raise train_failure
-    return results
+        # A failed TRAIN wave ends this invocation. Owned children have been
+        # signalled and reaped above, and no fresh accelerator work may begin on
+        # a device whose TRAIN2 state is unknown or already unsafe. Progress is
+        # not lost: every authenticated TRAIN2 summary is durable, so the next
+        # healthy invocation resumes outstanding TRAIN2/EVAL2 work through the
+        # ordinary continuation path instead of a same-invocation sibling EVAL2.
+        raise
+    executor.shutdown(wait=True, cancel_futures=True)
+    return complete_eval2_for_trained_slots()
 
 
 def execute_post_selection_cross_validation(

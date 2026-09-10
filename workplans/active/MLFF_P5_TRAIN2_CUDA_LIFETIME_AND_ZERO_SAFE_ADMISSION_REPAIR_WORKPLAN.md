@@ -17,6 +17,38 @@ precedence: This workplan supersedes only the P5 TRAIN2 resource-admission, live
 
 # MLFF P5 TRAIN2 CUDA lifetime, zero-safe admission, and phase-ownership repair
 
+## 0-bis. Implementation round disposition (R1-R5 executed)
+
+R1-R4 are implemented by reduction in the existing owners, and R5-A/R5-B
+target-host evidence was collected on the RTX 3090 host against the real
+`05_mace_training/LTA/mpa0/FP32` N=512 campaign (log preserved there as
+`cross-validate-r5-evidence.log`).
+
+- **R5-A:** pre-recovery-preflight 0.9 GiB -> post-preflight/TRAIN-admission
+  1.2 GiB. The 0.3 GiB delta is CUDA context, not model scale, and the parent
+  process held 256 MiB for the whole run. The temporary architecture
+  classification leaves no model-scale residue on the real MACE/CuEq path. The
+  historical 20.2 GiB baseline was therefore not parent preflight residue; the
+  original OOM text attributes 19.18 GiB to a foreign PID while the failing
+  child itself held only 3.45 GiB.
+- **R5-B:** from a clean 1.2 GiB baseline the exact frozen method (batch_size=2,
+  CuEq, unchanged precision/replay/identity) peaked at 6.29 GiB for the
+  characterized fold and 11.65 GiB aggregate against the 21.6 GiB envelope, and
+  reached 10,370 gradient updates - 4.3x past the 2,411-update historical
+  failure point - with no OOM, no memory-safety stop, and no observability stop.
+  The controller promoted 1->2 on measured telemetry and refused a third job on
+  GPU utilization (98.0% >= 90.0%) while memory stayed safe. Stopped by operator
+  interrupt at the agreed bound; the device released fully (441 MiB, zero
+  compute apps), so no orphan GPU workers remained.
+- **Conclusion:** the frozen method fits the supported device with large margin.
+  No D3/D2 method/device-compatibility reopen is warranted.
+
+Remaining open items before PASS: the generated Architecture Manual PDF and its
+manifest are **unavailable/blocking** (the manifest's pinned pandoc 3.10.2 +
+typst 0.15.1 toolchain is not present on this host), and the independent D3
+falsification pass of Section 9 has not been performed. The branch-local
+Architecture Manual edits therefore remain **proposed**, not accepted-current.
+
 ## 0. Second-pass design closure disposition
 
 The second-pass workplan review is complete. The **workplan itself is PASS / frozen for the next implementation round**, while the currently reviewed implementation candidate `88e92650317687248221505b9fd7023954a8b2e4` remains **NO-PASS** until the bounded repairs and evidence below are complete.

@@ -461,6 +461,9 @@ class PostSelectionHarness:
         self.real_mace_model = bool(real_mace_model)
         self.runs: list[str] = []
         self.requests: list[object] = []
+        #: Monotonic timestamp of every EVAL2 provider call, so a test can show
+        #: that post-TRAIN evaluation did or did not begin, and when.
+        self.evaluations: list[float] = []
         self.force_offset = force_offset
         #: Per-run force error, keyed by a substring of the run identity, so a
         #: test can give two production seeds deliberately different M3 target
@@ -498,8 +501,11 @@ class PostSelectionHarness:
         return float(self.force_offset)
 
     def evaluate(self, provider, atoms_list):
+        import time
+
         from mdstats.training_data.mace_export import MaceExtxyzPolicy
 
+        self.evaluations.append(time.monotonic())
         policy = MaceExtxyzPolicy()
         offset = self._offset_for(provider)
         predictions = []

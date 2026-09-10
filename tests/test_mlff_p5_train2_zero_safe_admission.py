@@ -65,12 +65,11 @@ def _no_cv_acceptance(config: Path) -> None:
 
 
 class _TimedHarness(fx.PostSelectionHarness):
-    """Records when TRAIN2 and EVAL2 actually executed, in real time."""
+    """Records when TRAIN2 actually executed; the base records EVAL2."""
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self.train_windows: list[tuple[float, float]] = []
-        self.evaluations: list[float] = []
 
     def train(self, request):
         started = time.monotonic()
@@ -78,10 +77,6 @@ class _TimedHarness(fx.PostSelectionHarness):
             return super().train(request)
         finally:
             self.train_windows.append((started, time.monotonic()))
-
-    def evaluate(self, provider, atoms_list):
-        self.evaluations.append(time.monotonic())
-        return super().evaluate(provider, atoms_list)
 
 
 # --- 1. Zero safe admission is representable end to end --------------------
@@ -492,7 +487,6 @@ def test_a_sustained_memory_hazard_stops_owned_training_before_cuda_oom(
         execution="\n".join(
             (
                 "parallel_training_monitor_interval_seconds = 0.05",
-                "parallel_training_memory_hazard_grace_seconds = 0.0",
                 "parallel_training_epoch_stabilization_seconds = 0.0",
                 "training_progress_interval_seconds = 0.05",
             )
@@ -545,3 +539,186 @@ def test_a_sustained_memory_hazard_stops_owned_training_before_cuda_oom(
     assert "training envelope" in str(stop.value)
     assert len(harness.runs) == 1, "admission must not have launched a second job"
     _no_cv_acceptance(config)
+
+
+# --- 7. Runtime memory-observability loss fails closed ---------------------
+
+
+def test_runtime_memory_observability_loss_stops_owned_training(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Live accelerator work may not continue without a memory observation.
+
+    Admission sees a trustworthy clean device, and the observation is then lost
+    while the child holds the accelerator. The real P5 supervision owner must
+    stop the wave through the existing typed resource path rather than treat an
+    unobservable device as implicitly safe.
+    """
+
+    from dataclasses import replace
+
+    from mdstats.training_data import _campaign_cli_core as cli
+    from mdstats.training_data import training_parallel
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        build_post_selection_contexts,
+        execute_post_selection_cross_validation,
+    )
+    from mdstats.training_data.training_parallel import (
+        GpuTelemetrySample,
+        TrainingResourceObservabilityError,
+    )
+
+    gib = 1024 ** 3
+    config = _selected_campaign(
+        tmp_path,
+        execution="\n".join(
+            (
+                "parallel_training_monitor_interval_seconds = 0.05",
+                "parallel_training_epoch_stabilization_seconds = 0.0",
+                "training_progress_interval_seconds = 0.05",
+            )
+        ),
+    )
+
+    live = {"training": False}
+
+    def telemetry(device: str):
+        if live["training"]:
+            return None
+        return GpuTelemetrySample(
+            sampled_monotonic=time.monotonic(),
+            device_index=0,
+            utilization_percent=4.0,
+            used_bytes=int(0.4 * gib),
+            total_bytes=24 * gib,
+        )
+
+    monkeypatch.setattr(training_parallel, "query_gpu_telemetry", telemetry)
+
+    harness = _SlowTrain(live=live, seconds=2.0)
+    cfg, paths = cli._load_config(config)
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        context = build_post_selection_contexts(
+            cfg,
+            paths,
+            store,
+            trainer=harness.train,
+            inference_evaluator=harness.evaluate,
+            admit=True,
+        )[0]
+        context = replace(
+            context,
+            method_policies=replace(context.method_policies, device="cuda:0"),
+        )
+        with pytest.raises(TrainingResourceObservabilityError) as stop:
+            execute_post_selection_cross_validation(context)
+    finally:
+        store.close()
+
+    assert "unobservable" in str(stop.value)
+    assert len(harness.runs) == 1, "admission must not have launched a second job"
+    _no_cv_acceptance(config)
+
+
+# --- 8. A failed TRAIN wave terminates before EVAL2 ------------------------
+
+
+class _SecondTrainFails(_TimedHarness):
+    """The first slot reaches an authenticated TRAIN2 summary; the next fails."""
+
+    def train(self, request):
+        if self.runs:
+            self.runs.append(request.run_plan.run_identity)
+            raise RuntimeError("simulated later TRAIN2 child failure")
+        return super().train(request)
+
+
+def test_a_failed_train_wave_starts_no_eval2_and_preserves_trained_state(
+    tmp_path: Path,
+) -> None:
+    """A generic TRAIN2 failure ends the invocation before any EVAL2 begins.
+
+    The historical behavior evaluated every already-trained sibling and only
+    then re-raised, so a device whose TRAIN2 state was unknown received fresh
+    accelerator work. Progress is still preserved: the authenticated TRAIN2
+    summary of the completed slot is the restart boundary, and a later healthy
+    invocation reuses it instead of retraining.
+    """
+
+    config = _selected_campaign(tmp_path)
+    failing = _SecondTrainFails()
+    with pytest.raises(RuntimeError, match="simulated later TRAIN2 child failure"):
+        fx.run_cross_validate(config, failing)
+    assert len(failing.train_windows) == 1, "one slot must have completed TRAIN2"
+    assert failing.evaluations == [], (
+        "EVAL2 ran for a previously trained sibling after the TRAIN wave failed"
+    )
+    _no_cv_acceptance(config)
+
+    resumed = _TimedHarness()
+    assert fx.run_cross_validate(config, resumed) == 0
+    assert len(resumed.runs) == 1, (
+        "the completed slot's authenticated TRAIN2 continuation was not reused; "
+        f"the rerun retrained {resumed.runs}"
+    )
+    assert resumed.evaluations, "the healthy rerun must reach EVAL2"
+    cfg, paths, store = fx.load_context(config)
+    try:
+        from mdstats.training_data.campaign_post_selection_runtime import (
+            build_post_selection_contexts,
+        )
+
+        contexts = build_post_selection_contexts(
+            cfg, paths, store, trainer=None, inference_evaluator=None
+        )
+        assert resolve_current_cv_acceptance(contexts[0]).accepted
+    finally:
+        store.close()
+
+
+class _TrainAlwaysFails(_TimedHarness):
+    def train(self, request):
+        self.runs.append(request.run_plan.run_identity)
+        raise RuntimeError("simulated production TRAIN2 child failure")
+
+
+def test_final_production_shares_the_failure_before_eval2_owner(
+    tmp_path: Path,
+) -> None:
+    """Final production uses the same corrected TRAIN admission/failure owner."""
+
+    config = _selected_campaign(tmp_path)
+    assert fx.run_cross_validate(config, _TimedHarness()) == 0
+
+    failing = _TrainAlwaysFails()
+    with pytest.raises(RuntimeError, match="simulated production TRAIN2 child failure"):
+        fx.run_train_production(config, failing)
+    assert failing.runs, "the production TRAIN wave must have been entered"
+    assert failing.evaluations == [], (
+        "final production began EVAL2 after its TRAIN wave failed"
+    )
+
+
+# --- 9. No operator-facing memory-hazard debounce knob exists --------------
+
+
+def test_no_operator_facing_memory_hazard_grace_key_exists() -> None:
+    """The transient-observation bound is controller-local, not configuration.
+
+    Operator tuning was never an accepted requirement, so neither the
+    production configuration path nor the checked-in operator example may carry
+    a latent, undocumented debounce key.
+    """
+
+    from mdstats.training_data.training_parallel import TrainingConcurrencyPolicy
+
+    key = "parallel_training_memory_hazard_grace_seconds"
+    runtime_source = Path(runtime.__file__).read_text(encoding="utf-8")
+    assert key not in runtime_source
+    example = Path(runtime.__file__).resolve().parents[2] / "campaign.toml.example"
+    assert example.is_file()
+    assert key not in example.read_text(encoding="utf-8")
+    assert not hasattr(
+        TrainingConcurrencyPolicy(), "memory_hazard_grace_seconds"
+    )

@@ -653,9 +653,7 @@ def test_unobservable_device_memory_blocks_automatic_admission() -> None:
 def test_memory_hazard_is_detected_before_true_epoch_readiness() -> None:
     """An over-envelope child in initialization is a hazard, not "waiting"."""
 
-    policy = TrainingConcurrencyPolicy(
-        epoch_stabilization_seconds=0.0, memory_hazard_grace_seconds=60.0
-    )
+    policy = TrainingConcurrencyPolicy(epoch_stabilization_seconds=0.0)
     controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
 
     early = controller.observe(
@@ -677,9 +675,7 @@ def test_memory_hazard_is_detected_before_true_epoch_readiness() -> None:
 def test_a_transient_vram_spike_does_not_stop_training() -> None:
     """The bounded debounce must not convert a fluctuation into a stop."""
 
-    policy = TrainingConcurrencyPolicy(
-        epoch_stabilization_seconds=0.0, memory_hazard_grace_seconds=60.0
-    )
+    policy = TrainingConcurrencyPolicy(epoch_stabilization_seconds=0.0)
     controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
     assert not controller.observe(
         _sample(5.0, 22.0, 80.0), active_jobs=1, epoch_active_jobs=1, now=5.0
@@ -697,9 +693,7 @@ def test_a_transient_vram_spike_does_not_stop_training() -> None:
 def test_an_idle_baseline_above_the_envelope_is_not_a_hazard_stop() -> None:
     """With nothing admitted there is no owned execution to stop."""
 
-    policy = TrainingConcurrencyPolicy(
-        epoch_stabilization_seconds=0.0, memory_hazard_grace_seconds=0.0
-    )
+    policy = TrainingConcurrencyPolicy(epoch_stabilization_seconds=0.0)
     controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
     decision = controller.observe(
         _sample(5.0, 23.0, 0.0), active_jobs=0, epoch_active_jobs=0, now=5.0
@@ -718,7 +712,6 @@ def test_active_work_consuming_capacity_holds_instead_of_collapsing_to_zero() ->
     policy = TrainingConcurrencyPolicy(
         epoch_stabilization_seconds=0.0,
         stability_samples=4,
-        memory_hazard_grace_seconds=600.0,
     )
     controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
     decision = None
@@ -736,25 +729,80 @@ def test_active_work_consuming_capacity_holds_instead_of_collapsing_to_zero() ->
     assert "not admitted" in decision.reason
 
 
-def test_over_envelope_occupancy_with_several_jobs_still_throttles() -> None:
-    """Memory safety must not short-circuit the accepted saturation throttle.
+def test_a_transient_multi_job_over_envelope_sample_admits_nothing_but_survives() -> None:
+    """One over-envelope observation blocks admission at any active-job count.
 
-    Two already-running jobs are not killed for being over the envelope: the
-    calibrated throttle lowers the replacement target so concurrency falls when
-    an active run finishes. Only a single owned job, which throttling cannot
-    relieve, escalates to a stop.
+    Throttling future replacements cannot return memory that already-running
+    jobs hold, so the old "two or more jobs are exempt" branch is gone. A single
+    observation is still only a candidate hazard.
     """
 
     policy = TrainingConcurrencyPolicy(
-        epoch_stabilization_seconds=0.0,
-        stability_samples=4,
-        memory_hazard_grace_seconds=0.0,
+        epoch_stabilization_seconds=0.0, stability_samples=4
+    )
+    controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
+    controller.target_jobs = 3
+    decision = controller.observe(
+        _sample(1.0, 22.0, 85.0), active_jobs=2, epoch_active_jobs=2, now=1.0
+    )
+    assert decision.memory_safe is False
+    assert not decision.memory_hazard
+    assert controller.target_jobs == 2, "no further TRAIN2 work may be admitted"
+    assert "training envelope" in decision.reason
+
+
+def test_a_recovered_multi_job_sample_clears_the_unsafe_observation() -> None:
+    """A single unsafe sample must not become a stop when memory recovers."""
+
+    policy = TrainingConcurrencyPolicy(
+        epoch_stabilization_seconds=0.0, stability_samples=4
+    )
+    controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
+    controller.target_jobs = 2
+    controller.observe(
+        _sample(1.0, 22.0, 85.0), active_jobs=2, epoch_active_jobs=2, now=1.0
+    )
+    recovered = controller.observe(
+        _sample(2.0, 12.0, 40.0), active_jobs=2, epoch_active_jobs=2, now=2.0
+    )
+    assert recovered.memory_safe is True
+    assert not recovered.memory_hazard
+    assert not controller.observe(
+        _sample(3.0, 22.0, 85.0), active_jobs=2, epoch_active_jobs=2, now=3.0
+    ).memory_hazard, "the unsafe window restarts after a safe observation"
+
+
+def test_sustained_multi_job_over_envelope_occupancy_is_a_terminal_hazard() -> None:
+    """Two jobs over the envelope are cancelled, not left to reach CUDA OOM."""
+
+    policy = TrainingConcurrencyPolicy(
+        epoch_stabilization_seconds=0.0, stability_samples=4
+    )
+    controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
+    controller.target_jobs = 2
+    first = controller.observe(
+        _sample(1.0, 22.0, 85.0), active_jobs=2, epoch_active_jobs=2, now=1.0
+    )
+    sustained = controller.observe(
+        _sample(2.0, 22.0, 85.0), active_jobs=2, epoch_active_jobs=2, now=2.0
+    )
+    assert not first.memory_hazard
+    assert sustained.memory_hazard
+    assert sustained.memory_safe is False
+    assert "21.6 GiB training envelope" in sustained.reason
+
+
+def test_gpu_utilization_saturation_alone_stays_a_soft_replacement_throttle() -> None:
+    """Utilization saturation with safe memory never kills running work."""
+
+    policy = TrainingConcurrencyPolicy(
+        epoch_stabilization_seconds=0.0, stability_samples=4
     )
     controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
     controller.target_jobs = 2
     decisions = [
         controller.observe(
-            _sample(float(second), 22.0, 85.0),
+            _sample(float(second), 12.0, 96.0),
             active_jobs=2,
             epoch_active_jobs=2,
             now=float(second),
@@ -762,11 +810,135 @@ def test_over_envelope_occupancy_with_several_jobs_still_throttles() -> None:
         for second in range(1, 6)
     ]
     assert not any(item.memory_hazard for item in decisions), (
-        "running work must not be killed"
+        "running work must not be killed for utilization alone"
     )
-    assert all(item.memory_safe is False for item in decisions)
+    assert all(item.memory_safe is True for item in decisions)
     throttled = [item for item in decisions if "throttled" in item.reason]
     assert len(throttled) == 1, [item.reason for item in decisions]
     assert throttled[0].changed
     assert throttled[0].target_jobs == 1
     assert controller.target_jobs == 1
+
+
+# --- Runtime memory observability fails closed ------------------------------
+
+
+def test_one_missing_memory_observation_blocks_promotion_and_can_recover() -> None:
+    """A single blind control sample is tolerated after a safe observation."""
+
+    policy = TrainingConcurrencyPolicy(
+        epoch_stabilization_seconds=0.0, stability_samples=2
+    )
+    controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
+    controller.observe(
+        _sample(1.0, 6.0, 30.0), active_jobs=1, epoch_active_jobs=1, now=1.0
+    )
+    blind = controller.observe(None, active_jobs=1, epoch_active_jobs=1, now=2.0)
+    assert blind.memory_safe is None
+    assert not blind.memory_hazard
+    assert controller.target_jobs == 1, "no promotion while memory is unobservable"
+    recovered = controller.observe(
+        _sample(3.0, 6.0, 30.0), active_jobs=1, epoch_active_jobs=1, now=3.0
+    )
+    assert recovered.memory_safe is True
+    assert not recovered.memory_hazard
+
+
+def test_persistent_memory_observability_loss_terminates_the_train_wave() -> None:
+    """Active accelerator work may not continue without live memory evidence."""
+
+    policy = TrainingConcurrencyPolicy(
+        epoch_stabilization_seconds=0.0, stability_samples=2
+    )
+    controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
+    controller.observe(
+        _sample(1.0, 6.0, 30.0), active_jobs=1, epoch_active_jobs=1, now=1.0
+    )
+    assert not controller.observe(
+        None, active_jobs=1, epoch_active_jobs=1, now=2.0
+    ).memory_hazard
+    terminal = controller.observe(None, active_jobs=1, epoch_active_jobs=1, now=3.0)
+    assert terminal.memory_hazard
+    assert terminal.memory_safe is None, (
+        "an unknown memory state must stay distinguishable from an observed "
+        "envelope violation"
+    )
+    assert "no trustworthy current GPU-memory observation" in terminal.reason
+
+
+def test_observability_loss_after_an_unsafe_sample_is_immediately_terminal() -> None:
+    """Recovery from an unsafe state cannot be established blind."""
+
+    policy = TrainingConcurrencyPolicy(
+        epoch_stabilization_seconds=0.0, stability_samples=2
+    )
+    controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
+    unsafe = controller.observe(
+        _sample(1.0, 22.0, 30.0), active_jobs=1, epoch_active_jobs=1, now=1.0
+    )
+    assert not unsafe.memory_hazard
+    terminal = controller.observe(None, active_jobs=1, epoch_active_jobs=1, now=2.0)
+    assert terminal.memory_hazard
+    assert terminal.memory_safe is None
+
+
+def test_observability_loss_with_no_owned_work_admits_nothing_without_a_stop() -> None:
+    """With nothing admitted there is no owned execution to cancel."""
+
+    policy = TrainingConcurrencyPolicy(
+        epoch_stabilization_seconds=0.0, stability_samples=2
+    )
+    controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
+    first = controller.observe(None, active_jobs=0, epoch_active_jobs=0, now=1.0)
+    assert not first.memory_hazard
+    assert first.memory_safe is None, "the scheduler must not admit on this sample"
+    assert controller.target_jobs == 1, (
+        "one blind observation with nothing owned is still only a recheck"
+    )
+    second = controller.observe(None, active_jobs=0, epoch_active_jobs=0, now=2.0)
+    assert not second.memory_hazard, "there is no owned wave to cancel"
+    assert controller.target_jobs == 0, (
+        "persistent blindness with nothing owned is zero safe admission, which "
+        "the scheduler reports through its existing idle-queue rule"
+    )
+
+
+def test_a_transient_idle_over_envelope_sample_recovers_without_terminating() -> None:
+    """Occupancy seen between two folds must not kill a healthy campaign.
+
+    The scheduler samples after a child exits and before the next is submitted,
+    so a not-yet-released allocation can be observed with nothing owned. That
+    blocks admission for the interval, but only a persistent condition collapses
+    the calibrated target to zero safe admission.
+    """
+
+    policy = TrainingConcurrencyPolicy(
+        epoch_stabilization_seconds=0.0, stability_samples=2
+    )
+    controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
+    blocked = controller.observe(
+        _sample(1.0, 22.0, 5.0), active_jobs=0, epoch_active_jobs=0, now=1.0
+    )
+    assert blocked.memory_safe is False
+    assert not blocked.memory_hazard
+    assert controller.target_jobs == 1
+    recovered = controller.observe(
+        _sample(2.0, 0.4, 5.0), active_jobs=0, epoch_active_jobs=0, now=2.0
+    )
+    assert recovered.memory_safe is True
+    assert controller.target_jobs == 1, "the calibrated target must survive"
+
+
+def test_persistent_idle_over_envelope_occupancy_becomes_zero_safe_admission() -> None:
+    """Nothing owned and no room is zero safe admission, not a wave stop."""
+
+    policy = TrainingConcurrencyPolicy(
+        epoch_stabilization_seconds=0.0, stability_samples=2
+    )
+    controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
+    for second in (1.0, 2.0):
+        decision = controller.observe(
+            _sample(second, 22.0, 5.0), active_jobs=0, epoch_active_jobs=0, now=second
+        )
+        assert not decision.memory_hazard, "there is no owned wave to cancel"
+    assert controller.target_jobs == 0

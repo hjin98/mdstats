@@ -303,6 +303,14 @@ training_progress_interval_seconds = 10.0
 parallel_training_jobs = 0
 minimum_parallel_training_jobs = 1
 maximum_parallel_training_jobs = 4
+# The training VRAM fraction is both the admission ceiling and the live
+# aggregate safety envelope, not merely a promotion preference. One aggregate
+# observation at or above it blocks further admission at any active-job count;
+# if the next monitor observation is still above it while training is active,
+# the whole training wave is stopped and reaped before CUDA exhausts the device.
+# GPU-utilization saturation stays soft and only throttles future replacements.
+# The transient recheck is the scheduler's own monitor cadence below and is
+# deliberately not an operator knob.
 training_gpu_memory_fraction = 0.90
 training_gpu_utilization_fraction = 0.90
 estimated_training_vram_mib_per_job = 6144.0
@@ -316,6 +324,10 @@ parallel_training_stability_relative_tolerance = 0.10
 parallel_training_utilization_stability_absolute_tolerance = 8.0
 parallel_training_memory_growth_margin = 1.05
 parallel_training_utilization_growth_margin = 1.05
+# Also the cadence at which live aggregate VRAM safety and memory observability
+# are judged: persistent loss of a trustworthy current memory observation across
+# consecutive intervals stops the active training wave rather than assuming the
+# device is safe.
 parallel_training_monitor_interval_seconds = 10.0
 # Staged evaluation uses a one-time single-job CUDA calibration. CUDA
 # starts with exactly one job and samples GPU utilization plus incremental VRAM.

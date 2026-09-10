@@ -81,6 +81,39 @@ Reference cycles are the reason a retirement boundary is required at all:
 dropping the last name is not sufficient to reclaim device memory from module
 graphs, so function-scope reclamation was never a guarantee.
 
+## The second falsification: live safety was still conditional
+
+The first correction made zero-safe admission real but left three conditional
+paths that could reproduce the same physical family:
+
+1. a sustained over-envelope observation became terminal only when exactly one
+   training job was active. With two or more jobs the run was left to the
+   calibrated saturation throttle, which lowers the *replacement* target and
+   cannot return memory that already-running jobs hold.
+2. a missing live memory observation cleared the accumulated unsafe history, so
+   repeated telemetry loss could leave active accelerator work with no live
+   safety observation at all - the exact assumption the corrected architecture
+   depends on.
+3. a generic training-child failure was stored, evaluation was run for the
+   previously trained siblings, and only then was the original failure raised.
+   That put fresh accelerator work on a device whose training state was unknown.
+
+The correction is uniform rather than conditional. Live aggregate safety is
+judged on every trustworthy sample at every active-job count; one unsafe
+observation blocks all further admission and may be rechecked once; persistence
+into the next normal control observation with any owned job active cancels and
+reaps the whole training wave. Missing observability fails closed on the same
+cadence, tolerating one isolated blind sample only after a safe one. Any
+exception escaping the training wave cancels owned children and re-raises before
+evaluation.
+
+The transient tolerance moved from a wall-clock debounce to the scheduler's own
+control cadence. The wall-clock form had briefly acquired an undocumented
+`parallel_training_memory_hazard_grace_seconds` configuration key; operator
+tuning was never an accepted requirement, so the public surface was removed
+rather than documented. Expressing the bound in control observations also made
+the state a two-value controller-local flag instead of a timestamp.
+
 ## Phase ownership
 
 The training scheduler previously submitted the whole fold lifecycle as one
@@ -93,6 +126,12 @@ authenticated TRAIN2 summary, and post-training EVAL2 runs afterwards through
 the same run path. The authenticated summary was already the durable boundary,
 so no handoff record was introduced, and an interruption before EVAL2 resumes
 without retraining.
+
+That same authenticated summary - not a same-invocation sibling EVAL2 - is the
+progress-preservation boundary when a training wave fails. Running evaluation
+for already-trained siblings after a failure preserved nothing that the durable
+summary did not already preserve, while it did start fresh accelerator work on a
+device that had just failed.
 
 ## Scope boundary
 
@@ -108,7 +147,9 @@ deliberately not changed here.
    a feasible one is not conservative; it destroys the only signal that could
    have prevented the failure.
 2. A readiness condition for *estimating* demand must not become a precondition
-   for *recognizing* a hazard.
+   for *recognizing* a hazard. Neither may an active-job count: a safety rule
+   that exempts the concurrency levels it was introduced to protect is not a
+   safety rule.
 3. A transient diagnostic or classification realization needs the same explicit
    accelerator lifetime ownership as production execution, because it pollutes
    the baseline that later decisions are measured against.
@@ -117,3 +158,8 @@ deliberately not changed here.
 5. An aggregate-occupancy observation attributes nothing; process attribution is
    diagnostic, and admission must still treat whatever occupies the device as
    real.
+6. Losing the observation that a safety rule depends on is a failure of that
+   rule, not an absence of evidence against it. Blind supervision of live
+   accelerator work must fail closed.
+7. A debounce expressed in the control loop's own cadence needs no clock, no
+   stored timestamp, and no operator knob.

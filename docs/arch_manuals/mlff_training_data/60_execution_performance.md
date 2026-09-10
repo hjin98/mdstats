@@ -426,6 +426,44 @@ inherit a training slot. The evaluation/inference controller keeps its own
 accepted serial-floor calibration contract, which these training rules do not
 replace.
 
+For training, the configured `training_gpu_memory_fraction` is the admission
+ceiling *and* the live aggregate safety envelope, not merely a promotion
+preference. One trustworthy observation at or above that envelope immediately
+blocks any further admission or promotion at every active-job count. That single
+observation is only a candidate hazard: it may be rechecked once so an allocator
+fluctuation does not stop a run. If the next normal control observation is still
+at or above the envelope while any owned training job is active, the wave is a
+hard memory hazard and the whole training wave - never an arbitrarily selected
+victim job - is cancelled and reaped. Throttling future replacements cannot
+return memory that running jobs already hold, so it is not an admissible
+response to a sustained envelope violation. GPU-utilization saturation stays
+soft: while memory itself remains inside the envelope, saturation only lowers
+the replacement target and never stops running work.
+
+Live memory observability is a precondition for continuing to own accelerator
+work, not merely for promoting it. While training is active, a missing current
+memory observation admits and promotes nothing. One isolated missing observation
+is tolerated only when the immediately preceding trustworthy observation was
+safe; a second consecutive control observation without a trustworthy sample, or
+a lost observation immediately after an unsafe one - where recovery can no
+longer be established - is a terminal resource-observability failure for the
+current training wave. A later invocation retries normally once observability is
+restored. This is expressed in the existing control loop; no second telemetry
+thread, monitor daemon, or persisted observability state is introduced, and the
+bounded transient tolerance is controller-local rather than operator
+configuration.
+
+Any exception escaping the training scheduling wave ends the invocation. It
+stops new admission, signals cancellation, reaps every owned active child
+through the existing supervision path, and is re-raised before any post-training
+evaluation begins - including for previously completed sibling slots. A device
+whose training state is unknown or already unsafe must not receive fresh
+accelerator work in the same invocation. Progress is not lost: authenticated
+training summaries and their materializations remain durable restartable state,
+and the next healthy invocation resumes outstanding training/evaluation work
+through the ordinary continuation path. No out-of-memory stderr classifier,
+retry database, or alternate handoff record is involved.
+
 A transient architecture or classification realization is not training. A
 temporary accelerator model built to answer a recovery or currentness question
 is retired at its own ownership boundary, including on failure paths, so it

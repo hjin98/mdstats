@@ -9,10 +9,26 @@ averaged. The next process must be projected to remain below both the
 configured VRAM and GPU-utilization ceilings. Natural GPU-utilization
 fluctuation is averaged, not treated as a reason to wait indefinitely.
 
-Memory safety is evaluated independently of optimizer-activity readiness: true
-optimizer work is the prerequisite for estimating scalable demand and promoting
-concurrency above one, never a prerequisite for recognizing that current
-aggregate occupancy already exceeds the configured envelope.
+Memory safety is evaluated independently of optimizer-activity readiness and of
+the current active-job count: true optimizer work is the prerequisite for
+estimating scalable demand and promoting concurrency above one, never a
+prerequisite for recognizing that current aggregate occupancy already exceeds
+the configured envelope.
+
+The configured VRAM fraction is therefore both the admission ceiling and the
+live aggregate safety envelope. One trustworthy observation at or above it
+blocks any further admission; it is rechecked once so an allocator fluctuation
+cannot stop a run, and persistence into the next normal control observation with
+owned work active is a hard memory hazard for the whole wave. Throttling future
+replacements cannot return memory that running jobs already hold, so it remains
+the response to GPU-utilization saturation only.
+
+Live memory observability is judged on the same cadence and fails closed: while
+work is active, a missing observation admits nothing, one isolated missing
+observation is tolerated only after a safe one, and a second consecutive blind
+observation - or any blind observation after an unsafe one - ends the wave. The
+bounded transient tolerance is expressed in control observations rather than a
+wall clock, so it needs no timestamp, no second monitor, and no operator knob.
 
 This module governs TRAIN2 admission only. The evaluation/inference controller
 in ``inference_parallel`` keeps its own accepted serial-floor calibration
@@ -91,10 +107,6 @@ class TrainingConcurrencyPolicy:
     # deliberately separate from the controller's telemetry cadence: a
     # legitimate optimizer step may span more than one telemetry poll.
     epoch_activity_timeout_seconds: float = 120.0
-    # Bounded debounce for a transient VRAM spike. Aggregate occupancy at or
-    # above the configured envelope for longer than this is treated as a hard
-    # memory hazard rather than an allocator fluctuation.
-    memory_hazard_grace_seconds: float = 60.0
 
     def __post_init__(self) -> None:
         if int(self.requested_jobs) < 0:
@@ -134,12 +146,6 @@ class TrainingConcurrencyPolicy:
         ) < 0.0:
             raise ValueError(
                 "epoch_activity_timeout_seconds must be finite and non-negative."
-            )
-        if not math.isfinite(float(self.memory_hazard_grace_seconds)) or float(
-            self.memory_hazard_grace_seconds
-        ) < 0.0:
-            raise ValueError(
-                "memory_hazard_grace_seconds must be finite and non-negative."
             )
 
 
@@ -592,11 +598,15 @@ class ConcurrencyDecision:
     predicted_utilization_percent_at_target: float | None
     # Memory safety is reported separately from promotion readiness above:
     # whether current aggregate occupancy is inside the configured envelope
-    # (``None`` when no trustworthy sample exists), and whether an unsafe
-    # condition has persisted long enough to require stopping owned work before
-    # CUDA exhausts the device. Child liveness remains the supervisor's own
-    # ``active``/``epoch_active`` accounting and is deliberately not duplicated
-    # into this record.
+    # (``None`` when no trustworthy sample exists), and whether that condition
+    # has persisted into the next normal control observation and therefore
+    # requires stopping owned work before CUDA exhausts the device. The two
+    # fields together name the terminal state: ``memory_hazard`` with a
+    # ``False`` ``memory_safe`` is a sustained envelope violation, while
+    # ``memory_hazard`` with an unknown ``memory_safe`` is sustained loss of the
+    # live memory observation that owning accelerator work depends on. Child
+    # liveness remains the supervisor's own ``active``/``epoch_active``
+    # accounting and is deliberately not duplicated into this record.
     memory_safe: bool | None = None
     memory_hazard: bool = False
 
@@ -617,7 +627,11 @@ class AdaptiveTrainingConcurrency:
         self.started_monotonic = now
         self.last_target_change = now
         self._epoch_ready_since: float | None = None
-        self._unsafe_memory_since: float | None = None
+        # Bounded transient tolerance expressed in normal control observations
+        # rather than a wall-clock debounce: each flag records that the previous
+        # trustworthy/attempted sample was already unsafe or already blind.
+        self._memory_unsafe = False
+        self._memory_unobserved = False
         averaging_samples = math.ceil(
             float(policy.epoch_stabilization_seconds)
             / float(policy.monitor_interval_seconds)
@@ -644,18 +658,41 @@ class AdaptiveTrainingConcurrency:
         predicted_bytes: int | None = None,
         predicted_utilization: float | None = None,
         memory_safe: bool | None = None,
+        memory_hazard: bool = False,
     ) -> ConcurrencyDecision:
+        # ``target_jobs`` may already have been lowered to the live job count to
+        # close admission, so the current target is reported rather than assumed
+        # equal to ``previous``.
+        target = self.target_jobs
         return ConcurrencyDecision(
             previous,
-            previous,
-            False,
+            target,
+            target != previous,
             reason,
             observed,
             predicted_bytes,
             predicted_utilization,
             memory_safe,
-            False,
+            memory_hazard,
         )
+
+    def _close_admission(self, active: int, *, confirmed: bool) -> None:
+        """Admit no further TRAIN2 work from an unsafe or blind observation.
+
+        Live work is never targeted away: with owned jobs running, the target
+        falls only to the live count, and the whole wave - never an arbitrarily
+        selected victim - is the cancellation unit if the condition persists.
+        With nothing owned there is no wave to cancel, so the target collapses to
+        zero only once the condition survives the bounded recheck, and the
+        scheduler's existing idle-queue rule then reports it as the typed
+        zero-safe admission failure. ``memory_safe`` on the returned decision is
+        what stops the scheduler admitting during the recheck itself.
+        """
+
+        if active > 0:
+            self.target_jobs = min(self.target_jobs, active)
+        elif confirmed:
+            self.target_jobs = 0
 
     def observe(
         self,
@@ -667,57 +704,68 @@ class AdaptiveTrainingConcurrency:
     ) -> ConcurrencyDecision:
         previous = self.target_jobs
         current_time = time.monotonic() if now is None else float(now)
-        if sample is None or self.plan.gpu_memory_budget_bytes is None:
+        active = max(0, int(active_jobs))
+        epoch_active = max(0, int(epoch_active_jobs))
+        if self.plan.gpu_memory_budget_bytes is None:
+            # No envelope was ever established, so no sample can be judged
+            # against one.
             self._epoch_ready_since = None
-            self._unsafe_memory_since = None
+            self._memory_unsafe = False
+            self._memory_unobserved = False
             self._samples.clear()
             return self._hold(previous, "GPU memory telemetry unavailable", None)
 
-        active = max(0, int(active_jobs))
-        epoch_active = max(0, int(epoch_active_jobs))
         memory_budget = int(self.plan.gpu_memory_budget_bytes)
-        # Hard memory safety first, on every trustworthy sample and in every
-        # child phase. Initialization or validation above the envelope is a
-        # memory hazard, not "waiting for true epoch compute".
-        memory_safe = int(sample.used_bytes) < memory_budget
-        if memory_safe or active <= 0:
-            self._unsafe_memory_since = None
-        else:
-            if self._unsafe_memory_since is None:
-                self._unsafe_memory_since = current_time
-            unsafe_age = current_time - float(self._unsafe_memory_since)
-            # Only a single owned job short-circuits here. One job cannot be
-            # relieved by throttling replacements, so the truthful options are
-            # stopping now or marching into CUDA exhaustion. With more than one
-            # active job the calibrated saturation throttle further down already
-            # lowers the replacement target without killing running work, so
-            # that path must stay reachable.
-            if active == 1:
-                if unsafe_age >= float(self.policy.memory_hazard_grace_seconds):
-                    self._epoch_ready_since = None
-                    self._samples.clear()
-                    return ConcurrencyDecision(
-                        previous,
-                        previous,
-                        False,
-                        f"aggregate VRAM {int(sample.used_bytes) / _GIB:.1f} GiB "
-                        f"has stayed at or above the "
-                        f"{memory_budget / _GIB:.1f} GiB training envelope for "
-                        f"{unsafe_age:.0f}s",
-                        None,
-                        int(sample.used_bytes),
-                        float(sample.utilization_percent),
-                        False,
-                        True,
-                    )
-                return self._hold(
-                    previous,
-                    f"aggregate VRAM {int(sample.used_bytes) / _GIB:.1f} GiB is at "
-                    f"or above the {memory_budget / _GIB:.1f} GiB training "
-                    f"envelope ({unsafe_age:.0f}s)",
-                    None,
-                    memory_safe=False,
+        if sample is None:
+            # A live memory observation is a precondition for continuing to own
+            # accelerator work, not merely for promoting it. Admit nothing more,
+            # and let a second consecutive blind control observation - or any
+            # blind observation after an already unsafe one, where recovery can
+            # no longer be established - end the wave.
+            self._epoch_ready_since = None
+            self._samples.clear()
+            confirmed = self._memory_unsafe or self._memory_unobserved
+            self._memory_unobserved = True
+            self._close_admission(active, confirmed=confirmed)
+            reason = "no trustworthy current GPU-memory observation is available"
+            if confirmed and active > 0:
+                reason = (
+                    f"{reason} and {active} owned TRAIN2 job(s) remain active; "
+                    "live memory safety can no longer be established"
                 )
+            return self._hold(
+                previous, reason, None, memory_hazard=confirmed and active > 0
+            )
+
+        self._memory_unobserved = False
+        # Hard memory safety first, on every trustworthy sample, in every child
+        # phase, and at every active-job count. Initialization or validation
+        # above the envelope is a memory hazard, not "waiting for true epoch
+        # compute", and throttling future replacements cannot return memory that
+        # already-running jobs hold.
+        memory_safe = int(sample.used_bytes) < memory_budget
+        if not memory_safe:
+            self._epoch_ready_since = None
+            self._samples.clear()
+            confirmed = self._memory_unsafe
+            self._memory_unsafe = True
+            self._close_admission(active, confirmed=confirmed)
+            terminal = confirmed and active > 0
+            occupancy = (
+                f"aggregate VRAM {int(sample.used_bytes) / _GIB:.1f} GiB is at or "
+                f"above the {memory_budget / _GIB:.1f} GiB training envelope"
+            )
+            return self._hold(
+                previous,
+                f"{occupancy} across consecutive control observations with "
+                f"{active} owned TRAIN2 job(s) active"
+                if terminal
+                else occupancy,
+                None,
+                memory_safe=False,
+                memory_hazard=terminal,
+            )
+        self._memory_unsafe = False
 
         if self.plan.gpu_utilization_budget_percent is None:
             # Current memory capacity is known but no utilization evidence
