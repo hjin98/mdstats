@@ -26,3 +26,18 @@ Archived in this closeout:
 - the scalar provisional-selection/auto-diagnostic/horizon-steering predecessor after it was implemented and explicitly superseded by the ordered multi-size successor.
 
 The only active MLFF implementation contract after this closeout is `workplans/active/MLFF_TARGET_SIZE_MULTI_SELECTION_AND_PER_SIZE_HORIZON_WORKPLAN.md`. Historical status markers inside archived files are intentionally left unchanged.
+
+## 2026-09-10 replay/MACE P5 recovery closeout
+
+Independent Software Design review closed the consolidated replay/MACE P5 execution-recovery cycle after source conformance and final affected-surface execution evidence passed under its Protocol 6.0.0 binding. The executable recovery realization remains the reviewed DS-5 production source; DS-6 changed only the serial-orchestration structural oracle and the workplan execution record.
+
+Archived in this closeout:
+
+- `MLFF_REPLAY_MACE_P5_EXECUTION_RECOVERY_CONSOLIDATED_WORKPLAN.md`;
+- `MLFF_REPLAY_MACE_EXECUTION_MEMBERSHIP_IDENTITY_REPAIR_WORKPLAN.md`;
+- `MLFF_REPLAY_MACE_EXECUTION_MEMBERSHIP_IDENTITY_REPAIR_REVIEW_REOPEN.md`;
+- `MLFF_REPLAY_MACE_EXECUTION_MEMBERSHIP_IDENTITY_REPAIR_PROGRESS_RECOVERY_AMENDMENT.md`;
+- `MLFF_REPLAY_MACE_EXECUTION_MEMBERSHIP_IDENTITY_REPAIR_SCHEDULER_ARCHITECTURE_AMENDMENT.md`;
+- the cycle-local `CURRENT_IMPLEMENTATION_ENTRYPOINT.md` and `CONSOLIDATION_NOTICE.md`.
+
+The final review accepted the revised serial-size oracle because the frozen architecture requires only the outer selected-size dimension to remain serial while allowing the existing scheduler inside each selected size. Historical REPLAY-UNIFY1A/1E tests that require superseded current-manual/current-graph revision/schema text are not current P5 acceptance authority. Production-scale GPU/CuEq/LAMMPS/MLIAP qualification remains deferred to the complete final release package.
