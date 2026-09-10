@@ -290,13 +290,16 @@ progress_interval_seconds = 60.0
 # Visible production-training updates. Cancellation is still polled silently
 # every second so Ctrl-C and disk-reserve stops remain responsive.
 training_progress_interval_seconds = 10.0
-# 0 enables adaptive CUDA concurrency. CUDA always starts with one job.
-# Additional jobs are admitted one at a time only after every active job has
-# reached sustained optimizer/epoch work for the full averaging window. The
-# projected mean aggregate VRAM and GPU utilization must both remain below
-# their admission ceilings. Natural telemetry fluctuation is averaged rather
-# than treated as a reason to wait indefinitely. A positive value is only a
-# maximum cap; it does not bypass adaptive admission.
+# 0 enables adaptive CUDA concurrency. CUDA starts with one training job only
+# when one job is currently resource-admissible; zero safe admission is a valid
+# execution state and pending work then fails explicitly instead of launching
+# into an envelope that cannot hold it. Additional jobs are admitted one at a
+# time only after every active job has reached sustained optimizer/epoch work
+# for the full averaging window. The projected mean aggregate VRAM and GPU
+# utilization must both remain below their admission ceilings. Natural
+# telemetry fluctuation is averaged rather than treated as a reason to wait
+# indefinitely. A positive value is only a maximum cap; it does not bypass
+# adaptive admission.
 parallel_training_jobs = 0
 minimum_parallel_training_jobs = 1
 maximum_parallel_training_jobs = 4

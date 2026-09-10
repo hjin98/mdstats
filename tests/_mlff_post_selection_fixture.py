@@ -224,6 +224,49 @@ def _seeded_raw_checkpoint(
     return path
 
 
+def record_child_mace_execution_evidence(authority):
+    """Attach executed-run evidence to one launch authority, as the child does.
+
+    Production records this inside the MACE child from its actual loaders. The
+    toy trainer executes an equivalent bounded workload, so it projects the same
+    authenticated authority fields rather than inventing a second evidence
+    shape.
+    """
+
+    from mdstats.training_data.mace_compatibility import (
+        record_mace_execution_evidence,
+    )
+
+    multihead = bool(authority["multiheads_finetuning"])
+    return record_mace_execution_evidence(
+        authority,
+        {
+            "role": authority.get("role", "post_selection"),
+            "loss_family": authority["loss_family"],
+            "loss_class": "mace.modules.loss.WeightedEnergyForcesStressLoss",
+            "learning_rate": authority["learning_rate"],
+            "ema": authority["ema"],
+            "ema_decay": authority["ema_decay"],
+            "multiheads_finetuning": multihead,
+            "force_mh_ft_lr": authority["force_mh_ft_lr"] if multihead else None,
+            "real_pt_data_ratio_threshold": (
+                authority["real_pt_data_ratio_threshold"] if multihead else None
+            ),
+            "target_train_count": authority["target_train_count"],
+            "replay_train_count": authority["replay_train_count"],
+            "target_duplication_factor": 1,
+            "target_batch_size": authority["batch_size"],
+            "target_updates_per_epoch": authority["target_updates_per_epoch"],
+            "target_drop_last": authority["target_drop_last"],
+            "distributed": False,
+            "target_frame_uid_set_digest": authority["target_frame_uid_set_digest"],
+            "replay_frame_uid_set_digest": authority["replay_frame_uid_set_digest"],
+            "combined_train_count": authority["target_train_count"]
+            + authority["replay_train_count"],
+        },
+    )
+
+
 def train_like_mace(
     request,
     *,
@@ -248,7 +291,6 @@ def train_like_mace(
     from mdstats.training_data.mace_compatibility import (
         MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE,
         mace_execution_authority_to_environment,
-        record_mace_execution_evidence,
     )
     from mdstats.training_data.post_selection_execution import (
         _build_post_selection_mace_execution_authority,
@@ -320,43 +362,7 @@ def train_like_mace(
                 request, "replay_geometry_identities", None
             ),
         )
-        authority = record_mace_execution_evidence(
-            authority,
-            {
-                "role": "post_selection",
-                "loss_family": authority["loss_family"],
-                "loss_class": "mace.modules.loss.WeightedEnergyForcesStressLoss",
-                "learning_rate": authority["learning_rate"],
-                "ema": authority["ema"],
-                "ema_decay": authority["ema_decay"],
-                "multiheads_finetuning": authority["multiheads_finetuning"],
-                "force_mh_ft_lr": (
-                    authority["force_mh_ft_lr"]
-                    if authority["multiheads_finetuning"]
-                    else None
-                ),
-                "real_pt_data_ratio_threshold": (
-                    authority["real_pt_data_ratio_threshold"]
-                    if authority["multiheads_finetuning"]
-                    else None
-                ),
-                "target_train_count": authority["target_train_count"],
-                "replay_train_count": authority["replay_train_count"],
-                "target_duplication_factor": 1,
-                "target_batch_size": authority["batch_size"],
-                "target_updates_per_epoch": authority["target_updates_per_epoch"],
-                "target_drop_last": authority["target_drop_last"],
-                "distributed": False,
-                "target_frame_uid_set_digest": authority[
-                    "target_frame_uid_set_digest"
-                ],
-                "replay_frame_uid_set_digest": authority[
-                    "replay_frame_uid_set_digest"
-                ],
-                "combined_train_count": authority["target_train_count"]
-                + authority["replay_train_count"],
-            },
-        )
+        authority = record_child_mace_execution_evidence(authority)
         runtime_environment.enter_context(
             patch.dict(
                 os.environ,
@@ -367,6 +373,31 @@ def train_like_mace(
                 },
             )
         )
+    else:
+        # The minimal dependency-facing wrapper request inherits the authority the
+        # real trainer placed in this child's environment.  Publishing executed
+        # evidence is the *child's* obligation in production
+        # (``critical_precision_cli``), and a TRAIN2 continuation is not reusable
+        # without it, so the stand-in child performs that step too rather than
+        # leaving a summary the parent's continuation owner must reject.
+        from mdstats.training_data.mace_compatibility import (
+            mace_execution_authority_from_environment,
+        )
+
+        inherited = mace_execution_authority_from_environment()
+        if inherited is not None and inherited.get("execution_evidence") is None:
+            runtime_environment.enter_context(
+                patch.dict(
+                    os.environ,
+                    {
+                        MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE: (
+                            mace_execution_authority_to_environment(
+                                record_child_mace_execution_evidence(inherited)
+                            )
+                        )
+                    },
+                )
+            )
     with runtime_environment:
         runtime = runtime_mod._Train2Runtime(
             request.plan,

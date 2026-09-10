@@ -11,6 +11,7 @@ Active proposed transitions and developer implementation gates live under reposi
 - `selector_repair_evolution.md` — why the selector/repair system moved from eager/inverse and state-reuse generations to the exact forward/lazy MVSEL2/REPAIR2/MVSTATE2/MVQUAL model.
 - `target_size_evolution.md` — why budget/generated/rescue ladders were replaced by one fixed typed target-size study with nested prefixes and explicit non-convergence.
 - `campaign_compatibility_evolution.md` — why migration/readability layers were retired in favor of current-generation validation or re-preparation.
+- `train2_admission_evolution.md` — why the unconditional "CUDA always starts with one training job" rule was replaced by zero-safe TRAIN2 admission, and why transient architecture realizations and TRAIN/EVAL phase ownership were part of the same defect.
 
 These narratives preserve rationale while intentionally omitting obsolete schema details that remain recoverable from Git history when needed.
 

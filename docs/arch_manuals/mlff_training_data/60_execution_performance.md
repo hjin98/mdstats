@@ -409,6 +409,29 @@ jobs, while a hard live-VRAM guard protects against OOM. Missing telemetry at
 calibration startup selects conservative serial execution when the device is
 otherwise usable; it does not create parallel evidence.
 
+Training admission additionally recognizes infeasibility. CUDA training starts
+with one job only when one job is currently resource-admissible; zero safe
+admission is a valid execution state rather than a floor to be rounded up.
+Current aggregate occupancy counts regardless of which process owns it, a
+configured minimum concurrency is subordinate to current feasibility, and a
+positive configured job count is a maximum cap rather than launch permission.
+Pending training work with an idle queue and no feasible slot resolves to an
+explicit resource failure, not a launch or a wait. Device availability and
+memory observability are separate facts, and absent a trustworthy current memory
+observation automatic training admission is blocked. Memory safety is evaluated
+on every trustworthy sample independently of optimizer/epoch calibration
+readiness, which remains the prerequisite only for estimating scalable demand.
+A training slot owns training lifetime alone; post-training evaluation must not
+inherit a training slot. The evaluation/inference controller keeps its own
+accepted serial-floor calibration contract, which these training rules do not
+replace.
+
+A transient architecture or classification realization is not training. A
+temporary accelerator model built to answer a recovery or currentness question
+is retired at its own ownership boundary, including on failure paths, so it
+cannot contribute residency to the baseline a later admission decision is
+measured against.
+
 An execution controller may lower concurrency after measured resource pressure,
 but it cannot change scientific batch/exposure semantics, precision policy,
 checkpoint evidence, or target/replay membership to fit memory. OOM recovery is

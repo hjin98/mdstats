@@ -308,6 +308,29 @@ def _mace_accelerator_realization(config_payload: Mapping[str, Any]) -> str | No
     return None
 
 
+def release_mace_accelerator_residency() -> None:
+    """Release accelerator blocks after the last owner reference is dropped.
+
+    Callers drop every Python owner first.  This is the shared
+    collect -> unused-cache release -> synchronize boundary used by MACE
+    provider retirement, so a transient training realization cannot keep
+    model-scale accelerator residency past its final consumer.
+    """
+
+    gc.collect()
+    try:
+        import torch
+    except ModuleNotFoundError:  # pragma: no cover - optional dependency
+        return
+    try:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+    except Exception:
+        # The live model references were already released above.
+        return
+
+
 def realize_mace_training_model(
     portable_model: Any, config_payload: Mapping[str, Any]
 ) -> tuple[Any, str | None]:
@@ -2530,16 +2553,10 @@ class MaceCalculatorProvider:
         self._calculator = None
         clear_mace_graph_batch_cache()
         del calculator
-        gc.collect()
         if torch_module is None:
+            gc.collect()
             return
-        try:
-            if torch_module.cuda.is_available():
-                torch_module.cuda.empty_cache()
-                torch_module.cuda.synchronize()
-        except Exception:
-            # The live model references were already released above.
-            return
+        release_mace_accelerator_residency()
 
     def _descriptor_adapter(self) -> _MaceDescriptorAdapter:
         cached = self._descriptor_adapter_cache
