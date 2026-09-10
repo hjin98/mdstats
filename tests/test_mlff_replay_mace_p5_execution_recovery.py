@@ -684,6 +684,23 @@ def _set_persisted_architecture(run_root: Path, architecture_digest: str) -> Non
     torch.save(companion, companion_path)
 
 
+class _CompleteFirstThenPauseFullSecond:
+    """Leave one completed sibling and one authenticated stale candidate."""
+
+    def __init__(self) -> None:
+        self.requests: list[object] = []
+
+    def __call__(self, request):
+        self.requests.append(request)
+        if len(self.requests) == 1:
+            return fixture.train_like_mace(request)
+        return fixture.train_like_mace(
+            request,
+            stop_after_epoch=request.plan.execution_epoch_limit - 1,
+            fail_after_persist=True,
+        )
+
+
 @pytest.mark.slow
 def test_pre_fix_completed_representation_reuses_equal_persisted_architecture(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -746,22 +763,6 @@ def test_pre_fix_different_persisted_architecture_is_recomputed_for_one_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """An authenticated stale run is replaced without touching its sibling."""
-
-    class _CompleteFirstThenPauseFullSecond:
-        """Leave one completed sibling and one authenticated stale candidate."""
-
-        def __init__(self) -> None:
-            self.requests: list[object] = []
-
-        def __call__(self, request):
-            self.requests.append(request)
-            if len(self.requests) == 1:
-                return fixture.train_like_mace(request)
-            return fixture.train_like_mace(
-                request,
-                stop_after_epoch=request.plan.execution_epoch_limit - 1,
-                fail_after_persist=True,
-            )
 
     config, run_root, old_run_identity = _pre_fix_foundation_workspace(
         tmp_path,
@@ -840,6 +841,114 @@ def test_pre_fix_different_persisted_architecture_is_recomputed_for_one_run(
         )
     )
     assert downstream._file_tree_bytes(run_root / "checkpoints") != checkpoint_before
+    assert {
+        "materialization": downstream._file_tree_bytes(
+            sibling_root / "materialization"
+        ),
+        "checkpoints": downstream._file_tree_bytes(sibling_root / "checkpoints"),
+    } == sibling_before
+
+
+@pytest.mark.slow
+def test_pre_fix_stale_replacement_retries_after_checkpoint_retirement_interruption(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Checkpoint-first stale replacement is recoverable in the same workspace."""
+
+    config, run_root, old_run_identity = _pre_fix_foundation_workspace(
+        tmp_path,
+        monkeypatch,
+        pauser_factory=_CompleteFirstThenPauseFullSecond,
+        request_index=1,
+    )
+    materialization = run_root / "materialization"
+    checkpoint_directory = run_root / "checkpoints"
+    sibling_roots = [
+        item
+        for item in run_root.parent.iterdir()
+        if item.is_dir() and not item.name.startswith(".") and item != run_root
+    ]
+    assert len(sibling_roots) == 1
+    sibling_root = sibling_roots[0]
+    cfg, paths = cli._load_config(config)
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        context = runtime.build_post_selection_contexts(
+            cfg,
+            paths,
+            store,
+            trainer=fixture.PostSelectionHarness().train,
+            inference_evaluator=fixture.PostSelectionHarness().evaluate,
+        )[0]
+        current_config = json.loads(
+            (materialization / "post_selection_mace_config.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        current_config["compute_avg_num_neighbors"] = False
+        current_architecture, _realization = (
+            runtime._post_selection_current_training_architecture(
+                context,
+                current_config=current_config,
+            )
+        )
+    finally:
+        store.close()
+    _set_persisted_architecture(sibling_root, current_architecture)
+    sibling_before = {
+        "materialization": downstream._file_tree_bytes(
+            sibling_root / "materialization"
+        ),
+        "checkpoints": downstream._file_tree_bytes(sibling_root / "checkpoints"),
+    }
+    _set_persisted_architecture(run_root, "f" * 64)
+
+    original_rmtree = runtime.shutil.rmtree
+    interrupted = False
+
+    def retire_then_interrupt(path, *args, **kwargs):
+        nonlocal interrupted
+        target = Path(path).resolve()
+        original_rmtree(path, *args, **kwargs)
+        if target == checkpoint_directory.resolve() and not interrupted:
+            interrupted = True
+            raise RuntimeError(
+                "bounded interruption after stale checkpoint retirement"
+            )
+
+    monkeypatch.setattr(runtime.shutil, "rmtree", retire_then_interrupt)
+    with pytest.raises(
+        RuntimeError, match="bounded interruption after stale checkpoint retirement"
+    ):
+        fixture.run_cross_validate(config, fixture.PostSelectionHarness())
+
+    assert interrupted
+    assert not checkpoint_directory.exists()
+    assert materialization.is_dir()
+    # Cleanup interruption occurs before the real owner can publish any
+    # fold/run completion authority.
+    assert not (run_root / "fold-acceptance.json").exists()
+    assert not (run_root / "run-evidence.json").exists()
+    assert not (run_root / runtime.RUN_COMPLETION_ANCHOR_FILENAME).exists()
+
+    monkeypatch.setattr(runtime.shutil, "rmtree", original_rmtree)
+    resumed = fixture.PostSelectionHarness()
+    assert fixture.run_cross_validate(config, resumed) == 0
+    assert [request.run_plan.run_identity for request in resumed.requests] == [
+        old_run_identity
+    ]
+    assert resumed.requests[0].start_epoch == 0
+    assert (checkpoint_directory / "train2_runtime.json").is_file()
+    from mdstats.training_data.train2_runtime import load_train2_runtime_summary
+
+    summary = load_train2_runtime_summary(checkpoint_directory)
+    assert summary.completed_epochs == summary.execution_epoch_limit
+    assert json.loads(
+        (materialization / "post_selection_mace_config.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["compute_avg_num_neighbors"] is False
+    assert (run_root / "fold-acceptance.json").is_file()
     assert {
         "materialization": downstream._file_tree_bytes(
             sibling_root / "materialization"

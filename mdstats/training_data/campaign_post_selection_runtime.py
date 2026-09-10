@@ -1817,17 +1817,22 @@ def _execute_post_selection_run_locked(
     rebuild_materialization = setup.rebuild_materialization
     use_existing_materialization = setup.use_existing_materialization
     replace_stale_continuation = setup.replace_stale_continuation
-    if rebuild_materialization:
-        # The classifier has already established that this is a local,
-        # run-owned, nonterminal scratch tree with no ambiguous descendant.
-        shutil.rmtree(material_directory)
     if replace_stale_continuation:
         # This is deliberately the same run-owned scratch cleanup used for an
         # authenticated materialization rebuild.  It occurs only after TRAIN2,
         # materialization, MACE evidence, and the activity lease have all
         # authenticated the stale continuation; no foreign/corrupt state can
-        # reach this branch.
+        # reach this branch. Retire the continuation first so an interruption
+        # before materialization removal leaves the existing classifier's
+        # authenticated, disposable pre-fix materialization shape.
         shutil.rmtree(checkpoint_directory)
+    if rebuild_materialization:
+        # The classifier has already established that this is a local,
+        # run-owned, nonterminal scratch tree with no ambiguous descendant.
+        # When replacing a stale continuation, this is intentionally second:
+        # the next retry can distinguish interrupted cleanup from a durable
+        # continuation/materialization conflict without new recovery state.
+        shutil.rmtree(material_directory)
     checkpoint_directory.mkdir(parents=True, exist_ok=True)
 
     if use_existing_materialization:
