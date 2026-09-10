@@ -12,30 +12,26 @@ There is one current Protocol 6 implementation handoff:
 
 ### Current independent review state
 
-Executable candidate `577908bf117d033357e2bfb1847e5ed16047d288` is **NO-PASS / REOPENED** after independent SSDP 6 Software Design review. No Serious Challenge is active; D1 scientific formulation, D2 numerical method, and accepted D3 replay/P5/TRAIN2/MACE plus serial selected-size architecture remain unchanged.
+Executable candidate `dadb83e680032a30fe55b42baf77bf13538f94a7` is **NO-PASS / REOPENED** after independent SSDP Protocol 6 Software Design review. No Serious Challenge is active; D1 scientific formulation, D2 numerical method, and accepted D3 replay/P5/TRAIN2/MACE plus serial selected-size architecture remain unchanged.
 
-Source-level corrections to preserve:
+Source/conformance corrections now accepted and to be preserved:
 
-- scheduler liveness comes from active futures rather than human-readable MACE phase;
-- optimizer readiness uses current training phase plus bounded fresh optimizer activity under the existing activity-timeout policy;
+- append-only MACE optimizer metrics count every newly consumed complete `mode="opt"` line, including byte/content-identical consecutive rows;
+- scheduler liveness comes from active futures and readiness uses current training phase plus bounded fresh optimizer activity;
 - selected sizes remain serial;
 - current single-source replay selects canonical loaded-geometry identity once and cannot enter legacy/file-reread fallback on mismatch;
-- supported legacy replay remains explicitly routed through its historical identity domain;
-- immediately-pre-fix continuation classification compares persisted actual TRAIN2 architecture with the current authorized training realization instead of interpreting a missing historical control using today's default.
+- immediately-pre-fix continuation classification uses persisted actual TRAIN2 architecture rather than today's interpretation of a missing historical key;
+- architecture-different exact pre-fix state now has a nominal bounded same-run replacement path instead of raising forever;
+- bounded tests now retain the real per-size scheduler, real `MacePostSelectionTrainer`, real metrics observer/process termination owner, and real TRAIN2 persistence owner.
 
-Remaining blockers are narrow D4/evidence closure:
+One D4 product blocker remains: stale-run replacement currently removes `materialization/` before `checkpoints/`. An interruption between those successful removals leaves durable continuation with no materialization; the next retry intentionally refuses rebuild and permanently blocks the same run. Reorder or otherwise make the existing cleanup transition interruption-idempotent without adding persistent recovery machinery. A bounded public-path failure-injection test must prove retry from the inter-cleanup interruption, with sibling evidence unchanged and foreign/corrupt state never deleted.
 
-1. the append-only MACE metrics observer suppresses a newly appended `mode="opt"` row when its JSON content equals the preceding optimizer row; byte offset already owns exactly-once observation, so content deduplication must be removed and identical rows must count as distinct optimizer completions;
-2. an exactly authenticated immediately-pre-fix run whose persisted architecture is noncurrent currently raises forever on retry; after classification it must use existing run-owned recovery mechanics to replace/recompute only that run, while ambiguous/corrupt/foreign state remains preserved;
-3. acceptance must exercise the real per-size scheduler -> real `MacePostSelectionTrainer` -> owned subprocess boundary for promotion and cancellation/reaping, and separately prove the real TRAIN2 persistence owner produces the architecture digest consumed by recovery;
-4. final focused/affected regression, integration, lint/type/static, and structural evidence must execute on one unchanged final candidate. GitHub exposes no check-runs/statuses for `577908bf...`.
+Final functional acceptance also remains open. GitHub exposes no statuses/checks or Actions runs for `dadb83e...`, and the review host could not clone/execute the repository because shell-network access to GitHub is unavailable. The final focused + affected regression + integration + configured static/structural checks must execute on the unchanged post-repair candidate.
 
-The existing suite already contains a pinned real `mace.cli.run_train.run` parser/loader path that authenticates single-source replay after real loader construction; together with the candidate's explicit-domain no-reread negative test, no additional replay identity abstraction is required unless execution actually fails.
-
-Do not add a scheduler, cross-size queue, progress daemon, update/replay/checkpoint registry, compatibility database, migration framework, restart state machine, or second wrapper. Keep the repair subtractive and D4-local.
+Do not add a scheduler, cross-size queue, progress daemon, registry/database, migration framework, restart state machine, second wrapper, second architecture authority, or permanent stale-run archive merely to close this issue.
 
 Implementation/review coordination remains on:
 
 - `fix/mlff-replay-mace-membership-identity`
 
-Full production-scale GPU/CuEq/LAMMPS/MLIAP target-machine qualification remains deferred until the complete final release package. Bounded real MACE/CuEq functional boundary tests needed for concrete bug closure are implementation evidence, not production qualification.
+Full production-scale GPU/CuEq/LAMMPS/MLIAP target-machine qualification remains deferred until the complete final release package. Bounded real MACE/CuEq functional tests required for concrete correctness claims are implementation evidence, not production qualification.
