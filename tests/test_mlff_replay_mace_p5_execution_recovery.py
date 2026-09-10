@@ -701,6 +701,102 @@ class _CompleteFirstThenPauseFullSecond:
         )
 
 
+def _stale_pre_fix_replacement_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, Path, Path, Path, str, Path, dict[str, dict[str, bytes]], bytes]:
+    """Build one authenticated stale run and one untouched completed sibling."""
+
+    config, run_root, old_run_identity = _pre_fix_foundation_workspace(
+        tmp_path,
+        monkeypatch,
+        pauser_factory=_CompleteFirstThenPauseFullSecond,
+        request_index=1,
+    )
+    materialization = run_root / "materialization"
+    checkpoint_directory = run_root / "checkpoints"
+    sibling_roots = [
+        item
+        for item in run_root.parent.iterdir()
+        if item.is_dir() and not item.name.startswith(".") and item != run_root
+    ]
+    assert len(sibling_roots) == 1
+    sibling_root = sibling_roots[0]
+    config_path = materialization / "post_selection_mace_config.yaml"
+    config_before = config_path.read_bytes()
+
+    cfg, paths = cli._load_config(config)
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        context = runtime.build_post_selection_contexts(
+            cfg,
+            paths,
+            store,
+            trainer=fixture.PostSelectionHarness().train,
+            inference_evaluator=fixture.PostSelectionHarness().evaluate,
+        )[0]
+        current_config = json.loads(config_path.read_text(encoding="utf-8"))
+        current_config["compute_avg_num_neighbors"] = False
+        current_architecture, _realization = (
+            runtime._post_selection_current_training_architecture(
+                context,
+                current_config=current_config,
+            )
+        )
+    finally:
+        store.close()
+
+    # The sibling is already authenticated; give it the current descriptor so
+    # only the selected stale run needs replacement in the next invocation.
+    _set_persisted_architecture(sibling_root, current_architecture)
+    sibling_before = {
+        "materialization": downstream._file_tree_bytes(
+            sibling_root / "materialization"
+        ),
+        "checkpoints": downstream._file_tree_bytes(sibling_root / "checkpoints"),
+    }
+    _set_persisted_architecture(run_root, "f" * 64)
+    return (
+        config,
+        run_root,
+        materialization,
+        checkpoint_directory,
+        old_run_identity,
+        sibling_root,
+        sibling_before,
+        config_before,
+    )
+
+
+def test_r4_retirement_destination_collision_is_preserved(tmp_path: Path) -> None:
+    """An existing scratch destination is an integrity conflict, not a target."""
+
+    run_root = tmp_path / "run"
+    run_root.mkdir()
+    checkpoint_directory = run_root / "checkpoints"
+    checkpoint_directory.mkdir()
+    checkpoint_marker = checkpoint_directory / "authenticated-state"
+    checkpoint_marker.write_bytes(b"canonical")
+    retirement = runtime._post_selection_retirement_path(run_root, "checkpoints")
+    retirement.mkdir()
+    retirement_marker = retirement / "unknown-state"
+    retirement_marker.write_bytes(b"foreign")
+
+    with pytest.raises(
+        runtime.PostSelectionExecutionError,
+        match=(
+            "retirement scratch exists while its canonical namespace is still present"
+        ),
+    ):
+        runtime._detach_post_selection_namespace(
+            run_root,
+            checkpoint_directory,
+            canonical_name="checkpoints",
+        )
+
+    assert checkpoint_marker.read_bytes() == b"canonical"
+    assert retirement_marker.read_bytes() == b"foreign"
+
+
 @pytest.mark.slow
 def test_pre_fix_completed_representation_reuses_equal_persisted_architecture(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -853,80 +949,135 @@ def test_pre_fix_different_persisted_architecture_is_recomputed_for_one_run(
 def test_pre_fix_stale_replacement_retries_after_checkpoint_retirement_interruption(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Checkpoint-first stale replacement is recoverable in the same workspace."""
+    """R4-A: a checkpoint detach is recoverable before materialization detach."""
 
-    config, run_root, old_run_identity = _pre_fix_foundation_workspace(
-        tmp_path,
-        monkeypatch,
-        pauser_factory=_CompleteFirstThenPauseFullSecond,
-        request_index=1,
+    (
+        config,
+        run_root,
+        materialization,
+        checkpoint_directory,
+        old_run_identity,
+        sibling_root,
+        sibling_before,
+        _config_before,
+    ) = _stale_pre_fix_replacement_workspace(tmp_path, monkeypatch)
+    checkpoint_retirement = runtime._post_selection_retirement_path(
+        run_root, "checkpoints"
     )
-    materialization = run_root / "materialization"
-    checkpoint_directory = run_root / "checkpoints"
-    sibling_roots = [
-        item
-        for item in run_root.parent.iterdir()
-        if item.is_dir() and not item.name.startswith(".") and item != run_root
-    ]
-    assert len(sibling_roots) == 1
-    sibling_root = sibling_roots[0]
-    cfg, paths = cli._load_config(config)
-    store = cli.CampaignStore(paths.state_db)
-    try:
-        context = runtime.build_post_selection_contexts(
-            cfg,
-            paths,
-            store,
-            trainer=fixture.PostSelectionHarness().train,
-            inference_evaluator=fixture.PostSelectionHarness().evaluate,
-        )[0]
-        current_config = json.loads(
-            (materialization / "post_selection_mace_config.yaml").read_text(
-                encoding="utf-8"
-            )
-        )
-        current_config["compute_avg_num_neighbors"] = False
-        current_architecture, _realization = (
-            runtime._post_selection_current_training_architecture(
-                context,
-                current_config=current_config,
-            )
-        )
-    finally:
-        store.close()
-    _set_persisted_architecture(sibling_root, current_architecture)
-    sibling_before = {
-        "materialization": downstream._file_tree_bytes(
-            sibling_root / "materialization"
-        ),
-        "checkpoints": downstream._file_tree_bytes(sibling_root / "checkpoints"),
-    }
-    _set_persisted_architecture(run_root, "f" * 64)
-
-    original_rmtree = runtime.shutil.rmtree
+    materialization_retirement = runtime._post_selection_retirement_path(
+        run_root, "materialization"
+    )
+    original_rename = runtime.os.rename
     interrupted = False
 
-    def retire_then_interrupt(path, *args, **kwargs):
+    def detach_then_interrupt(source, destination, *args, **kwargs):
         nonlocal interrupted
-        target = Path(path).resolve()
-        original_rmtree(path, *args, **kwargs)
-        if target == checkpoint_directory.resolve() and not interrupted:
+        is_checkpoint_detach = (
+            Path(source).resolve() == checkpoint_directory.resolve()
+            and Path(destination).resolve() == checkpoint_retirement.resolve()
+        )
+        original_rename(source, destination, *args, **kwargs)
+        if is_checkpoint_detach and not interrupted:
             interrupted = True
             raise RuntimeError(
-                "bounded interruption after stale checkpoint retirement"
+                "bounded interruption after stale checkpoint detachment"
             )
 
-    monkeypatch.setattr(runtime.shutil, "rmtree", retire_then_interrupt)
+    monkeypatch.setattr(runtime.os, "rename", detach_then_interrupt)
     with pytest.raises(
-        RuntimeError, match="bounded interruption after stale checkpoint retirement"
+        RuntimeError, match="bounded interruption after stale checkpoint detachment"
     ):
         fixture.run_cross_validate(config, fixture.PostSelectionHarness())
 
     assert interrupted
     assert not checkpoint_directory.exists()
+    assert not checkpoint_directory.is_symlink()
+    assert checkpoint_retirement.is_dir()
     assert materialization.is_dir()
-    # Cleanup interruption occurs before the real owner can publish any
-    # fold/run completion authority.
+    assert not materialization_retirement.exists()
+    # The interruption is before the second detach and before any completion
+    # authority can be published.
+    assert not (run_root / "fold-acceptance.json").exists()
+    assert not (run_root / "run-evidence.json").exists()
+    assert not (run_root / runtime.RUN_COMPLETION_ANCHOR_FILENAME).exists()
+
+    monkeypatch.setattr(runtime.os, "rename", original_rename)
+    resumed = fixture.PostSelectionHarness()
+    assert fixture.run_cross_validate(config, resumed) == 0
+    assert [request.run_plan.run_identity for request in resumed.requests] == [
+        old_run_identity
+    ]
+    assert resumed.requests[0].start_epoch == 0
+    assert (checkpoint_directory / "train2_runtime.json").is_file()
+    from mdstats.training_data.train2_runtime import load_train2_runtime_summary
+
+    summary = load_train2_runtime_summary(checkpoint_directory)
+    assert summary.completed_epochs == summary.execution_epoch_limit
+    assert json.loads(
+        (materialization / "post_selection_mace_config.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["compute_avg_num_neighbors"] is False
+    assert (run_root / "fold-acceptance.json").is_file()
+    assert not checkpoint_retirement.exists()
+    assert not materialization_retirement.exists()
+    assert {
+        "materialization": downstream._file_tree_bytes(
+            sibling_root / "materialization"
+        ),
+        "checkpoints": downstream._file_tree_bytes(sibling_root / "checkpoints"),
+    } == sibling_before
+
+
+@pytest.mark.slow
+def test_r4b_stale_replacement_retries_after_checkpoint_scratch_reclaim_interruption(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R4-B: detached checkpoint reclamation may fail without corrupting it."""
+
+    (
+        config,
+        run_root,
+        materialization,
+        checkpoint_directory,
+        old_run_identity,
+        sibling_root,
+        sibling_before,
+        _config_before,
+    ) = _stale_pre_fix_replacement_workspace(tmp_path, monkeypatch)
+    checkpoint_retirement = runtime._post_selection_retirement_path(
+        run_root, "checkpoints"
+    )
+    original_rmtree = runtime.shutil.rmtree
+    interrupted = False
+
+    def partial_checkpoint_reclaim(path, *args, **kwargs):
+        nonlocal interrupted
+        target = Path(path).resolve()
+        if target == checkpoint_retirement.resolve() and not interrupted:
+            children = sorted(target.iterdir(), key=lambda item: item.name)
+            assert children, "checkpoint scratch must contain reclaimable state"
+            victim = children[0]
+            if victim.is_dir() and not victim.is_symlink():
+                original_rmtree(victim, *args, **kwargs)
+            else:
+                victim.unlink()
+            interrupted = True
+            raise RuntimeError(
+                "bounded interruption during checkpoint scratch reclamation"
+            )
+        return original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(runtime.shutil, "rmtree", partial_checkpoint_reclaim)
+    with pytest.raises(
+        RuntimeError, match="bounded interruption during checkpoint scratch reclamation"
+    ):
+        fixture.run_cross_validate(config, fixture.PostSelectionHarness())
+
+    assert interrupted
+    assert not checkpoint_directory.exists()
+    assert checkpoint_retirement.is_dir()
+    assert materialization.is_dir()
     assert not (run_root / "fold-acceptance.json").exists()
     assert not (run_root / "run-evidence.json").exists()
     assert not (run_root / runtime.RUN_COMPLETION_ANCHOR_FILENAME).exists()
@@ -949,6 +1100,92 @@ def test_pre_fix_stale_replacement_retries_after_checkpoint_retirement_interrupt
         )
     )["compute_avg_num_neighbors"] is False
     assert (run_root / "fold-acceptance.json").is_file()
+    assert not checkpoint_retirement.exists()
+    assert not runtime._post_selection_retirement_path(
+        run_root, "materialization"
+    ).exists()
+    assert {
+        "materialization": downstream._file_tree_bytes(
+            sibling_root / "materialization"
+        ),
+        "checkpoints": downstream._file_tree_bytes(sibling_root / "checkpoints"),
+    } == sibling_before
+
+
+@pytest.mark.slow
+def test_r4c_materialization_reclaim_interruption_is_recoverable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R4-C: detached materialization reclamation may fail and then resume."""
+
+    (
+        config,
+        run_root,
+        materialization,
+        checkpoint_directory,
+        old_run_identity,
+        sibling_root,
+        sibling_before,
+        _config_before,
+    ) = _stale_pre_fix_replacement_workspace(tmp_path, monkeypatch)
+    checkpoint_retirement = runtime._post_selection_retirement_path(
+        run_root, "checkpoints"
+    )
+    materialization_retirement = runtime._post_selection_retirement_path(
+        run_root, "materialization"
+    )
+    original_rmtree = runtime.shutil.rmtree
+    interrupted = False
+
+    def partial_materialization_reclaim(path, *args, **kwargs):
+        nonlocal interrupted
+        target = Path(path).resolve()
+        if target == materialization_retirement.resolve() and not interrupted:
+            children = sorted(target.iterdir(), key=lambda item: item.name)
+            assert children, "materialization scratch must contain reclaimable state"
+            victim = children[0]
+            if victim.is_dir() and not victim.is_symlink():
+                original_rmtree(victim, *args, **kwargs)
+            else:
+                victim.unlink()
+            interrupted = True
+            raise RuntimeError(
+                "bounded interruption during materialization scratch reclamation"
+            )
+        return original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(runtime.shutil, "rmtree", partial_materialization_reclaim)
+    with pytest.raises(
+        RuntimeError,
+        match="bounded interruption during materialization scratch reclamation",
+    ):
+        fixture.run_cross_validate(config, fixture.PostSelectionHarness())
+
+    assert interrupted
+    assert not checkpoint_directory.exists()
+    assert not checkpoint_retirement.exists()
+    assert not materialization.exists()
+    assert materialization_retirement.is_dir()
+    assert not (run_root / "fold-acceptance.json").exists()
+    assert not (run_root / "run-evidence.json").exists()
+    assert not (run_root / runtime.RUN_COMPLETION_ANCHOR_FILENAME).exists()
+
+    monkeypatch.setattr(runtime.shutil, "rmtree", original_rmtree)
+    resumed = fixture.PostSelectionHarness()
+    assert fixture.run_cross_validate(config, resumed) == 0
+    assert [request.run_plan.run_identity for request in resumed.requests] == [
+        old_run_identity
+    ]
+    assert resumed.requests[0].start_epoch == 0
+    assert checkpoint_directory.is_dir()
+    assert materialization.is_dir()
+    from mdstats.training_data.train2_runtime import load_train2_runtime_summary
+
+    summary = load_train2_runtime_summary(checkpoint_directory)
+    assert summary.completed_epochs == summary.execution_epoch_limit
+    assert (run_root / "fold-acceptance.json").is_file()
+    assert not checkpoint_retirement.exists()
+    assert not materialization_retirement.exists()
     assert {
         "materialization": downstream._file_tree_bytes(
             sibling_root / "materialization"

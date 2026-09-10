@@ -32,6 +32,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -961,6 +962,120 @@ _POST_SELECTION_MATERIALIZATION_FILES = frozenset(
     }
 )
 
+# These paths are disposable run-owned scratch only.  They are deliberately
+# deterministic so a retry can reclaim a directory left behind by an
+# interrupted recursive delete, but they never participate in any P5 identity
+# or completion decision.
+_POST_SELECTION_RETIREMENT_PREFIX = ".tmp_p5_retirement_"
+_POST_SELECTION_RETIREMENT_NAMES = ("checkpoints", "materialization")
+
+
+def _post_selection_retirement_path(run_root: Path, canonical_name: str) -> Path:
+    """Return the bounded scratch path for one detached canonical namespace."""
+
+    if canonical_name not in _POST_SELECTION_RETIREMENT_NAMES:
+        raise ValueError(f"Unsupported P5 retirement namespace: {canonical_name!r}.")
+    return run_root / f"{_POST_SELECTION_RETIREMENT_PREFIX}{canonical_name}"
+
+
+def _post_selection_directory_or_absent(path: Path, *, label: str) -> bool:
+    """Validate one retirement path without following links.
+
+    A canonical recovery namespace or its detached scratch must be a plain
+    directory.  In particular, a symlink at either name is never allowed to
+    turn a run-owned cleanup into deletion outside the run root.
+    """
+
+    try:
+        mode = os.lstat(path).st_mode
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        _post_selection_recovery_error(
+            f"Could not inspect P5 {label} path; preserving it.", exc
+        )
+    if stat.S_ISLNK(mode):
+        _post_selection_recovery_error(
+            f"P5 {label} path is a symlink; preserving it."
+        )
+    if not stat.S_ISDIR(mode):
+        _post_selection_recovery_error(
+            f"P5 {label} path is not a regular directory; preserving it."
+        )
+    return True
+
+
+def _reclaim_post_selection_retirement_scratch(
+    run_root: Path, canonical_directory: Path, *, canonical_name: str
+) -> None:
+    """Reclaim one already-detached scratch namespace, if present.
+
+    A scratch destination is only recognized as a retry residue when the live
+    canonical namespace is absent.  If both names exist, the destination is
+    unknown and this owner preserves both rather than replacing or deleting it.
+    """
+
+    scratch = _post_selection_retirement_path(run_root, canonical_name)
+    canonical_present = _post_selection_directory_or_absent(
+        canonical_directory, label=canonical_name
+    )
+    scratch_present = _post_selection_directory_or_absent(
+        scratch, label=f"{canonical_name} retirement scratch"
+    )
+    if not scratch_present:
+        return
+    if canonical_present:
+        _post_selection_recovery_error(
+            f"P5 {canonical_name} retirement scratch exists while its canonical "
+            "namespace is still present; preserving both paths."
+        )
+    # The canonical name was detached before this scratch could exist.  A
+    # recursive failure therefore leaves only disposable scratch behind and
+    # cannot manufacture a partial continuation/materialization namespace.
+    shutil.rmtree(scratch)
+
+
+def _detach_post_selection_namespace(
+    run_root: Path, canonical_directory: Path, *, canonical_name: str
+) -> None:
+    """Atomically detach one authenticated namespace, then reclaim its scratch.
+
+    The caller holds the run activity lease and has already completed the full
+    recovery authentication/classification.  ``os.rename`` is intentionally
+    used rather than ``os.replace``: an existing destination is an integrity
+    conflict, never something this owner may overwrite.  Supported P5 writers
+    are serialized by the lease, so the preflight and rename form one owner
+    transition; an external replacement is still detected on the next
+    authentication boundary.
+    """
+
+    scratch = _post_selection_retirement_path(run_root, canonical_name)
+    canonical_present = _post_selection_directory_or_absent(
+        canonical_directory, label=canonical_name
+    )
+    if _post_selection_directory_or_absent(
+        scratch, label=f"{canonical_name} retirement scratch"
+    ):
+        # A previous invocation detached this namespace and was interrupted
+        # during or after reclaim.  Finish only that disposable cleanup before
+        # considering the next canonical transition.
+        _reclaim_post_selection_retirement_scratch(
+            run_root, canonical_directory, canonical_name=canonical_name
+        )
+    if not canonical_present:
+        return
+
+    # The destination was checked absent above and all supported writers hold
+    # the same run lease.  Directory rename is the namespace commit point seen
+    # by the next invocation; recursive reclaim happens only after it.
+    os.rename(canonical_directory, scratch)
+    from .target_size_execution import fsync_parent_directory
+
+    fsync_parent_directory(canonical_directory)
+    _reclaim_post_selection_retirement_scratch(
+        run_root, canonical_directory, canonical_name=canonical_name
+    )
+
 
 def _post_selection_recovery_error(
     message: str, cause: Exception | None = None
@@ -1817,22 +1932,37 @@ def _execute_post_selection_run_locked(
     rebuild_materialization = setup.rebuild_materialization
     use_existing_materialization = setup.use_existing_materialization
     replace_stale_continuation = setup.replace_stale_continuation
+    # Finish any detached scratch left by an earlier interrupted invocation
+    # before entering the next canonical transition.  The helper refuses to
+    # touch a scratch destination while its canonical namespace is present,
+    # which keeps an unknown collision fail-closed.
+    for canonical_name in _POST_SELECTION_RETIREMENT_NAMES:
+        _reclaim_post_selection_retirement_scratch(
+            run_root,
+            run_root / canonical_name,
+            canonical_name=canonical_name,
+        )
     if replace_stale_continuation:
-        # This is deliberately the same run-owned scratch cleanup used for an
-        # authenticated materialization rebuild.  It occurs only after TRAIN2,
-        # materialization, MACE evidence, and the activity lease have all
-        # authenticated the stale continuation; no foreign/corrupt state can
-        # reach this branch. Retire the continuation first so an interruption
-        # before materialization removal leaves the existing classifier's
-        # authenticated, disposable pre-fix materialization shape.
-        shutil.rmtree(checkpoint_directory)
-    if rebuild_materialization:
-        # The classifier has already established that this is a local,
-        # run-owned, nonterminal scratch tree with no ambiguous descendant.
-        # When replacing a stale continuation, this is intentionally second:
-        # the next retry can distinguish interrupted cleanup from a durable
-        # continuation/materialization conflict without new recovery state.
-        shutil.rmtree(material_directory)
+        # This occurs only after TRAIN2, materialization, MACE evidence, and
+        # the activity lease have all authenticated the stale continuation; no
+        # foreign/corrupt canonical state can reach this branch.  Retire the
+        # continuation first so the accepted checkpoint-before-materialization
+        # ordering remains explicit.
+        _detach_post_selection_namespace(
+            run_root,
+            checkpoint_directory,
+            canonical_name="checkpoints",
+        )
+    if rebuild_materialization or replace_stale_continuation:
+        # The classifier has established that this is local, run-owned,
+        # nonterminal scratch.  The live namespace is detached before any
+        # recursive reclaim, so an interruption cannot expose a partially
+        # destroyed canonical materialization to the next invocation.
+        _detach_post_selection_namespace(
+            run_root,
+            material_directory,
+            canonical_name="materialization",
+        )
     checkpoint_directory.mkdir(parents=True, exist_ok=True)
 
     if use_existing_materialization:
