@@ -19,7 +19,7 @@ precedence: This workplan supersedes only the P5 TRAIN2 resource-admission, live
 
 ## 0. Second-pass design closure disposition
 
-The second independent workplan review is complete. The **workplan itself is PASS / frozen for the next implementation round**, while the currently reviewed implementation candidate `88e92650317687248221505b9fd7023954a8b2e4` remains **NO-PASS** until the bounded repairs and evidence below are complete.
+The second-pass workplan review is complete. The **workplan itself is PASS / frozen for the next implementation round**, while the currently reviewed implementation candidate `88e92650317687248221505b9fd7023954a8b2e4` remains **NO-PASS** until the bounded repairs and evidence below are complete.
 
 No Serious Challenge is active. The accepted D1 scientific formulation and D2 numerical/training method remain coherent, and no current evidence establishes that the exact frozen `batch_size=2` CuEq training method is intrinsically incompatible with a clean 24 GiB target device.
 
