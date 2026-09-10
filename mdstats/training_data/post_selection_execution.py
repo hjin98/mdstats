@@ -1091,11 +1091,6 @@ class _PostSelectionTrainingProgress:
                 "Post-selection optimizer activity timeout must be finite and non-negative."
             )
         self.last_optimizer_update_monotonic: float | None = None
-        # MACE 0.3.16 does not serialize an optimizer-update ID.  Retain the
-        # last optimizer record's canonical content only long enough to avoid
-        # counting an identical duplicate row for the same update; a distinct
-        # row remains one accepted optimizer update.
-        self._last_optimizer_record_digest: str | None = None
         self.last_loss: Any | None = None
         self.last_metric_epoch: int | None = None
         self.phase = "launching"
@@ -1160,10 +1155,17 @@ class _PostSelectionTrainingProgress:
                 # floor update count that TRAIN2 will observe after MACE
                 # constructs the real loader. The durable summary still
                 # supersedes this launch-time projection when available.
-                self.planned_updates = (
+                projected_updates = (
                     int(structures) // int(batch_size)
                     * self.planned_epochs
                 )
+                # A small fold can be below MACE's native full-batch
+                # projection. Until TRAIN2 publishes the actual loader
+                # geometry, retain an unknown horizon rather than exposing a
+                # zero denominator that makes a live optimizer event look
+                # invalid (and cannot satisfy the progress contract).
+                if projected_updates > 0:
+                    self.planned_updates = projected_updates
         self.last_learning_rate = getattr(
             initial_summary, "instantaneous_learning_rate", None
         )
@@ -1205,19 +1207,6 @@ class _PostSelectionTrainingProgress:
             if mode == "opt":
                 # MetricsLogger writes this record only after MACE's optimizer
                 # step returns. Validation records never enter this numerator.
-                try:
-                    record_digest = digest(dict(record))
-                except (TypeError, ValueError):
-                    # A malformed/non-canonical diagnostic record cannot be
-                    # proven to be a duplicate, so retain conservative
-                    # liveness and count the observed optimizer completion.
-                    record_digest = None
-                if (
-                    record_digest is not None
-                    and record_digest == self._last_optimizer_record_digest
-                ):
-                    continue
-                self._last_optimizer_record_digest = record_digest
                 self.optimizer_updates_since_launch += 1
                 self.phase = "training"
                 self.execution_phase = "training"

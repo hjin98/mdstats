@@ -929,7 +929,6 @@ def execute_post_selection_run(
     all, so outer evidence cannot influence the checkpoint it judges.
     """
 
-    selected = context.selected
     run_root = context.run_root(run_plan.run_identity)
     with post_selection_run_activity_lease(run_root):
         return _execute_post_selection_run_locked(
@@ -1404,14 +1403,18 @@ def _classify_post_selection_materialization(
     extxyz_policy: Any,
     replay_resolution: Any | None,
     continuation_summary: Any | None,
-) -> tuple[PostSelectionMaterialization | None, bool, bool]:
+) -> tuple[PostSelectionMaterialization | None, bool, bool, bool]:
     """Classify existing P5 materialization before any replacement is allowed.
 
-    Returns ``(record, rebuild, use_existing)``. ``rebuild`` is granted only
-    for absent/incomplete or authenticated disposable pre-fix scratch. A
-    faithful pre-fix record with valid TRAIN2 progress is returned for direct
-    reuse because immutable descendant state must not be deleted merely to
-    obtain the current configuration spelling.
+    Returns ``(record, rebuild, use_existing, replace_stale_continuation)``.
+    ``rebuild`` is granted only for absent/incomplete or authenticated
+    disposable pre-fix scratch. A faithful pre-fix record with valid TRAIN2
+    progress is returned for direct reuse because immutable descendant state
+    must not be deleted merely to obtain the current configuration spelling.
+    The final flag is granted only after the complete authenticated
+    immediately-pre-fix representation proves that its persisted actual
+    training architecture is stale. It is an execution-local decision; no
+    recovery state is persisted.
     """
 
     if any(
@@ -1432,7 +1435,7 @@ def _classify_post_selection_materialization(
                 "TRAIN2 continuation is durable but its P5 materialization is "
                 "absent; preserving both sides and refusing to rebuild it."
             )
-        return None, False, False
+        return None, False, False, False
     if not material_directory.is_dir():
         _post_selection_recovery_error(
             "P5 materialization is not a regular directory; preserving it."
@@ -1448,7 +1451,7 @@ def _classify_post_selection_materialization(
             )
         # No final authenticated record means interrupted publication, not a
         # completed record whose bytes failed validation.
-        return None, True, False
+        return None, True, False, False
     if record_path.is_symlink() or not record_path.is_file():
         _post_selection_recovery_error(
             "P5 materialization final record is not a regular file; preserving it."
@@ -1569,7 +1572,7 @@ def _classify_post_selection_materialization(
     ).encode("utf-8")
     current = config_payload == expected_config and config_bytes == expected_bytes
     if current:
-        return record, False, False
+        return record, False, False, False
 
     # The only supported pre-fix compatibility is the exact representation
     # immediately before the explicit local-neighbor control was published:
@@ -1587,8 +1590,8 @@ def _classify_post_selection_materialization(
     )
     if faithful_pre_fix:
         if continuation_summary is not None:
-            return record, False, True
-        return record, True, False
+            return record, False, True, False
+        return record, True, False, False
 
     historical_payload = dict(config_payload)
     historical_locator = historical_payload.pop("foundation_model", None)
@@ -1604,7 +1607,7 @@ def _classify_post_selection_materialization(
             if continuation_summary is None:
                 # No durable TRAIN2 state exists, so the authenticated
                 # pre-fix materialization is disposable interrupted scratch.
-                return record, True, False
+                return record, True, False, False
 
             persisted_architecture = getattr(
                 continuation_summary, "model_architecture_digest", None
@@ -1615,7 +1618,7 @@ def _classify_post_selection_materialization(
                     "authority; preserving diagnostic state."
                 )
             try:
-                current_architecture, realization = _post_selection_current_training_architecture(
+                current_architecture, _realization = _post_selection_current_training_architecture(
                     context,
                     current_config=expected_config,
                 )
@@ -1636,19 +1639,13 @@ def _classify_post_selection_materialization(
                 # the authenticated actual training realization is current.
                 # Reuse the immutable materialization and let the corrected
                 # EVAL2 path consume the authenticated continuation.
-                return record, False, True
-            realization_name = realization or "portable-e3nn"
-            _post_selection_recovery_error(
-                "P5 pre-fix TRAIN2 model architecture differs from the current "
-                f"authorized {realization_name} training realization; preserving "
-                "the old materialization/checkpoint and requiring recomputation "
-                "of this affected run under current authority."
-            )
+                return record, False, True, False
+            return record, True, False, True
     _post_selection_recovery_error(
         "P5 materialization is internally valid but its protected executable "
         "configuration is foreign to the current run; preserving it."
     )
-    return record, False, False
+    return record, False, False, False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1668,6 +1665,7 @@ class _PostSelectionRunSetup:
     existing_materialization: Any | None
     rebuild_materialization: bool
     use_existing_materialization: bool
+    replace_stale_continuation: bool
 
 
 def _prepare_post_selection_run(
@@ -1732,22 +1730,33 @@ def _prepare_post_selection_run(
         checkpoint_directory,
         runtime_plan=runtime_plan,
     )
-    existing_materialization, rebuild_materialization, use_existing_materialization = (
-        _classify_post_selection_materialization(
-            context,
-            run_plan=run_plan,
-            material_directory=material_directory,
-            run_root=context.run_root(run_plan.run_identity),
-            training_frame_uids=training_frame_uids,
-            monitor_frame_uids=monitor_frame_uids,
-            outer_evaluation_frame_uids=outer_evaluation_frame_uids,
-            preparation=preparation,
-            optimizer_policy=optimizer_policy,
-            extxyz_policy=extxyz_policy,
-            replay_resolution=replay_resolution,
-            continuation_summary=continuation_summary,
-        )
+    (
+        existing_materialization,
+        rebuild_materialization,
+        use_existing_materialization,
+        replace_stale_continuation,
+    ) = _classify_post_selection_materialization(
+        context,
+        run_plan=run_plan,
+        material_directory=material_directory,
+        run_root=context.run_root(run_plan.run_identity),
+        training_frame_uids=training_frame_uids,
+        monitor_frame_uids=monitor_frame_uids,
+        outer_evaluation_frame_uids=outer_evaluation_frame_uids,
+        preparation=preparation,
+        optimizer_policy=optimizer_policy,
+        extxyz_policy=extxyz_policy,
+        replay_resolution=replay_resolution,
+        continuation_summary=continuation_summary,
     )
+    if replace_stale_continuation:
+        # The classifier has authenticated the historical continuation and
+        # established that it is the narrowly recognized pre-fix representation
+        # with a different actual model architecture.  It must not be handed to
+        # the trainer as a resumable predecessor.
+        continuation_summary = None
+        start_epoch = 0
+        existing_materialization = None
     return _PostSelectionRunSetup(
         material_directory=material_directory,
         checkpoint_directory=checkpoint_directory,
@@ -1762,6 +1771,7 @@ def _prepare_post_selection_run(
         existing_materialization=existing_materialization,
         rebuild_materialization=rebuild_materialization,
         use_existing_materialization=use_existing_materialization,
+        replace_stale_continuation=replace_stale_continuation,
     )
 
 
@@ -1806,10 +1816,18 @@ def _execute_post_selection_run_locked(
     existing_materialization = setup.existing_materialization
     rebuild_materialization = setup.rebuild_materialization
     use_existing_materialization = setup.use_existing_materialization
+    replace_stale_continuation = setup.replace_stale_continuation
     if rebuild_materialization:
         # The classifier has already established that this is a local,
         # run-owned, nonterminal scratch tree with no ambiguous descendant.
         shutil.rmtree(material_directory)
+    if replace_stale_continuation:
+        # This is deliberately the same run-owned scratch cleanup used for an
+        # authenticated materialization rebuild.  It occurs only after TRAIN2,
+        # materialization, MACE evidence, and the activity lease have all
+        # authenticated the stale continuation; no foreign/corrupt state can
+        # reach this branch.
+        shutil.rmtree(checkpoint_directory)
     checkpoint_directory.mkdir(parents=True, exist_ok=True)
 
     if use_existing_materialization:
