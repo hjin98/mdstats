@@ -2983,14 +2983,35 @@ def _post_selection_training_concurrency_policy(
     from ._campaign_cli_core import _cfg
     from .training_parallel import TrainingConcurrencyPolicy
 
+    import os
+
+    requested_override = os.environ.get("MDSTATS_PARALLEL_TRAINING_JOBS")
+    requested_jobs = (
+        int(requested_override)
+        if requested_override is not None and requested_override.strip()
+        else int(_cfg(context.cfg, "execution", "parallel_training_jobs", 0))
+    )
+    max_override = os.environ.get("MDSTATS_MAXIMUM_PARALLEL_TRAINING_JOBS")
+    maximum_auto_jobs = (
+        int(max_override)
+        if max_override is not None and max_override.strip()
+        else int(
+            _cfg(context.cfg, "execution", "maximum_parallel_training_jobs", 4)
+        )
+    )
+    if (
+        requested_override is not None
+        and requested_override.strip()
+        and int(requested_override) > 0
+    ):
+        maximum_auto_jobs = min(maximum_auto_jobs, int(requested_override))
+
     return TrainingConcurrencyPolicy(
-        requested_jobs=int(_cfg(context.cfg, "execution", "parallel_training_jobs", 0)),
+        requested_jobs=requested_jobs,
         minimum_auto_jobs=int(
             _cfg(context.cfg, "execution", "minimum_parallel_training_jobs", 1)
         ),
-        maximum_auto_jobs=int(
-            _cfg(context.cfg, "execution", "maximum_parallel_training_jobs", 4)
-        ),
+        maximum_auto_jobs=maximum_auto_jobs,
         gpu_memory_fraction=float(
             _cfg(context.cfg, "execution", "training_gpu_memory_fraction", 0.90)
         ),
@@ -3423,20 +3444,29 @@ def _execute_post_selection_pending_runs(
                     "remain but no job is currently resource-admissible: "
                     f"{concurrency_plan.summary()}"
                 )
-            done, _ = wait(
-                tuple(active),
-                timeout=poll_interval,
-                return_when=FIRST_COMPLETED,
-            ) if active else (set(), set())
+            if active:
+                done, _ = wait(
+                    tuple(active),
+                    timeout=poll_interval,
+                    return_when=FIRST_COMPLETED,
+                )
+            else:
+                done = set()
+                if admission_blocked and next_task < len(ordered_pending):
+                    time.sleep(poll_interval)
+            first_failure: BaseException | None = None
             for future in done:
                 task = active.pop(future)
                 try:
                     future.result()
-                except BaseException:
+                    trained_slots.append(task.slot)
+                    completed_count += 1
+                except BaseException as exc:
                     failed_count += 1
-                    raise
-                trained_slots.append(task.slot)
-                completed_count += 1
+                    if first_failure is None:
+                        first_failure = exc
+            if first_failure is not None:
+                raise first_failure
 
             now = time.monotonic()
             if now - last_sample_at >= float(concurrency_policy.monitor_interval_seconds):
@@ -3455,7 +3485,11 @@ def _execute_post_selection_pending_runs(
                     now=now,
                 )
                 last_decision_reason = decision.reason
-                admission_blocked = decision.memory_safe is not True
+                admission_blocked = (
+                    decision.memory_safe is not True
+                    if concurrency_plan.gpu_memory_budget_bytes is not None
+                    else False
+                )
                 last_sample_at = now
                 if decision.memory_hazard:
                     # A resource stop before CUDA exhausts the device, routed

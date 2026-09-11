@@ -722,3 +722,511 @@ def test_no_operator_facing_memory_hazard_grace_key_exists() -> None:
     assert not hasattr(
         TrainingConcurrencyPolicy(), "memory_hazard_grace_seconds"
     )
+
+
+# --- 10. Blocker B1: CPU serial replacement across monitor observations -----
+
+
+class _MultiSlotCpuHarness(_TimedHarness):
+    """A CPU harness that sleeps during train to ensure crossing monitor observations."""
+
+    def __init__(self, *, slot_duration: float = 0.12, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.slot_duration = float(slot_duration)
+        self.active_jobs = 0
+        self.max_active_jobs = 0
+        import threading
+        self._lock = threading.Lock()
+
+    def train(self, request):
+        with self._lock:
+            self.active_jobs += 1
+            if self.active_jobs > self.max_active_jobs:
+                self.max_active_jobs = self.active_jobs
+        try:
+            time.sleep(self.slot_duration)
+            return super().train(request)
+        finally:
+            with self._lock:
+                self.active_jobs -= 1
+
+
+def test_cpu_serial_multi_slot_crosses_monitor_observations_without_hang(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CPU serial replacement continues normally across monitor observations (B1).
+
+    AdaptiveTrainingConcurrency.observe() returns memory_safe=None on CPU plans.
+    The P5 scheduler must derive admission_blocked from memory_safe only on
+    accelerator-memory-controlled plans, preserving CPU maximum_jobs=1 and
+    ordinary serial replacement submission across all pending slots.
+    """
+
+    from mdstats.training_data.training_parallel import AdaptiveTrainingConcurrency
+
+    config = _selected_campaign(
+        tmp_path,
+        execution="\n".join(
+            (
+                "parallel_training_monitor_interval_seconds = 0.04",
+                "training_progress_interval_seconds = 0.04",
+            )
+        ),
+    )
+
+    observations = 0
+    orig_observe = AdaptiveTrainingConcurrency.observe
+
+    def observe_spy(self, *args, **kwargs):
+        nonlocal observations
+        observations += 1
+        return orig_observe(self, *args, **kwargs)
+
+    monkeypatch.setattr(AdaptiveTrainingConcurrency, "observe", observe_spy)
+
+    harness = _MultiSlotCpuHarness(slot_duration=0.10)
+    assert fx.run_cross_validate(config, harness) == 0
+
+    assert observations >= 2, f"expected multiple observations during run, got {observations}"
+    assert harness.max_active_jobs == 1, (
+        f"CPU training must remain serial, observed {harness.max_active_jobs} concurrent jobs"
+    )
+    assert len(harness.runs) == 2, (
+        f"expected all pending CV slots (2) to be admitted, got {len(harness.runs)}"
+    )
+    assert harness.evaluations, "successful wave must reach ordinary serial EVAL2"
+
+    cfg, paths, store = fx.load_context(config)
+    try:
+        from mdstats.training_data.campaign_post_selection_runtime import (
+            build_post_selection_contexts,
+        )
+
+        contexts = build_post_selection_contexts(
+            cfg, paths, store, trainer=None, inference_evaluator=None
+        )
+        assert resolve_current_cv_acceptance(contexts[0]).accepted
+    finally:
+        store.close()
+
+    # Shared final-production caller
+    prod_harness = _MultiSlotCpuHarness(slot_duration=0.08)
+    assert fx.run_train_production(config, prod_harness) == 0
+    assert prod_harness.max_active_jobs == 1
+    assert prod_harness.runs, "production TRAIN slots must be admitted"
+    assert prod_harness.evaluations, "production must complete through EVAL2"
+
+
+# --- 11. Blocker B2: Idle transient CUDA admission wait on poll cadence -----
+
+
+def test_idle_transient_cuda_admission_blocking_waits_rather_than_spins_unsafe_to_safe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Idle pending queue: unsafe -> safe waits on poll interval, then admits (B2)."""
+
+    from dataclasses import replace
+    from mdstats.training_data import _campaign_cli_core as cli
+    from mdstats.training_data import training_parallel
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        build_post_selection_contexts,
+        execute_post_selection_cross_validation,
+    )
+    from mdstats.training_data.training_parallel import GpuTelemetrySample
+
+    gib = 1024 ** 3
+    config = _selected_campaign(
+        tmp_path,
+        execution="\n".join(
+            (
+                "parallel_training_monitor_interval_seconds = 0.05",
+                "parallel_training_epoch_stabilization_seconds = 0.0",
+                "training_progress_interval_seconds = 0.05",
+            )
+        ),
+    )
+
+    import threading
+
+    job1_ready = threading.Event()
+    observation_1_done = threading.Event()
+
+    class _SyncHarness(_TimedHarness):
+        def __init__(self, **kwargs) -> None:
+            super().__init__(**kwargs)
+            self.completed_jobs = 0
+
+        def train(self, request):
+            res = super().train(request)
+            if self.completed_jobs == 0:
+                job1_ready.set()
+                observation_1_done.wait(timeout=5.0)
+            self.completed_jobs += 1
+            return res
+
+    harness = _SyncHarness()
+    preflight_calls = 0
+    sleep_calls: list[float] = []
+    orig_sleep = time.sleep
+
+    def telemetry_spy(device: str):
+        nonlocal preflight_calls
+        if preflight_calls < 2 or not job1_ready.is_set():
+            if preflight_calls < 2:
+                preflight_calls += 1
+            return GpuTelemetrySample(
+                sampled_monotonic=time.monotonic(),
+                device_index=0,
+                utilization_percent=5.0,
+                used_bytes=int(0.4 * gib),
+                total_bytes=24 * gib,
+            )
+        if not observation_1_done.is_set():
+            observation_1_done.set()
+            return GpuTelemetrySample(
+                sampled_monotonic=time.monotonic(),
+                device_index=0,
+                utilization_percent=5.0,
+                used_bytes=int(22.5 * gib),
+                total_bytes=24 * gib,
+            )
+        # Observation 2+ (idle queue / subsequent execution): safe clears block
+        return GpuTelemetrySample(
+            sampled_monotonic=time.monotonic(),
+            device_index=0,
+            utilization_percent=5.0,
+            used_bytes=int(0.4 * gib),
+            total_bytes=24 * gib,
+        )
+
+    def sleep_spy(duration: float):
+        sleep_calls.append(duration)
+        orig_sleep(min(duration, 0.005))
+
+    monkeypatch.setattr(training_parallel, "query_gpu_telemetry", telemetry_spy)
+    monkeypatch.setattr(time, "sleep", sleep_spy)
+
+    cfg, paths = cli._load_config(config)
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        context = build_post_selection_contexts(
+            cfg, paths, store, trainer=harness.train, inference_evaluator=harness.evaluate, admit=True
+        )[0]
+        context = replace(context, method_policies=replace(context.method_policies, device="cuda:0"))
+        plan, acceptance = execute_post_selection_cross_validation(context)
+        assert acceptance.accepted
+    finally:
+        store.close()
+
+    assert sleep_calls, "scheduler must wait on poll interval while idle and admission blocked"
+    assert len(harness.runs) == 2, "both slots must eventually complete after recovery"
+
+
+def test_idle_transient_cuda_admission_blocking_unsafe_to_unsafe_fails_explicitly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Idle pending queue: unsafe -> unsafe waits, then typed zero-admission failure (B2)."""
+
+    from dataclasses import replace
+    from mdstats.training_data import _campaign_cli_core as cli
+    from mdstats.training_data import training_parallel
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        build_post_selection_contexts,
+        execute_post_selection_cross_validation,
+    )
+    from mdstats.training_data.training_parallel import (
+        GpuTelemetrySample,
+        TrainingAdmissionBlockedError,
+    )
+
+    gib = 1024 ** 3
+    config = _selected_campaign(
+        tmp_path,
+        execution="\n".join(
+            (
+                "parallel_training_monitor_interval_seconds = 0.04",
+                "parallel_training_epoch_stabilization_seconds = 0.0",
+                "training_progress_interval_seconds = 0.04",
+            )
+        ),
+    )
+
+    import threading
+
+    job1_ready = threading.Event()
+    observation_1_done = threading.Event()
+
+    class _SyncHarness(_TimedHarness):
+        def __init__(self, **kwargs) -> None:
+            super().__init__(**kwargs)
+            self.completed_jobs = 0
+
+        def train(self, request):
+            res = super().train(request)
+            if self.completed_jobs == 0:
+                job1_ready.set()
+                observation_1_done.wait(timeout=5.0)
+            self.completed_jobs += 1
+            return res
+
+    harness = _SyncHarness()
+    preflight_calls = 0
+    sleep_calls: list[float] = []
+    orig_sleep = time.sleep
+
+    def telemetry_spy(device: str):
+        nonlocal preflight_calls
+        if preflight_calls < 2 or not job1_ready.is_set():
+            if preflight_calls < 2:
+                preflight_calls += 1
+            return GpuTelemetrySample(
+                sampled_monotonic=time.monotonic(),
+                device_index=0,
+                utilization_percent=5.0,
+                used_bytes=int(0.4 * gib),
+                total_bytes=24 * gib,
+            )
+        if not observation_1_done.is_set():
+            observation_1_done.set()
+        # Observation 1 (while Job 1 active) and Observation 2 (queue idle): both unsafe
+        return GpuTelemetrySample(
+            sampled_monotonic=time.monotonic(),
+            device_index=0,
+            utilization_percent=5.0,
+            used_bytes=int(22.5 * gib),
+            total_bytes=24 * gib,
+        )
+
+    def sleep_spy(duration: float):
+        sleep_calls.append(duration)
+        orig_sleep(min(duration, 0.005))
+
+    monkeypatch.setattr(training_parallel, "query_gpu_telemetry", telemetry_spy)
+    monkeypatch.setattr(time, "sleep", sleep_spy)
+
+    cfg, paths = cli._load_config(config)
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        context = build_post_selection_contexts(
+            cfg, paths, store, trainer=harness.train, inference_evaluator=harness.evaluate, admit=True
+        )[0]
+        context = replace(context, method_policies=replace(context.method_policies, device="cuda:0"))
+        with pytest.raises(TrainingAdmissionBlockedError) as exc_info:
+            execute_post_selection_cross_validation(context)
+    finally:
+        store.close()
+
+    assert sleep_calls, "scheduler must wait on poll interval before confirmed zero-safe admission"
+    assert "no job is currently resource-admissible" in str(exc_info.value)
+    assert len(harness.runs) == 1, "second job must never launch from persistent unsafe state"
+    _no_cv_acceptance(config)
+
+
+def test_idle_transient_cuda_admission_blocking_missing_to_missing_fails_explicitly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Idle pending queue: missing -> missing waits, then typed zero/observability failure (B2)."""
+
+    from dataclasses import replace
+    from mdstats.training_data import _campaign_cli_core as cli
+    from mdstats.training_data import training_parallel
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        build_post_selection_contexts,
+        execute_post_selection_cross_validation,
+    )
+    from mdstats.training_data.training_parallel import (
+        GpuTelemetrySample,
+        TrainingAdmissionBlockedError,
+    )
+
+    gib = 1024 ** 3
+    config = _selected_campaign(
+        tmp_path,
+        execution="\n".join(
+            (
+                "parallel_training_monitor_interval_seconds = 0.04",
+                "parallel_training_epoch_stabilization_seconds = 0.0",
+                "training_progress_interval_seconds = 0.04",
+            )
+        ),
+    )
+
+    import threading
+
+    job1_ready = threading.Event()
+    observation_1_done = threading.Event()
+
+    class _SyncHarness(_TimedHarness):
+        def __init__(self, **kwargs) -> None:
+            super().__init__(**kwargs)
+            self.completed_jobs = 0
+
+        def train(self, request):
+            res = super().train(request)
+            if self.completed_jobs == 0:
+                job1_ready.set()
+                observation_1_done.wait(timeout=5.0)
+            self.completed_jobs += 1
+            return res
+
+    harness = _SyncHarness()
+    preflight_calls = 0
+    sleep_calls: list[float] = []
+    orig_sleep = time.sleep
+
+    def telemetry_spy(device: str):
+        nonlocal preflight_calls
+        if preflight_calls < 2 or not job1_ready.is_set():
+            if preflight_calls < 2:
+                preflight_calls += 1
+            return GpuTelemetrySample(
+                sampled_monotonic=time.monotonic(),
+                device_index=0,
+                utilization_percent=5.0,
+                used_bytes=int(0.4 * gib),
+                total_bytes=24 * gib,
+            )
+        if not observation_1_done.is_set():
+            observation_1_done.set()
+        # Observation 1 (while Job 1 active) and Observation 2 (queue idle): both missing
+        return None
+
+    def sleep_spy(duration: float):
+        sleep_calls.append(duration)
+        orig_sleep(min(duration, 0.005))
+
+    monkeypatch.setattr(training_parallel, "query_gpu_telemetry", telemetry_spy)
+    monkeypatch.setattr(time, "sleep", sleep_spy)
+
+    cfg, paths = cli._load_config(config)
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        context = build_post_selection_contexts(
+            cfg, paths, store, trainer=harness.train, inference_evaluator=harness.evaluate, admit=True
+        )[0]
+        context = replace(context, method_policies=replace(context.method_policies, device="cuda:0"))
+        with pytest.raises(TrainingAdmissionBlockedError) as exc_info:
+            execute_post_selection_cross_validation(context)
+    finally:
+        store.close()
+
+    assert sleep_calls, "scheduler must wait on poll interval before confirmed zero-safe admission"
+    assert "no job is currently resource-admissible" in str(exc_info.value)
+    assert len(harness.runs) == 1, "second job must never launch when memory observability is lost"
+    _no_cv_acceptance(config)
+
+
+# --- 12. Blocker B3: Same completion batch classifies all done futures ------
+
+
+class _MixedDoneBatchHarness(_TimedHarness):
+    """Two concurrently admitted jobs: fold 0 succeeds and fold 1 fails."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        import threading
+        self.barrier = threading.Barrier(2)
+
+    def train(self, request):
+        fold = int(getattr(request.run_plan, "fold_index", len(self.runs)))
+        self.runs.append(request.run_plan.run_identity)
+        self.barrier.wait(timeout=5.0)
+        if fold == 1:
+            raise RuntimeError("simulated TRAIN2 child failure for fold 1")
+        return super().train(request)
+
+
+def test_one_completion_batch_truthfully_classifies_already_done_sibling(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Classify the complete done batch before surfacing the first failure (B3).
+
+    When a completion batch contains both a successful and a failing future,
+    pop every done future from active, count completed and failed truthfully,
+    and raise after classification so the failure report distinguishes active=0,
+    completed=1, failed=1, queued excluding both submitted slots, no EVAL2 runs,
+    and the completed slot's authenticated summary is reused on restart.
+    """
+
+    import concurrent.futures
+    from concurrent.futures import FIRST_COMPLETED
+    from mdstats.training_data import training_parallel
+
+    config = _selected_campaign(tmp_path)
+
+    orig_build_plan = training_parallel.build_training_concurrency_plan
+
+    def plan_with_two_initial_jobs(*args, **kwargs):
+        p = orig_build_plan(*args, **kwargs)
+        from dataclasses import replace
+        return replace(p, initial_jobs=2, maximum_jobs=2)
+
+    monkeypatch.setattr(
+        training_parallel, "build_training_concurrency_plan", plan_with_two_initial_jobs
+    )
+
+    orig_wait = concurrent.futures.wait
+
+    def wait_both_done(futures, timeout=None, return_when=FIRST_COMPLETED):
+        for f in futures:
+            try:
+                f.exception(timeout=5.0)
+            except Exception:
+                pass
+        return orig_wait(futures, timeout=timeout, return_when=return_when)
+
+    monkeypatch.setattr(concurrent.futures, "wait", wait_both_done)
+
+    harness = _MixedDoneBatchHarness()
+    with pytest.raises(RuntimeError, match="simulated TRAIN2 child failure for fold 1"):
+        fx.run_cross_validate(config, harness)
+
+    printed = capsys.readouterr().out
+    failure_lines = [
+        line
+        for line in printed.splitlines()
+        if "[TRAIN scheduler] status=failed" in line
+    ]
+    assert failure_lines, printed
+    line = failure_lines[-1]
+
+    # Verify truthful reporting from the classified batch
+    assert "completed_jobs=1" in line, line
+    assert "failed_jobs=1" in line, line
+    assert "active_jobs=0" in line, line
+    assert "queued_jobs=0" in line, line
+    assert harness.evaluations == [], "no EVAL2 may run after TRAIN wave failure"
+    _no_cv_acceptance(config)
+
+    # Restart: the completed fold 0 must be reused from its authenticated summary
+    resumed = _TimedHarness()
+    assert fx.run_cross_validate(config, resumed) == 0
+    assert len(resumed.runs) == 1, (
+        "the completed slot must be reused on restart rather than retrained; "
+        f"got retrained runs: {resumed.runs}"
+    )
+    assert resumed.evaluations, "the healthy restart must complete through EVAL2"
+
+
+# --- 13. Execution concurrency cap override ---------------------------------
+
+
+def test_execution_concurrency_cap_environment_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """MDSTATS_PARALLEL_TRAINING_JOBS caps concurrency without modifying config."""
+
+    monkeypatch.setenv("MDSTATS_PARALLEL_TRAINING_JOBS", "1")
+    config = _selected_campaign(tmp_path)
+    cfg, paths = fx.load_context(config)[:2]
+    store = fx.CampaignStore(paths.state_db)
+    try:
+        context = runtime.build_post_selection_contexts(
+            cfg, paths, store, trainer=None, inference_evaluator=None
+        )[0]
+        policy = runtime._post_selection_training_concurrency_policy(context)
+        assert policy.requested_jobs == 1
+        assert policy.maximum_auto_jobs == 1
+    finally:
+        store.close()
+
