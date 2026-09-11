@@ -525,63 +525,38 @@ def _resolve_post_selection_replay_resolution(
             "Replay-enabled post-selection requires configured campaign paths."
         )
     from ._campaign_cli_core import (
+        CampaignCliError,
         _build_replay_plan,
         _resolve_true_label_replay_inputs,
         _single_source_replay_context,
+        _single_source_replay_config,
     )
     from .replay import ReplayLabelMode, ReplayMode
 
-    single_ctx = _single_source_replay_context(context.cfg, context.paths)
-    if single_ctx is not None:
-        plan = single_ctx.get("plan")
-        true_resolution = single_ctx.get("true_resolution")
-        if plan is None or true_resolution is None:
+    # Post-selection is a scientific *read*.  The current single-source
+    # interface is resolved through the authenticated published authority, which
+    # cannot build foundation predictions, requalify under a changed policy, or
+    # create a scientific split; a missing or stale scientific parent routes to
+    # `prepare` instead of being rebuilt here.
+    if _single_source_replay_config(context.cfg, context.paths) is not None:
+        try:
+            single_ctx = _single_source_replay_context(context.cfg, context.paths)
+        except CampaignCliError as exc:
             raise PostSelectionError(
-                "Single-source replay did not produce both training and TRUE_DFT "
-                "monitor authorities."
-            )
-        training_artifact = getattr(plan, "train_artifact", None)
-        if training_artifact is None:
+                f"Single-source replay authority is not current for post-selection: {exc}"
+            ) from exc
+        if single_ctx is None:
             raise PostSelectionError(
-                "Single-source replay did not produce a canonical training artifact."
+                "Single-source replay is configured but no prepared replay "
+                "authority could be authenticated; run `prepare`."
             )
-        training_path = getattr(training_artifact, "path", None)
-        if training_path is None:
+        try:
+            return PostSelectionReplayResolution(**dict(single_ctx["resolution_fields"]))
+        except KeyError as exc:
             raise PostSelectionError(
-                "Single-source replay training artifact does not identify its source file."
-            )
-        monitor_artifact = getattr(true_resolution, "monitor_artifact", None)
-        monitor_path = getattr(true_resolution, "monitor_path", None)
-        if monitor_artifact is None or monitor_path is None:
-            raise PostSelectionError(
-                "Single-source replay did not produce an independent TRUE_DFT "
-                "monitor artifact."
-            )
-        source_art = single_ctx["source"]
-        split_manifest = single_ctx["split"]
-        train_geometry_set = set(split_manifest.train_geometry_identities)
-        return PostSelectionReplayResolution(
-            interface="single_source",
-            train_path=str(training_path),
-            monitor_path=str(monitor_path),
-            train_artifact=training_artifact,
-            monitor_artifact=monitor_artifact,
-            training_label_mode=getattr(training_artifact, "label_mode", None),
-            true_label_mode=getattr(monitor_artifact, "label_mode", None),
-            source_path=str(source_art.path),
-            source_content_digest=source_art.content_digest,
-            source_sha256=source_art.sha256,
-            split_manifest_digest=split_manifest.content_digest,
-            # The materializer writes source-index order. Preserve that order
-            # from the already-authenticated source authority so the child can
-            # compare its loaded Configuration sequence without reparsing the
-            # replay view or treating the split-rank order as transport order.
-            replay_geometry_identities=tuple(
-                identity
-                for identity in source_art.geometry_identities
-                if identity in train_geometry_set
-            ),
-        )
+                "Prepared single-source replay did not provide a complete "
+                f"post-selection resolution: {exc}."
+            ) from exc
 
     # Legacy split replay has one canonical training plan and a separate true
     # label resolver.  In particular, asking the latter for a TRUE_DFT train

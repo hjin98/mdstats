@@ -410,17 +410,29 @@ stale_age_hours = 6.0
 maximum_event_records = 10000
 
 [replay]
-# REPLAY-UNIFY1: one external replay source. Foundation pseudo labels and source
-# true labels are separate internal namespaces over the same frozen split.
-label_mode = "foundation_pseudolabel"
+# One external replay source. Foundation pseudo labels and source true labels
+# are separate internal namespaces over the same frozen split.
+#
+# label_mode is the replay label policy. "true_dft" trains the replay head on
+# the source DFT labels and runs zero foundation inference during prepare; it
+# is the default for a new single-source campaign and is stated explicitly
+# here. "foundation_pseudolabel" is an explicit opt-in: prepare then owns one
+# replay-wide foundation inference pass, and an independent TRUE_DFT monitor
+# is still mandatory. Replay pseudo labels are never a silent fallback for
+# missing source labels.
+label_mode = "true_dft"
 split_ratio = "5:1"
 split_seed = 42
-# Foundation-pseudolabel qualification defaults inherited from the standalone
-# replay preparation workflow. Threshold-only edits reuse cached predictions.
+# Foundation-pseudolabel qualification thresholds, used only when
+# label_mode = "foundation_pseudolabel". Threshold-only edits requalify
+# cached predictions without new foundation inference.
 maximum_force_ev_per_angstrom = 20.0
 force_component_rms_ev_per_angstrom = 5.0
 maximum_abs_stress_ev_per_angstrom3 = 0.5
 require_stress = false
+# Execution/storage realization for the pseudo prediction pass only. These are
+# not scientific identity: editing them never triggers reinference and never
+# changes replay or post-selection lineage.
 prediction_batch_size = 32
 prediction_shard_size = 256
 minimum_train_configurations = 100

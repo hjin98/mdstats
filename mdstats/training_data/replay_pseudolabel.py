@@ -15,7 +15,10 @@ from typing import Any, Mapping, Sequence
 import hashlib
 import json
 import math
+import os
 import shutil
+import tempfile
+import uuid
 
 import numpy as np
 
@@ -38,6 +41,7 @@ from .replay import (
     _BufferedReplayExtXYZWriter,
     _split_role_geometry_identities,
     canonical_replay_geometry_identity,
+    verify_consumed_replay_geometry_identity,
 )
 
 REPLAY_FOUNDATION_PREDICTION_POLICY_SCHEMA = "mdstats.replay-foundation-prediction-policy.v1"
@@ -96,10 +100,24 @@ def _audit_identity(*, natoms: int, force_rms: float, maximum_force: float, maxi
 
 
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
+    """Publish one reconstructible replay receipt from an attempt-local temp.
+
+    A fixed ``.tmp`` sibling name lets one concurrent prepare replace or unlink
+    another contender's live scratch file; ``mkstemp`` removes that collision
+    while keeping the same atomic ``os.replace`` publication.
+    """
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    temporary.replace(path)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _sha256_file(path: Path) -> str:
@@ -725,23 +743,37 @@ def _load_existing_prediction_cache(
         return None
 
 
-def _provider_predictions(
+def _cold_build_inference_executor(
     provider: Any,
-    atoms_batch: Sequence[Any],
-    geometry_identities: Sequence[str],
     *,
+    policy: ReplayFoundationPredictionPolicy,
+    batch_size: int,
     graph_cache_directory: str | Path | None,
-) -> tuple[Any, ...]:
-    # Replay materialization owns an explicit fixed batch size rather than auto
-    # admission, but it still uses the canonical static executor for model-shell
-    # isolation, deterministic ordering, and bounded OOM learning.
+    owns_provider: bool,
+) -> Any:
+    """Return the single inference executor that spans one cold prediction build.
+
+    Replay materialization owns an explicit fixed batch width rather than auto
+    admission, but it uses the canonical static executor for model-shell
+    isolation, deterministic ordering, and bounded OOM learning.  One executor
+    lives for the whole build, so a width already shown unsafe is never retried
+    by a later outer batch, and the executor is bound to the *effective replay
+    device* so its synchronize/empty-cache boundaries act on the real CUDA
+    device instead of silently degrading to a CPU no-op.
+
+    ``owns_provider`` transfers the internally constructed provider exactly
+    once: the executor then becomes its only terminal retirement owner.
+    """
+
     from .model_features import StaticMaceInferenceExecutor
 
     return StaticMaceInferenceExecutor(
         provider,
-        batch_size=max(1, len(atoms_batch)),
+        batch_size=max(1, int(batch_size)),
         graph_cache_directory=graph_cache_directory,
-    ).predict(atoms_batch, geometry_identities=geometry_identities)
+        owns_provider=bool(owns_provider),
+        device=str(policy.device),
+    )
 
 
 def _construct_prediction_provider(policy: ReplayFoundationPredictionPolicy, source: ReplaySourceArtifact) -> Any:
@@ -892,6 +924,33 @@ def _foundation_prediction_input_frame(atoms: Any) -> Any:
     return frame
 
 
+def replay_foundation_prediction_cache_disposition(
+    source: ReplaySourceArtifact,
+    policy: ReplayFoundationPredictionPolicy,
+    cache_root: str | Path,
+) -> str:
+    """Report what a cold-build decision would be, without deciding it.
+
+    ``"hit"`` an authenticated cache exists; ``"cold"`` no cache state exists
+    for this source-geometry + prediction-policy key; ``"rebuild"`` stored
+    prediction state exists but is invalid, incompatible, or corrupt.  This is a
+    read-only projection of the same loader the builder uses, so it cannot
+    become a second cache-status authority and stores nothing.
+    """
+
+    root = Path(cache_root).expanduser().resolve()
+    key = replay_foundation_prediction_cache_key(source.geometry_set_digest, policy.content_digest)
+    directory = _prediction_cache_directory(root, key)
+    if not _prediction_manifest_path(directory).is_file():
+        return "cold"
+    cached = _load_existing_prediction_cache(
+        directory,
+        source_geometry_set_digest=source.geometry_set_digest,
+        prediction_policy=policy,
+    )
+    return "hit" if cached is not None else "rebuild"
+
+
 def build_replay_foundation_prediction_cache(
     source: ReplaySourceArtifact,
     policy: ReplayFoundationPredictionPolicy,
@@ -929,27 +988,106 @@ def build_replay_foundation_prediction_cache(
     if cached is not None:
         return cached
 
+    # One source-geometry + prediction-policy cache has exactly one cold build
+    # owner.  Two concurrent prepares must not both load a model-scale provider
+    # for the same logical cache, and the existing narrow artifact-publication
+    # fence already expresses precisely that: serialize contenders on the
+    # destination, then recheck the authenticated cache, so a waiter that
+    # arrives after the winner reuses the published cache with zero inference
+    # and a waiter that arrives after a *failed* winner simply becomes the next
+    # owner.  This is deliberately not the campaign-state writer lock, which
+    # must never be held across GPU work.
+    from .target_size_execution.persistence import artifact_publication_lock
+
+    directory.parent.mkdir(parents=True, exist_ok=True)
+    with artifact_publication_lock(directory):
+        cached = _load_existing_prediction_cache(
+            directory,
+            source_geometry_set_digest=source.geometry_set_digest,
+            prediction_policy=policy,
+        )
+        if cached is not None:
+            return cached
+        return _cold_build_replay_foundation_prediction_cache(
+            source,
+            policy,
+            directory,
+            provider=provider,
+            batch_size=int(batch_size),
+            shard_size=int(shard_size),
+            graph_cache_directory=graph_cache_directory,
+            source_index=source_index,
+        )
+
+
+def _cold_build_replay_foundation_prediction_cache(
+    source: ReplaySourceArtifact,
+    policy: ReplayFoundationPredictionPolicy,
+    directory: Path,
+    *,
+    provider: Any | None,
+    batch_size: int,
+    shard_size: int,
+    graph_cache_directory: str | Path | None,
+    source_index: ReplaySourceIndex | None,
+) -> ReplayFoundationPredictionCache:
+    """Run the one legitimate replay-wide foundation inference pass.
+
+    The caller holds the single-flight fence for this cache key.  Everything
+    acquired here is retired here: an internally constructed provider is
+    transferred exactly once to the operation-scoped executor, which is the only
+    terminal retirement owner for it, and a caller-supplied provider stays
+    caller-owned.  Cleanup covers success, provider validation failure, executor
+    construction failure, graph-cache setup, source iteration, prediction/OOM
+    failure, shard/audit I/O failure, publication failure, and catchable
+    cancellation after acquisition, so no model-scale CUDA residency outlives
+    this function.
+    """
+
     source_path = Path(source.path).expanduser().resolve()
     if not source_path.is_file():
         raise TrainingDataInputError(f"Replay source file does not exist: {source_path!s}.")
     if _sha256_file(source_path) != source.sha256:
         raise TrainingDataInputError("Replay source file SHA-256 differs from the authenticated source artifact.")
-    if provider is None:
+    owns_provider = provider is None
+    if owns_provider:
         model_path = Path(policy.foundation_potential.reference).expanduser().resolve()
         if not model_path.is_file() or _sha256_file(model_path) != policy.foundation_potential.sha256:
             raise TrainingDataInputError("Foundation checkpoint file is missing or differs from the prediction policy.")
         provider = _construct_prediction_provider(policy, source)
-    _validate_prediction_provider(provider, policy)
 
     try:
         from ase.io import iread
     except ModuleNotFoundError as exc:  # pragma: no cover
+        if owns_provider:
+            _retire_prediction_provider(provider)
         raise TrainingDataInputError("ASE is required for replay pseudo-label prediction.") from exc
 
-    work = directory.with_name(directory.name + ".work")
-    if work.exists():
-        shutil.rmtree(work)
-    work.mkdir(parents=True, exist_ok=False)
+    executor: Any | None = None
+    try:
+        _validate_prediction_provider(provider, policy)
+        # Ownership transfers exactly once, here.  If executor construction
+        # itself raises, the transfer never happened and the except-path below
+        # retires the internally constructed provider instead.
+        executor = _cold_build_inference_executor(
+            provider,
+            policy=policy,
+            batch_size=batch_size,
+            graph_cache_directory=graph_cache_directory,
+            owns_provider=owns_provider,
+        )
+    except BaseException:
+        if owns_provider and executor is None:
+            _retire_prediction_provider(provider)
+        raise
+
+    # An attempt-local scratch directory: two contenders can never delete or
+    # replace each other's live work, and a failed attempt can never leave
+    # behind a directory that later validates as this cache key.
+    work = Path(tempfile.mkdtemp(prefix=f"{directory.name}.work.", dir=directory.parent))
+    # mkdtemp is 0700; the published cache keeps the ordinary directory mode the
+    # previous fixed-name scratch directory had.
+    os.chmod(work, 0o755)
     batch_atoms: list[Any] = []
     batch_ids: list[str] = []
     shard_records: list[tuple[str, float, np.ndarray, np.ndarray | None, str, str, tuple[float, float, float | None]]] = []
@@ -961,11 +1099,8 @@ def build_replay_foundation_prediction_cache(
         nonlocal shard_records
         if not batch_atoms:
             return
-        predictions = _provider_predictions(
-            provider,
-            tuple(batch_atoms),
-            tuple(batch_ids),
-            graph_cache_directory=graph_cache_directory,
+        predictions = executor.predict(
+            tuple(batch_atoms), geometry_identities=tuple(batch_ids)
         )
         if len(predictions) != len(batch_atoms):
             raise TrainingDataInputError("Replay foundation prediction provider returned the wrong batch size.")
@@ -976,25 +1111,32 @@ def build_replay_foundation_prediction_cache(
             )
             shard_records.append((identity, energy, forces, stress, prediction_identity, audit_identity, audit))
             audit_records.append((identity, audit, audit_identity))
-            if len(shard_records) >= int(shard_size):
-                shards.append(_write_prediction_shard(work, len(shards), shard_records[: int(shard_size)]))
-                del shard_records[: int(shard_size)]
+            if len(shard_records) >= shard_size:
+                shards.append(_write_prediction_shard(work, len(shards), shard_records[:shard_size]))
+                del shard_records[:shard_size]
         batch_atoms.clear()
         batch_ids.clear()
 
-    if source_index is None:
-        frame_iterator = enumerate(iread(source_path, index=":", format="extxyz"))
-    else:
-        frame_iterator = iter_indexed_replay_frames(source, source_index)
     try:
+        if source_index is None:
+            frame_iterator = enumerate(iread(source_path, index=":", format="extxyz"))
+        else:
+            frame_iterator = iter_indexed_replay_frames(source, source_index)
         for source_frame_index, atoms in frame_iterator:
             identity = source.geometry_identities[source_frame_index]
             if identity in seen:
                 raise TrainingDataInputError("Replay source yielded a duplicate geometry during pseudo-label prediction.")
             seen.add(identity)
+            # The prediction is about to be recorded *under* this identity, so
+            # the frame actually read has to reproduce it.  A geometry mutation
+            # during the long read therefore fails before any cache can
+            # authenticate under the old geometry key.
+            verify_consumed_replay_geometry_identity(
+                atoms, identity, operation="replay foundation pseudo-label prediction"
+            )
             batch_atoms.append(_foundation_prediction_input_frame(atoms))
             batch_ids.append(identity)
-            if len(batch_atoms) >= int(batch_size):
+            if len(batch_atoms) >= batch_size:
                 flush_inference_batch()
         flush_inference_batch()
         if shard_records:
@@ -1011,9 +1153,7 @@ def build_replay_foundation_prediction_cache(
             audit_relative_path=audit_relative_path,
             audit_sha256=audit_sha256,
         )
-        manifest_payload = cache.to_dict()
-        _atomic_write_json(_prediction_manifest_path(work), manifest_payload)
-        directory.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_json(_prediction_manifest_path(work), cache.to_dict())
         if directory.exists():
             shutil.rmtree(directory)
         work.replace(directory)
@@ -1028,10 +1168,27 @@ def build_replay_foundation_prediction_cache(
         )
         _atomic_write_json(_prediction_manifest_path(directory), cache.to_dict())
         return cache
-    except Exception:
-        if work.exists():
-            shutil.rmtree(work, ignore_errors=True)
+    except BaseException:
+        shutil.rmtree(work, ignore_errors=True)
         raise
+    finally:
+        # The prepare-owned model-scale provider ends here, before P5/TRAIN2 can
+        # observe its residency.  Process exit is not proof of explicit close.
+        executor.close()
+
+
+def _retire_prediction_provider(provider: Any) -> None:
+    """Close an internally constructed provider that never reached its executor."""
+
+    close = getattr(provider, "close", None)
+    if close is None:
+        return
+    try:
+        close()
+    except Exception:
+        # A cleanup failure must not replace the original failure that is
+        # already propagating out of the cold build.
+        pass
 
 
 class _ReplayPredictionShardReader:
@@ -1352,7 +1509,8 @@ def materialize_replay_pseudolabel_views(
     memberships = {role: set(_split_role_geometry_identities(split, role)) for role in pending}
     identity_role = {identity: role for role, identities in memberships.items() for identity in identities}
     pending_union = set(identity_role)
-    temporary = {role: outputs[role].with_name(outputs[role].name + ".tmp") for role in pending}
+    attempt = f".{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    temporary = {role: outputs[role].with_name(outputs[role].name + attempt) for role in pending}
     writers = {role: _BufferedReplayExtXYZWriter(temporary[role], buffer_size=int(buffer_size)) for role in pending}
     seen = {role: set() for role in pending}
     reader = _ReplayPredictionShardReader(cache, max_resident_shards=int(max_resident_prediction_shards))
@@ -1371,6 +1529,9 @@ def materialize_replay_pseudolabel_views(
                 continue
             if identity in seen[matched]:
                 raise TrainingDataInputError("Replay source yielded duplicate geometry during pseudo-label materialization.")
+            verify_consumed_replay_geometry_identity(
+                atoms, identity, operation="pseudo-label replay materialization"
+            )
             writers[matched].add(
                 _render_pseudo_frame(
                     atoms,
@@ -1446,6 +1607,7 @@ __all__ = [
     "ReplayPseudolabelQualification",
     "ReplayPseudolabelViewArtifact",
     "replay_foundation_prediction_cache_key",
+    "replay_foundation_prediction_cache_disposition",
     "build_replay_foundation_prediction_cache",
     "build_replay_pseudolabel_qualification",
     "materialize_replay_pseudolabel_views",

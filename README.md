@@ -11,10 +11,21 @@ The single-source replay migration is complete. The executable invalidation plan
 ## MLFF replay-evaluation semantics
 
 Checkpoint accuracy is judged against the current target-side development
-policy. Foundation-generated replay pseudolabels remain an optional replay
-training realization and a separate retention diagnostic. Set
-`[paths].replay_true_labels` when the replay contract requires an independent
-true-label monitor; replay evidence never becomes target-size authority.
+policy. A single-source replay campaign declares one external
+`[paths].replay_set` corpus; omitting every label selector resolves to the
+source `TRUE_DFT` labels, and generated configuration states
+`label_mode = "true_dft"` explicitly. Foundation-generated replay pseudolabels
+remain an explicit opt-in replay training realization and a separate retention
+diagnostic; they are never a silent fallback for missing source labels. Set
+`[paths].replay_true_labels` when a legacy split-file replay contract requires
+an independent true-label monitor; replay evidence never becomes target-size
+authority.
+
+`doctor` validates replay prerequisites and constructs nothing. `prepare` owns
+replay construction/reuse, including the one legitimate replay-wide foundation
+inference pass under explicit pseudo mode, and retires that provider before
+cross-validation or final production begins. Post-selection consumes the
+authenticated prepared replay authority and never cold-builds replay science.
 
 Current development release: **0.20.242a0**. MLFF campaigns use exactly one target-size architecture:
 

@@ -53,7 +53,18 @@ def _write_config(tmp_path: Path, source: Path, *, label_mode: str) -> tuple[dic
         training_acceleration_backend="e3nn",
         default_device="cpu",
     )
-    text = text.replace('label_mode = "foundation_pseudolabel"', f'label_mode = "{label_mode}"')
+    text = text.replace('label_mode = "true_dft"', f'label_mode = "{label_mode}"')
+    # The fixture replay corpus is tiny and elemental. Production cardinality and
+    # target-element coverage are their own owners; realized replay qualification
+    # is now enforced by `prepare`, so the fixture relaxes exactly those gates
+    # rather than weakening what these tests actually falsify.
+    for _old, _new in (
+        ("minimum_train_configurations = 100", "minimum_train_configurations = 1"),
+        ("minimum_monitor_configurations = 20", "minimum_monitor_configurations = 1"),
+        ("require_target_elements = true", "require_target_elements = false"),
+    ):
+        assert _old in text, _old
+        text = text.replace(_old, _new)
     config = tmp_path / "campaign.toml"
     config.write_text(text, encoding="utf-8")
     return campaign_cli._load_config(config)
@@ -71,7 +82,7 @@ def test_generated_config_exposes_only_single_replay_source(tmp_path: Path):
     assert "replay_train" not in cfg["paths"]
     assert "replay_monitor" not in cfg["paths"]
     assert "replay_true_labels" not in cfg["paths"]
-    assert cfg["replay"]["label_mode"] == "foundation_pseudolabel"
+    assert cfg["replay"]["label_mode"] == "true_dft"
     assert cfg["replay"]["split_ratio"] == "5:1"
     assert cfg["replay"]["split_seed"] == 42
 
@@ -81,6 +92,8 @@ def test_true_label_single_source_builds_internal_10k_style_split_and_persists_a
     _write_source(source_path, 12)
     cfg, paths = _write_config(tmp_path, source_path, label_mode="true_dft")
 
+    store = campaign_cli.CampaignStore(paths.state_db)
+    campaign_cli._publish_single_source_replay_authority(store, cfg, paths)
     plan = campaign_cli._build_replay_plan(cfg, paths)
     assert plan.mode is mdstats.ReplayMode.EXTERNAL_TRUE_LABEL
     assert plan.train_count == 10
@@ -96,8 +109,6 @@ def test_true_label_single_source_builds_internal_10k_style_split_and_persists_a
     assert resolution.monitor_artifact.configuration_count == 2
     assert resolution.source_path == str(source_path.resolve())
 
-    store = campaign_cli.CampaignStore(paths.state_db)
-    campaign_cli._persist_single_source_replay_authority(store, cfg, paths)
     assert store.has_record("replay_single_source_config")
     assert store.has_record("replay_source")
     assert store.has_record("replay_true_label_cache")
@@ -175,7 +186,8 @@ def test_pseudolabel_single_source_materializes_training_views_and_independent_t
         return original_builder(source, policy, cache_root, provider=provider, **kwargs)
 
     monkeypatch.setattr(mdstats, "build_replay_foundation_prediction_cache", build_with_fake)
-    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    store = campaign_cli.CampaignStore(paths.state_db)
+    campaign_cli._publish_single_source_replay_authority(store, cfg, paths)
     plan = campaign_cli._build_replay_plan(cfg, paths)
     assert plan.mode is mdstats.ReplayMode.EXTERNAL_PSEUDOLABEL
     assert plan.train_count == 10
@@ -191,8 +203,6 @@ def test_pseudolabel_single_source_materializes_training_views_and_independent_t
     assert true_resolution.monitor_artifact.configuration_count == 2
     assert true_resolution.monitor_artifact.geometry_identities == plan.monitor_artifact.geometry_identities
 
-    store = campaign_cli.CampaignStore(paths.state_db)
-    campaign_cli._persist_single_source_replay_authority(store, cfg, paths)
     for key in (
         "replay_single_source_config",
         "replay_source",
@@ -232,14 +242,16 @@ def test_single_source_inspection_receipt_avoids_extxyz_reparse_across_process_s
         return original(path)
 
     monkeypatch.setattr(mdstats, "inspect_replay_source_extxyz", counted)
-    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    store = campaign_cli.CampaignStore(paths.state_db)
+    campaign_cli._publish_single_source_replay_authority(store, cfg, paths)
     first = campaign_cli._build_replay_plan(cfg, paths)
     assert first.train_count == 10
     assert calls["count"] == 1
 
-    # Simulate a new command process: discard only the in-memory context.  The
-    # persisted source receipt and materialized transport views remain.
-    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    # There is no in-memory replay context cache to clear: every read
+    # re-authenticates the published authority.  A repeated read must still not
+    # reparse the ExtXYZ corpus, because the persisted source receipt, the byte
+    # index, and the materialized transport views remain authenticated.
     second = campaign_cli._build_replay_plan(cfg, paths)
     assert second.train_count == 10
     assert second.monitor_count == 2

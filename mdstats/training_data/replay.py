@@ -9,6 +9,9 @@ from typing import Any, Mapping, Sequence
 import hashlib
 import json
 import math
+import os
+import tempfile
+import uuid
 
 import numpy as np
 
@@ -92,9 +95,7 @@ class ReplaySingleSourceConfig:
             raise TrainingDataInputError("Single-source replay requires true_dft or foundation_pseudolabel label mode.")
         ratio = normalize_replay_split_ratio(self.split_ratio)
         object.__setattr__(self, "split_ratio", ratio)
-        if int(self.split_seed) < 0:
-            raise TrainingDataInputError("Replay split seed must be nonnegative.")
-        object.__setattr__(self, "split_seed", int(self.split_seed))
+        object.__setattr__(self, "split_seed", normalize_replay_split_seed(self.split_seed))
         path = str(self.replay_set_path).strip()
         if not path:
             raise TrainingDataInputError("Single-source replay path cannot be empty.")
@@ -139,12 +140,36 @@ class ReplaySingleSourceConfig:
         return result
 
 
+def _exact_positive_split_component(value: Any) -> int:
+    """Return one exact positive integer split component without coercion.
+
+    A boolean, a float, a fraction, a NaN/Inf, or any other object that merely
+    survives ``int()`` is a configuration error, not a ratio: silently coercing
+    it would let two different campaign declarations name one scientific split.
+    """
+
+    if isinstance(value, str):
+        text = value.strip()
+        if not text.isdigit():
+            raise TrainingDataInputError("Replay split ratio components must be positive integers.")
+        component = int(text)
+    elif isinstance(value, bool) or not isinstance(value, int):
+        raise TrainingDataInputError("Replay split ratio components must be positive integers.")
+    else:
+        component = int(value)
+    if component <= 0:
+        raise TrainingDataInputError("Replay split ratio components must be positive integers.")
+    return component
+
+
 def normalize_replay_split_ratio(value: Any) -> tuple[int, int]:
     """Return a positive two-component train:monitor ratio in lowest terms."""
 
     if isinstance(value, str):
         text = value.strip().replace("/", ":")
-        parts = text.split(":")
+        parts: list[Any] = list(text.split(":"))
+    elif isinstance(value, (bytes, bytearray)):
+        raise TrainingDataInputError("Replay split ratio must look like 5:1.")
     else:
         try:
             parts = list(value)
@@ -152,14 +177,86 @@ def normalize_replay_split_ratio(value: Any) -> tuple[int, int]:
             raise TrainingDataInputError("Replay split ratio must look like 5:1.") from exc
     if len(parts) != 2:
         raise TrainingDataInputError("Replay split ratio must have exactly train and monitor components.")
-    try:
-        train, monitor = (int(v) for v in parts)
-    except (TypeError, ValueError) as exc:
-        raise TrainingDataInputError("Replay split ratio components must be positive integers.") from exc
-    if train <= 0 or monitor <= 0:
-        raise TrainingDataInputError("Replay split ratio components must be positive integers.")
+    train = _exact_positive_split_component(parts[0])
+    monitor = _exact_positive_split_component(parts[1])
     divisor = math.gcd(train, monitor)
     return train // divisor, monitor // divisor
+
+
+def normalize_replay_split_seed(value: Any) -> int:
+    """Return one exact nonnegative integer replay split seed.
+
+    ``split_seed`` selects a deterministic partition of the replay corpus, so a
+    boolean or a float is rejected rather than coerced: ``true`` and ``1``, or
+    ``42.0`` and ``42``, must not reach the same scientific split through two
+    different configuration spellings.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TrainingDataInputError("Replay split_seed must be an exact nonnegative integer.")
+    seed = int(value)
+    if seed < 0:
+        raise TrainingDataInputError("Replay split seed must be nonnegative.")
+    return seed
+
+
+#: The only two legacy ``[replay].mode`` spellings that carry an unambiguous
+#: single-source label semantic.  Every other legacy mode is rejected next to a
+#: ``replay_set`` rather than ignored or defaulted.
+_LEGACY_SINGLE_SOURCE_LABEL_ALIASES: dict[str, ReplayLabelMode] = {
+    ReplayMode.EXTERNAL_TRUE_LABEL.value: ReplayLabelMode.TRUE_DFT,
+    ReplayMode.EXTERNAL_PSEUDOLABEL.value: ReplayLabelMode.FOUNDATION_PSEUDOLABEL,
+}
+
+
+def normalize_single_source_replay_label_mode(replay: Mapping[str, Any]) -> ReplayLabelMode:
+    """Normalize every single-source replay label selector exactly once.
+
+    Omitting both selectors resolves to source ``TRUE_DFT`` labels: that is the
+    accepted policy default and the only defaulting performed here.  Foundation
+    pseudo-labels are reached solely through an explicit selector, so an
+    unsupported or conflicting spelling fails closed instead of drifting into an
+    expensive inference mode nobody asked for.
+    """
+
+    if not isinstance(replay, Mapping):
+        raise TrainingDataInputError("Campaign [replay] section must be a mapping.")
+    raw_label_mode = replay.get("label_mode")
+    selected: ReplayLabelMode | None = None
+    if raw_label_mode not in (None, ""):
+        token = str(getattr(raw_label_mode, "value", raw_label_mode)).strip().lower()
+        try:
+            selected = ReplayLabelMode(token)
+        except ValueError as exc:
+            raise TrainingDataInputError(
+                "Single-source replay label_mode must be true_dft or foundation_pseudolabel."
+            ) from exc
+        if selected not in {ReplayLabelMode.TRUE_DFT, ReplayLabelMode.FOUNDATION_PSEUDOLABEL}:
+            raise TrainingDataInputError(
+                "Single-source replay label_mode must be true_dft or foundation_pseudolabel."
+            )
+    raw_legacy_mode = replay.get("mode")
+    legacy: ReplayLabelMode | None = None
+    if raw_legacy_mode not in (None, ""):
+        legacy_token = str(getattr(raw_legacy_mode, "value", raw_legacy_mode)).strip().lower()
+        legacy = _LEGACY_SINGLE_SOURCE_LABEL_ALIASES.get(legacy_token)
+        if legacy is None:
+            raise TrainingDataInputError(
+                "[paths].replay_set accepts [replay].mode only as the compatibility "
+                "alias external_true_label or external_pseudolabel; received "
+                f"{legacy_token!r}. Declare [replay].label_mode instead."
+            )
+    if selected is not None and legacy is not None and selected is not legacy:
+        raise TrainingDataInputError(
+            "Conflicting single-source replay label selectors: [replay].label_mode="
+            f"{selected.value!r} disagrees with the legacy [replay].mode alias "
+            f"{legacy.value!r}."
+        )
+    if selected is not None:
+        return selected
+    if legacy is not None:
+        return legacy
+    return ReplayLabelMode.TRUE_DFT
 
 
 def single_source_replay_config_from_campaign(
@@ -171,7 +268,10 @@ def single_source_replay_config_from_campaign(
 
     A campaign may use the new ``[paths].replay_set`` interface or the legacy
     split-file interface, never both.  Returning ``None`` means the campaign is
-    legacy/no-replay and preserves all historical behavior until UNIFY1D.
+    legacy/no-replay and preserves all historical behavior.
+
+    Omitting every label selector next to a ``replay_set`` resolves to source
+    ``TRUE_DFT`` labels.  Foundation pseudo-label replay is always explicit.
     """
 
     paths = cfg.get("paths", {})
@@ -188,19 +288,7 @@ def single_source_replay_config_from_campaign(
     if replay_set in (None, ""):
         return None
 
-    raw_label_mode = replay.get("label_mode")
-    if raw_label_mode in (None, ""):
-        # Controlled convenience for configurations mechanically migrated from
-        # the historical mode field; new generated configs will emit label_mode.
-        old_mode = str(replay.get("mode", "")).strip().lower()
-        if old_mode == ReplayMode.EXTERNAL_PSEUDOLABEL.value:
-            raw_label_mode = ReplayLabelMode.FOUNDATION_PSEUDOLABEL.value
-        elif old_mode == ReplayMode.EXTERNAL_TRUE_LABEL.value:
-            raw_label_mode = ReplayLabelMode.TRUE_DFT.value
-        else:
-            raise TrainingDataInputError(
-                "Single-source replay requires [replay].label_mode = true_dft or foundation_pseudolabel."
-            )
+    label_mode = normalize_single_source_replay_label_mode(replay)
 
     raw_source = Path(str(replay_set)).expanduser()
     if base_directory is None and not raw_source.is_absolute():
@@ -216,21 +304,11 @@ def single_source_replay_config_from_campaign(
         str(replay_set),
         Path.cwd() if base_directory is None else base_directory,
     )
-    try:
-        label_mode = ReplayLabelMode(str(raw_label_mode))
-    except ValueError as exc:
-        raise TrainingDataInputError(
-            "Single-source replay label_mode must be true_dft or foundation_pseudolabel."
-        ) from exc
-    try:
-        split_seed = int(replay.get("split_seed", DEFAULT_REPLAY_SPLIT_SEED))
-    except (TypeError, ValueError) as exc:
-        raise TrainingDataInputError("Replay split_seed must be a nonnegative integer.") from exc
     return ReplaySingleSourceConfig(
         replay_set_path=str(source),
         label_mode=label_mode,
         split_ratio=normalize_replay_split_ratio(replay.get("split_ratio", DEFAULT_REPLAY_SPLIT_RATIO)),
-        split_seed=split_seed,
+        split_seed=normalize_replay_split_seed(replay.get("split_seed", DEFAULT_REPLAY_SPLIT_SEED)),
     )
 
 
@@ -286,6 +364,26 @@ def canonical_replay_geometry_identity(atoms: Any) -> str:
     h.update(q_cell.tobytes(order="C"))
     h.update(pbc.tobytes(order="C"))
     return h.hexdigest()
+
+
+def verify_consumed_replay_geometry_identity(atoms: Any, expected_identity: str, *, operation: str) -> None:
+    """Bind one live-read replay frame to its pre-authenticated identity.
+
+    ``replay_set`` is external mutable input.  A SHA-256 taken before a long
+    streaming operation proves only what the file was *then*, so every frame
+    that is about to be associated with an authenticated geometry identity -
+    a foundation prediction, a materialized transport row - reproduces that
+    identity first.  A mutation during the long read therefore fails before any
+    dependent output can be recorded under a geometry that is no longer there.
+    """
+
+    observed = canonical_replay_geometry_identity(atoms)
+    if observed != expected_identity:
+        raise TrainingDataInputError(
+            f"Replay source changed during {operation}: frame geometry identity "
+            f"{observed} does not reproduce the authenticated identity "
+            f"{expected_identity}. Rerun `prepare` against the current source."
+        )
 
 
 def historical_replay_geometry_identity(atoms: Any) -> str:
@@ -610,9 +708,7 @@ class ReplaySplitManifest:
             object.__setattr__(self, "qualification_authority_digest", validate_digest(self.qualification_authority_digest, name="qualification_authority_digest"))
         object.__setattr__(self, "eligible_geometry_set_digest", validate_digest(self.eligible_geometry_set_digest, name="eligible_geometry_set_digest"))
         object.__setattr__(self, "split_ratio", normalize_replay_split_ratio(self.split_ratio))
-        if int(self.split_seed) < 0:
-            raise TrainingDataInputError("Replay split seed must be nonnegative.")
-        object.__setattr__(self, "split_seed", int(self.split_seed))
+        object.__setattr__(self, "split_seed", normalize_replay_split_seed(self.split_seed))
         train = tuple(validate_digest(v, name="train_geometry_identity") for v in self.train_geometry_identities)
         monitor = tuple(validate_digest(v, name="monitor_geometry_identity") for v in self.monitor_geometry_identities)
         if not train or not monitor:
@@ -1223,7 +1319,8 @@ def materialize_replay_true_label_views(
     role_membership = {role: set(_split_role_geometry_identities(split, role)) for role in pending}
     identity_role = {identity: role for role, identities in role_membership.items() for identity in identities}
     all_pending = set(identity_role)
-    temporary_paths = {role: outputs[role].with_name(outputs[role].name + ".tmp") for role in pending}
+    attempt = f".{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    temporary_paths = {role: outputs[role].with_name(outputs[role].name + attempt) for role in pending}
     writers = {role: _BufferedReplayExtXYZWriter(temporary_paths[role], buffer_size=int(buffer_size)) for role in pending}
     seen: dict[ReplaySplitRole, set[str]] = {role: set() for role in pending}
     if source_index is None:
@@ -1241,6 +1338,9 @@ def materialize_replay_true_label_views(
                 continue
             if identity in seen[matched_role]:
                 raise TrainingDataInputError("Replay source yielded a duplicate geometry during true-label materialization.")
+            verify_consumed_replay_geometry_identity(
+                atoms, identity, operation="true-label replay materialization"
+            )
             frame = _render_source_true_label_frame(
                 atoms,
                 geometry_identity=identity,
@@ -1285,9 +1385,7 @@ def materialize_replay_true_label_views(
                 "schema": REPLAY_TRUE_LABEL_VIEW_RECEIPT_SCHEMA,
                 "view": view.to_dict(),
             }
-            receipt_tmp = receipt_path.with_name(receipt_path.name + ".tmp")
-            receipt_tmp.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-            receipt_tmp.replace(receipt_path)
+            _atomic_replay_json(receipt_path, receipt)
             results[role] = view
     except Exception:
         for writer in writers.values():
@@ -1299,6 +1397,28 @@ def materialize_replay_true_label_views(
             path.unlink(missing_ok=True)
         raise
     return results
+
+def _atomic_replay_json(path: Path, payload: Mapping[str, Any]) -> None:
+    """Publish one reconstructible replay receipt without a shared temp name.
+
+    A fixed ``.tmp`` sibling lets one concurrent prepare/rematerialization
+    replace or unlink another contender's live scratch file.  The attempt-local
+    ``mkstemp`` name removes that collision entirely while keeping the same
+    atomic ``os.replace`` publication every reader already re-authenticates.
+    """
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
 
 def _sha256_file(path: Path) -> str:
     return sha256_file_cached(path)
@@ -1667,9 +1787,12 @@ def materialize_true_label_replay_split(
         rendered.append(frame)
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_name(output.name + ".tmp")
-    write(temporary, rendered, format="extxyz")
-    temporary.replace(output)
+    temporary = output.with_name(f".{output.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        write(temporary, rendered, format="extxyz")
+        temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
     artifact = inspect_replay_extxyz(output, label_mode=ReplayLabelMode.TRUE_DFT)
     split_artifact = inspect_replay_extxyz(
         split,
@@ -1690,9 +1813,7 @@ def materialize_true_label_replay_split(
         "output_sha256": artifact.sha256,
         "output_artifact_digest": artifact.content_digest,
     }
-    temporary_provenance = provenance_path.with_name(provenance_path.name + ".tmp")
-    temporary_provenance.write_text(json.dumps(provenance, sort_keys=True, indent=2) + "\n", encoding="utf-8")
-    temporary_provenance.replace(provenance_path)
+    _atomic_replay_json(provenance_path, provenance)
     return artifact
 
 

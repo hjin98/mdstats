@@ -296,6 +296,17 @@ def test_foundation_path_forms_execute_and_survive_relocation(
 
 
 @pytest.mark.slow
+
+def _publish_prepared_replay_authority(cfg, paths) -> None:
+    """Publish the prepared single-source replay authority as `prepare` does."""
+
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        cli._publish_single_source_replay_authority(store, cfg, paths)
+    finally:
+        store.close()
+
+
 def test_single_source_replay_path_forms_reach_p5_and_relocate_path_free(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -319,6 +330,11 @@ def test_single_source_replay_path_forms_reach_p5_and_relocate_path_free(
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
 
+    # Post-selection reads the prepared replay authority, so publish it once the
+    # way `prepare` does. Every configured spelling below must then resolve to
+    # the same published science rather than constructing its own.
+    _publish_prepared_replay_authority(cfg, paths)
+
     observations = []
     for spelling in (
         str(source),
@@ -328,7 +344,6 @@ def test_single_source_replay_path_forms_reach_p5_and_relocate_path_free(
         variant = json.loads(json.dumps(cfg))
         variant["paths"]["replay_set"] = spelling
         variant_paths = cli.CampaignPaths.from_config(paths.config, variant)
-        replay_fixture.campaign_core._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
         policies = resolve_post_selection_method_policies(
             variant, config_dir=variant_paths.config_dir
         )
@@ -357,7 +372,6 @@ def test_single_source_replay_path_forms_reach_p5_and_relocate_path_free(
     relocated_cfg = json.loads(json.dumps(cfg))
     relocated_cfg["paths"]["replay_set"] = str(relocated)
     relocated_paths = cli.CampaignPaths.from_config(paths.config, relocated_cfg)
-    replay_fixture.campaign_core._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
     relocated_policies = resolve_post_selection_method_policies(
         relocated_cfg, config_dir=relocated_paths.config_dir
     )
@@ -371,8 +385,17 @@ def test_single_source_replay_path_forms_reach_p5_and_relocate_path_free(
     assert compute_replay_lineage_digest(relocated_resolution) == observations[0][1]
     assert Path(relocated_resolution.source_path) == relocated.resolve()
 
+    # A mutated source is a scientific change, and post-selection is a reader:
+    # it must route to `prepare` rather than silently resolve a different
+    # lineage out of a construction path of its own.
     relocated.write_bytes(relocated.read_bytes() + b"\n")
-    replay_fixture.campaign_core._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    with pytest.raises(PostSelectionError, match="not current for post-selection"):
+        _resolve_post_selection_replay_resolution(
+            SimpleNamespace(cfg=relocated_cfg, paths=relocated_paths), require_train=True
+        )
+
+    # Preparing again under the mutated source publishes a different lineage.
+    _publish_prepared_replay_authority(relocated_cfg, relocated_paths)
     mutated_resolution = _resolve_post_selection_replay_resolution(
         SimpleNamespace(cfg=relocated_cfg, paths=relocated_paths), require_train=True
     )

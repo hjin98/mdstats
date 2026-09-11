@@ -179,6 +179,18 @@ def build_replay_invalidation_plan(
         rematerialize.update(requested)
     elif mode is ReplayLabelMode.FOUNDATION_PSEUDOLABEL and rerun_prediction:
         rematerialize.update(requested)
+    if (
+        mode is ReplayLabelMode.FOUNDATION_PSEUDOLABEL
+        and true_labels_changed
+        and "monitor" in requested
+    ):
+        # Pseudo-mode training labels do not descend from source truth, so a
+        # truth-only mutation with unchanged geometry correctly preserves the
+        # foundation predictions, the qualification, and the split.  The
+        # mandatory *independent* TRUE_DFT monitor does descend from source
+        # truth, and a preserved pseudo-training result is not permission to
+        # keep a stale one: it is refreshed on its own.
+        rematerialize.add("monitor")
 
     return ReplayInvalidationPlan(
         label_mode=mode,

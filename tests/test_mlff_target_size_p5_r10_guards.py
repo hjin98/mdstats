@@ -585,14 +585,44 @@ def _single_source_replay_fixture_config(
         training_acceleration_backend="e3nn",
         default_device="cpu",
     )
-    text = text.replace('label_mode = "foundation_pseudolabel"', f'label_mode = "{label_mode}"')
+    text = text.replace('label_mode = "true_dft"', f'label_mode = "{label_mode}"')
     if split_seed != 42:
         text = text.replace("split_seed = 42", f"split_seed = {split_seed}")
     if split_ratio != "5:1":
         text = text.replace('split_ratio = "5:1"', f'split_ratio = "{split_ratio}"')
+    # The fixture replay corpus is tiny and elemental. Production cardinality and
+    # target-element coverage are their own owners; realized replay qualification
+    # is now enforced by `prepare`, so the fixture relaxes exactly those gates
+    # rather than weakening what these tests actually falsify.
+    for _old, _new in (
+        ("minimum_train_configurations = 100", "minimum_train_configurations = 1"),
+        ("minimum_monitor_configurations = 20", "minimum_monitor_configurations = 1"),
+        ("require_target_elements = true", "require_target_elements = false"),
+    ):
+        assert _old in text, _old
+        text = text.replace(_old, _new)
     config = tmp_path / "campaign.toml"
     config.write_text(text, encoding="utf-8")
     return campaign_cli._load_config(config)
+
+
+
+def _prepare_single_source_replay_authority(cfg, paths) -> None:
+    """Publish the prepared replay authority the way `prepare` does.
+
+    Post-selection is a read of published replay science, so a P5 test has to
+    prepare first. This also replaces the old in-memory context-cache clears:
+    there is no process-local replay context cache any more, and a repeated read
+    re-authenticates the published authority instead.
+    """
+
+    from mdstats.training_data import campaign_cli
+
+    store = campaign_cli.CampaignStore(paths.state_db)
+    try:
+        campaign_cli._publish_single_source_replay_authority(store, cfg, paths)
+    finally:
+        store.close()
 
 
 def test_r10c_real_single_source_true_dft_lineage_resolves_and_authenticates(
@@ -605,12 +635,12 @@ def test_r10c_real_single_source_true_dft_lineage_resolves_and_authenticates(
         _resolve_post_selection_replay_resolution,
     )
 
-    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
     source_path = tmp_path / "replay.extxyz"
     _write_source(source_path, 12)
     cfg, paths = _single_source_replay_fixture_config(
         tmp_path, source_path, label_mode="true_dft"
     )
+    _prepare_single_source_replay_authority(cfg, paths)
 
     single_ctx = _single_source_replay_context(cfg, paths)
     assert single_ctx is not None
@@ -697,7 +727,7 @@ def test_r10c_foundation_pseudolabel_single_source_lineage_and_label_separation(
         return original_builder(source, policy, cache_root, provider=provider, **kwargs)
 
     monkeypatch.setattr(mdstats, "build_replay_foundation_prediction_cache", build_with_fake)
-    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    _prepare_single_source_replay_authority(cfg, paths)
 
     single_ctx = campaign_core._single_source_replay_context(cfg, paths)
     assert single_ctx is not None
@@ -740,13 +770,13 @@ def test_r10c_single_source_restart_stability_across_context_cache_clear(
         tmp_path, source_path, label_mode="true_dft"
     )
 
-    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    _prepare_single_source_replay_authority(cfg, paths)
     context = SimpleNamespace(cfg=cfg, paths=paths)
     first_resolution = _resolve_post_selection_replay_resolution(context)
     first_digest = compute_replay_lineage_digest(first_resolution)
 
-    # Discard only the in-memory context cache to simulate restart
-    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    # A second independent read of the published authority, as a restarted
+    # command would perform it.
     second_resolution = _resolve_post_selection_replay_resolution(context)
     second_digest = compute_replay_lineage_digest(second_resolution)
 
@@ -768,7 +798,7 @@ def test_r10c_single_source_mutation_invalidates_lineage(
         tmp_path, source_path, label_mode="true_dft", split_seed=42
     )
 
-    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    _prepare_single_source_replay_authority(cfg, paths)
     context = SimpleNamespace(cfg=cfg, paths=paths)
     baseline_resolution = _resolve_post_selection_replay_resolution(context)
     baseline_digest = compute_replay_lineage_digest(baseline_resolution)
@@ -781,7 +811,7 @@ def test_r10c_single_source_mutation_invalidates_lineage(
     cfg_mutated_source, paths_mutated_source = _single_source_replay_fixture_config(
         mutated_source_dir, mutated_source_path, label_mode="true_dft", split_seed=42
     )
-    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    _prepare_single_source_replay_authority(cfg_mutated_source, paths_mutated_source)
     mutated_source_res = _resolve_post_selection_replay_resolution(
         SimpleNamespace(cfg=cfg_mutated_source, paths=paths_mutated_source)
     )
@@ -794,7 +824,7 @@ def test_r10c_single_source_mutation_invalidates_lineage(
     cfg_mutated_split, paths_mutated_split = _single_source_replay_fixture_config(
         split_mutated_dir, source_path, label_mode="true_dft", split_seed=999
     )
-    campaign_cli._UNIFIED_REPLAY_CONTEXT_CACHE.clear()
+    _prepare_single_source_replay_authority(cfg_mutated_split, paths_mutated_split)
     mutated_split_res = _resolve_post_selection_replay_resolution(
         SimpleNamespace(cfg=cfg_mutated_split, paths=paths_mutated_split)
     )
@@ -843,6 +873,9 @@ head = "default"
 label_mode = "true_dft"
 split_ratio = "5:1"
 split_seed = 42
+minimum_train_configurations = 1
+minimum_monitor_configurations = 1
+require_target_elements = false
 """
     config.write_text(config_text, encoding="utf-8")
 
@@ -867,7 +900,9 @@ split_seed = 42
         assert ctx8.selected.n_selected == 8
         assert ctx16.selected.n_selected == 16
 
-        # Shared replay lineage resolves successfully before/for per-size CV orchestration
+        # Shared replay lineage resolves successfully before/for per-size CV
+        # orchestration, from the published prepared authority.
+        _prepare_single_source_replay_authority(cfg, paths)
         res8 = _resolve_post_selection_replay_resolution(ctx8)
         res16 = _resolve_post_selection_replay_resolution(ctx16)
         assert res8 is not None

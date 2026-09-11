@@ -922,6 +922,8 @@ def execute_current_prepare(args: Any) -> int:
         _ok,
         _prepare_catalog,
         _print_header,
+        _prepare_single_source_replay,
+        _replay_topology_preflight,
         _require_stage_complete,
     )
     from .campaign_prepared_generation import (
@@ -938,6 +940,12 @@ def execute_current_prepare(args: Any) -> int:
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
     _require_stage_complete(store, paths, "doctor")
+    # Cheap canonical configuration/topology validation first.  A conflicting
+    # replay selector, a malformed exact split domain, a mixed replay
+    # interface, or a replay declaration incompatible with the resolved
+    # training mode is knowable here, and must not cost a full target-source
+    # rebuild, a replay-wide parse, or a model load before it is reported.
+    _replay_topology_preflight(cfg, paths)
     refresh_inferences = bool(getattr(args, "refresh_inferences", False))
     if bool(getattr(args, "approve_manifest", False)):
         # Approval is an operator gate on the exact reviewed manifest digest and
@@ -1031,6 +1039,25 @@ def execute_current_prepare(args: Any) -> int:
         )
     except Exception as exc:
         _mark_stage(store, paths, "prepare", StageState.FAILED, str(exc))
+        raise
+    # Public `prepare` coordinates two *independent* preparation owners; it does
+    # not merge them into one scientific generation.  Replay runs after the
+    # target-size substrate is bound, so the replay foundation provider is only
+    # ever acquired once the earlier prepare-owned model-scale provider has
+    # reached its final consumer and been retired.  A replay failure here makes
+    # public prepare incomplete without rolling back the independently valid
+    # target-size generation.
+    try:
+        _prepare_single_source_replay(cfg, paths, store)
+    except Exception as exc:
+        _mark_stage(
+            store,
+            paths,
+            "prepare",
+            StageState.FAILED,
+            f"replay preparation failed after the target-size generation was "
+            f"published (target-size science remains valid): {exc}",
+        )
         raise
     _ok(
         "current target-size substrate is bound: canonical generation "
