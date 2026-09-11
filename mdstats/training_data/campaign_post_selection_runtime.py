@@ -2983,35 +2983,14 @@ def _post_selection_training_concurrency_policy(
     from ._campaign_cli_core import _cfg
     from .training_parallel import TrainingConcurrencyPolicy
 
-    import os
-
-    requested_override = os.environ.get("MDSTATS_PARALLEL_TRAINING_JOBS")
-    requested_jobs = (
-        int(requested_override)
-        if requested_override is not None and requested_override.strip()
-        else int(_cfg(context.cfg, "execution", "parallel_training_jobs", 0))
-    )
-    max_override = os.environ.get("MDSTATS_MAXIMUM_PARALLEL_TRAINING_JOBS")
-    maximum_auto_jobs = (
-        int(max_override)
-        if max_override is not None and max_override.strip()
-        else int(
-            _cfg(context.cfg, "execution", "maximum_parallel_training_jobs", 4)
-        )
-    )
-    if (
-        requested_override is not None
-        and requested_override.strip()
-        and int(requested_override) > 0
-    ):
-        maximum_auto_jobs = min(maximum_auto_jobs, int(requested_override))
-
     return TrainingConcurrencyPolicy(
-        requested_jobs=requested_jobs,
+        requested_jobs=int(_cfg(context.cfg, "execution", "parallel_training_jobs", 0)),
         minimum_auto_jobs=int(
             _cfg(context.cfg, "execution", "minimum_parallel_training_jobs", 1)
         ),
-        maximum_auto_jobs=maximum_auto_jobs,
+        maximum_auto_jobs=int(
+            _cfg(context.cfg, "execution", "maximum_parallel_training_jobs", 4)
+        ),
         gpu_memory_fraction=float(
             _cfg(context.cfg, "execution", "training_gpu_memory_fraction", 0.90)
         ),

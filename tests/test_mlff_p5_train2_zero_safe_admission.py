@@ -1207,26 +1207,3 @@ def test_one_completion_batch_truthfully_classifies_already_done_sibling(
     )
     assert resumed.evaluations, "the healthy restart must complete through EVAL2"
 
-
-# --- 13. Execution concurrency cap override ---------------------------------
-
-
-def test_execution_concurrency_cap_environment_override(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """MDSTATS_PARALLEL_TRAINING_JOBS caps concurrency without modifying config."""
-
-    monkeypatch.setenv("MDSTATS_PARALLEL_TRAINING_JOBS", "1")
-    config = _selected_campaign(tmp_path)
-    cfg, paths = fx.load_context(config)[:2]
-    store = fx.CampaignStore(paths.state_db)
-    try:
-        context = runtime.build_post_selection_contexts(
-            cfg, paths, store, trainer=None, inference_evaluator=None
-        )[0]
-        policy = runtime._post_selection_training_concurrency_policy(context)
-        assert policy.requested_jobs == 1
-        assert policy.maximum_auto_jobs == 1
-    finally:
-        store.close()
-

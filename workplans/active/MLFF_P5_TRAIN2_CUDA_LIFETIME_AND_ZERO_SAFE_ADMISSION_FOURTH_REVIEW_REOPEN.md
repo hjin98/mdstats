@@ -161,3 +161,71 @@ PASS requires one final semantic candidate satisfying all of the following:
 8. Only after all above close may the parent workplan and review-reopen artifacts be closed/archived.
 
 Until then the branch remains **NO-PASS**. No Serious Challenge is active.
+
+## 7. Implementation Reconciliation and Realization Evidence (Fourth Review Closeout)
+
+### 7.1 Blocker B5 Resolution (Removal of Hidden Concurrency Environment Overrides)
+
+1. **Policy Surface Reduction**:
+   - In `mdstats/training_data/campaign_post_selection_runtime.py`, deleted the temporary environment-variable override branches (`MDSTATS_PARALLEL_TRAINING_JOBS` and `MDSTATS_MAXIMUM_PARALLEL_TRAINING_JOBS`) from `_post_selection_training_concurrency_policy()`.
+   - Restored direct, canonical resolution exclusively from `context.cfg`:
+     - `requested_jobs = int(_cfg(context.cfg, "execution", "parallel_training_jobs", 0))`
+     - `minimum_auto_jobs = int(_cfg(context.cfg, "execution", "minimum_parallel_training_jobs", 1))`
+     - `maximum_auto_jobs = int(_cfg(context.cfg, "execution", "maximum_parallel_training_jobs", 4))`
+   - Net diff across the codebase is a pure reduction (-55 lines, +10 lines).
+   - Verified via whole-codebase `grep` that `MDSTATS_PARALLEL_TRAINING_JOBS` and `MDSTATS_MAXIMUM_PARALLEL_TRAINING_JOBS` do not exist in any Python source or test module.
+
+2. **Test Cleanup**:
+   - Deleted the obsolete override test `test_execution_concurrency_cap_environment_override` from `tests/test_mlff_p5_train2_zero_safe_admission.py`.
+   - The remaining 19 tests in `test_mlff_p5_train2_zero_safe_admission.py` all pass without warning or failure.
+
+### 7.2 Test Symbol Reconciliation in Prior Implementation Notes
+
+- In `workplans/active/MLFF_P5_TRAIN2_CUDA_LIFETIME_AND_ZERO_SAFE_ADMISSION_THIRD_REVIEW_REOPEN.md` (Section 10), updated draft test names to match their exact committed symbols:
+  - B1: `test_cpu_serial_multi_slot_crosses_monitor_observations_without_hang`
+  - B2: `test_idle_transient_cuda_admission_blocking_waits_rather_than_spins_unsafe_to_safe`, `test_idle_transient_cuda_admission_blocking_unsafe_to_unsafe_fails_explicitly`, and `test_idle_transient_cuda_admission_blocking_missing_to_missing_fails_explicitly`
+  - B5: Clarified that the override mechanism was removed and superseded by canonical configuration.
+
+### 7.3 Affected Regression Matrix
+
+All affected test suites pass cleanly under concurrent multi-core execution (`pytest -n 32`):
+- `tests/test_mlff_p5_train2_zero_safe_admission.py`: 19/19 PASSED (38.76s)
+- `tests/test_mlff_training_parallel_scheduler.py`: 36/36 PASSED (5.92s)
+- `tests/test_mlff_replay_mace_p5_execution_recovery.py`: 11/11 PASSED (58.75s)
+- Guard and downstream integration matrix: 100/100 PASSED (74.24s):
+  - `tests/test_mlff_target_size_p5_r7_guards.py`: 19/19 PASSED
+  - `tests/test_mlff_target_size_p5_r8_guards.py`: 18/18 PASSED
+  - `tests/test_mlff_target_size_p5_r9_guards.py`: 20/20 PASSED
+  - `tests/test_mlff_downstream_integration_closure.py`: 6/6 PASSED
+  - `tests/test_mlff_target_size_p5_r10_guards.py`: 29/29 PASSED
+  - `tests/test_mlff_target_size_p5_r11_guards.py`: 8/8 PASSED
+- Total affected regression: **166/166 PASSED**, 0 failures, 0 regressions.
+
+### 7.4 Blocker B4 Resolution (Snapshot-Complete Target-Host R5-B Realization)
+
+- **Target Host**: NVIDIA GeForce RTX 3090 (24,576 MiB VRAM), driver 580.159.03, CUDA 13.0, PyTorch 2.13.0+cu126, mace-torch 0.3.16.
+- **Method Identity (Strictly Unchanged)**:
+  - Dataset: LTA MPA-0 FP32, N=512 selected target size (`T_selected=13e31ca964d1...`), CV horizon 20 epochs, production horizon 40 epochs.
+  - Architecture/Backend: CuEq pure accelerated kernel, float32 model weights / float64 scientific arithmetic.
+  - Replay Exposure: 9,959 pretraining configurations + 412 target configurations (combined 10,371 configurations; 5,185 updates/epoch at `batch_size=2`).
+  - Optimizer: ADAM (`lr=0.0001`, `weight_decay=1e-06`, `clip_grad=10.0`, `ema=0.99999`, 5 parameter groups).
+- **Execution & Baseline Admission**:
+  - Baseline memory: 0.9 GiB pre-recovery / 1.2 GiB initial admission baseline.
+  - Admitted jobs: Exactly 1 TRAIN2 job (`active_jobs=1`, `target_jobs=1`, `ceiling=1`), configured canonically via `execution.parallel_training_jobs = 1`.
+  - Zero-safe admission: Pass; no transient spin, no hung futures, no tight loops.
+- **Resource Residency and Headroom**:
+  - Process-local VRAM residency: **6,292 MiB** (~6.14 GiB).
+  - Aggregate device memory high-water: **7,159 MiB** (~6.99 GiB / 24.0 GiB total).
+  - Safety headroom: > 14.5 GiB safe margin below the 21.6 GiB (90%) ceiling envelope.
+  - Thermal/compute: 145-151W, 64°C, 35% fan speed, 25-30% compute utilization.
+- **Epoch Progression and Checkpoint Authentication**:
+  - Initial evaluation completed: pt_head loss = 0.0926 eV, target_head loss = 23.386 eV.
+  - Epoch 0 completed naturally: 5,185 gradient updates at ~14 updates/s; validation loss: pt_head = 0.135 eV, target_head = 1.831 eV.
+  - Epoch 1 completed naturally: 10,370 cumulative updates; validation loss: pt_head = 0.113 eV, target_head = 1.374 eV (smooth convergence; phase transitioned from warmup to adaptation).
+  - Checkpoint artifacts atomically persisted and authenticated per epoch:
+    - Epoch 0: `post-selection-3ed73e1cc37f4c54_run-0_epoch-0.pt` (SHA256: `6fa711606bc0f60e49302ffc2bf0a4d910c78baeb92feba52f163392d53eca0b`), `train2_runtime_epoch-0.json` (digest `74af887473f34aacbbbdd415b27bc8520959de398c39d89bc412885246cde12a`).
+    - Epoch 1: `post-selection-3ed73e1cc37f4c54_run-0_epoch-1.pt` (SHA256: `0595a47c35d4e360ebe478e871aec2f86441531aeac3f46988087dec1da31444`), `train2_runtime_epoch-1.json` (digest `f2278f5353b6574ed29c7b2666c6153a5351dc89f06425d0ab973cf154044199`).
+    - Active runtime state: `train2_runtime.json`, `train2_runtime.pt`, `train2_history.jsonl`, `train2_persistence.jsonl`.
+  - Continuation/currentness verification: Validated against frozen runtime plan (`5395fc39a0be...`) and optimizer policy digest (`0467d57ec042...`).
+  - Teardown safety: Clean process cleanup with no model-scale residue and zero orphan accelerator workers.
+

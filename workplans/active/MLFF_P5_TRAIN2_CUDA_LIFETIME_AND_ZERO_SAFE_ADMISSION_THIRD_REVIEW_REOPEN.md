@@ -246,12 +246,12 @@ Until then the branch is **NO-PASS**. No Serious Challenge is active.
 
 1. **Blocker B1 (CPU Serial Replacement)**:
    - In `mdstats/training_data/campaign_post_selection_runtime.py`, `admission_blocked` is derived from `decision.memory_safe is not True` only when `concurrency_plan.gpu_memory_budget_bytes is not None`. For CPU/non-accelerator plans, `admission_blocked` remains `False`, ensuring serial replacement work continues unblocked across multiple controller monitor intervals.
-   - Verified via deterministic test `test_cpu_serial_replacement_survives_monitor_observation` in `tests/test_mlff_p5_train2_zero_safe_admission.py`.
+   - Verified via deterministic test `test_cpu_serial_multi_slot_crosses_monitor_observations_without_hang` in `tests/test_mlff_p5_train2_zero_safe_admission.py`.
 
 2. **Blocker B2 (Idle Transient CUDA Admission Busy-Spin)**:
    - In `_execute_post_selection_pending_runs()`, when `active` is empty, pending work remains, and `admission_blocked` is true, the scheduler waits on the existing poll cadence via `time.sleep(poll_interval)`.
    - If the controller confirms zero-safe terminal admission (`int(controller.target_jobs) < 1`), immediate typed failure `TrainingAdmissionBlockedError` is raised without waiting.
-   - Verified via deterministic tests `test_idle_pending_queue_transient_unsafe_waits_and_recovers`, `test_idle_pending_queue_consecutive_unsafe_waits_then_fails`, and `test_idle_pending_queue_missing_memory_waits_then_fails` in `tests/test_mlff_p5_train2_zero_safe_admission.py`.
+   - Verified via deterministic tests `test_idle_transient_cuda_admission_blocking_waits_rather_than_spins_unsafe_to_safe`, `test_idle_transient_cuda_admission_blocking_unsafe_to_unsafe_fails_explicitly`, and `test_idle_transient_cuda_admission_blocking_missing_to_missing_fails_explicitly` in `tests/test_mlff_p5_train2_zero_safe_admission.py`.
 
 3. **Blocker B3 (Truthful Batch Classification Before Exception)**:
    - In `_execute_post_selection_pending_runs()`, all completed futures in the current `done` batch are drained from `active` and classified before raising any failure exception. Successful slots increment `completed_count` and append to `trained_slots`; failing slots increment `failed_count` and record `first_failure`.
@@ -262,15 +262,14 @@ Until then the branch is **NO-PASS**. No Serious Challenge is active.
    - In `mdstats/training_data/post_selection_execution.py` (`MacePostSelectionTrainer`), when `int(request.start_epoch) > 0`, `--restart_latest` is appended to the executable command and `MDSTATS_MACE_RESTART_EPOCH` is populated with `str(int(request.start_epoch) - 1)` (matching the contract in `campaign_target_size_runtime.py`).
    - Covered in `tests/test_mlff_target_size_p5_r7_guards.py` (`test_guard_p5_r7_10_11_12_14_mace_trainer_environment_and_cwd`).
 
-5. **Execution Concurrency Cap Environment Override**:
-   - In `_post_selection_training_concurrency_policy()`, support was added for `MDSTATS_PARALLEL_TRAINING_JOBS` and `MDSTATS_MAXIMUM_PARALLEL_TRAINING_JOBS` to allow execution-only concurrency bounding without modifying configuration files.
-   - Verified in `tests/test_mlff_p5_train2_zero_safe_admission.py` (`test_execution_concurrency_cap_environment_override`).
+5. **Execution Concurrency Cap Direct Configuration (Blocker B5 Resolution)**:
+   - Temporary environment-variable override branches (`MDSTATS_PARALLEL_TRAINING_JOBS` and `MDSTATS_MAXIMUM_PARALLEL_TRAINING_JOBS`) were deleted from `_post_selection_training_concurrency_policy()`, restoring direct canonical resolution from `context.cfg`. The one-job cap for R5-B is configured directly via canonical `[execution] parallel_training_jobs = 1`.
 
 ### 10.2 Target-Host R5-B Realization Evidence
 
 - **Platform**: NVIDIA GeForce RTX 3090 (24 GiB total VRAM, driver 570.86.16, CUDA 12.8, PyTorch 2.13.0+cu126, mace-torch 0.3.16).
 - **Configuration**: Frozen exact TRAIN2 context (LTA MPA-0 FP32, `batch_size=2`, CuEq backend, precision/replay/optimizer unchanged).
-- **Execution**: Exactly one TRAIN2 job admitted from a clean baseline (`active_jobs=1, target_jobs=1, ceiling=1`).
+- **Execution**: Exactly one TRAIN2 job admitted from a clean baseline (`active_jobs=1, target_jobs=1, ceiling=1`, configured via canonical `execution.parallel_training_jobs=1`).
 - **Telemetry & Stability**:
   - Baseline VRAM: 0.9 GiB (pre-recovery) -> 1.2 GiB (admission baseline).
   - Warmup (60s) and 12/12 telemetry averaging samples completed cleanly (`last_decision=configured/resource concurrency ceiling reached`).
@@ -282,7 +281,7 @@ Until then the branch is **NO-PASS**. No Serious Challenge is active.
 
 ### 10.3 Verification Summary
 
-- `tests/test_mlff_p5_train2_zero_safe_admission.py`: 20/20 PASSED (`pytest -n 32`)
+- `tests/test_mlff_p5_train2_zero_safe_admission.py`: 19/19 PASSED (`pytest -n 32`)
 - `tests/test_mlff_target_size_p5_r7_guards.py`: 19/19 PASSED (`pytest -n 32`)
 - Combined affected regression suite: 130/130 PASSED (`pytest -n 32`, 97.48s):
   - `tests/test_mlff_training_parallel_scheduler.py`
