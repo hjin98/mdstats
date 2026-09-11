@@ -41,6 +41,8 @@ from .replay import (
     _BufferedReplayExtXYZWriter,
     _split_role_geometry_identities,
     canonical_replay_geometry_identity,
+    normalize_replay_prediction_batch_size,
+    normalize_replay_prediction_shard_size,
     verify_consumed_replay_geometry_identity,
 )
 
@@ -769,7 +771,7 @@ def _cold_build_inference_executor(
 
     return StaticMaceInferenceExecutor(
         provider,
-        batch_size=max(1, int(batch_size)),
+        batch_size=batch_size,
         graph_cache_directory=graph_cache_directory,
         owns_provider=bool(owns_provider),
         device=str(policy.device),
@@ -970,8 +972,8 @@ def build_replay_foundation_prediction_cache(
     the inference batch size.
     """
 
-    if int(batch_size) <= 0 or int(shard_size) <= 0:
-        raise TrainingDataInputError("Replay prediction batch_size and shard_size must be positive.")
+    batch_size = normalize_replay_prediction_batch_size(batch_size)
+    shard_size = normalize_replay_prediction_shard_size(shard_size)
     if policy.foundation_potential.model_atomic_numbers and not set(source.atomic_numbers).issubset(
         set(policy.foundation_potential.model_atomic_numbers)
     ):
@@ -1013,8 +1015,8 @@ def build_replay_foundation_prediction_cache(
             policy,
             directory,
             provider=provider,
-            batch_size=int(batch_size),
-            shard_size=int(shard_size),
+            batch_size=batch_size,
+            shard_size=shard_size,
             graph_cache_directory=graph_cache_directory,
             source_index=source_index,
         )
@@ -1056,18 +1058,17 @@ def _cold_build_replay_foundation_prediction_cache(
             raise TrainingDataInputError("Foundation checkpoint file is missing or differs from the prediction policy.")
         provider = _construct_prediction_provider(policy, source)
 
-    try:
-        from ase.io import iread
-    except ModuleNotFoundError as exc:  # pragma: no cover
-        if owns_provider:
-            _retire_prediction_provider(provider)
-        raise TrainingDataInputError("ASE is required for replay pseudo-label prediction.") from exc
-
     executor: Any | None = None
+    work: Path | None = None
     try:
+        try:
+            from ase.io import iread
+        except ModuleNotFoundError as exc:  # pragma: no cover
+            raise TrainingDataInputError("ASE is required for replay pseudo-label prediction.") from exc
+
         _validate_prediction_provider(provider, policy)
         # Ownership transfers exactly once, here.  If executor construction
-        # itself raises, the transfer never happened and the except-path below
+        # itself raises, the transfer never happened and the finally-path below
         # retires the internally constructed provider instead.
         executor = _cold_build_inference_executor(
             provider,
@@ -1076,48 +1077,43 @@ def _cold_build_replay_foundation_prediction_cache(
             graph_cache_directory=graph_cache_directory,
             owns_provider=owns_provider,
         )
-    except BaseException:
-        if owns_provider and executor is None:
-            _retire_prediction_provider(provider)
-        raise
 
-    # An attempt-local scratch directory: two contenders can never delete or
-    # replace each other's live work, and a failed attempt can never leave
-    # behind a directory that later validates as this cache key.
-    work = Path(tempfile.mkdtemp(prefix=f"{directory.name}.work.", dir=directory.parent))
-    # mkdtemp is 0700; the published cache keeps the ordinary directory mode the
-    # previous fixed-name scratch directory had.
-    os.chmod(work, 0o755)
-    batch_atoms: list[Any] = []
-    batch_ids: list[str] = []
-    shard_records: list[tuple[str, float, np.ndarray, np.ndarray | None, str, str, tuple[float, float, float | None]]] = []
-    shards: list[ReplayFoundationPredictionShard] = []
-    audit_records: list[tuple[str, tuple[float, float, float | None], str]] = []
-    seen: set[str] = set()
+        # An attempt-local scratch directory: two contenders can never delete or
+        # replace each other's live work, and a failed attempt can never leave
+        # behind a directory that later validates as this cache key.
+        work = Path(tempfile.mkdtemp(prefix=f"{directory.name}.work.", dir=directory.parent))
+        # mkdtemp is 0700; the published cache keeps the ordinary directory mode the
+        # previous fixed-name scratch directory had.
+        os.chmod(work, 0o755)
+        batch_atoms: list[Any] = []
+        batch_ids: list[str] = []
+        shard_records: list[tuple[str, float, np.ndarray, np.ndarray | None, str, str, tuple[float, float, float | None]]] = []
+        shards: list[ReplayFoundationPredictionShard] = []
+        audit_records: list[tuple[str, tuple[float, float, float | None], str]] = []
+        seen: set[str] = set()
 
-    def flush_inference_batch() -> None:
-        nonlocal shard_records
-        if not batch_atoms:
-            return
-        predictions = executor.predict(
-            tuple(batch_atoms), geometry_identities=tuple(batch_ids)
-        )
-        if len(predictions) != len(batch_atoms):
-            raise TrainingDataInputError("Replay foundation prediction provider returned the wrong batch size.")
-        for identity, atoms, prediction in zip(batch_ids, batch_atoms, predictions, strict=True):
-            energy, forces, stress, prediction_identity, audit_identity, audit = _prediction_payload(
-                prediction,
-                expected_natoms=len(atoms),
+        def flush_inference_batch() -> None:
+            nonlocal shard_records
+            if not batch_atoms:
+                return
+            predictions = executor.predict(
+                tuple(batch_atoms), geometry_identities=tuple(batch_ids)
             )
-            shard_records.append((identity, energy, forces, stress, prediction_identity, audit_identity, audit))
-            audit_records.append((identity, audit, audit_identity))
-            if len(shard_records) >= shard_size:
-                shards.append(_write_prediction_shard(work, len(shards), shard_records[:shard_size]))
-                del shard_records[:shard_size]
-        batch_atoms.clear()
-        batch_ids.clear()
+            if len(predictions) != len(batch_atoms):
+                raise TrainingDataInputError("Replay foundation prediction provider returned the wrong batch size.")
+            for identity, atoms, prediction in zip(batch_ids, batch_atoms, predictions, strict=True):
+                energy, forces, stress, prediction_identity, audit_identity, audit = _prediction_payload(
+                    prediction,
+                    expected_natoms=len(atoms),
+                )
+                shard_records.append((identity, energy, forces, stress, prediction_identity, audit_identity, audit))
+                audit_records.append((identity, audit, audit_identity))
+                if len(shard_records) >= shard_size:
+                    shards.append(_write_prediction_shard(work, len(shards), shard_records[:shard_size]))
+                    del shard_records[:shard_size]
+            batch_atoms.clear()
+            batch_ids.clear()
 
-    try:
         if source_index is None:
             frame_iterator = enumerate(iread(source_path, index=":", format="extxyz"))
         else:
@@ -1169,12 +1165,16 @@ def _cold_build_replay_foundation_prediction_cache(
         _atomic_write_json(_prediction_manifest_path(directory), cache.to_dict())
         return cache
     except BaseException:
-        shutil.rmtree(work, ignore_errors=True)
+        if work is not None and work.exists():
+            shutil.rmtree(work, ignore_errors=True)
         raise
     finally:
         # The prepare-owned model-scale provider ends here, before P5/TRAIN2 can
         # observe its residency.  Process exit is not proof of explicit close.
-        executor.close()
+        if executor is not None:
+            executor.close()
+        elif owns_provider and provider is not None:
+            _retire_prediction_provider(provider)
 
 
 def _retire_prediction_provider(provider: Any) -> None:

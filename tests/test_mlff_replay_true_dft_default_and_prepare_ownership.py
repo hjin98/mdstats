@@ -1293,8 +1293,15 @@ def test_stale_replay_lineage_makes_post_selection_evidence_historical():
     store = _Store()
     assert _replay_lineage_stale(store, "p" * 64, lambda payload: None, "b" * 64) is True
     assert _replay_lineage_stale(store, "p" * 64, lambda payload: None, "a" * 64) is False
-    # No observable current replay authority: the question is not asked.
-    assert _replay_lineage_stale(store, "p" * 64, lambda payload: None, None) is False
+    # When record binds replay lineage and current replay authority is absent, fail closed (stale).
+    assert _replay_lineage_stale(store, "p" * 64, lambda payload: None, None) is True
+
+    class _NoReplayStore:
+        def get(self, digest, deserializer):
+            return SimpleNamespace(replay_lineage_digest=None)
+
+    no_replay_store = _NoReplayStore()
+    assert _replay_lineage_stale(no_replay_store, "p" * 64, lambda payload: None, None) is False
 
 
 def test_observation_never_constructs_replay_state():
@@ -1367,3 +1374,441 @@ def test_replay_routing_repair_bumps_no_scientific_or_schema_version():
     assert REPLAY_SINGLE_SOURCE_CONFIG_SCHEMA == "mdstats.replay-single-source-config.v1"
     assert REPLAY_SPLIT_MANIFEST_SCHEMA == "mdstats.replay-split-manifest.v1"
     assert REPLAY_PREPARATION_PLAN_SCHEMA == "mdstats.replay-preparation-plan.v4"
+
+
+# ---------------------------------------------------------------------------
+# B1-B4 Reopen Falsification Tests
+# ---------------------------------------------------------------------------
+
+
+def test_cold_build_retires_internal_provider_on_early_failure(tmp_path: Path, monkeypatch):
+    """B1: internal provider is retired when cold build fails before or during execution."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 6)
+    cfg, paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    potential, inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+    artifact = mdstats.inspect_replay_source_extxyz(source)
+    policy = mdstats.ReplayFoundationPredictionPolicy(
+        foundation_potential=potential, foundation_inference=inference, device="cpu"
+    )
+    cache_root = tmp_path / "predictions"
+    provider_instance = _CountingProvider(policy)
+
+    import tempfile
+    import mdstats.training_data.replay_pseudolabel as rpl
+
+    monkeypatch.setattr(rpl, "_construct_prediction_provider", lambda *a, **kw: provider_instance)
+
+    def fail_mkdtemp(*a, **kw):
+        raise RuntimeError("injected mkdtemp failure")
+
+    monkeypatch.setattr(tempfile, "mkdtemp", fail_mkdtemp)
+
+    with pytest.raises(RuntimeError, match="injected mkdtemp failure"):
+        mdstats.build_replay_foundation_prediction_cache(
+            artifact, policy, cache_root, provider=None, batch_size=2, shard_size=4
+        )
+
+    assert provider_instance.close_count == 1
+    assert not list(cache_root.glob("manifest.json"))
+
+
+def test_cold_build_retires_internal_provider_on_mid_execution_failure(tmp_path: Path, monkeypatch):
+    """B1: internal provider is retired and attempt scratch cleaned when build fails mid-flight."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 6)
+    cfg, paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    potential, inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+    artifact = mdstats.inspect_replay_source_extxyz(source)
+    policy = mdstats.ReplayFoundationPredictionPolicy(
+        foundation_potential=potential, foundation_inference=inference, device="cpu"
+    )
+    cache_root = tmp_path / "predictions"
+
+    class _FailingCountingProvider(_CountingProvider):
+        def predict_batch(self, atoms_batch, **kwargs):
+            raise RuntimeError("injected batch failure")
+
+    provider_instance = _FailingCountingProvider(policy)
+    import mdstats.training_data.replay_pseudolabel as rpl
+    monkeypatch.setattr(rpl, "_construct_prediction_provider", lambda *a, **kw: provider_instance)
+
+    with pytest.raises(RuntimeError, match="injected batch failure"):
+        mdstats.build_replay_foundation_prediction_cache(
+            artifact, policy, cache_root, provider=None, batch_size=2, shard_size=4
+        )
+
+    assert provider_instance.close_count == 1
+    assert not list(cache_root.glob("manifest.json"))
+    assert not list(cache_root.glob(".attempt*"))
+
+
+def test_cold_build_does_not_retire_caller_provided_provider(tmp_path: Path, monkeypatch):
+    """B1: caller-owned provider is NOT closed on success or failure."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 6)
+    cfg, paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    potential, inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+    artifact = mdstats.inspect_replay_source_extxyz(source)
+    policy = mdstats.ReplayFoundationPredictionPolicy(
+        foundation_potential=potential, foundation_inference=inference, device="cpu"
+    )
+    cache_root = tmp_path / "predictions"
+
+    provider = _CountingProvider(policy)
+    cache = mdstats.build_replay_foundation_prediction_cache(
+        artifact, policy, cache_root, provider=provider, batch_size=2, shard_size=4
+    )
+    assert cache.configuration_count == 6
+    assert provider.close_count == 0
+
+    class _FailingProvider(_CountingProvider):
+        def predict_batch(self, atoms_batch, **kwargs):
+            raise RuntimeError("caller provider failure")
+
+    failing_provider = _FailingProvider(policy)
+    fail_cache_root = tmp_path / "predictions_fail"
+    with pytest.raises(RuntimeError, match="caller provider failure"):
+        mdstats.build_replay_foundation_prediction_cache(
+            artifact, policy, fail_cache_root, provider=failing_provider, batch_size=2, shard_size=4
+        )
+    assert failing_provider.close_count == 0
+
+
+def test_lifecycle_fail_closed_when_replay_lineage_missing_or_corrupt(tmp_path: Path, monkeypatch):
+    """B2: single-source campaign fails closed when replay lineage is absent or corrupt."""
+    from mdstats.training_data.campaign_lifecycle import (
+        LifecycleObservationState,
+        _current_replay_lineage_snapshot,
+        campaign_owner_snapshot,
+        project_campaign_lifecycle,
+    )
+    from mdstats.training_data.campaign_target_size_state import (
+        TargetSizeLifecycle,
+        TargetSizeRegime,
+    )
+    from mdstats.training_data.qualification.observation import (
+        observe_current_qualification,
+    )
+    import mdstats.training_data.campaign_target_size_state as ctss
+
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    store = cli.CampaignStore(paths.state_db)
+
+    monkeypatch.setattr(
+        ctss,
+        "_load_head",
+        lambda db: SimpleNamespace(
+            state=SimpleNamespace(
+                regime=TargetSizeRegime.CURRENT,
+                lifecycle=TargetSizeLifecycle.AUTHORITIES_BOUND,
+                generation=1,
+                prepared_manifest_digest="a" * 64,
+                experiment_definition_digest="b" * 64,
+                common_preparation_digest="c" * 64,
+                candidate_sizes=(10, 20),
+                auto_diagnostic=None,
+                provisional_entries=(),
+                frozen_entries=(),
+            ),
+            state_revision="rev1",
+        ),
+    )
+
+    try:
+        cli._mark_stage(store, paths, "doctor", cli.StageState.COMPLETE, "doctor ok")
+        cli._publish_single_source_replay_authority(store, cfg, paths)
+        cli._mark_stage(store, paths, "prepare", cli.StageState.COMPLETE, "prepare ok")
+
+        status = cli._effective_stage(store, paths, "prepare")
+        assert status[0] is cli.StageState.COMPLETE
+
+        with store._connect() as db:
+            assert _current_replay_lineage_snapshot(db)[1] == "valid"
+
+        with store._connect() as db:
+            db.execute("DELETE FROM records WHERE key = 'replay_current_lineage'")
+
+        assert _current_replay_lineage_snapshot(store._connect())[1] == "missing"
+
+        status_missing = cli._effective_stage(store, paths, "prepare")
+        assert status_missing[0] is cli.StageState.WAITING
+        assert "missing or malformed" in status_missing[1]
+
+        lifecycle = project_campaign_lifecycle(paths, store)
+        assert lifecycle.step("current_prepare").state == LifecycleObservationState.WAITING
+        assert "replay authority is missing or malformed" in lifecycle.step("current_prepare").message
+        assert lifecycle.next_command == "prepare"
+
+        _rev, _b, pointers_missing = campaign_owner_snapshot(store)
+        binding = SimpleNamespace(campaign_generation=1, content_digest="b" * 64)
+        qual = observe_current_qualification(paths, binding, pointers_missing)
+        assert qual.verdict is None
+        assert qual.superseded_detail is not None
+        assert "replay current lineage is missing or malformed" in qual.superseded_detail
+
+        with store._connect() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO records (key, class_name, digest, payload, updated_utc) VALUES ('replay_current_lineage', 'ReplayLineage', 'x'*64, 'not-json-content', '2026-09-11T00:00:00Z')",
+            )
+
+        assert _current_replay_lineage_snapshot(store._connect())[1] == "malformed"
+
+        status_malformed = cli._effective_stage(store, paths, "prepare")
+        assert status_malformed[0] is cli.StageState.WAITING
+        assert "missing or malformed" in status_malformed[1]
+
+        lifecycle_malformed = project_campaign_lifecycle(paths, store)
+        assert lifecycle_malformed.step("current_prepare").state == LifecycleObservationState.WAITING
+        assert "replay authority is missing or malformed" in lifecycle_malformed.step("current_prepare").message
+        assert lifecycle_malformed.next_command == "prepare"
+
+        _rev, _b, pointers_malformed = campaign_owner_snapshot(store)
+        qual_malformed = observe_current_qualification(paths, binding, pointers_malformed)
+        assert qual_malformed.verdict is None
+        assert qual_malformed.superseded_detail is not None
+        assert "replay current lineage is missing or malformed" in qual_malformed.superseded_detail
+    finally:
+        store.close()
+
+
+def test_lifecycle_non_replay_campaign_unaffected_by_absent_lineage(tmp_path: Path):
+    """B2: campaigns without replay do not fail closed when replay lineage is absent."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode=None)
+    paths.config.write_text(paths.config.read_text().replace(f'replay_set = "{source}"\n', ''))
+    cfg, paths = cli._load_config(paths.config)
+
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        cli._mark_stage(store, paths, "doctor", cli.StageState.COMPLETE, "doctor ok")
+        cli._mark_stage(store, paths, "prepare", cli.StageState.COMPLETE, "prepare ok")
+
+        status = cli._effective_stage(store, paths, "prepare")
+        assert status[0] is cli.StageState.COMPLETE
+    finally:
+        store.close()
+
+
+def test_replay_publication_fences_against_drifted_config_or_sources(tmp_path: Path, monkeypatch):
+    """B3: publication raises if config or source changed during preparation."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        orig_context = cli._construct_single_source_replay_context
+        def mutate_config(*args, **kwargs):
+            res = orig_context(*args, **kwargs)
+            paths.config.write_text(paths.config.read_text().replace('label_mode = "true_dft"', 'label_mode = "foundation_pseudolabel"'))
+            return res
+        monkeypatch.setattr(cli, "_construct_single_source_replay_context", mutate_config)
+        with pytest.raises(cli.CampaignCliError, match="Campaign replay configuration changed"):
+            cli._publish_single_source_replay_authority(store, cfg, paths)
+
+        cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+
+        def mutate_source(*args, **kwargs):
+            res = orig_context(*args, **kwargs)
+            source.write_bytes(b"modified-source-bytes")
+            return res
+        monkeypatch.setattr(cli, "_construct_single_source_replay_context", mutate_source)
+
+        with pytest.raises(cli.CampaignCliError, match="replay source changed|source path changed"):
+            cli._publish_single_source_replay_authority(store, cfg, paths)
+    finally:
+        store.close()
+
+
+def test_replay_publication_fences_against_drifted_checkpoint(tmp_path: Path, monkeypatch):
+    """B3: publication raises if pseudo checkpoint changed during preparation."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    potential, inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+    checkpoint = Path(cfg["paths"]["foundation_model"]).resolve()
+
+    original = mdstats.build_replay_foundation_prediction_cache
+    def build_with_double(src, policy, cache_root, **kwargs):
+        provider = _CountingProvider(policy)
+        return original(src, policy, cache_root, provider=provider, **kwargs)
+    monkeypatch.setattr(mdstats, "build_replay_foundation_prediction_cache", build_with_double)
+
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        orig_context = cli._construct_single_source_replay_context
+        def mutate_checkpoint(*args, **kwargs):
+            res = orig_context(*args, **kwargs)
+            checkpoint.write_bytes(b"mutated-checkpoint-different-length")
+            return res
+        monkeypatch.setattr(cli, "_construct_single_source_replay_context", mutate_checkpoint)
+
+        with pytest.raises(cli.CampaignCliError, match="foundation checkpoint file changed"):
+            cli._publish_single_source_replay_authority(store, cfg, paths)
+    finally:
+        store.close()
+
+
+def test_command_prepare_fences_against_config_drift_at_completion(tmp_path: Path, monkeypatch):
+    """B3: execute_current_prepare fails and marks WAITING if config drifted before completion."""
+    from mdstats.training_data import campaign_target_size_runtime as ctsr
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    store = cli.CampaignStore(paths.state_db)
+    cli._mark_stage(store, paths, "doctor", cli.StageState.COMPLETE, "doctor ok")
+    store.close()
+
+    import mdstats.training_data.campaign_prepared_generation as cpg
+    import mdstats.training_data.campaign_target_size_cutover as ctsc
+    import mdstats.training_data.campaign_target_size_view as ctsv
+
+    monkeypatch.setattr(cli, "_prepare_catalog", lambda *a, **k: {"data4": None})
+    monkeypatch.setattr(
+        ctsr,
+        "build_prepared_target_size_substrate",
+        lambda *a, **k: SimpleNamespace(
+            components=(),
+            frame_records=(),
+            identity=SimpleNamespace(content_digest="x" * 64),
+            common=SimpleNamespace(content_digest="c" * 64),
+            aggregate=SimpleNamespace(definition=SimpleNamespace(qualified_candidate_sizes=(10, 20))),
+        ),
+    )
+    monkeypatch.setattr(
+        cpg,
+        "publish_prepared_generation",
+        lambda *a, **k: SimpleNamespace(content_digest="p" * 64),
+    )
+    monkeypatch.setattr(
+        ctsc,
+        "ensure_current_target_size_authorities",
+        lambda *a, **k: SimpleNamespace(
+            state=SimpleNamespace(generation=1, experiment_definition_digest="e" * 64, auto_diagnostic=None)
+        ),
+    )
+    monkeypatch.setattr(ctsv, "write_target_size_result_view", lambda *a, **k: None)
+
+    orig_replay = cli._prepare_single_source_replay
+    def drift_config(c, p, s):
+        p.config.write_text(p.config.read_text().replace("require_target_elements = false", "require_target_elements = true"))
+        return orig_replay(c, p, s)
+
+    monkeypatch.setattr(cli, "_prepare_single_source_replay", drift_config)
+
+    args = SimpleNamespace(config=str(paths.config), approve_manifest=False, refresh_inferences=False)
+    with pytest.raises(RuntimeError, match="modified during prepare execution"):
+        ctsr.execute_current_prepare(args)
+
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        stage, msg = store.stage("prepare")
+        assert stage is cli.StageState.WAITING
+        assert "was modified during prepare" in msg
+    finally:
+        store.close()
+
+
+def test_exact_integer_validation_for_replay_batch_and_shard_sizes(tmp_path: Path, monkeypatch):
+    """B4: batch and shard size normalizers reject non-integers, bools, floats, strings, non-positives."""
+    from mdstats.training_data.replay import (
+        normalize_replay_prediction_batch_size,
+        normalize_replay_prediction_shard_size,
+    )
+
+    for invalid in (1.5, -1.0, 0.0, True, False, "32", "0", 0, -1, -100, None, object()):
+        with pytest.raises(TrainingDataInputError):
+            normalize_replay_prediction_batch_size(invalid)
+        with pytest.raises(TrainingDataInputError):
+            normalize_replay_prediction_shard_size(invalid)
+
+    assert normalize_replay_prediction_batch_size(1) == 1
+    assert normalize_replay_prediction_batch_size(32) == 32
+    assert normalize_replay_prediction_shard_size(1) == 1
+    assert normalize_replay_prediction_shard_size(256) == 256
+
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 6)
+    cfg, paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+
+    cfg["replay"]["prediction_batch_size"] = 1.5
+    with pytest.raises(cli.CampaignCliError, match="prediction_batch_size"):
+        cli._replay_topology_preflight(cfg, paths)
+
+    cfg["replay"]["prediction_batch_size"] = 32
+    cfg["replay"]["prediction_shard_size"] = True
+    with pytest.raises(cli.CampaignCliError, match="prediction_shard_size"):
+        cli._replay_topology_preflight(cfg, paths)
+
+    # Test cache builder rejecting bad batch/shard sizes
+    potential, inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+    artifact = mdstats.inspect_replay_source_extxyz(source)
+    policy = mdstats.ReplayFoundationPredictionPolicy(
+        foundation_potential=potential, foundation_inference=inference, device="cpu"
+    )
+    with pytest.raises(TrainingDataInputError, match="prediction_batch_size"):
+        mdstats.build_replay_foundation_prediction_cache(
+            artifact, policy, tmp_path / "cache", batch_size=1.5, shard_size=256
+        )
+    with pytest.raises(TrainingDataInputError, match="prediction_shard_size"):
+        mdstats.build_replay_foundation_prediction_cache(
+            artifact, policy, tmp_path / "cache", batch_size=32, shard_size=True
+        )
+
+
+def test_replay_invalidation_planner_uses_exact_seed_normalizer():
+    """B4: seed comparison in invalidation planner normalizes seeds exactly."""
+    from mdstats.training_data.replay_invalidation import build_replay_invalidation_plan
+    from mdstats.training_data.replay import normalize_replay_split_seed
+
+    assert normalize_replay_split_seed(42) == 42
+    assert normalize_replay_split_seed(0) == 0
+    with pytest.raises(TrainingDataInputError):
+        normalize_replay_split_seed(True)
+    with pytest.raises(TrainingDataInputError):
+        normalize_replay_split_seed(1.5)
+
+    d = "a" * 64
+    plan = build_replay_invalidation_plan(
+        label_mode="true_dft",
+        old_source_sha256=d,
+        new_source_sha256=d,
+        old_geometry_set_digest=d,
+        new_geometry_set_digest=d,
+        old_source_true_label_payload_digest=d,
+        new_source_true_label_payload_digest=d,
+        old_split_seed=42,
+        new_split_seed=42,
+    )
+    assert not plan.resplit
+    assert "split_policy_changed" not in plan.reasons
+
+    plan_diff = build_replay_invalidation_plan(
+        label_mode="true_dft",
+        old_source_sha256=d,
+        new_source_sha256=d,
+        old_geometry_set_digest=d,
+        new_geometry_set_digest=d,
+        old_source_true_label_payload_digest=d,
+        new_source_true_label_payload_digest=d,
+        old_split_seed=42,
+        new_split_seed=99,
+    )
+    assert plan_diff.resplit
+    assert "split_policy_changed" in plan_diff.reasons
+
+    with pytest.raises(TrainingDataInputError):
+        build_replay_invalidation_plan(
+            label_mode="true_dft",
+            old_source_sha256=d,
+            new_source_sha256=d,
+            old_geometry_set_digest=d,
+            new_geometry_set_digest=d,
+            old_source_true_label_payload_digest=d,
+            new_source_true_label_payload_digest=d,
+            old_split_seed=True,
+            new_split_seed=42,
+        )

@@ -68,6 +68,11 @@ from .campaign_target_size_state import (
 )
 
 from . import _observation
+from .replay import (
+    ReplayLabelMode,
+    normalize_replay_prediction_batch_size,
+    normalize_replay_prediction_shard_size,
+)
 from ._common import (
     TrainingDataSerializationError,
     configure_sha256_receipt_store,
@@ -1745,13 +1750,23 @@ def _mark_stage(
     name: str,
     state: StageState,
     message: str,
+    *,
+    config_digest: str | None = None,
 ) -> None:
     """Persist a stage transition and bind completion to its scoped identity."""
 
     store.set_stage(name, state, message)
+    if state is StageState.COMPLETE:
+        digest_value = (
+            config_digest
+            if config_digest is not None
+            else _stage_config_digest(paths, name)
+        )
+    else:
+        digest_value = None
     store.set_meta(
         _stage_config_key(name),
-        _stage_config_digest(paths, name) if state is StageState.COMPLETE else None,
+        digest_value,
     )
 
 
@@ -1769,6 +1784,20 @@ def _effective_stage(
                 StageState.WAITING,
                 "campaign.toml changed after this stage completed; rerun the stage before continuing",
             )
+        if name == "prepare":
+            from .campaign_lifecycle import (
+                _current_replay_lineage_snapshot,
+                _single_source_replay_applicable,
+            )
+
+            if _single_source_replay_applicable(paths):
+                with store._connect() as db:
+                    _, lineage_status = _current_replay_lineage_snapshot(db)
+                if lineage_status != "valid":
+                    return (
+                        StageState.WAITING,
+                        "single-source replay authority is missing or malformed; rerun prepare",
+                    )
     return state, message
 
 
@@ -2823,6 +2852,19 @@ def _replay_topology_preflight(cfg: Mapping[str, Any], paths: CampaignPaths) -> 
     """
 
     single = _single_source_replay_config(cfg, paths)
+    if single is not None:
+        replay_table = cfg.get("replay", {})
+        if isinstance(replay_table, Mapping):
+            if "prediction_batch_size" in replay_table:
+                try:
+                    normalize_replay_prediction_batch_size(replay_table["prediction_batch_size"])
+                except Exception as exc:
+                    raise CampaignCliError(f"Invalid replay configuration: {exc}") from exc
+            if "prediction_shard_size" in replay_table:
+                try:
+                    normalize_replay_prediction_shard_size(replay_table["prediction_shard_size"])
+                except Exception as exc:
+                    raise CampaignCliError(f"Invalid replay configuration: {exc}") from exc
     if _configured_replay_source_present(cfg) and "multihead_replay" not in set(
         _training_modes(cfg)
     ):
@@ -3260,8 +3302,12 @@ def _construct_single_source_replay_context(
             source,
             prediction_policy,
             replay_root / "foundation-predictions",
-            batch_size=int(_cfg(cfg, "replay", "prediction_batch_size", 32)),
-            shard_size=int(_cfg(cfg, "replay", "prediction_shard_size", 256)),
+            batch_size=normalize_replay_prediction_batch_size(
+                _cfg(cfg, "replay", "prediction_batch_size", 32)
+            ),
+            shard_size=normalize_replay_prediction_shard_size(
+                _cfg(cfg, "replay", "prediction_shard_size", 256)
+            ),
             graph_cache_directory=replay_root / "graph-cache",
             source_index=source_index,
         )
@@ -3491,6 +3537,7 @@ def _publish_single_source_replay_authority(
     """
 
     baseline_lineage = store.get_payload_optional("replay_current_lineage")
+    start_config_bytes = paths.config.read_bytes() if paths.config.is_file() else None
     context = _construct_single_source_replay_context(cfg, paths)
     if context is None:
         _retire_single_source_replay_aliases(store)
@@ -3529,14 +3576,10 @@ def _publish_single_source_replay_authority(
         key for key in _REPLAY_SINGLE_SOURCE_ALIASES if key not in records
     ) + ("replay_plan_doctor",)
 
-    # End-of-operation source currentness. The external corpus may have changed
-    # while this build was running, and each frame was already bound to its
-    # authenticated geometry identity at use; what remains is the whole-snapshot
-    # question: do the source and label parents this alias set represents still
-    # describe the file on disk? If not, the prepared set is not published as
-    # current and prepare fails rather than silently combining generations. A
-    # geometry-verified prediction cache stays reusable on the next prepare
-    # strictly by its own geometry + prediction-policy identity.
+    # End-of-operation currentness revalidation. All long-build parents whose
+    # mutation can make the result stale are rechecked immediately before
+    # publication: live campaign replay configuration semantics, external source
+    # file bytes, and foundation checkpoint file for pseudo mode.
     published_source = context["source"]
     source_file = Path(published_source.path).expanduser().resolve()
     if not source_file.is_file() or _sha256(source_file) != published_source.sha256:
@@ -3545,6 +3588,52 @@ def _publish_single_source_replay_authority(
             "running; refusing to publish a prepared replay authority that would "
             "mix source generations. Rerun `prepare`."
         )
+
+    if start_config_bytes is not None:
+        if not paths.config.is_file():
+            raise CampaignCliError(
+                "The campaign configuration file was removed while replay preparation was running. Rerun `prepare`."
+            )
+        if paths.config.read_bytes() != start_config_bytes:
+            try:
+                live_cfg, _ = _load_config(paths.config)
+                live_single = _single_source_replay_config(live_cfg, paths)
+            except Exception as exc:
+                raise CampaignCliError(
+                    f"The campaign configuration changed or became invalid while replay preparation was running: {exc}"
+                ) from exc
+            if live_single is None:
+                raise CampaignCliError(
+                    "The campaign configuration no longer declares single-source replay; "
+                    "refusing to publish stale single-source replay authority. Rerun `prepare`."
+                )
+            if (
+                live_single.label_mode != single.label_mode
+                or live_single.split_ratio != single.split_ratio
+                or live_single.split_seed != single.split_seed
+            ):
+                raise CampaignCliError(
+                    "Campaign replay configuration changed while replay preparation was "
+                    "running; refusing to publish a stale replay authority. Rerun `prepare`."
+                )
+            live_source_file = Path(live_single.replay_set_path).expanduser().resolve()
+            if not live_source_file.is_file() or _sha256(live_source_file) != published_source.sha256:
+                raise CampaignCliError(
+                    "The configured replay source path changed to a file with different content "
+                    "while replay preparation was running; refusing to publish stale replay authority. "
+                    "Rerun `prepare`."
+                )
+
+    if single.label_mode is ReplayLabelMode.FOUNDATION_PSEUDOLABEL:
+        prediction_policy = context.get("prediction_policy")
+        if prediction_policy is not None:
+            ckpt_path = Path(prediction_policy.foundation_potential.reference).expanduser().resolve()
+            if not ckpt_path.is_file() or _sha256(ckpt_path) != prediction_policy.foundation_potential.sha256:
+                raise CampaignCliError(
+                    "The foundation checkpoint file changed or was removed while "
+                    "replay preparation was running; refusing to publish a stale "
+                    "pseudo-label authority. Rerun `prepare`."
+                )
 
     with store.writer_exclusion():
         observed = store.get_payload_optional("replay_current_lineage")

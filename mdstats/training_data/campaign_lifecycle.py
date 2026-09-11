@@ -49,6 +49,7 @@ report ``accepted`` or a release verdict out of bytes that merely parse.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping
 import json
 
@@ -172,30 +173,68 @@ def _pointer_prefixes(bindings: Any) -> tuple[tuple[str, tuple[str, ...]], ...]:
 #: with replay authority from another would describe a campaign state that never
 #: existed, even though each individual read was internally coherent.
 REPLAY_CURRENT_LINEAGE_OBSERVATION = "replay_current:lineage_digest"
+REPLAY_CURRENT_LINEAGE_STATUS_OBSERVATION = "replay_current:status"
 
 
-def _current_replay_lineage_digest(db: Any) -> str | None:
+def _current_replay_lineage_snapshot(db: Any) -> tuple[str | None, str]:
     """Read the compact current replay lineage inside the caller's transaction.
 
-    Observation stays cheap and side-effect free: one compact row, no corpus
-    parse, no provider, no prediction, no write.  A missing row means no current
-    single-source replay authority is observable, and the answer is then simply
-    not replay-judged rather than declared stale.
+    Distinguishes three cases using already-owned compact state:
+    (a) 'missing': no replay_current_lineage row exists
+    (b) 'valid': row exists and contains a valid replay_lineage_digest
+    (c) 'malformed': row exists but is unparseable or contains an empty/missing digest
     """
 
     row = db.execute(
         "SELECT payload FROM records WHERE key=?", ("replay_current_lineage",)
     ).fetchone()
     if row is None:
-        return None
+        return None, "missing"
     try:
         payload = json.loads(row[0])
     except Exception:  # noqa: BLE001 - one blocked observation
-        return None
+        return None, "malformed"
     if not isinstance(payload, Mapping):
-        return None
+        return None, "malformed"
     digest_value = payload.get("replay_lineage_digest")
-    return None if digest_value in (None, "") else str(digest_value)
+    if digest_value in (None, ""):
+        return None, "malformed"
+    return str(digest_value), "valid"
+
+
+def _current_replay_lineage_digest(db: Any) -> str | None:
+    digest_value, _ = _current_replay_lineage_snapshot(db)
+    return digest_value
+
+
+def _single_source_replay_applicable(paths: Any) -> bool:
+    """Report cheaply whether the campaign configuration requires single-source replay.
+
+    Reads only compact TOML configuration. If `[paths].replay_set` is configured,
+    single-source replay is applicable. Legacy split or no-replay campaigns return False.
+    """
+
+    if paths is None:
+        return False
+    config_path = getattr(paths, "config", None)
+    if config_path is None:
+        return False
+    try:
+        p = Path(config_path)
+        if not p.is_file():
+            return False
+        import tomllib
+
+        with open(p, "rb") as f:
+            data = tomllib.load(f)
+        paths_table = data.get("paths", {})
+        if isinstance(paths_table, Mapping) and bool(
+            str(paths_table.get("replay_set", "") or "").strip()
+        ):
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def campaign_owner_snapshot(store: Any) -> tuple[Any, tuple[Any, ...], dict[str, str | None]]:
@@ -224,8 +263,11 @@ def campaign_owner_snapshot(store: Any) -> tuple[Any, tuple[Any, ...], dict[str,
     try:
         revision = _load_head(db)
         bindings = () if revision is None else _bindings_for(revision)
+        digest_val = _current_replay_lineage_digest(db)
+        status_val = "valid" if digest_val is not None else _current_replay_lineage_snapshot(db)[1]
         pointers: dict[str, str | None] = {
-            REPLAY_CURRENT_LINEAGE_OBSERVATION: _current_replay_lineage_digest(db)
+            REPLAY_CURRENT_LINEAGE_OBSERVATION: digest_val,
+            REPLAY_CURRENT_LINEAGE_STATUS_OBSERVATION: status_val,
         }
         for prefix, kinds in _pointer_prefixes(bindings):
             for kind in kinds:
@@ -356,6 +398,19 @@ def _prepare_step(state: Any, store: Any = None, paths: Any = None) -> Lifecycle
                 "valid, but public `prepare` is not complete for this campaign: "
                 f"{durable_message}"
             )
+        elif _single_source_replay_applicable(paths):
+            lineage_record = store.get_payload_optional("replay_current_lineage")
+            if (
+                lineage_record is None
+                or not isinstance(lineage_record, Mapping)
+                or not lineage_record.get("replay_lineage_digest")
+            ):
+                observed = LifecycleObservationState.WAITING
+                message = (
+                    f"{message}. The target-size scientific substrate above remains "
+                    "valid, but public `prepare` is not complete for this campaign: "
+                    "single-source replay authority is missing or malformed; rerun `prepare`"
+                )
     return LifecycleStep(
         "current_prepare",
         "prepare",
@@ -499,14 +554,13 @@ def _replay_lineage_stale(
 ) -> bool:
     """Report whether one pointed P5 record binds a superseded replay lineage.
 
-    ``None`` for the current lineage means no current single-source replay
-    authority is observable - a campaign with no replay, or one whose replay is
-    governed by the legacy split-file owner - and the question is then simply
-    not asked here rather than answered wrongly.  A record that cannot be
-    authenticated is left to the existing blocked-observation paths.
+    A pointed record that binds a replay lineage (`replay_lineage_digest is not None`)
+    requires that exact lineage to be current.  If `current_replay_lineage` is missing
+    or differs, the descendant evidence is historical (stale).
+    If the record does not bind a replay lineage (`None` or `""`), it is not replay-stale.
     """
 
-    if current_replay_lineage is None or pointer_digest is None:
+    if pointer_digest is None:
         return False
     record = _authenticated(store, pointer_digest, deserializer)
     if record is None:
@@ -514,6 +568,8 @@ def _replay_lineage_stale(
     recorded = getattr(record, "replay_lineage_digest", None)
     if recorded in (None, ""):
         return False
+    if current_replay_lineage is None:
+        return True
     return str(recorded) != str(current_replay_lineage)
 
 
@@ -540,10 +596,29 @@ def _per_size_post_selection(
     final_plan_digest = pointers.get(prefix + POINTER_FINAL_PLAN)
     publication_digest = pointers.get(prefix + POINTER_FINAL_PUBLICATION)
     current_replay_lineage = pointers.get(REPLAY_CURRENT_LINEAGE_OBSERVATION)
+    current_replay_status = pointers.get(REPLAY_CURRENT_LINEAGE_STATUS_OBSERVATION)
+    replay_applicable = _single_source_replay_applicable(paths)
     # Observational open: describing a campaign must never bring an evidence
     # root into existence, or "no evidence" and "an empty store" stop being
     # distinguishable afterwards.
     store = open_post_selection_store(paths, binding, create=False)
+
+    if replay_applicable and (current_replay_status in {"missing", "malformed"} or current_replay_lineage is None):
+        cv_state = LifecycleObservationState.NOT_STARTED
+        cv_message = (
+            "the required single-source replay current lineage is missing or malformed; "
+            "run `prepare` to establish current replay authority"
+        )
+        return (
+            (cv_state, cv_message),
+            (
+                LifecycleObservationState.NOT_STARTED,
+                (
+                    "the frozen method is not cross-validation accepted under "
+                    "the current replay lineage"
+                ),
+            ),
+        )
 
     # A per-size binding is keyed by the *target* design, so a replay-only
     # change leaves every P5 pointer in place. Pointer existence is therefore
@@ -906,6 +981,7 @@ def project_campaign_lifecycle(
 __all__ = [
     "MULTI_SIZE_TERMINAL_MESSAGE",
     "REPLAY_CURRENT_LINEAGE_OBSERVATION",
+    "REPLAY_CURRENT_LINEAGE_STATUS_OBSERVATION",
     "CampaignLifecycleSnapshot",
     "campaign_owner_snapshot",
     "LifecycleObservationState",

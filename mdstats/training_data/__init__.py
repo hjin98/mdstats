@@ -600,6 +600,8 @@ from .replay import (
     inspect_replay_source_extxyz,
     normalize_replay_split_ratio,
     normalize_replay_split_seed,
+    normalize_replay_prediction_batch_size,
+    normalize_replay_prediction_shard_size,
     normalize_single_source_replay_label_mode,
     replay_split_rank,
     single_source_replay_config_from_campaign,

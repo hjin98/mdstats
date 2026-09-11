@@ -200,6 +200,33 @@ def normalize_replay_split_seed(value: Any) -> int:
     return seed
 
 
+def normalize_replay_prediction_batch_size(value: Any) -> int:
+    """Return one exact positive integer replay prediction batch size.
+
+    Execution controls reject booleans, floats, and non-integers rather than
+    coercing them so the configured execution request is never silently
+    altered.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TrainingDataInputError("Replay prediction_batch_size must be an exact positive integer.")
+    batch_size = int(value)
+    if batch_size <= 0:
+        raise TrainingDataInputError("Replay prediction_batch_size must be positive.")
+    return batch_size
+
+
+def normalize_replay_prediction_shard_size(value: Any) -> int:
+    """Return one exact positive integer replay prediction shard size."""
+
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TrainingDataInputError("Replay prediction_shard_size must be an exact positive integer.")
+    shard_size = int(value)
+    if shard_size <= 0:
+        raise TrainingDataInputError("Replay prediction_shard_size must be positive.")
+    return shard_size
+
+
 #: The only two legacy ``[replay].mode`` spellings that carry an unambiguous
 #: single-source label semantic.  Every other legacy mode is rejected next to a
 #: ``replay_set`` rather than ignored or defaulted.

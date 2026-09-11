@@ -921,6 +921,7 @@ def execute_current_prepare(args: Any) -> int:
         _mark_stage,
         _ok,
         _prepare_catalog,
+        _preparation_config_digest,
         _print_header,
         _prepare_single_source_replay,
         _replay_topology_preflight,
@@ -938,6 +939,7 @@ def execute_current_prepare(args: Any) -> int:
     )
 
     cfg, paths = _load_config(args.config)
+    command_preparation_digest = _preparation_config_digest(cfg)
     store = CampaignStore(paths.state_db)
     _require_stage_complete(store, paths, "doctor")
     # Cheap canonical configuration/topology validation first.  A conflicting
@@ -1087,12 +1089,44 @@ def execute_current_prepare(args: Any) -> int:
         )
     else:
         write_target_size_result_view(view_path, revision)
+    try:
+        live_cfg, _ = _load_config(paths.config)
+        live_prep_digest = _preparation_config_digest(live_cfg)
+    except Exception as exc:
+        _mark_stage(
+            store,
+            paths,
+            "prepare",
+            StageState.WAITING,
+            f"configuration at {paths.config} could not be validated at stage completion: {exc}",
+            config_digest=command_preparation_digest,
+        )
+        raise RuntimeError(
+            f"Configuration at {paths.config} could not be validated at stage completion: {exc}"
+        ) from exc
+
+    if live_prep_digest != command_preparation_digest:
+        _mark_stage(
+            store,
+            paths,
+            "prepare",
+            StageState.WAITING,
+            f"configuration at {paths.config} was modified during prepare; stage left WAITING",
+            config_digest=command_preparation_digest,
+        )
+        raise RuntimeError(
+            f"Configuration at {paths.config} was modified during prepare execution "
+            f"(digest {command_preparation_digest[:12]}... -> {live_prep_digest[:12]}...); "
+            "refusing to mark prepare COMPLETE."
+        )
+
     _mark_stage(
         store,
         paths,
         "prepare",
         StageState.COMPLETE,
         f"current target-size substrate bound at generation {revision.state.generation}",
+        config_digest=command_preparation_digest,
     )
     print(
         "Next: `select-target-size <N>` (or `select-target-size --auto`).",

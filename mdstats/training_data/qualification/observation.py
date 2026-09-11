@@ -339,6 +339,22 @@ def observe_current_qualification(
             verdict = str(record.verdict.value) or None
             verdict_reason = str(record.reason_code) or None
 
+    from ..campaign_lifecycle import (
+        REPLAY_CURRENT_LINEAGE_OBSERVATION,
+        REPLAY_CURRENT_LINEAGE_STATUS_OBSERVATION,
+        _single_source_replay_applicable,
+    )
+
+    if _single_source_replay_applicable(paths):
+        current_lineage = pointers.get(REPLAY_CURRENT_LINEAGE_OBSERVATION)
+        current_status = pointers.get(REPLAY_CURRENT_LINEAGE_STATUS_OBSERVATION)
+        if current_status in {"missing", "malformed"} or current_lineage is None:
+            superseded = (
+                "single-source replay current lineage is missing or malformed; rerun `prepare`"
+            )
+            verdict = None
+            verdict_reason = None
+
     return QualificationObservation(
         generation=int(binding.campaign_generation),
         binding_digest=str(binding.content_digest),
