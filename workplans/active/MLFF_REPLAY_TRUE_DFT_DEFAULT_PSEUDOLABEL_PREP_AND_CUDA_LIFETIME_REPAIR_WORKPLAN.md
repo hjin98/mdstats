@@ -3,107 +3,60 @@ kind: implementation-workplan
 workplan_id: CODE-MLFF-REPLAY-TRUE-DFT-DEFAULT-PSEUDOLABEL-PREP-CUDA-LIFETIME
 protocol_version: 6.2
 status: active-ready-for-implementation
-plan_review_state: baseline-design-review-complete
+plan_review_state: final-design-review-consolidated
 implementation_branch: fix/mlff-p5-train2-cuda-lifetime-zero-safe-admission
-baseline_commit: 2f56df276d022760588aa5fd3ec7bbe5479ad6ea
-reviewed_plan_commit: d6808f966b799dfc618a470960f7693de7c4454b
-highest_affected_domain: D3 configuration, stage, persistence/currentness, and accelerator-lifetime architecture -> D4 implementation
+implementation_baseline_commit: 2f56df276d022760588aa5fd3ec7bbe5479ad6ea
+reviewed_cycle_head: 709a0a1f9cd656e94e7fe8c6acc32c28d1157466
+highest_affected_domain: D3 configuration/stage/persistence/currentness/concurrency/resource architecture -> D4 implementation
 upstream_policy_constraint: new single-source replay defaults to source TRUE_DFT labels; foundation pseudo-label replay remains explicit opt-in
 serious_challenge: none
 related_active_workplan: workplans/active/MLFF_P5_TRAIN2_CUDA_LIFETIME_AND_ZERO_SAFE_ADMISSION_REPAIR_WORKPLAN.md
 related_review_reopen: workplans/active/MLFF_P5_TRAIN2_CUDA_LIFETIME_AND_ZERO_SAFE_ADMISSION_FIFTH_REVIEW_REOPEN.md
-precedence: This workplan changes only new/single-source replay default resolution and generated configuration, restores accepted replay preparation/currentness ownership, repairs pseudo-label CUDA lifetime, and closes directly dependent documentation/evidence surfaces. It does not supersede the existing TRAIN2 zero-safe-admission/live-memory-safety repair, target-size prepared-generation identity, target-size screen/recommendation/provisional selection, or any non-conflicting CV, production, optimizer, precision, backend, checkpoint, publication, storage, or restart authority.
+consolidates_cycle_artifacts:
+  - workplans/active/MLFF_REPLAY_TRUE_DFT_DEFAULT_PSEUDOLABEL_PREP_AND_CUDA_LIFETIME_SECOND_REVIEW_AMENDMENT.md
+  - workplans/active/MLFF_REPLAY_TRUE_DFT_DEFAULT_PSEUDOLABEL_PREP_AND_CUDA_LIFETIME_SECOND_REVIEW_FINAL_CLOSURE.md
+precedence: This file is the snapshot-complete D3 -> D4 implementation contract for this replay repair. It incorporates the prior review amendments and replaces them as active handoff material. It does not supersede the separate TRAIN2 zero-safe-admission/live-memory-safety repair, target-size scientific authority, or any non-conflicting CV, production, optimizer, precision, backend, checkpoint, publication, storage, or restart authority.
 ---
 
-# MLFF replay TRUE_DFT default, pseudo-label preparation, and CUDA lifetime repair
+# MLFF replay TRUE_DFT default, prepare ownership, and pseudo-label CUDA lifetime repair
 
-## 0. Baseline design-review disposition
+## 0. Final Software Design review disposition
 
 ### 0.1 Disposition
 
-The original plan at `d6808f966b799dfc618a470960f7693de7c4454b` was **NO-PASS as an implementation handoff** because several ownership, currentness, compatibility, invalidation, and evidence boundaries were under-specified. This in-place revision closes those design gaps against baseline `2f56df276d022760588aa5fd3ec7bbe5479ad6ea`.
+Independent Protocol 6.2 Software Design review was repeated against implementation baseline `2f56df276d022760588aa5fd3ec7bbe5479ad6ea` and the accumulated cycle plan through `709a0a1f9cd656e94e7fe8c6acc32c28d1157466`. The review reconstructed current configuration, target-size, replay, post-selection, persistence, lifecycle, storage, concurrency, and provider-lifetime behavior rather than inheriting prior PASS conclusions.
 
-After the corrections below, the **workplan is PASS / frozen for implementation**. No Serious Challenge is active. The defect is primarily a D4 regression against coherent accepted D3 plus one stakeholder-authorized change to the default configuration selection among already-supported replay-label modes.
+The earlier plan family was directionally correct but remained incomplete as a D3 -> D4 handoff. The final pass found residual gaps around doctor-stage ownership, exact replay record publication, concurrent cold-cache creation, process-local cache masquerade, pseudo-mode TRUE_DFT-monitor invalidation, execution-only cache knobs, lifecycle currentness, and provider-scope overlap.
 
-### 0.2 Material gaps found and closed
+Those gaps are closed in this consolidated workplan. The resulting workplan is **PASS / frozen for implementation**. No Serious Challenge is active: the accepted current target-size architecture, post-selection method/replay identity, replay invalidation layering, storage/reconstruction contract, provider-lifetime doctrine, public lifecycle, and stakeholder default-policy decision are jointly realizable.
 
-1. **The plan overclassified the default change as a D1/D2 redesign.** The baseline already supports both `TRUE_DFT` and `FOUNDATION_PSEUDOLABEL` as distinct scientific method identities, and current architecture describes pseudo-label replay as optional. The user decision changes which existing mode new single-source configurations select by default; it does not change the scientific/numerical semantics inside either mode. This revision therefore places the implementation work at D3 configuration/stage/resource architecture -> D4, under an explicit stakeholder policy constraint. Any required change inside either label mode still routes upstream.
-2. **Replay preparation risked being coupled into the target-size immutable prepared generation.** That would be architectural regression. Current P3 target-size screening is one-head/target-only and binds `REPLAY_EXPOSURE_NONE_DIGEST`; replay-label choice is not part of the current target-size screen. This revision explicitly forbids adding replay artifacts, replay label mode, replay prediction policy, or replay currentness to `CurrentTargetSizeAuthorities` or the target-size prepared-generation identity merely to fix P5 replay routing.
-3. **The accepted replay stage ownership had not been identified strongly enough.** REPLAY-UNIFY1D already froze: `doctor` validates; `prepare` performs/persists explicit pseudo-label prediction/qualification/materialization; downstream TRAIN2/DATA8 consume those authorities. The current lazy P5 rebuild is a regression from that design. This plan restores the existing owner by rewiring/removal rather than creating a new replay stage or readiness subsystem.
-4. **Downstream currentness was under-specified.** A historical `prepare` stage flag alone cannot authorize current replay after configuration/source changes. This revision requires a read/authentication path that validates stored replay authority against the current effective replay policy and authenticated source/policy identities before P5 use, without running foundation inference.
-5. **The original “missing prepared state must fail” rule was too broad.** Accepted replay architecture intentionally treats generated ExtXYZ views and similar transports as reconstructable representation caches. Deleting a transport must remain recoverable from authenticated parents without foundation reinference. This revision distinguishes missing scientific/prediction authority from missing disposable representation.
-6. **Minimal invalidation and identical-byte relocation were not protected explicitly.** The existing `ReplayInvalidationPlan` already separates source indexing, prediction, qualification, split, and materialization. This revision requires reuse of that semantic matrix and preserves path-free scientific identity/identical-byte relocation rather than invalidating everything under one new prepare digest.
-7. **Compatibility for omitted legacy split-file mode was ambiguous.** The new TRUE_DFT default applies to the current single-source interface. Historical split-file behavior must not be silently reinterpreted. New generated single-source configurations should explicitly emit `label_mode = "true_dft"` for reproducibility even though omission resolves to the same value.
-8. **The no-cold-build rule was scoped too narrowly to `cross-validate`.** The same P5 replay resolver participates in CV run setup, final production, restart/re-evaluation, and related consumers. No post-selection consumer may become a hidden foundation-prediction owner.
-9. **The real-CUDA evidence could have passed through process exit.** A separate `prepare` CLI process releases CUDA on process termination even if the provider was never explicitly retired. This revision requires an in-process real-provider lifetime observation while the Python process remains alive after the production replay-preparation owner returns, plus separate assembled CLI stage-routing evidence.
-10. **Removing the process-local replay builder from P5 could accidentally reintroduce O(folds/runs) source scans.** This revision requires one authenticated replay resolution per command/shared method scope where practical, with lightweight reuse by folds/sizes/runs; currentness must not mean reparsing the 12k source for every child.
-11. **The active-workplan index is stale.** `workplans/active/README.md` says no MLFF workplan is active even though the P5 repair/reopens and this replay repair are active. The index must be corrected as part of this review commit; it is repository state, not new product machinery.
+### 0.2 Governing simplification
 
-## 1. Background and governing problem
-
-### 1.1 Terminology
-
-**TRUE_DFT replay** means the replay training head consumes authenticated source density-functional-theory (DFT) energy/force labels, with optional stress according to the existing label-domain contract.
-
-**Foundation pseudo-label replay** means replay training labels are generated from the bound foundation MACE model on the replay geometries. Source truth remains a separate namespace and the replay admissibility monitor remains TRUE_DFT under the current P5 method contract.
-
-A **single-source replay campaign** uses `[paths].replay_set` as its sole new-style external replay corpus. Source inspection, true-label cache, foundation prediction cache, qualification, deterministic split, and MACE-readable train/monitor ExtXYZ files are distinct descendant layers with distinct invalidation rules.
-
-A **scientific replay authority** here means a source/label/prediction/qualification/split identity that can change downstream method or evidence meaning. A **transport representation** means a reconstructable file/view/index/receipt whose deletion may be repaired from authenticated parents without changing that meaning.
-
-**CUDA residency** means accelerator memory retained by live provider/model/graph/framework state or the framework allocator while the Python process remains alive. Function return or zero GPU utilization does not establish resource retirement.
-
-### 1.2 Core problem of concern
-
-The observed post-selection command reaches TRAIN2 admission with approximately 19.9 GiB already resident at 0% GPU utilization. Baseline control-flow reconstruction shows that `_resolve_post_selection_replay_resolution()` can call the construction-oriented `_single_source_replay_context()` before the scheduler's first telemetry sample. For explicit/current pseudo-label replay, a cold/mismatched prediction cache then performs replay-wide foundation inference. `build_replay_foundation_prediction_cache()` can internally construct a CUDA `MaceCalculatorProvider`, while the per-batch prediction adapter reconstructs `StaticMaceInferenceExecutor` repeatedly and does not bind its device correctly. The internally acquired provider is not explicitly retired before the cache builder returns.
-
-The existing TRAIN2 scheduler then correctly sees the actual contaminated aggregate baseline and refuses to admit a nominal 6 GiB training job under the 90% 24-GiB envelope. The scheduler is not the cause and must not be weakened.
-
-### 1.3 High-level architecture that governs the repair
-
-The accepted architecture already supplies the simpler answer:
+The repair is a restoration and reduction, not a new subsystem:
 
 ```text
-external replay_set
-  -> source authentication / source-index representation
-  -> source TRUE_DFT label cache
-  -> mode-specific qualification authority
-       TRUE_DFT: source truth
-       pseudo: foundation prediction cache -> pseudo qualification
-  -> one deterministic split
-  -> mode-specific training view + TRUE_DFT monitor view
-  -> post-selection method/replay lineage
-  -> CV / final production consumers
+cheap canonical config/topology validation
+    -> doctor validates replay/source/runtime prerequisites only
+       (no replay-wide pseudo prediction, no prepared replay publication)
+    -> prepare owns replay scientific construction/reuse
+       alongside, but not inside, the independent target-size prepared generation
+    -> one coherent current replay alias set publishes atomically
+    -> post-selection reads/authenticates current replay lineage
+       and may repair only disposable representations
+    -> explicit pseudo cold build is single-flight
+       with one device-correct inference/OOM-learning lifetime
+       and exactly one provider-retirement owner
+    -> TRAIN2 sees the resulting real aggregate device occupancy
+       under the existing unchanged zero-safe admission controller
 ```
 
-Stage ownership is:
+Do not fix the symptom by adding a scheduler cleanup hook, a replay-ready database, a provider registry, a second replay generation, a CV fallback builder, or a target-size replay dependency.
 
-```text
-doctor
-  -> validate configuration/source/runtime prerequisites
-  -> no full replay-wide foundation prediction
+## 1. Governing outcome and authority
 
-prepare
-  -> prepare/reuse target-size substrate under its existing independent owner
-  -> prepare/reuse replay authority/materializations when replay is configured
-  -> retire any prepare-owned accelerator provider before returning
+### 1.1 Product outcome
 
-select-target-size
-  -> target-size work only; replay label choice does not enter the current P3 screen
-
-cross-validate / train-production / P5 recovery consumers
-  -> authenticate and consume prepared replay authority
-  -> may reconstruct disposable transport from authenticated parents
-  -> may not run replay-wide foundation prediction or re-decide replay science
-```
-
-The public `prepare` operation may sequence target-size and replay preparation in one invocation, but they remain **semantically separate authorities**. Do not create one combined generation identity merely because one command drives both.
-
-## 2. Outcome and authority
-
-### 2.1 Protected product outcome
-
-For the current single-source interface:
+For the current single-source replay interface:
 
 ```text
 [paths].replay_set absent
@@ -120,566 +73,808 @@ For the current single-source interface:
         -> foundation pseudo-label replay          [explicit opt-in]
 ```
 
-New `campaign init` output and the canonical example should nevertheless **emit `label_mode = "true_dft"` explicitly** so the scientifically meaningful effective mode is visible in the persisted user configuration. Omission remains a supported convenience/default, not the preferred generated representation.
+New `campaign init` output and `campaign.toml.example` must explicitly emit `label_mode = "true_dft"` so the effective scientific choice is visible even though omission resolves identically.
 
-If a default/explicit TRUE_DFT source lacks required truth for a requested role, fail closed at the source/true-label owner. Never infer that pseudo-label replay was intended.
+TRUE_DFT and foundation pseudo-label replay remain existing, distinct scientific label authorities. This cycle changes which existing mode new single-source configuration selects by default; it does not change the scientific/numerical semantics inside either mode.
 
-### 2.2 Existing-mode scientific semantics remain unchanged
+Missing or invalid source truth in TRUE_DFT mode fails closed. It never triggers an automatic pseudo-label fallback.
 
-This cycle does not alter the meaning of TRUE_DFT or pseudo-label training, the deterministic split algorithm, the target/replay heads, the TRUE_DFT replay monitor role, pseudo qualification, or the training/evaluation method inside either mode. It selects TRUE_DFT as the new single-source default and repairs the software architecture that prepares/consumes those already-defined modes.
+### 1.2 D1/D2 boundary
 
-Changing effective replay label mode remains a method change for post-selection. CV/final-production evidence from pseudo mode cannot authorize TRUE_DFT mode and vice versa.
+No method-internal D1/D2 change is authorized. Preserve:
 
-### 2.3 Target-size independence
+- target and replay head semantics;
+- objective/loss/weighting semantics;
+- replay split algorithm and statistical role definitions;
+- pseudo-label prediction numerical identity and qualification meaning;
+- TRUE_DFT replay monitor meaning;
+- optimizer, LR, precision, backend, checkpoint, CV and final-production science except where their existing identities correctly become stale because replay method/lineage changed.
 
-Current target-size screening is target-only. Its common training policy carries `REPLAY_EXPOSURE_NONE_DIGEST`, and the target-size MACE adapter rejects multihead replay. Therefore:
+If implementation demonstrates that TRUE_DFT replay cannot satisfy the accepted multi-head label-domain/E0/objective method without changing D1/D2 semantics, stop and route to the earliest affected scientific/numerical owner.
 
-- changing single-source replay label mode does **not** by itself invalidate the target-size immutable prepared generation;
-- it does **not** invalidate current target-size screen evidence/recommendations whose method has no replay exposure;
-- it does **not** invalidate an operator's provisional selected `N` or its exact target membership merely because downstream replay training policy changed;
-- once `cross-validate` freezes a downstream design, P5 method/currentness rules determine whether existing CV/final evidence remains usable under the effective replay mode.
+### 1.3 D3 ownership
 
-Do not make replay default/currentness a P1-P3 generation input just to gain an existing generation mechanism.
+D3 owns here:
 
-### 2.4 Historical compatibility
+- one canonical replay configuration normalization path;
+- replay versus target-size preparation ownership;
+- persistent current replay record grouping and currentness;
+- construction versus downstream read interfaces;
+- representation/cache recovery boundaries;
+- concurrent cache publication and single-flight resource ownership;
+- provider/executor lifetime;
+- public lifecycle observation/routing consequences.
 
-The new default applies to the current single-source interface. Preserve supported historical behavior:
+D4 owns the exact helper factoring, lock helper, in-memory object layout, logging wording, and local implementation as long as this contract holds.
 
-- explicit historical single-source `label_mode` keeps its value;
-- explicitly supported old `replay.mode = external_true_label` maps to TRUE_DFT;
-- explicitly supported old `replay.mode = external_pseudolabel` maps to pseudo;
-- legacy split-file replay remains under its historical compatibility resolver, including its historical omitted-mode behavior unless a separately accepted compatibility change says otherwise;
-- mixed `replay_set` and legacy replay paths remain rejected;
-- conflicting simultaneously declared selectors that imply different label authorities fail before expensive work;
-- persisted/frozen evidence is never rewritten under the new default.
+## 2. High-level architecture and global invariants
 
-## 3. Cycle-scoped D3 decisions and delegated D4 space
+### 2.1 Replay authority chain
 
-### 3.1 Frozen for this cycle
+```text
+single external replay_set
+  -> authenticated ReplaySourceArtifact / source index representation
+  -> source TRUE_DFT label cache
+  -> mode branch
+       TRUE_DFT
+         -> source-truth qualification basis
+       FOUNDATION_PSEUDOLABEL
+         -> ReplayFoundationPredictionPolicy
+         -> foundation prediction cache
+         -> pseudo qualification
+  -> one deterministic split authority
+  -> training transport for effective mode
+  -> independent TRUE_DFT monitor transport
+  -> post-selection replay lineage + method identity
+  -> CV / final-production descendants
+```
 
-1. **One canonical single-source configuration resolver.** It normalizes omitted/new/legacy selectors to one effective `ReplayLabelMode` before downstream method/replay resolution.
-2. **TRUE_DFT is the new single-source default; generated configs state it explicitly.** Pseudo mode requires an explicit opt-in.
-3. **No scientific fallback.** Missing TRUE_DFT labels never trigger foundation prediction.
-4. **Restore existing replay stage ownership.** `doctor` validates; `prepare` may build; post-selection commands read/authenticate. This is restoration of REPLAY-UNIFY1D, not creation of a second replay subsystem.
-5. **Keep replay preparation separate from target-size prepared-generation identity.** Public `prepare` can sequence both owners, but replay records do not become `CurrentTargetSizeAuthorities` components solely for this repair.
-6. **Public prepare completion covers configured prerequisites.** When single-source replay is enabled, the `prepare` operation is not complete until the replay preparation owner has either authenticated/reused or constructed/persisted the required replay authority. A replay failure may leave an already-published valid target-size generation intact; retry reuses valid work rather than rolling it back or rebuilding it for ceremony.
-7. **Downstream P5 resolution is read/authenticate-only at the scientific/prediction layer.** CV, final production, restart/re-evaluation, and any other current P5 consumer may not trigger foundation replay inference, pseudo requalification because policy changed, or a new scientific split.
-8. **Disposable transport remains reconstructable.** A missing/stale generated ExtXYZ view, source index, or equivalent representation may be rebuilt from authenticated current parents if the accepted replay owner already allows it and the operation performs no foundation inference or scientific re-resolution. Representation loss is not automatically a command-to-run-prepare error.
-9. **Minimal invalidation is retained.** Source, prediction, qualification, split, and materialization remain independently fingerprinted. Use the semantics of the existing `ReplayInvalidationPlan`; do not replace them with one coarse “replay prepared version” that reruns more work.
-10. **Location is not scientific identity.** Identical-byte replay relocation remains reusable through the established source receipt/index rules. Downstream scientific identity stays path-free where current owners already define it that way.
-11. **Accelerator acquisition has one explicit operation lifetime.** Any internally acquired pseudo-label MACE provider is retired in exception-safe cleanup before the owning preparation operation returns to its caller. Caller-supplied providers remain caller-owned unless an existing interface explicitly transfers ownership.
-12. **OOM/resource-learning state spans the cold prediction operation.** The chosen inference concretization must bind the real device and must not forget a learned safe batch merely because the outer replay stream advanced to the next batch.
-13. **No scheduler compensation.** TRAIN2 sees whatever aggregate occupancy remains; zero-safe admission/live-memory protections stay unchanged.
-14. **Bound repeated validation work.** Within one post-selection command/shared replay context, expensive source authentication/materialized-view validation is performed once at the appropriate replay owner and reused by sizes/folds/runs where the same authority applies. Currentness may recheck cheap digests/receipts as needed, but removing the lazy builder must not turn a 12k replay parse into per-fold work.
-15. **Cache/rebuild disposition is observable at `prepare`.** Explicit pseudo mode distinguishes authenticated cache reuse, cold prediction build, and rebuild due to unusable/stale prediction state without creating a second cache authority.
+Source, prediction, qualification, split, and materialized views remain separate layers so changes invalidate only materially dependent descendants.
 
-### 3.2 Delegated D4 concretization
+### 2.2 Target-size independence
 
-Helpers, private APIs, in-memory context objects, exact log text, counters, and class/object factoring remain replaceable. In particular, D3 does **not** require a newly named replay-prepared record, a specific wrapper, or a specific number of Python objects.
+The current target-size screen is target-only. Its common policy carries `REPLAY_EXPOSURE_NONE_DIGEST`, and target-size MACE execution rejects multi-head replay. `campaign_prepared_generation.preparation_configuration_identity()` likewise excludes replay configuration.
 
-Preferred minimum-complexity concretization reuses and, where necessary, separates the existing owners:
+Therefore replay-only changes do **not** by themselves invalidate:
 
-- `single_source_replay_config_from_campaign()` for configuration normalization;
-- existing source receipt/index, true-label cache, prediction cache, qualification, split, and view records;
-- the existing campaign `prepare` control flow, altered to invoke replay preparation before declaring the configured operation complete;
-- the existing replay persistence records rather than a second readiness database;
-- `PostSelectionReplayResolution` as a transport adapter populated from authenticated replay records, not from the construction path;
-- existing `MaceCalculatorProvider.close()` / accelerator-residency cleanup;
-- existing `StaticMaceInferenceExecutor` or an equivalent reduced use of it that preserves device correctness and operation-scoped OOM learning.
+- the immutable target-size prepared generation;
+- target-size screen trajectories/evidence/recommendation;
+- a provisional target-size selection;
+- a frozen target-size collection or exact target membership.
 
-A single operation-scoped `StaticMaceInferenceExecutor` over the cold cache build is the currently preferred D4 simplification because it already provides bounded prediction/OOM machinery, but the invariant is **one coherent resource-learning lifetime**, not the class name itself.
+Do not add replay source, label mode, prediction policy/cache, qualification, split, or replay currentness to `CurrentTargetSizeAuthorities`, target-size generation identity, target-size screen identity, recommendation, provisional entry, or frozen target binding merely to enforce public command order.
 
-### 3.3 Required simplification
+Public `prepare` may coordinate two independent preparation owners. That orchestration does not make them one scientific generation.
 
-Prefer rewiring/removal over compensation:
+### 2.3 Public lifecycle versus scientific ownership
 
-- split the current construction-oriented single-source replay path into preparation versus downstream authenticated consumption, or otherwise make those two modes unambiguous;
-- remove production P5 call paths from the foundation-prediction builder;
-- remove per-outer-batch recreation of device/OOM state;
-- close the internally acquired provider at the existing owner;
-- reuse existing replay records/invalidation logic rather than inventing a combined prepare-generation authority;
-- do not add scheduler-entry cache flushes, fallback builders, replay-ready flags, provider registries, or retry databases around the defect.
+```text
+public lifecycle:
+  init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production
 
-## 4. Material implementation obligations
+scientific target-size ownership:
+  target P1/P2/P3 parents only; replay exposure = none
 
-### R1 - canonical single-source default and compatibility normalization
+post-selection replay ownership:
+  current replay method/lineage parents P5 descendants
+```
 
-Change the canonical single-source resolver so omission resolves to TRUE_DFT while supported explicit/legacy selectors retain their meanings.
+A replay failure can make public `prepare` incomplete while an independently published target-size generation remains scientifically valid. A replay-method change can retire P5 CV/final descendants while leaving the frozen target collection intact.
 
-Required behavior:
+## 3. Canonical configuration and topology contract
 
-- `replay_set` absent -> no single-source replay;
-- `replay_set` + omitted selector -> TRUE_DFT;
-- explicit `label_mode=true_dft` -> TRUE_DFT;
-- explicit `label_mode=foundation_pseudolabel` -> pseudo;
-- supported explicit historical `mode` values normalize centrally;
-- conflicting new/legacy selectors fail before source/model work;
-- legacy split-file omitted-mode behavior is unchanged by this single-source default change;
-- downstream method/policy code consumes the normalized result rather than maintaining its own single-source default.
+### R1 - normalize every single-source replay selector once
 
-`campaign init` and `campaign.toml.example` must emit `label_mode = "true_dft"`; pseudo is documented as an explicit alternative, not the generated default.
+When `replay_set` is present, normalize all replay label selectors before source/model work:
 
-**Evidence:** real resolver tests for omitted/explicit/conflict/legacy/path cases; generated-init/example checks; canonical post-selection replay-policy digest checks showing default and explicit TRUE_DFT are method-equivalent while explicit pseudo differs.
+```text
+label_mode omitted + legacy mode omitted
+    -> TRUE_DFT
 
-### R2 - TRUE_DFT path has zero pseudo-label foundation inference
+label_mode=true_dft
+    -> TRUE_DFT
 
-For a valid single-source TRUE_DFT replay corpus, replay preparation authenticates the source, builds/reuses source index/true-label cache/split/required true-label views, and records TRUE_DFT method lineage without requiring pseudo prediction state.
+label_mode=foundation_pseudolabel
+    -> FOUNDATION_PSEUDOLABEL
 
-No replay foundation provider/prediction cache/qualification is constructed solely for TRUE_DFT training. Missing required truth fails closed with no pseudo fallback.
+legacy mode=external_true_label
+    -> TRUE_DFT compatibility alias
 
-**Real-owner evidence:** run the production single-source resolver/preparation path from a real campaign configuration with omitted `label_mode`; place a liveness spy/failpoint only below the foundation prediction constructor and prove it does not fire. Prove the same hook *does* fire on an explicit pseudo cold path so the negative evidence cannot pass because the pseudo route was globally disconnected.
+legacy mode=external_pseudolabel
+    -> FOUNDATION_PSEUDOLABEL compatibility alias
 
-### R3 - restore prepare-owned replay preparation without polluting the target-size generation
+new + supported legacy selector agree
+    -> one canonical effective ReplayLabelMode
 
-Alter the current public prepare control flow so it sequences its existing target-size work and the existing replay preparation owner when replay is configured.
+new + legacy selector disagree
+    -> reject
 
-Requirements:
+legacy mode=none | mp_shortcut | preselected | unsupported value with replay_set
+    -> reject; never silently ignore and default TRUE_DFT
+```
 
-- replay configuration conflicts/defaults are resolved before launching expensive pseudo work;
-- target-size substrate publication/currentness remains exactly under the target-size prepared-generation owner;
-- replay authorities/materializations remain under replay records/receipts/invalidation owners, not target-size generation components;
-- TRUE_DFT replay preparation uses no foundation inference;
-- explicit pseudo preparation may build/reuse the prediction cache, qualify, split, and materialize its pseudo training view plus required TRUE_DFT monitor view;
-- required replay records are persisted before public `prepare` is marked COMPLETE;
-- if replay preparation fails after target-size generation has successfully published, do not destructively roll back the valid target-size generation; mark the operation failure truthfully and let retry reuse it;
-- retry/idempotence uses authenticated existing target-size and replay state and does not redo foundation prediction on a valid cache;
-- do not resurrect a retired generic restart receipt or add a second combined generation solely to synchronize the two preparations.
+Mixed `replay_set` and legacy split replay paths remain rejected. Legacy split-file replay without `replay_set` preserves its historical compatibility behavior, including its existing omitted-mode semantics.
 
-**Evidence:** `doctor -> prepare` command-owner tests for no replay, TRUE_DFT, pseudo cache hit, pseudo cold build, pseudo failure after target-size publication, and retry. Prove a replay-only policy edit does not change the target-size prepared-generation identity or discard valid screen/provisional-selection evidence.
+Downstream code consumes the normalized single-source result; it does not maintain an independent default.
 
-### R4 - make every post-selection replay consumer scientific-read-only
+### R2 - exact configuration domains; no Python coercion as policy
 
-The current P5 replay resolution must obtain replay training/monitor artifacts and lineage from authenticated prepared replay records/current parents, not by invoking the construction path.
+At the resolver/config owners touched by this repair:
 
-This applies to all production P5 consumers sharing the resolver: cross-validation setup, final production, restart/continuation, representative re-evaluation/recovery, and future callers of the same current owner.
+- `split_seed` is an exact nonnegative integer; reject booleans, fractional values, NaN/Inf, and non-integer objects rather than truncating through `int(...)`;
+- sequence-form split-ratio components are exact positive integers; reject booleans/fractions; retain the documented lexical string form such as `"5:1"`;
+- prediction batch/shard controls and qualification booleans/numerics continue through their established validated owners; do not add truthiness/int-cast shortcuts;
+- replay prediction device/backend/dtype/head come from the existing canonical foundation/acceleration/prediction resolution, not independent defaults in prepare/executor/method identity.
 
-At use time, authenticate enough current semantics to reject stale science before TRAIN2/EVAL2:
+### R3 - validate method/replay topology before expensive public prepare work
 
-- effective single-source replay label mode;
-- split ratio/seed and current split authority;
-- source SHA/content/true-label identity as governed by current replay owners;
-- explicit pseudo prediction policy/cache and qualification identities when pseudo mode applies;
-- required train/TRUE_DFT monitor artifact lineage;
-- current method replay-policy identity.
+Replay-wide preparation is authorized only for a configuration whose accepted post-selection method topology enables replay. Scratch/naive-fine-tuning/orphan replay declarations must retain their existing fail-closed semantics.
 
-Do not use `ReplaySingleSourceConfig.content_digest` as a coarse scientific equality test if doing so would make a locator change scientific; its current record contains a path. Preserve the established path-free method/replay identities and identical-byte relocation behavior.
+At public `prepare` entry, before target-size source-wide reconstruction, replay source-wide parsing, model inspection/inference, materialization, or new scientific publication, perform the cheap canonical configuration/topology preflight sufficient to reject:
 
-If current configuration/source/prediction/qualification semantics require scientific reconstruction or foundation inference, fail before TRAIN2 with guidance to run `prepare`. Do not lazily repair it inside P5.
+- invalid/conflicting selectors;
+- invalid exact split domains;
+- mixed new/legacy replay topology;
+- replay declaration incompatible with resolved training-method topology;
+- other contradictions knowable without reading the replay corpus or loading the model.
 
-If only a disposable materialized view/index/receipt is absent or stale while its authoritative parents remain current, representation-only reconstruction is allowed under the existing replay owner. It must not call the foundation model, requalify under a changed policy, resplit under a changed scientific parent, or change method identity.
+Reuse the existing canonical topology/configuration owners. Do not create a prepare-only replay interpretation.
 
-Resolve/authenticate shared replay authority once per command/shared method scope where practical, then reuse that immutable resolution across selected sizes/folds/runs. Do not replace hidden GPU work with repeated whole-corpus CPU/I/O scans.
+A runtime/data failure that can only be discovered after valid cheap preflight retains the independent partial-success rule: a valid target-size generation already published is not rolled back merely because later replay preparation failed.
 
-**Evidence:** production P5 resolver/integration tests for CV, final production, restart/re-evaluation; structural/call-graph negative assertion that no P5 production route can call the cold foundation prediction builder; source/view mutation cases; an execution counter proving the 12k-source parser/prediction builder is not invoked once per fold/run.
+## 4. Stage ownership
 
-### R5 - repair the internally owned pseudo-label provider lifetime
+### R4 - doctor is preflight/qualification, never replay preparation
 
-On a cold pseudo prediction-cache build:
+Baseline currently violates this contract: `doctor` can reach `_qualify_replay()` -> `_build_replay_plan()` -> `_single_source_replay_context()`, and then `_persist_single_source_replay_authority()`. On an explicit pseudo cold path that can construct the prediction cache and foundation provider before `prepare`.
 
-- distinguish internally constructed provider from caller-supplied provider;
-- internally constructed provider is retired through the existing lifecycle primitive on success and every failure path after acquisition;
-- caller-supplied provider remains caller-owned unless ownership transfer is already explicit;
-- no valid cache manifest is published before all required cache files/identities are durable and valid;
-- cleanup covers provider-validation failure, source iteration, prediction/OOM, shard/audit write, publication/rename, and other post-acquisition exceptions;
-- returned cache state contains no live provider/executor/model reference.
+Remove that construction leak.
 
-Do not add a second provider registry or scheduler cleanup hook.
+For current single-source replay, `doctor` may:
 
-**Evidence:** ownership-sensitive fake provider plus bounded failure injection at several post-acquisition points; caller-owned non-close test; structural review of all exits from the acquisition boundary.
+- normalize/validate replay configuration and method topology;
+- validate source accessibility/schema and source TRUE_DFT inventory as required by the accepted doctor contract;
+- validate foundation/head/runtime/acceleration prerequisites for explicit pseudo mode;
+- run its existing bounded accelerator smoke/qualification if that doctor owner requires it;
+- reuse/create non-authoritative source-inspection receipts if the existing source-validation owner permits.
 
-### R6 - retain device-correct bounded OOM learning for the whole cold build
+`doctor` must **not**:
 
-Current per-outer-batch executor creation resets learned safe batch state and defaults the executor device to CPU despite a CUDA-backed provider.
+- call the replay-wide prediction-cache builder;
+- perform full pseudo-label foundation inference over the replay corpus;
+- run pseudo qualification that depends on those predictions;
+- create mode-specific train/monitor replay materializations merely to qualify the campaign;
+- publish the prepared/current single-source replay alias set.
+
+Pseudo eligibility/train-monitor cardinalities that depend on foundation predictions are **deferred to prepare**. Doctor output must represent that truthfully as deferred/not-yet-realized rather than fabricate a final qualified replay plan. Prepare owns the post-prediction minimum-count/qualification failure.
+
+This does not prohibit a small doctor-owned acceleration smoke; the prohibition is against replay-wide pseudo preparation and its durable current replay publication.
+
+### R5 - public prepare restores replay preparation ownership
+
+When valid single-source replay is configured, `prepare` owns construction/reuse of the replay state needed downstream.
+
+TRUE_DFT prepare:
+
+- authenticate/reuse source and source index;
+- build/reuse TRUE_DFT label cache;
+- build/reuse deterministic split under the TRUE_DFT qualification authority;
+- materialize/authenticate required TRUE_DFT training/monitor transports;
+- perform zero replay foundation pseudo inference.
+
+Explicit pseudo prepare:
+
+- authenticate/reuse source/true-label basis;
+- resolve the current foundation prediction policy;
+- build/reuse prediction cache under the concurrency/resource rules below;
+- qualify cached predictions under current qualification policy;
+- build/reuse the deterministic split;
+- materialize/authenticate pseudo training transport and independent TRUE_DFT monitor transport, plus any other existing mode-required replay transport;
+- enforce post-qualification minimum train/monitor requirements here;
+- retire prepare-owned accelerator state before returning.
+
+`StageState.COMPLETE` for public prepare means every configured preparation prerequisite required by this invocation is current/authenticated. If replay fails after a valid target-size generation has published, mark public prepare failed/incomplete but preserve that valid target-size generation; retry uses normal target-size owner currentness and completes/reuses replay work without destructive rollback.
+
+Do not create a combined target/replay generation or resurrect a retired generic restart authority to synchronize them.
+
+### R6 - all post-selection replay consumers are scientific-read-only
+
+Every current P5 consumer—CV setup/execution, final production, restart/continuation, representative re-evaluation/recovery, and future callers of the same owner—must obtain replay science through authenticated current persisted replay state.
+
+No production P5 path may reach a construction-capable single-source helper that can:
+
+- build/rebuild foundation predictions;
+- requalify pseudo predictions under a changed policy;
+- create a new scientific split;
+- decide a different replay method.
+
+This prohibition includes indirect routes through helpers equivalent to current `_build_replay_plan()`, `_resolve_true_label_replay_inputs()`, or `_single_source_replay_context()` when they are construction-capable.
+
+P5 may repair a **disposable representation** when all scientific parents needed for that repair are already current/authenticated and the repair performs no foundation inference, no policy-dependent requalification, and no scientific resplit.
+
+Examples:
+
+- missing train/monitor ExtXYZ view + current required parent cache -> representation-only rematerialization allowed;
+- authenticated pseudo train view retained while bulky prediction payload was legitimately reclaimed -> P5 may consume that view if compact current lineage proves it belongs to current parents;
+- missing view + missing/corrupt prediction values required to reconstruct it -> P5 fails actionably and routes to `prepare`.
+
+Within one post-selection command/shared replay context, authenticate expensive source/view state once where practical and reuse the immutable resolution across folds/sizes/runs. Do not replace hidden GPU work with O(folds/runs) parsing of a 12k replay source.
+
+## 5. Persistence, currentness, and publication
+
+### R7 - persisted replay state is one coherent current alias set
+
+Build and validate mode-specific filesystem/cache products first. Then publish the exact current compact replay record aliases as one short atomic group.
+
+Use the existing `CampaignStore.replace_records_atomically(records, delete_keys=...)` capability or an equivalently narrow existing transactional owner rather than adding a replay generation/currentness database.
+
+For each successful single-source prepare:
+
+- install exactly the common replay current records plus the records applicable to the effective mode;
+- atomically remove inactive mode-specific **current aliases** from the generic current namespace in the same transaction;
+- do not delete underlying content-addressed/reconstructable prediction cache bytes merely because their mutable current alias is inactive;
+- historical P5 evidence remains immutable history and is never rewritten/deleted to make currentness look correct;
+- readers observe one coherent old alias set or one coherent new alias set, never a hybrid assembled from independent transitions.
+
+A crash after filesystem product creation but before compact alias commit leaves inert/reusable content, not a partially current replay authority.
+
+The long build must not hold CampaignStore's global writer lock. At compact commit, revalidate the canonical source/policy/currentness token (or equivalent existing compare/recheck condition) so a stale long-running builder cannot overwrite a newer prepared replay state.
+
+Mode transitions such as pseudo -> true and true -> pseudo must leave no stale mode-specific alias falsely current or unnecessarily pinning storage through the current-record namespace.
+
+### R8 - downstream replay reads are coherent and identity-based
+
+P5/lifecycle readers must resolve a coherent replay snapshot and verify internal parent bindings. Pointer/key existence is never sufficient.
+
+At minimum currentness covers, where applicable:
+
+- effective normalized label mode;
+- replay source scientific content/true-label authority;
+- split policy and current split authority;
+- pseudo foundation prediction policy/cache logical identity;
+- pseudo qualification authority;
+- training transport lineage;
+- independent TRUE_DFT monitor lineage;
+- current post-selection replay-policy/method identity.
+
+Do not use pathful `ReplaySingleSourceConfig.content_digest` or the old broad `_preparation_config_digest` as a coarse replay scientific identity. They contain locators and/or execution-only fields and would create false invalidation.
+
+### R9 - process-local replay caches never authenticate currentness
+
+A process-local `_UNIFIED_REPLAY_CONTEXT_CACHE` may remain only as a bounded execution optimization, preferably restricted to prepare/read scopes that already possess authenticated parents. It is not currentness authority.
+
+A cache hit cannot bypass the content checks required without it. Same-process replacement of replay source or foundation checkpoint bytes at the same configured locator must invalidate/reject stale cached science even when size/mtime/stat shortcuts collide. Identical-byte relocation remains scientifically reusable.
+
+Prefer deleting/narrowing the cache or keying/revalidating it from already-authenticated identities over adding another cache-validation layer.
+
+## 6. Minimal invalidation and identity
+
+### R10 - preserve layered replay invalidation, with explicit TRUE_DFT-monitor branch
+
+Preserve the semantics of the existing replay invalidation decomposition instead of replacing it with a coarse prepared digest.
+
+Required outcomes include:
+
+- identical source bytes relocated -> no scientific invalidation/replay foundation inference solely because the path changed;
+- source geometry change -> reindex and invalidate geometry-dependent pseudo predictions as currently governed;
+- TRUE_DFT-mode source truth change -> refresh truth-dependent qualification/split/materializations and downstream P5 lineage as governed;
+- pseudo prediction-policy change (foundation checkpoint/head/inference identity) -> invalidate prediction cache and dependent pseudo qualification/split/view/P5 lineage;
+- pseudo qualification-threshold change -> requalify cached audit/prediction evidence without foundation inference; resplit/rematerialize only as required by the qualification result/identity;
+- split ratio/seed change -> resplit/rematerialize without foundation inference;
+- materialized view deletion -> reconstruct from authenticated parents without foundation inference;
+- missing/corrupt required prediction state -> rebuild only in prepare.
+
+**Pseudo-mode source TRUE_DFT-label-only mutation requires special clarity:** when geometry and prediction policy are unchanged, preserve the foundation prediction cache and, under the existing pseudo invalidation owner, preserve pseudo qualification/split where their parents are unchanged. However the independent mandatory TRUE_DFT monitor is a parallel label-dependent descendant. Its view/artifact/lineage must refresh/re-authenticate from the changed source truth, and P5 replay lineage/CV/final descendants become stale when that monitor lineage changes.
+
+Do not misread `ReplayInvalidationPlan`'s pseudo-training result as permission to keep a stale TRUE_DFT monitor.
+
+If review discovers that an existing invalidation rule is itself scientifically wrong, route to its owner rather than silently invalidating everything.
+
+### R11 - execution/storage knobs stay out of scientific replay identity
+
+Preserve the current prediction-cache identity separation:
+
+Scientific prediction identity includes the semantically governing foundation/inference fields already defined by `ReplayFoundationPredictionPolicy` (including its current device/backend/dtype/head/checkpoint semantics).
+
+The following remain execution/storage realization only unless a current specification independently makes them scientific:
+
+- configured prediction `batch_size`;
+- physical `shard_size` and shard grouping/layout;
+- graph-cache locator/layout;
+- process-local learned safe OOM batch width;
+- progress/logging/worker realization.
+
+Changing prediction batch size or shard size while a logically valid prediction cache exists must not trigger foundation reinference or change post-selection replay/method scientific lineage. A genuinely cold future build may use/relearn the new execution realization.
+
+Do not persist learned OOM-safe width as scientific/currentness identity merely to reuse it across commands.
+
+### R12 - no gratuitous scientific/schema version churn
+
+Do not bump `POST_SELECTION_METHOD_RECIPE_VERSION`, replay config/invalidation schemas, target-size generation tokens, or unrelated TRAIN2/replay-lineage schemas merely because routing/lifetime code moved.
+
+Explicit TRUE_DFT campaigns and explicit pseudo campaigns should retain their existing scientific method identity if their effective semantics are unchanged. Omitted single-source mode is the deliberate semantic default change and therefore resolves to TRUE_DFT; evidence that previously depended on a different omitted-value interpretation is review-required/historical.
+
+A schema/version bump requires a real persisted-semantic representation change that existing identities cannot express, with owning-layer justification and impact closure.
+
+## 7. CUDA/resource ownership and concurrency
+
+### R13 - exactly one provider-retirement owner
+
+For an internally constructed replay prediction provider there is exactly one terminal retirement owner.
+
+Permitted forms include:
+
+- cache/preparation builder owns provider; operation-scoped executor is non-owning; builder closes in `finally`; or
+- ownership transfers exactly once to the operation-scoped executor, whose context/finally closes it.
+
+Do not make both layers owners and rely on idempotent `close()` to hide ambiguity.
+
+Cleanup must cover:
+
+- provider validation failure after construction;
+- executor construction/ownership-transfer failure;
+- graph-cache initialization failure;
+- source iteration;
+- prediction/OOM terminal failure;
+- shard/audit/materialization I/O failure;
+- publication failure;
+- ordinary exceptions;
+- cancellation/`KeyboardInterrupt`/other catchable `BaseException` after acquisition.
+
+Caller-supplied providers remain caller-owned absent an explicit pre-existing transfer contract. Returned cache/records contain no live provider/executor/model reference.
+
+Forced process kill is outside exception cleanup and cannot be used as proof of explicit retirement.
+
+### R14 - one device-correct inference/OOM-learning lifetime per cold build
+
+Current per-outer-batch `StaticMaceInferenceExecutor` recreation loses learned OOM-safe batch state and can default the executor device to CPU despite a CUDA-backed provider.
 
 Required end state:
 
-- prediction execution is bound to the effective replay prediction device;
-- synchronization/OOM/cache handling follows the actual CUDA device when applicable;
-- a learned safe prediction batch persists across the whole cold cache-build operation;
-- later outer batches do not retry a size already shown unsafe solely because a helper object was recreated;
-- ordering, source membership, prediction identities, audit values, and shard logical semantics are unchanged.
+- execution binds the effective replay prediction device;
+- synchronization/OOM/cache behavior follows that real device;
+- one coherent OOM-learning state spans the complete cold prediction-cache build;
+- once an oversized batch is shown unsafe, later outer batches do not retry it merely because iteration advanced;
+- geometry order, prediction values/identity, audit values, and logical cache semantics remain unchanged.
 
-Preferred implementation: construct/reuse one existing static executor for the operation and close it at the same owner boundary. Equivalent simpler factoring is allowed.
+Reusing one existing static executor for the operation is the preferred simplification, but the invariant is one coherent resource-learning lifetime rather than a class name.
 
-**Evidence:** deterministic OOM/backoff provider showing the first oversized batch learns a safe size and later outer batches start from that learned bound; device-binding assertion; output/order equivalence with a non-OOM reference.
+### R15 - same-key cold cache creation is single-flight and crash-safe
 
-### R7 - preserve the existing minimal replay invalidation matrix
+Two concurrent `prepare` invocations for the same source-geometry + prediction-policy cache identity must not each load a model and perform duplicate replay-wide inference.
 
-The repair must use/preserve the semantics of `ReplayInvalidationPlan` rather than treating replay as one coarse prepared blob.
+Required flow:
 
-At minimum preserve:
+```text
+contender enters narrow cache/artifact execution-publication fence
+  -> RECHECK authenticated cache after acquiring fence
+  -> winner exists: reuse, zero inference
+  -> still absent/stale: exactly one contender builds
+  -> validate/publish cache
+  -> retire provider
+  -> release fence
+```
 
-- identical source bytes relocated -> no scientific invalidation/reparse solely because path changed;
-- source byte change -> source revalidation/reindex as currently governed;
-- source true-label change in TRUE_DFT mode -> only truth-dependent qualification/split/materializations and downstream method lineage invalidate as governed;
-- source true-label change in pseudo mode does not rerun foundation prediction when geometry/prediction policy are unchanged, though TRUE_DFT monitor/label-dependent descendants update as governed;
-- pseudo foundation checkpoint/head/inference-policy change -> prediction cache invalidates and downstream pseudo qualification/split/view/method lineage follows;
-- pseudo qualification-threshold change -> requalify cached prediction/audit evidence without foundation reinference;
-- split ratio/seed change -> resplit/rematerialize required roles without foundation reinference;
-- deletion of materialized views -> reconstruct from authenticated parent caches without reinference;
-- prediction cache corruption/missing state -> cold rebuild only under `prepare`, never P5.
+Use/factor an existing advisory artifact/publication lock pattern where possible. The lock is execution state, not scientific state. Do not introduce a replay lock subsystem, GPU lease database, provider registry, or hold the CampaignStore global writer lock across GPU work.
 
-If a baseline invalidation rule is discovered to be scientifically wrong, route that finding to its owner; do not silently “simplify” by invalidating everything.
+Fixed temporary paths must not let concurrent attempts delete/corrupt each other's live work. Under a single-flight owner, only that owner may reclaim its known scratch; alternatively use unique attempt scratch plus create/verify winner publication if simpler. A loser rechecks the winner instead of blindly replacing it.
 
-**Evidence:** reuse/extend invalidation tests plus assembled prepare/P5 cases for threshold edit, split edit, identical relocation, view deletion, prediction-cache deletion/corruption, and source-label mutation.
+Apply equivalent existing atomic/fenced publication discipline to replay materialized views if they can be concurrently reconstructed by more than one command.
 
-### R8 - expose expensive replay cache disposition at the owning boundary
+### R16 - pseudo inference remains label-blind
 
-At `prepare`, explicit pseudo mode must visibly distinguish:
+Executor/provider consolidation must preserve the existing anti-leakage boundary: foundation pseudo prediction receives geometry-only copies. Source TRUE_DFT energy/forces/stress, attached calculator results, qualification outcomes, and generated training labels must not enter the foundation forward graph.
+
+### R17 - public prepare provider scopes remain non-overlapping
+
+Current execution architecture requires large prepare-owned accelerator providers/references to end at their final preparation consumer. This repair must not merely close the replay provider eventually while overlapping it with another prepare-owned model-scale provider.
+
+Within one public prepare process, acquire the replay pseudo provider only after any earlier prepare-owned model-scale provider whose final consumer has completed has been retired, unless an existing resource owner explicitly admits concurrent residency under a proven budget. The default repair is sequencing and release, not a new GPU scheduler.
+
+## 8. Lifecycle/currentness consequences
+
+### R18 - status/advance observe composite prepare truth without new state
+
+`status` and `advance` remain derived/read-only projections.
+
+They must distinguish:
+
+- target-size generation current but replay preparation failed/incomplete -> public prepare not ready; `advance` routes through `prepare`;
+- replay-only config/source/method lineage change under unchanged target generation -> target design remains current, old P5 descendants may become historical;
+- semantically identical replay reprepare/identical-byte relocation -> applicable P5 evidence remains current;
+- representation-only deletion/reconstruction with unchanged scientific lineage -> applicable P5 evidence remains current.
+
+Do not add a new lifecycle enum or state machine. Derive from existing stage, target-size, replay, and P5 owners.
+
+### R19 - P5/P7 pointer existence is insufficient after replay-only reprepare
+
+A replay-only change deliberately need not change the target binding, so binding-keyed CV/final/P7 pointers can still exist while their replay parents are stale.
+
+Currentness is identity-based:
+
+- if effective replay mode, scientific source/true-label authority, pseudo prediction/qualification/split, training transport, or TRUE_DFT monitor lineage changes such that current P5 method/replay lineage differs, old CV acceptance/final publication is historical and cannot authorize production/qualification;
+- the frozen target collection remains the input to newly required CV;
+- identical-byte relocation or representation-only reconstruction that preserves replay scientific lineage does not stale P5 evidence;
+- a P7 qualification/release descendant cannot remain current if its parent final publication is no longer current.
+
+Do not delete immutable P5/P7 evidence merely to make status correct. Currentness is validated, not manufactured by cleanup.
+
+### R20 - observation purity
+
+`status`, `advance` planning, and qualification status must not:
+
+- parse the full replay corpus;
+- construct a MACE replay provider;
+- run foundation prediction;
+- run pseudo qualification/split construction;
+- materialize replay views;
+- hash/read all prediction shards;
+- create evidence/cache/workspace state or mutate CampaignStore.
+
+They may read TOML plus compact CampaignStore/receipt/P5/P7 metadata needed for currentness. If compact evidence is insufficient, report blocked/waiting rather than performing expensive work or declaring stale evidence current.
+
+## 9. Cache disposition and user-visible observability
+
+### R21 - expensive replay work is observable at its owner
+
+At `prepare`, explicit pseudo mode distinguishes at minimum:
 
 - authenticated prediction-cache hit;
 - cold prediction build because no current cache exists;
-- rebuild because stored prediction state is invalid/incompatible/corrupt.
+- rebuild because stored prediction state is stale/incompatible/corrupt/unusable.
 
-The output must identify effective replay mode and owning stage sufficiently to explain a long/high-VRAM operation. It must not create a new durable cache-status database. Current invalidation/replay records remain authority; diagnostics report them.
+Report effective replay mode and enough stage context to explain a long/high-VRAM operation. Do not create a durable cache-status database.
 
-P5 output should describe consumption/authentication of prepared replay state, not suggest it is generating pseudo labels.
+P5 output describes consumption/authentication of prepared replay state, not pseudo-label generation.
 
-### R9 - close the real CUDA lifetime and assembled stage boundary on target hardware
+Doctor output for explicit pseudo mode distinguishes prerequisite validation from prediction-dependent qualification deferred to prepare.
 
-Fake-provider evidence cannot close the physical lifetime claim.
+## 10. Affected implementation surface
 
-#### R9-A: in-process real-provider lifetime proof
+Implementation must inspect at minimum:
 
-Use the production replay prediction/preparation owner with real MACE/CUDA in a Python process that remains alive after the owner returns. Force a cold pseudo prediction path using only reconstructable replay cache state.
+- `mdstats/training_data/replay.py`
+  - single-source selector normalization/default;
+  - exact split seed/ratio validation;
+  - source/true-label/view identities and relocation semantics.
+- `mdstats/training_data/replay_invalidation.py`
+  - preserve minimal invalidation; explicitly account for the parallel TRUE_DFT monitor branch in pseudo mode.
+- `mdstats/training_data/replay_pseudolabel.py`
+  - cache hit/miss diagnostics;
+  - single-flight publication/scratch ownership;
+  - provider ownership/lifetime;
+  - executor lifetime/device/OOM learning;
+  - label-blind input.
+- `mdstats/training_data/model_features.py`
+  - only if existing provider/executor lifecycle primitives need narrowing/factoring; prefer existing close/executor machinery.
+- `mdstats/training_data/_campaign_cli_core.py`
+  - doctor replay validation leak;
+  - construction-oriented `_single_source_replay_context` separation/narrowing;
+  - `_persist_single_source_replay_authority` atomic exact-alias replacement;
+  - `_build_replay_plan` / `_resolve_true_label_replay_inputs` construction-capable downstream routes;
+  - process-local replay context cache;
+  - init/example generation and messages.
+- `mdstats/training_data/campaign_target_size_runtime.py`
+  - public prepare orchestration/preflight only; target-size scientific generation remains replay-independent.
+- `mdstats/training_data/campaign_prepared_generation.py`
+  - verify replay remains absent from target-size preparation identity; change only if needed to preserve, not expand, that contract.
+- `mdstats/training_data/campaign_post_selection_runtime.py`
+  - all replay consumers use authenticated read/currentness path; no cold pseudo construction.
+- `mdstats/training_data/post_selection_identity.py`
+  - canonical effective mode/path-free replay policy and replay-lineage currentness; avoid gratuitous version bump.
+- `CampaignStore` replay grouped read/replacement call sites
+  - reuse existing atomic transaction and writer-exclusion semantics.
+- replay source/index/view/cache storage owners
+  - concurrent publication, retention and reconstructability.
+- `campaign_lifecycle.py` plus status/advance/qualification projections
+  - replay-aware P5 currentness under unchanged target binding, observation purity.
+- configuration/example/README/current Architecture Manual source/specification chapters and semantic-evolution history.
+- replay-unification, post-selection, multi-size, restart/currentness, storage/invalidation, lifecycle, target-size independence, P5 resource, and real-provider tests affected by the final edits.
+
+Re-derive the final affected surface after implementation. This list is a floor, not a ceiling; affected-surface growth is not permission to expand requirements.
+
+## 11. Acceptance matrix
+
+| Scenario | Required outcome |
+|---|---|
+| no single-source or legacy replay configured | no replay work/state introduced |
+| legacy split replay, no `replay_set` | historical supported behavior retained |
+| single-source, omitted selector | TRUE_DFT effective mode |
+| generated new campaign | explicit `label_mode = "true_dft"` |
+| explicit `true_dft` | method-equivalent to omitted new default |
+| explicit `foundation_pseudolabel` | pseudo mode; replay-wide prediction only in prepare cold build |
+| agreeing new/legacy selectors | one canonical mode |
+| conflicting/unsupported single-source selector | fail before expensive work |
+| invalid scratch/naive + replay topology | fail at cheap topology preflight before target/replay expensive work |
+| boolean/fractional split seed or ratio component | reject without coercion |
+| cold explicit-pseudo `doctor` | no replay prediction-cache builder/provider; prediction-dependent qualification deferred |
+| TRUE_DFT missing required truth | fail closed; zero pseudo fallback |
+| replay-only policy edit | target-size generation/screen/provisional/frozen design unchanged; P5 descendants revalidate |
+| pseudo cache hit | prepare reuses; zero model inference |
+| prediction batch/shard knob edit with valid logical cache | zero reinference; no scientific replay/P5 lineage churn |
+| pseudo threshold edit | requalify cached evidence; zero model inference |
+| split ratio/seed edit | resplit/rematerialize; zero model inference |
+| identical-byte source relocation | preserve scientific replay identity/reuse |
+| pseudo source TRUE_DFT-label-only mutation, geometry unchanged | preserve pseudo predictions; refresh TRUE_DFT monitor lineage; stale P5 descendants rejected |
+| deleted view + current parents | representation-only rebuild allowed; zero foundation inference |
+| retained authenticated pseudo train view + reclaimed bulky prediction payload where storage allows | P5 may consume if compact current lineage authenticates |
+| missing view + missing/corrupt required prediction values | P5 fails to prepare; only prepare may infer |
+| pseudo -> true mode prepare | exact true-mode current alias set; stale pseudo aliases removed atomically; physical cache may remain |
+| true -> pseudo mode prepare | exact coherent pseudo current alias set |
+| crash before replay alias commit | prior coherent alias set remains current; new inert content not misrepresented as current |
+| stale concurrent builder reaches commit after newer state | stale adoption rejected/rechecked |
+| same-process source/model mutation after context-cache hit | stale context cannot authenticate |
+| two same-key concurrent cold prepares | one inference owner; waiter rechecks/reuses winner |
+| cold-build owner failure | no valid partial cache; later contender can safely rebuild |
+| provider constructed then executor construction fails | internally owned provider retired exactly once |
+| `KeyboardInterrupt` after provider acquisition | owned provider retired before surviving process regains control |
+| caller-supplied provider | not closed by non-owner |
+| first oversized pseudo batch OOM | learned safe bound reused by later outer batches |
+| labeled source passed into pseudo pipeline | provider receives geometry-only structures |
+| replay failure after target-size publication | target-size generation survives; public prepare incomplete/failed |
+| `status`/`advance` after replay failure | read-only projection routes back to prepare; no hidden replay construction |
+| accepted CV then replay lineage changes, same frozen target | old CV/final/P7 non-current; target binding unchanged; route to CV |
+| identical replay reprepare/relocation | applicable P5 evidence stays current |
+| representation-only reconstruction | applicable P5 evidence stays current |
+| high genuine external VRAM baseline | unchanged TRAIN2 zero-safe admission blocks correctly |
+
+## 12. Required validation and falsification
+
+### Stage A - configuration/topology/doctor ownership
+
+Required focused + affected regression:
+
+- omitted/explicit/legacy/conflict/unsupported selector tests through the real resolver;
+- exact integer/ratio malformed counterfactuals;
+- generated init/example TRUE_DFT checks;
+- replay/method topology preflight tests proving invalid config fails before target builder and replay source/provider work;
+- explicit-pseudo cold doctor test with live failpoint below replay prediction construction proving the replay prediction path does not fire and no prepared replay current aliases/prediction cache are created;
+- doctor output test proving prediction-dependent pseudo qualification is deferred rather than fabricated;
+- TRUE_DFT default real-owner test proving no replay foundation-prediction constructor fires, paired with explicit-pseudo prepare cold case proving the hook is live.
+
+### Stage B - prepare/persistence/currentness rewiring
+
+Required focused + affected regression:
+
+- doctor -> prepare cases for no replay, TRUE_DFT, pseudo hit, pseudo cold, pseudo post-qualification failure, and retry;
+- target-size generation survives replay runtime failure and replay-only edits;
+- exact alias replacement pseudo -> true -> pseudo;
+- failure injection between filesystem build and compact alias commit;
+- stale-builder commit-time revalidation;
+- coherent group read/no hybrid old-new record set;
+- same-process replay context source/foundation mutation and identical-byte relocation control;
+- P5 CV/final/recovery read-only routes; structural negative call-graph search proving no production P5 route can reach foundation prediction construction;
+- missing-view/current-parent representation-only repair and missing-prediction fail-to-prepare cases;
+- repeated fold/size/run instrumentation proving no O(folds/runs) whole-corpus replay reconstruction.
+
+### Stage C - invalidation/storage/lifecycle
+
+Required focused + affected regression:
+
+- existing ReplayInvalidationPlan matrix remains correct;
+- explicit pseudo TRUE_DFT-label-only mutation counterfactual: prediction cache reused, pseudo qualification/split preserved when their parents are unchanged, TRUE_DFT monitor lineage refreshed, P5 descendants stale;
+- prediction batch/shard knob changes do not reinfer or churn scientific lineage on a valid cache;
+- storage-allowed bulky prediction-payload reclaim with authenticated view retained;
+- target-size replay-independence tests;
+- `status`/`advance`/qualification-status cases for replay failure, replay lineage change, no-op reprepare, relocation, representation repair, and old P5/P7 pointers;
+- observer-purity instrumentation: zero whole-corpus parse, provider construction, prediction, qualification, materialization, or write.
+
+### Stage D - provider/concurrency/resource lifetime
+
+Required focused + affected regression:
+
+- exactly-one provider close ownership on success/failure/transfer-gap;
+- caller-owned provider not closed;
+- bounded `KeyboardInterrupt`/cancellation cleanup;
+- device-binding and persistent OOM-learning test across outer batches;
+- label-blind provider-facing input test;
+- two concurrent cold prepares for the same cache key -> exactly one inference owner, winner recheck/reuse;
+- owner failure then waiter takeover; no live scratch deletion/corrupt final cache;
+- concurrent representation publication if affected;
+- no overlap of prepare-owned model-scale providers after each one's final consumer.
+
+Each coherent executable stage runs its focused and affected stage-local regression before dependent executable work proceeds.
+
+### Stage E - final assembled and target-host evidence
+
+Before implementation Review readiness:
+
+- re-derive the final affected surface;
+- run complete affected replay/post-selection/currentness/restart/storage/lifecycle/target-size/P5 scheduler regression;
+- run project-required lint/type/build/package checks applicable to the changed surface;
+- regenerate required current documentation/package derivatives through repository owners; unavailable required tooling is blocking;
+- reconcile materially affected existing P5 target-host evidence on the final candidate;
+- run both real target-host resource realizations below.
+
+#### E1 - in-process real MACE/CUDA provider-retirement proof
+
+Use the production replay prediction/preparation owner with real MACE/CUDA in a Python process that stays alive after the owner returns. Force a cold explicit-pseudo prediction path by removing only reconstructable cache state.
 
 Capture as available:
 
 - NVML aggregate/process occupancy;
 - `torch.cuda.memory_allocated()`;
 - `torch.cuda.memory_reserved()`;
-- `torch.cuda.max_memory_allocated()`;
-- `torch.cuda.max_memory_reserved()`;
-- provider/executor acquisition/retirement boundary evidence.
+- max allocated/reserved;
+- acquisition, inference high-water, final-consumer, close, and post-close boundaries.
 
 Required signature:
 
 ```text
-clean baseline
-  -> provider/model residency
-  -> bounded replay inference high-water
-  -> final prediction complete
+clean/context-scale baseline
+  -> one replay provider/model resident
+  -> bounded inference high-water
+  -> final replay prediction consumer completes
   -> explicit owner cleanup returns
   -> process remains alive
-  -> allocated/reserved/NVML occupancy falls to ordinary context-scale residency
+  -> allocated/reserved/NVML return to ordinary context-scale residency
 ```
 
-A shell-level `prepare` process that exits immediately after inference is **not sufficient** to prove explicit provider retirement, because process exit would release CUDA even if the owner leaked it.
+A shell process exiting after prepare is not sufficient; process exit would mask an unclosed provider.
 
-#### R9-B: assembled command/stage proof
+#### E2 - assembled CLI stage proof
 
-On the same final candidate:
+**TRUE_DFT default:**
 
-**Case TRUE_DFT default**
-- use a representative valid-labeled `replay_set` with omitted `label_mode`;
-- run normal `prepare`;
-- prove zero foundation pseudo-label inference during replay preparation;
-- begin `cross-validate` and establish no replay-foundation model-scale pre-TRAIN2 residue/prediction pass.
+- representative valid `replay_set`, omitted `label_mode`;
+- `doctor` performs no replay-wide foundation prediction;
+- `prepare` performs zero replay pseudo prediction;
+- `cross-validate` reaches initial TRAIN2 admission without replay-foundation model-scale residue or prediction pass.
 
-**Case explicit pseudo cold cache**
-- remove only reconstructable pseudo prediction/materialization state needed to force the cold path;
-- run `prepare` and observe the one legitimate replay foundation prediction workload;
-- after prepare, run `cross-validate` and prove no replay-wide foundation prediction occurs there;
-- verify the scheduler now sees only real current occupancy, and no owned orphan GPU process/provider remains after terminal cleanup/interruption.
+**Explicit pseudo cold cache:**
 
-The pseudo prediction peak itself need not be tiny. The governed claim is bounded resource use, correct stage ownership, and retirement before downstream training. If correct pseudo preparation intrinsically cannot fit the supported prepare-time device/resource envelope, route that separately rather than weakening this lifetime contract.
+- clean baseline; remove only reconstructable state required to force cold prediction;
+- `doctor` performs no replay-wide prediction;
+- `prepare` performs exactly the legitimate replay prediction workload, under single-flight ownership, and retires its provider;
+- immediately run `cross-validate`; no replay foundation prediction occurs there before TRAIN2;
+- no orphan owned provider/process remains after normal completion or controlled interruption;
+- TRAIN2 admission observes only real current occupancy and retains zero-safe behavior.
 
-Production target-host evidence is required for PASS because VRAM lifetime is itself the claim.
+The pseudo prediction peak itself need not be small. The governed claim is correct stage ownership, bounded execution, non-overlap/single-flight, and retirement before downstream training. If correct pseudo prediction itself exceeds the supported prepare-time resource envelope, route that separate resource issue; do not weaken lifetime/admission semantics.
 
-## 5. Configuration, identity, persistence, and currentness invariants
+## 13. Evidence applicability and relationship to existing P5 CUDA work
 
-### 5.1 Configuration identity
+### Still applicable with impact review
 
-Effective replay mode is scientifically meaningful and must participate in post-selection method identity. Generated configuration makes the effective default explicit; runtime omission resolves identically.
+- target-size P1/P2/common prepared-generation evidence, because replay exposure is absent;
+- target-size screen/reducer evidence for its target-only method;
+- manual provisional/frozen target-data choices;
+- TRAIN2 zero-safe/live-memory controller evidence whose executable owner is unchanged;
+- explicit historical pseudo-mode evidence as evidence of pseudo mode, not of the new default;
+- replay tests whose propositions are mode-independent and unaffected.
 
-Do not let a compatibility alias create a second downstream representation. Normalize first, validate conflict, then persist/derive identities from the canonical mode.
+### Review-required/rerun
 
-### 5.2 Path and source identity
+- generated/default config tests that assumed pseudo by omission;
+- doctor replay tests that assumed doctor materializes/qualifies full single-source pseudo replay;
+- replay prepare/restart/currentness tests that relied on construction-capable P5 helpers;
+- P5 lifecycle/currentness tests under unchanged target binding;
+- concurrent replay cache publication tests;
+- real CUDA pseudo evidence that allowed process exit to stand in for provider retirement;
+- assembled P5 target-host evidence that traversed the old pre-CV replay construction path.
 
-Configured `replay_set` path is a locator. The replay source authority binds authenticated source bytes/content/geometry/label identities. Preserve the current ability to rebind an identical source at a different path without changing scientific replay identity or repeating foundation inference.
+The separate active TRAIN2 P5 workplan remains binding. This plan removes an owned pre-TRAIN2 source of high baseline occupancy but does not weaken the scheduler's 90% envelope, per-job estimate, zero-safe admission, live-memory checks, cancellation/reaping, or fail-before-EVAL2 behavior. Genuine external/process pressure must still block.
 
-### 5.3 Prepared replay persistence
+## 14. Documentation, specification, and semantic history
 
-Reuse existing campaign replay records/receipts to make preparation restartable. The required semantic state differs by mode:
+### Current owners to reconcile
 
-```text
-TRUE_DFT:
-  normalized single-source config semantics
-  + authenticated replay source / true-label cache
-  + deterministic split
-  + required true-label role/view lineage
+Update current configuration/specification/Architecture Manual sources so they state, without contradiction:
 
-FOUNDATION_PSEUDOLABEL:
-  above source/true-label basis
-  + foundation prediction policy/cache
-  + pseudo qualification
-  + split bound to qualification
-  + pseudo training-view lineage
-  + independent TRUE_DFT monitor-view lineage
-```
+- single-source omitted default is TRUE_DFT; generated config says it explicitly;
+- foundation pseudo replay remains explicit opt-in;
+- doctor validates but does not run replay-wide pseudo prediction or publish prepared replay state;
+- public prepare coordinates independent target-size and replay preparation;
+- target-size scientific generation/screen remains replay-independent;
+- post-selection consumes authenticated replay authority and never cold-builds pseudo science;
+- disposable replay representations may be repaired from current parents without foundation inference;
+- replay current alias publication is coherent/atomic and currentness is identity-based;
+- provider ownership ends at final preparation consumer; model-scale prepare scopes do not silently overlap;
+- execution batch/shard/OOM-learning realization is not scientific replay identity;
+- post-selection-only replay changes invalidate P5 descendants, not the current target-only target-size experiment.
 
-A process-local `_UNIFIED_REPLAY_CONTEXT_CACHE` may remain an optimization inside a bounded construction/consumption scope, but it is not currentness authority and must not be the only reason later commands can reuse replay state.
+Current Part IV wording that broadly says a materially different method requires a new target-size experiment must be reconciled with the more precise current target-only screen ownership: only a method dimension that actually parents/is measured by that screen invalidates it; downstream replay-only method changes do not.
 
-### 5.4 Public prepare state
-
-`StageState.COMPLETE` for `prepare` means all preparation prerequisites required by the configured campaign have completed/authenticated for that invocation. It must not mean “target-size generation succeeded, replay preparation silently deferred to P5.”
-
-However, failure of the replay sub-operation does not revoke an independently valid immutable target-size generation. Durable child owners keep their truthful state; public operation status reports incomplete/failed orchestration and retry resumes/reuses current pieces.
-
-## 6. Evidence applicability and dependency impact
-
-### 6.1 Evidence that remains applicable
-
-Unless executable edits reach them materially:
-
-- target-size P1/P2/common prepared-generation evidence remains applicable because replay exposure is NONE there;
-- target-size screen/reducer evidence remains applicable to its target-only method and target-side ranking rules;
-- manual provisional `N` selection remains a valid target-data choice;
-- TRAIN2 zero-safe admission/live-memory controller unit evidence remains applicable to genuine aggregate occupancy;
-- explicit historical pseudo-mode evidence remains truthful evidence of pseudo mode, not evidence of the new TRUE_DFT default;
-- replay source/split/cache tests whose propositions are mode-independent remain reusable after impact review.
-
-### 6.2 Evidence requiring review/rerun
-
-- generated/default configuration tests that expected pseudo by default;
-- any test whose scientific proposition depended on omitted single-source mode resolving to pseudo;
-- replay prepare/restart/currentness integration that assumed `_single_source_replay_context()` could construct on demand from P5;
-- assembled P5/CV target-host evidence whose pre-TRAIN2 path included replay resolution;
-- real CUDA replay pseudo-label qualification that did not prove provider retirement while process remained alive;
-- documentation/generated derivatives stating pseudo labels are the default or that replay prediction can occur in P5.
-
-### 6.3 Dependency graph
-
-```text
-single-source default policy
-  -> canonical replay config normalization
-  -> post-selection replay-policy identity
-  -> mode-specific replay prepared authority
-  -> replay train/TRUE_DFT monitor lineage
-  -> P5 method identity / CV plan / final-production descendants
-
-replay source content + split policy
-  -> source/label cache + split
-  -> disposable views
-  -> P5 replay lineage
-
-explicit pseudo mode
-  -> foundation prediction policy
-  -> prediction cache
-  -> pseudo qualification
-  -> split + pseudo train view
-  -> P5 replay lineage
-
-provider acquisition
-  -> operation-scoped inference/OOM learning
-  -> prediction cache publication
-  -> explicit provider retirement
-  -> clean downstream accelerator baseline
-  -> unchanged TRAIN2 admission controller
-
-current target-size prepared generation
-  X-> replay label mode    [no dependency in current target-only P3 screen]
-```
-
-The final implementation review must preserve the negative dependency in the last line.
-
-## 7. Affected implementation surface
-
-Initial required inspection includes:
-
-- `mdstats/training_data/replay.py` - canonical single-source config/source/true-label identities;
-- `mdstats/training_data/replay_invalidation.py` - minimal invalidation policy;
-- `mdstats/training_data/replay_pseudolabel.py` - pseudo prediction cache/provider/executor lifetime;
-- `mdstats/training_data/model_features.py` - existing provider/executor lifecycle primitives, only if required to express correct existing ownership;
-- `mdstats/training_data/_campaign_cli_core.py` - current construction/persistence helper, doctor messaging, config generation, process-local context cache;
-- `mdstats/training_data/campaign_target_size_runtime.py` - public `prepare` orchestration only; target-size scientific generation must remain replay-independent;
-- `mdstats/training_data/campaign_post_selection_runtime.py` - replace construction-capable replay resolution with authenticated consumption across CV/final/recovery paths;
-- `mdstats/training_data/post_selection_identity.py` and related method/lineage owners - verify canonical mode and path-free identity/currentness;
-- campaign store/replay record APIs only as needed to reuse existing persisted replay records; do not add a parallel readiness owner without proof it is unavoidable;
-- storage/retention owners insofar as replay view/cache reconstruction and protected external `replay_set` are affected;
-- `campaign.toml.example`, `campaign init` output, README, relevant Architecture Manual chapter sources/specifications, replay architecture history/dependency documentation;
-- replay-unification, post-selection, multi-size, restart/currentness, storage/invalidation, P5, and resource-lifetime tests whose propositions are affected.
-
-Re-derive the final surface from actual edits before closure. File count is not authority scope.
-
-## 8. Acceptance matrix
-
-| Scenario | Required outcome |
-|---|---|
-| no `replay_set` | no new replay work or state |
-| single-source, omitted `label_mode` | TRUE_DFT effective mode |
-| generated new campaign | explicit `label_mode = "true_dft"` |
-| explicit `true_dft` | method-equivalent to omitted default |
-| explicit `foundation_pseudolabel` | pseudo mode; foundation prediction permitted only during prepare cold build |
-| supported legacy explicit true/pseudo selector | historical meaning retained |
-| legacy split-file omitted mode | historical compatibility behavior retained |
-| conflicting selectors | reject before expensive work |
-| TRUE_DFT missing required source labels | fail closed; zero pseudo fallback |
-| replay-only mode edit after target-size prepare/screen | target-size generation/screen remains current; P5 method descendants re-resolve/invalidate as required |
-| pseudo prediction cache hit | prepare reuses; zero model inference |
-| pseudo qualification-threshold edit | requalify cached audit/prediction state; zero model inference |
-| split ratio/seed edit | resplit/rematerialize; zero model inference |
-| identical-byte source relocation | preserve scientific identity/reuse; no foundation reinference solely for path |
-| deleted train/monitor ExtXYZ view with current parents | representation-only rematerialization allowed; no foundation inference |
-| missing/corrupt pseudo prediction cache | rebuild only in prepare |
-| P5 sees mode/source/policy change requiring scientific rebuild | fail currentness before TRAIN2; direct user to prepare |
-| CV/final/recovery after valid prepare | authenticate/reuse; no replay-wide foundation inference |
-| internally created provider success | explicitly retired before owner returns |
-| internally created provider failure | explicitly retired; no valid partial publication |
-| caller-supplied provider | remains caller-owned |
-| first pseudo batch OOM learns smaller batch | later outer batches retain safe bound |
-| high genuine external VRAM occupancy | unchanged TRAIN2 zero-safe admission blocks correctly |
-| replay preparation fails after target-size generation publish | target-size generation remains valid; public prepare fails/retries replay without rollback |
+Regenerate tracked assembled/generated docs through repository publication owners. Do not hand-edit generated derivatives.
 
-## 9. Required validation
+### Semantic evolution
 
-### 9.1 Stage-local evidence
+Record concise history because the recurrence is likely to matter again:
 
-**Stage A - configuration and scientific-route selection**
-- R1 resolver/generated-config/legacy/conflict tests;
-- R2 TRUE_DFT no-pseudo-provider real-owner test;
-- method-policy identity checks.
+- new single-source replay defaults to source truth while pseudo remains supported explicit opt-in;
+- later orchestration refactoring regressed the already intended doctor/prepare/P5 separation and allowed replay-wide foundation inference/provider residency to leak before TRAIN2;
+- the repair restores preparation/consumption ownership, atomic currentness, single-flight cache publication, and explicit provider lifetime rather than compensating in the scheduler;
+- execution-only replay batch/shard choices remain outside scientific identity;
+- pseudo training predictions can survive source-truth-only changes while the independent TRUE_DFT monitor lineage must refresh.
 
-**Stage B - prepare/currentness rewiring**
-- R3 command-owner prepare cases;
-- R4 read-only P5 cases across CV/final/recovery;
-- structural negative call-path checks;
-- target-size non-impact/idempotence tests;
-- representation-only rematerialization tests.
+History explains why; current configuration/architecture/specification remains normative.
 
-**Stage C - pseudo resource lifetime and invalidation**
-- R5 lifecycle/failure injection;
-- R6 device/OOM-learning persistence;
-- R7 invalidation/relocation matrix;
-- R8 cache disposition observability.
+## 15. Explicit non-goals
 
-Each coherent executable stage runs focused plus affected stage-local regression before dependent work continues.
+Do not:
 
-### 9.2 Final assembled evidence
+- change TRAIN2 VRAM fraction, per-job estimate, zero-safe/live-memory safety to accommodate leaked replay residency;
+- add scheduler-entry `torch.cuda.empty_cache()` as the primary lifetime fix;
+- add a second replay cache family/readiness database/currentness generation/provider registry/GPU lease manager/scheduler/retry DB;
+- make replay a target-size prepared-generation parent;
+- add a P5 fallback builder for missing pseudo science;
+- silently fall back from missing TRUE_DFT labels to pseudo labels;
+- remove pseudo replay support;
+- change pseudo scientific numerical settings merely to reduce peak VRAM;
+- persist OOM-learned batch size as scientific identity;
+- bulk-invalidate target-size/P5 evidence or bump method/schema versions for a routing-only correction;
+- delete immutable historical evidence or valid physical caches merely to make mutable current aliases look clean;
+- rewrite frozen historical records under the new default.
 
-Before review readiness:
-
-- re-derive the complete affected surface from the final candidate;
-- run all replay-unification and affected post-selection/currentness/restart/storage tests;
-- run affected target-size tests proving replay changes did not enter target-size identity or screen behavior;
-- run affected TRAIN2 scheduler tests proving no weakening/compensation;
-- run repository-required lint/type/build/package checks applicable to the changed surface;
-- regenerate required documentation/package derivatives through repository owners; unavailable required tooling remains blocking rather than silently skipped;
-- run R9-A real in-process CUDA lifetime proof;
-- run R9-B assembled TRUE_DFT and pseudo command/stage proofs;
-- reassess/rerun only the materially affected existing P5 target-host evidence on the final candidate.
-
-### 9.3 Forbidden proxy proofs
-
-The following cannot close their respective claims:
-
-- helper-only resolver tests for production command routing;
-- preconstructed `ReplaySingleSourceConfig` for omitted-value default resolution;
-- a fake provider for real CUDA allocator/provider retirement;
-- process exit as proof that the provider was explicitly closed;
-- a seeded in-memory replay context for restart/persistence/currentness;
-- a materialized-view file merely existing as proof its current scientific parents authenticate;
-- a target-size generation digest changing after replay-mode edit as “proof of safety”; that would itself violate the required independence.
-
-## 10. Documentation, authority, and history impact
-
-### 10.1 D3 Architecture Manual
-
-Reconcile current chapter sources to state the already-accepted replay ownership explicitly where needed:
-
-- public `prepare` coordinates replay preparation as well as target-size preparation when replay is configured, while the two authorities remain separate;
-- `doctor` does not perform replay-wide foundation prediction;
-- post-selection commands consume authenticated replay authority and do not cold-build pseudo science;
-- disposable replay transports may be reconstructed from current parents without foundation inference;
-- prepare-owned accelerator providers terminate at their final preparation consumer;
-- single-source default is TRUE_DFT and pseudo is explicit opt-in at the configuration boundary.
-
-Because the stage/lifetime portion restores REPLAY-UNIFY1D/Part VI architecture rather than inventing a new topology, do not mint a new architectural subsystem. Whether an Architecture Manual revision number/history note is needed follows the repository's current authority-publication convention, not the number of implementation edits.
-
-### 10.2 D1/D2
-
-No method-internal D1/D2 change is authorized. Current TRUE_DFT and pseudo semantics remain as defined. If implementation reveals that TRUE_DFT replay cannot satisfy the accepted multi-head label-domain/E0/objective contract without numerical/scientific alteration, stop and route the earliest affected D1/D2 owner.
-
-### 10.3 Configuration/specification
-
-The current single-source omitted-value behavior and generated config change. Document one canonical semantic definition and keep init/example/API/config behavior synchronized. Do not silently change legacy split-file compatibility defaults.
-
-### 10.4 Semantic evolution
-
-Record a concise evolution entry because two lessons are likely to prevent recurrence:
-
-- new single-source campaigns select source truth by default while keeping pseudo replay explicit and supported;
-- a later target-size orchestration refactor regressed the already-frozen replay prepare/P5 ownership, allowing expensive pseudo inference and provider residency to leak into the pre-TRAIN2 phase; the repair restores owner boundaries rather than compensating in the scheduler.
-
-History explains why; current configuration/architecture owners remain normative.
-
-### 10.5 Active workplan index
-
-Update `workplans/active/README.md` to stop claiming there are no active MLFF plans. It should identify the current P5 CUDA work and this replay repair as active coordination artifacts and retain the warning that workplans themselves are non-normative.
-
-## 11. Relationship to the existing P5 CUDA repair
-
-The existing P5 TRAIN2 plan remains independently binding. This replay work changes the command path that presents the scheduler with its starting occupancy but does not change scheduler semantics.
-
-After this repair:
-
-- P5 unit/controller evidence for zero-safe admission, live aggregate memory safety, missing telemetry, cancellation/reaping, and fail-before-EVAL2 remains admissible if its executable owners were not changed;
-- prior target-host evidence proving a clean single TRAIN2 job fits the 24-GiB device remains relevant to method/device compatibility;
-- assembled P5 evidence that traversed the old pre-CV replay resolution is review-required and must be rerun/reassessed on the final candidate;
-- a genuine high external/process baseline must still block training rather than being reclassified as a replay bug.
-
-Do not merge the two workplans into one scheduler/replay mechanism merely because the observed failure crosses their boundary.
-
-## 12. Reopen / Challenge triggers
+## 16. Reopen, simplification, and Challenge triggers
 
 ### D4-local blockers
 
-Keep within this workplan: additional lazy P5 construction call sites, omitted provider exits, stale tests, missing view/currentness validation, configuration alias drift, excessive repeated source scans, or documentation/generated-artifact mismatch under the frozen design.
+Remain under this workplan for ordinary nonconformance such as:
+
+- another construction-capable doctor/P5 call site;
+- stale mode alias;
+- missed provider exit;
+- invalid cache/currentness check;
+- concurrency race;
+- repeated source scans;
+- observer side effect;
+- stale test/doc/generated artifact.
 
 ### D3 reopen
 
-Reopen D3 only if evidence shows, for example, that:
+Reopen D3 only if evidence establishes that the accepted contract cannot be implemented without materially changing architecture, for example:
 
-- prepare-owned replay authority cannot be restored without a genuinely new durable state/interface;
-- replay and target-size preparation must share one scientific generation for an upstream reason currently absent;
-- a downstream P5 consumer materially requires live foundation-provider ownership beyond prepare;
-- the current replay invalidation decomposition is structurally incapable of preserving currentness while supporting storage/restart.
+- replay science genuinely must become part of target-size prepared-generation identity;
+- P5 genuinely requires live foundation-provider ownership beyond prepare;
+- safe replay currentness requires a new durable currentness authority rather than the existing compact record transaction + identity checks;
+- safe concurrent cache creation cannot be achieved by a narrow existing/generalized artifact fence plus winner recheck;
+- current replay invalidation/storage reconstruction is structurally incapable of representing the required semantics.
+
+Before adding machinery, re-attempt the simpler reduction: separate construction from consumption, normalize once, publish one coherent alias set, use content identities, make ownership single-valued, and remove duplicate paths.
 
 ### D1/D2 route
 
-Route upstream if source TRUE_DFT default exposes a real method-formulation/numerical incompatibility, if true/pseudo modes need different statistical roles not represented by current identities, or if pseudo prediction numerical settings must change for correctness rather than resource realization.
-
-### Mandatory simplification trigger
-
-Stop additive implementation if the proposed fix begins accumulating a second replay-ready record, combined target/replay generation, P5 fallback builder, scheduler cleanup hook, provider registry, or per-command reconciliation wrapper. Re-derive the flow around the existing resolver, replay records/invalidation owner, prepare control path, and provider lifecycle first.
+Route upstream only if the TRUE_DFT default or existing pseudo/true modes reveal a real scientific/numerical incompatibility or require a changed statistical/numerical method.
 
 ### Serious Challenge
 
-Raise `SERIOUS CHALLENGE` only if current accepted authorities become materially contradictory or unrealizable. No such contradiction is established by this review: historical REPLAY-UNIFY1D, current method identity, current target-size replay-none design, and current provider-lifetime doctrine can be satisfied simultaneously.
+Raise `SERIOUS CHALLENGE` only if accepted current authorities become materially contradictory, ambiguous, inadequate, or unrealizable. None is established by this final review.
 
-## 13. Final PASS criteria and handoff
+## 17. Final PASS criteria
 
-The implementation is review-ready only when all are true:
+Implementation is Review-ready only when all of the following hold on the final assembled candidate:
 
-1. new single-source omission resolves to TRUE_DFT and generated configs state TRUE_DFT explicitly;
-2. explicit pseudo mode and all supported historical explicit/legacy meanings remain compatible;
-3. default/explicit TRUE_DFT performs no replay foundation prediction and never falls back to pseudo;
-4. public `prepare` restores the existing replay preparation owner while keeping replay state outside the target-size prepared-generation identity;
-5. replay-only changes do not retire current target-size substrate/screen/provisional N solely because replay is not part of the current screen;
-6. all P5 consumers obtain replay science through authenticated read/currentness paths and cannot cold-build foundation predictions;
-7. missing disposable views remain reconstructable from authenticated parents without reinference;
-8. mode/source/prediction/qualification/split changes obey the existing minimal invalidation matrix and identical-byte relocation remains non-scientific;
-9. internally acquired pseudo providers are explicitly retired on every terminal path before the owner returns;
-10. device-correct OOM-learning state persists across the entire cold prediction operation;
-11. repeated P5 folds/sizes/runs do not repeatedly parse/reconstruct the same replay authority;
-12. pseudo cache hit/cold/rebuild is observable at prepare without a second cache authority;
-13. post-selection replay/method lineage binds the effective mode and current semantic parents without making locator path scientific;
-14. TRAIN2 zero-safe/live-memory behavior remains unchanged and continues to reject genuine unsafe occupancy;
-15. current docs/examples/specifications and required generated derivatives agree with the corrected default and restored stage/lifetime architecture;
-16. active-workplan repository state is truthful;
-17. R9-A proves explicit real CUDA owner retirement while the process remains alive;
-18. R9-B proves assembled TRUE_DFT and explicit-pseudo stage routing and clean pre-TRAIN2 ownership;
-19. final affected regression and materially dependent P5 evidence are reconciled on the final candidate;
-20. every required unavailable/unexecuted check or unresolved impact remains explicitly blocking rather than inferred green.
+1. omitted current single-source mode resolves canonically to TRUE_DFT; generated config states TRUE_DFT explicitly;
+2. explicit pseudo and supported historical compatibility meanings remain correct; unsupported/conflicting selectors fail before expensive work;
+3. exact replay config domains reject coercion-based malformed values;
+4. invalid replay/method topology fails at cheap public-prepare preflight before target/replay expensive work;
+5. doctor performs no replay-wide pseudo prediction/materialization/prepared-alias publication and truthfully defers prediction-dependent qualification;
+6. TRUE_DFT prepare performs zero pseudo inference/fallback;
+7. prepare owns explicit pseudo prediction/qualification/materialization while replay remains outside target-size prepared-generation identity;
+8. replay-only changes preserve target-size generation/screen/provisional/frozen target design exactly when target parents are unchanged;
+9. prepared replay current aliases publish as one coherent exact mode-appropriate group; stale mode aliases are atomically retired without deleting valid physical/history content;
+10. stale/concurrent builders cannot overwrite newer replay state; readers cannot assemble hybrid generations;
+11. process-local replay caching cannot bypass authenticated source/foundation/current-policy identity;
+12. all P5 consumers are scientific-read-only and no production P5 route can cold-run replay foundation inference;
+13. disposable views remain reconstructable from authenticated parents, while missing required prediction values route only to prepare;
+14. minimal invalidation and identical-byte relocation are preserved;
+15. pseudo source-truth-only mutation preserves valid pseudo prediction science while refreshing the independent TRUE_DFT monitor lineage and invalidating dependent P5 evidence;
+16. prediction batch/shard/graph-cache/OOM-learning execution realization does not cause scientific lineage churn or needless reinference on a valid logical cache;
+17. exactly one owner retires every internally acquired pseudo provider across success, failure, transfer gap and catchable cancellation; caller-owned providers remain caller-owned;
+18. one device-correct OOM-learning lifetime spans a cold prediction build and later batches do not retry a known-unsafe size;
+19. same-key concurrent cold builds are single-flight, recheck after fencing, and cannot corrupt/delete another live attempt;
+20. pseudo foundation inputs remain geometry-only/source-label-blind;
+21. prepare-owned model-scale provider scopes do not silently overlap after their final consumers;
+22. cache hit/cold/rebuild and deferred-doctor-versus-prepare ownership are user-visible without a second status authority;
+23. `status`/`advance`/qualification currentness distinguishes replay-lineage changes from relocation/representation changes, stays observational, and never runs expensive replay/model work;
+24. old P5/P7 pointers cannot authorize stale descendants under changed replay lineage, while immutable history remains intact;
+25. TRAIN2 zero-safe/live-memory protections remain unchanged and continue to reject genuine unsafe occupancy;
+26. explicit true/pseudo method/schema identities do not churn merely because routing/lifetime code was repaired;
+27. current docs/spec/config and required generated derivatives agree with final ownership/default/currentness semantics;
+28. semantic history records the recurring stage/lifetime/currentness lessons without becoming current authority;
+29. all focused/stage-local/final affected regression and project-required checks pass on the final candidate;
+30. real target-host E1 proves provider retirement while the process remains alive, and E2 proves doctor/prepare/P5 stage routing plus clean pre-TRAIN2 ownership;
+31. materially affected evidence from the related P5 workplan is rerun/reassessed, and every required unavailable/unexecuted check remains explicitly blocking rather than inferred green.
 
-Independent Software Design Review must reconstruct the actual final configuration, prepare, persistence/currentness, invalidation, post-selection, and CUDA-lifetime behavior from the assembled candidate. Literal compliance is insufficient if implementation still permits hidden foundation inference downstream, duplicates replay/target-size authority, weakens minimal invalidation/storage reconstruction, changes legacy scientific meaning, or relies on process exit/scheduler cache flushing to conceal an unretired provider.
+Literal compliance with helper names is insufficient. Independent Software Design Review must reconstruct the assembled behavior and reject any implementation that still performs replay-wide pseudo work in doctor/P5, duplicates currentness/ownership, over-invalidates target-size or execution-only knobs, leaves a concurrent/provider lifetime race, weakens storage reconstruction, or relies on process exit/scheduler cleanup to conceal an unretired owner.
