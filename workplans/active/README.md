@@ -1,13 +1,16 @@
 # Active workplans
 
-Active workplans are temporary engineering coordination and do not define current mdstats behavior by themselves.
+Active workplans are temporary engineering coordination contracts. They do not define current mdstats product behavior by repository presence alone; current behavior remains owned by accepted architecture/specification and the implementation that conforms to them.
 
 ## Current MLFF implementation state
 
-No MLFF implementation workplan is active after the 2026-09-10 independent Software Design closure of the replay/MACE P5 execution-recovery cycle.
+Two related MLFF repair tracks are active on `fix/mlff-p5-train2-cuda-lifetime-zero-safe-admission`:
 
-The completed consolidated workplan and its superseded replay-membership/review/progress/scheduler lineage are retained under `workplans/archive/` as non-normative engineering history. Current product behavior remains owned by the architecture manuals, specifications, and implementation.
+- `MLFF_P5_TRAIN2_CUDA_LIFETIME_AND_ZERO_SAFE_ADMISSION_REPAIR_WORKPLAN.md` and its current review-reopen lineage govern TRAIN2 zero-safe admission, live aggregate VRAM safety, TRAIN-wave failure/cleanup behavior, and the remaining P5 evidence/authority closeout.
+- `MLFF_REPLAY_TRUE_DFT_DEFAULT_PSEUDOLABEL_PREP_AND_CUDA_LIFETIME_REPAIR_WORKPLAN.md` governs the single-source replay TRUE_DFT default, restoration of prepare-owned replay preparation/currentness, and the pseudo-label provider/executor CUDA lifetime that contaminated the pre-TRAIN2 baseline.
 
-A future MLFF change that requires coordinated implementation should create or explicitly reopen an appropriate workplan rather than treating archived lineage as current authority.
+The replay repair is upstream of the scheduler observation but does not replace or weaken the P5 resource architecture. A genuine unsafe device baseline must still be rejected by TRAIN2 admission after the replay ownership defect is removed.
 
-Production-scale GPU/CuEq/LAMMPS/MLIAP target-machine qualification remains deferred to the complete final release package; that deferred qualification is not an open item in the now-closed P5 recovery workplan.
+Completed and superseded MLFF workplans remain under `workplans/archive/` as non-normative engineering history. Historical replay architecture remains relevant where a current workplan explicitly cites it as evidence of an already-accepted ownership contract; history itself is not a second current authority.
+
+Production-scale GPU/CuEq/LAMMPS/MLIAP qualification follows the acceptance requirements of the active workplan that owns the specific resource claim. In particular, the current replay CUDA-lifetime repair requires real target-host evidence because provider/allocator retirement is itself under test.
