@@ -114,6 +114,38 @@ tuning was never an accepted requirement, so the public surface was removed
 rather than documented. Expressing the bound in control observations also made
 the state a two-value controller-local flag instead of a timestamp.
 
+## The third falsification: whole-wave cancellation for a soft boundary
+
+The uniform live-safety rule above was still an over-reading of the evidence. A
+later 24 GiB run admitted two owned jobs, reached roughly 22.2 GiB aggregate
+against the 21.6 GiB envelope with GPU utilization far below its ceiling, and
+was cancelled outright - while both jobs were making progress and the device had
+produced no allocation failure at all.
+
+A persistent envelope violation at concurrency `N > 1` proves that concurrency
+`N` is unsafe. It does not prove the training workload is infeasible. The
+controller had adaptive upward admission but no symmetric downward transition,
+so the only vocabulary it had for "this is too much" was "stop everything".
+
+The correction makes the aggregate envelope a soft admission/backoff boundary.
+Sustained pressure above one owned job retracts exactly one prior admission -
+the most recently admitted active owned job - waits for that worker to return so
+its accelerator lifetime is actually released, requeues it as restartable work,
+and lowers a monotone effective ceiling so the disproven level cannot be
+re-entered in the same execution. A demotion is a resource-control transition,
+not a scientific failure: completed folds stay completed, no partial fold is
+published, and the demoted run resumes through the existing checkpoint
+authority. Terminal memory infeasibility now requires convergence to the minimum
+owned concurrency or an independent hard condition - an authoritative allocation
+failure, sustained loss of live memory observability, or owned teardown that
+cannot be confirmed.
+
+What was rejected again: raising the 90% envelope until the observed run passes,
+suppressing the terminal error without correct backoff semantics, catching and
+restarting the wave, unconditional serialization, an external watchdog or second
+scheduler, persisted hardware tuning state, and treating `Future.cancel()` as
+proof that CUDA state was reclaimed.
+
 ## Phase ownership
 
 The training scheduler previously submitted the whole fold lifecycle as one

@@ -650,8 +650,8 @@ def test_unobservable_device_memory_blocks_automatic_admission() -> None:
         )
 
 
-def test_memory_hazard_is_detected_before_true_epoch_readiness() -> None:
-    """An over-envelope child in initialization is a hazard, not "waiting"."""
+def test_over_envelope_occupancy_is_judged_before_true_epoch_readiness() -> None:
+    """An over-envelope child in initialization is judged, not "waiting"."""
 
     policy = TrainingConcurrencyPolicy(epoch_stabilization_seconds=0.0)
     controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
@@ -667,9 +667,101 @@ def test_memory_hazard_is_detected_before_true_epoch_readiness() -> None:
     sustained = controller.observe(
         _sample(70.0, 22.0, 3.0), active_jobs=1, epoch_active_jobs=0, now=70.0
     )
-    assert sustained.memory_hazard
+    # Q3/INV-1: one owned job is already the minimum executable concurrency, so
+    # there is no lower state to reach. The soft boundary holds admission; it
+    # does not terminate a feasible run.
+    assert not sustained.memory_hazard
+    assert not sustained.memory_backoff
     assert sustained.memory_safe is False
     assert "21.6 GiB training envelope" in sustained.reason
+    assert "minimum owned TRAIN2 concurrency" in sustained.reason
+    assert controller.target_jobs == 1, "live work must never be targeted away"
+
+
+def test_sustained_two_job_pressure_backs_off_instead_of_terminating() -> None:
+    """Q1/INV-2: concurrency 2 is disproven, the workload is not."""
+
+    policy = TrainingConcurrencyPolicy(
+        epoch_stabilization_seconds=0.0, stability_samples=4
+    )
+    controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
+    controller.target_jobs = 2
+    first = controller.observe(
+        _sample(1.0, 22.2, 85.0), active_jobs=2, epoch_active_jobs=2, now=1.0
+    )
+    sustained = controller.observe(
+        _sample(2.0, 22.2, 85.0), active_jobs=2, epoch_active_jobs=2, now=2.0
+    )
+    assert not first.memory_backoff, "one observation is only a candidate"
+    assert sustained.memory_backoff
+    assert not sustained.memory_hazard
+    assert sustained.memory_safe is False
+    assert sustained.target_jobs == 1
+    assert controller.effective_ceiling == 1
+    assert "backoff 2->1" in sustained.reason
+    assert "21.6 GiB training envelope" in sustained.reason
+
+
+def test_backoff_steps_one_level_at_a_time_from_three() -> None:
+    """Q2: 3 -> 2 needs its own evidence, and so does 2 -> 1."""
+
+    policy = TrainingConcurrencyPolicy(
+        epoch_stabilization_seconds=0.0, stability_samples=4
+    )
+    controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
+    controller.target_jobs = 3
+    controller.observe(
+        _sample(1.0, 22.2, 85.0), active_jobs=3, epoch_active_jobs=3, now=1.0
+    )
+    first = controller.observe(
+        _sample(2.0, 22.2, 85.0), active_jobs=3, epoch_active_jobs=3, now=2.0
+    )
+    assert first.memory_backoff and first.target_jobs == 2
+    assert controller.effective_ceiling == 2
+
+    # The new level must earn its own consecutive evidence; one observation at
+    # two jobs is not a second backoff.
+    candidate = controller.observe(
+        _sample(3.0, 22.2, 85.0), active_jobs=2, epoch_active_jobs=2, now=3.0
+    )
+    assert not candidate.memory_backoff
+    assert controller.effective_ceiling == 2
+    second = controller.observe(
+        _sample(4.0, 22.2, 85.0), active_jobs=2, epoch_active_jobs=2, now=4.0
+    )
+    assert second.memory_backoff and second.target_jobs == 1
+    assert controller.effective_ceiling == 1
+
+
+def test_a_disproven_concurrency_level_cannot_be_re_promoted() -> None:
+    """Q7/F4/INV-7: the effective ceiling is monotone downward."""
+
+    policy = TrainingConcurrencyPolicy(
+        epoch_stabilization_seconds=0.0, stability_samples=4
+    )
+    controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
+    controller.target_jobs = 2
+    controller.observe(
+        _sample(1.0, 22.2, 85.0), active_jobs=2, epoch_active_jobs=2, now=1.0
+    )
+    assert controller.observe(
+        _sample(2.0, 22.2, 85.0), active_jobs=2, epoch_active_jobs=2, now=2.0
+    ).memory_backoff
+    assert controller.effective_ceiling == 1
+
+    decision = None
+    for index in range(12):
+        second = 3.0 + index
+        decision = controller.observe(
+            _sample(second, 1.0, 5.0),
+            active_jobs=1,
+            epoch_active_jobs=1,
+            now=second,
+        )
+    assert decision is not None
+    assert decision.memory_safe is True
+    assert controller.target_jobs == 1, "an abundantly safe device cannot undo it"
+    assert "ceiling reached" in decision.reason
 
 
 def test_a_transient_vram_spike_does_not_stop_training() -> None:
@@ -772,24 +864,26 @@ def test_a_recovered_multi_job_sample_clears_the_unsafe_observation() -> None:
     ).memory_hazard, "the unsafe window restarts after a safe observation"
 
 
-def test_sustained_multi_job_over_envelope_occupancy_is_a_terminal_hazard() -> None:
-    """Two jobs over the envelope are cancelled, not left to reach CUDA OOM."""
+def test_a_transient_spike_at_two_jobs_does_not_demote_anything() -> None:
+    """Q5: a spike shorter than the persistence window is not a backoff."""
 
     policy = TrainingConcurrencyPolicy(
         epoch_stabilization_seconds=0.0, stability_samples=4
     )
     controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
     controller.target_jobs = 2
-    first = controller.observe(
-        _sample(1.0, 22.0, 85.0), active_jobs=2, epoch_active_jobs=2, now=1.0
+    spike = controller.observe(
+        _sample(1.0, 22.2, 85.0), active_jobs=2, epoch_active_jobs=2, now=1.0
     )
-    sustained = controller.observe(
-        _sample(2.0, 22.0, 85.0), active_jobs=2, epoch_active_jobs=2, now=2.0
+    recovered = controller.observe(
+        _sample(2.0, 12.0, 40.0), active_jobs=2, epoch_active_jobs=2, now=2.0
     )
-    assert not first.memory_hazard
-    assert sustained.memory_hazard
-    assert sustained.memory_safe is False
-    assert "21.6 GiB training envelope" in sustained.reason
+    assert not spike.memory_backoff and not spike.memory_hazard
+    assert not recovered.memory_backoff
+    assert controller.effective_ceiling == _plan(policy).maximum_jobs
+    assert not controller.observe(
+        _sample(3.0, 22.2, 85.0), active_jobs=2, epoch_active_jobs=2, now=3.0
+    ).memory_backoff, "the unsafe window restarts after a safe observation"
 
 
 def test_gpu_utilization_saturation_alone_stays_a_soft_replacement_throttle() -> None:

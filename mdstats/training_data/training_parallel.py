@@ -16,12 +16,19 @@ prerequisite for recognizing that current aggregate occupancy already exceeds
 the configured envelope.
 
 The configured VRAM fraction is therefore both the admission ceiling and the
-live aggregate safety envelope. One trustworthy observation at or above it
-blocks any further admission; it is rechecked once so an allocator fluctuation
-cannot stop a run, and persistence into the next normal control observation with
-owned work active is a hard memory hazard for the whole wave. Throttling future
-replacements cannot return memory that running jobs already hold, so it remains
-the response to GPU-utilization saturation only.
+live aggregate *soft* control boundary. One trustworthy observation at or above
+it blocks any further admission; it is rechecked once so an allocator
+fluctuation cannot stop a run. Persistence into the next normal control
+observation with more than one owned job active proves that *this concurrency*
+is unsafe, not that the workload is infeasible, so the controller retracts one
+prior admission: the effective ceiling falls by one level and the scheduler
+demotes its most recently admitted owned job. At one owned job there is no lower
+owned state to reach, so the same condition only holds admission; crossing the
+soft envelope is never by itself a terminal training failure.
+
+A disproven concurrency level is monotone downward for the life of the
+controller: the effective ceiling never rises again, so the same execution
+cannot oscillate back into a level live telemetry already falsified.
 
 Live memory observability is judged on the same cadence and fails closed: while
 work is active, a missing observation admits nothing, one isolated missing
@@ -71,10 +78,13 @@ class TrainingAdmissionBlockedError(TrainingResourceError):
 
 
 class TrainingMemorySafetyError(TrainingResourceError):
-    """Owned training stayed above the configured VRAM envelope.
+    """Owned training cannot be continued safely at the minimum concurrency.
 
     This is a resource stop taken before the device exhausts itself; it is not
-    an observed CUDA out-of-memory failure.
+    an observed CUDA out-of-memory failure. Crossing the soft aggregate envelope
+    with more than one owned job active is a backoff signal rather than this
+    failure: terminal memory infeasibility requires that no lower owned
+    concurrency state remains, or an independent authoritative hard condition.
     """
 
 
@@ -597,18 +607,24 @@ class ConcurrencyDecision:
     predicted_bytes_at_target: int | None
     predicted_utilization_percent_at_target: float | None
     # Memory safety is reported separately from promotion readiness above:
-    # whether current aggregate occupancy is inside the configured envelope
-    # (``None`` when no trustworthy sample exists), and whether that condition
-    # has persisted into the next normal control observation and therefore
-    # requires stopping owned work before CUDA exhausts the device. The two
-    # fields together name the terminal state: ``memory_hazard`` with a
-    # ``False`` ``memory_safe`` is a sustained envelope violation, while
-    # ``memory_hazard`` with an unknown ``memory_safe`` is sustained loss of the
-    # live memory observation that owning accelerator work depends on. Child
-    # liveness remains the supervisor's own ``active``/``epoch_active``
-    # accounting and is deliberately not duplicated into this record.
+    # whether current aggregate occupancy is inside the configured soft
+    # envelope (``None`` when no trustworthy sample exists), and whether owned
+    # work must stop outright. ``memory_hazard`` is reserved for conditions that
+    # no lower owned concurrency can resolve - today, sustained loss of the live
+    # memory observation that owning accelerator work depends on, which is why
+    # it always carries an unknown ``memory_safe``. A sustained *observed*
+    # envelope violation is a control signal instead: ``memory_backoff`` above
+    # one owned job, and a plain hold at one. Child liveness remains the
+    # supervisor's own ``active``/``epoch_active`` accounting and is
+    # deliberately not duplicated into this record.
     memory_safe: bool | None = None
     memory_hazard: bool = False
+    # Persistent soft-envelope pressure while more than one owned job is active.
+    # It disproves the current concurrency level, never the workload: the
+    # controller has already lowered its effective ceiling by one, and the
+    # scheduler must demote exactly one owned job and reclaim it. It is mutually
+    # exclusive with ``memory_hazard``.
+    memory_backoff: bool = False
 
 
 class AdaptiveTrainingConcurrency:
@@ -623,6 +639,11 @@ class AdaptiveTrainingConcurrency:
         self.plan = plan
         self.policy = policy
         self.target_jobs = int(plan.initial_jobs)
+        # Runtime control state only: the highest owned concurrency live
+        # telemetry has not yet disproven in this execution scope. It starts at
+        # the planned ceiling and is monotone downward, so a level a backoff
+        # already falsified can never be re-entered.
+        self.effective_ceiling = int(plan.maximum_jobs)
         now = time.monotonic()
         self.started_monotonic = now
         self.last_target_change = now
@@ -680,19 +701,36 @@ class AdaptiveTrainingConcurrency:
         """Admit no further TRAIN2 work from an unsafe or blind observation.
 
         Live work is never targeted away: with owned jobs running, the target
-        falls only to the live count, and the whole wave - never an arbitrarily
-        selected victim - is the cancellation unit if the condition persists.
-        With nothing owned there is no wave to cancel, so the target collapses to
-        zero only once the condition survives the bounded recheck, and the
-        scheduler's existing idle-queue rule then reports it as the typed
-        zero-safe admission failure. ``memory_safe`` on the returned decision is
-        what stops the scheduler admitting during the recheck itself.
+        falls only to the live count. Reducing that live count is the separate,
+        deterministic backoff transition above, which retracts exactly one prior
+        admission rather than cancelling the wave. With nothing owned there is
+        nothing to reduce, so the target collapses to zero only once the
+        condition survives the bounded recheck, and the scheduler's existing
+        idle-queue rule then reports it as the typed zero-safe admission
+        failure. ``memory_safe`` on the returned decision is what stops the
+        scheduler admitting during the recheck itself.
         """
 
         if active > 0:
             self.target_jobs = min(self.target_jobs, active)
         elif confirmed:
             self.target_jobs = 0
+
+    def _disprove_level(self, level: int, *, now: float) -> None:
+        """Record that owned concurrency ``level`` is unsafe in this scope.
+
+        The effective ceiling and the replacement target both fall to
+        ``level - 1`` and never rise again, so one observation lowers
+        concurrency by exactly one level and no later sample can promote back
+        into it.
+        """
+
+        reduced = max(0, int(level) - 1)
+        self.effective_ceiling = min(self.effective_ceiling, reduced)
+        self.target_jobs = min(self.target_jobs, self.effective_ceiling)
+        self.last_target_change = now
+        self._epoch_ready_since = None
+        self._samples.clear()
 
     def observe(
         self,
@@ -749,21 +787,45 @@ class AdaptiveTrainingConcurrency:
             self._samples.clear()
             confirmed = self._memory_unsafe
             self._memory_unsafe = True
-            self._close_admission(active, confirmed=confirmed)
-            terminal = confirmed and active > 0
             occupancy = (
                 f"aggregate VRAM {int(sample.used_bytes) / _GIB:.1f} GiB is at or "
                 f"above the {memory_budget / _GIB:.1f} GiB training envelope"
             )
+            if confirmed and active > 1:
+                # The envelope is a soft control boundary. Sustained pressure at
+                # this concurrency disproves the concurrency, so one prior
+                # admission is retracted and the level is closed for the rest of
+                # this execution. The unsafe window restarts from empty so the
+                # next level must earn its own consecutive evidence before it
+                # can be disproven in turn.
+                self._memory_unsafe = False
+                self._disprove_level(active, now=current_time)
+                return ConcurrencyDecision(
+                    previous,
+                    self.target_jobs,
+                    self.target_jobs != previous,
+                    f"backoff {active}->{active - 1}: {occupancy} across "
+                    "consecutive control observations; demoting the most "
+                    "recently admitted owned TRAIN2 job",
+                    None,
+                    int(sample.used_bytes),
+                    None,
+                    False,
+                    False,
+                    True,
+                )
+            self._close_admission(active, confirmed=confirmed)
+            # At one owned job there is no lower owned concurrency to reach, so
+            # the same evidence only holds admission: a soft-envelope crossing is
+            # never by itself a terminal training failure.
             return self._hold(
                 previous,
-                f"{occupancy} across consecutive control observations with "
-                f"{active} owned TRAIN2 job(s) active"
-                if terminal
+                f"{occupancy} across consecutive control observations at the "
+                "minimum owned TRAIN2 concurrency; holding admission"
+                if confirmed and active == 1
                 else occupancy,
                 None,
                 memory_safe=False,
-                memory_hazard=terminal,
             )
         self._memory_unsafe = False
 
@@ -861,10 +923,10 @@ class AdaptiveTrainingConcurrency:
             mean_used >= memory_budget
             or mean_util >= utilization_budget
         ):
-            self.target_jobs = min(self.target_jobs, active - 1)
-            self.last_target_change = current_time
-            self._epoch_ready_since = None
-            self._samples.clear()
+            # A calibrated level that is saturated on average is disproven for
+            # this execution scope, so the effective ceiling falls with the
+            # replacement target and cannot be re-entered.
+            self._disprove_level(active, now=current_time)
             limiting = []
             if mean_used >= memory_budget:
                 limiting.append("VRAM")
@@ -884,7 +946,7 @@ class AdaptiveTrainingConcurrency:
                 False,
             )
 
-        if self.target_jobs >= self.plan.maximum_jobs:
+        if self.target_jobs >= self.effective_ceiling:
             return self._hold(
                 previous,
                 "configured/resource concurrency ceiling reached",
@@ -899,7 +961,7 @@ class AdaptiveTrainingConcurrency:
                 memory_safe=memory_safe,
             )
 
-        candidate = min(self.plan.maximum_jobs, self.target_jobs + 1)
+        candidate = min(self.effective_ceiling, self.target_jobs + 1)
         stable_incremental_memory = max(0.0, mean_used - baseline_memory)
         stable_memory_per_job = max(1, math.ceil(stable_incremental_memory / active))
         memory_estimate = max(
