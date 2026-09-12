@@ -72,6 +72,7 @@ from .post_selection_execution import (
     DATASET_ROLE_CHECKPOINT_MONITOR,
     DATASET_ROLE_OUTER_EVALUATION,
     MacePostSelectionTrainer,
+    PostSelectionCancelledError,
     PostSelectionExecutionError,
     PostSelectionMaterialization,
     PostSelectionRunEvidence,
@@ -3183,6 +3184,12 @@ def _execute_post_selection_pending_runs(
         gpu_sample=initial_sample,
     )
     controller = AdaptiveTrainingConcurrency(concurrency_plan, concurrency_policy)
+    # The execution owner states its own observe-stop/terminate/reap bound; the
+    # scheduler never derives one, so an outer barrier cannot expire before the
+    # termination path it already authorized. An owner that declares none keeps
+    # sole authority over its stop duration and the barrier stays unbounded.
+    teardown_bound = getattr(context.trainer, "cancellation_teardown_seconds", None)
+    teardown_bound = None if teardown_bound is None else float(teardown_bound)
     telemetry_ref: dict[str, Any] = {"sample": initial_sample}
     # One cooperative stop signal per admitted slot. Backoff sets exactly one of
     # them; a terminal abort sets every one of them, which *is* the whole-wave
@@ -3350,14 +3357,20 @@ def _execute_post_selection_pending_runs(
         checkpoint/continuation authority - so it never increments the failed
         count and never publishes partial evidence.
 
+        What makes an outcome a demotion is the execution owner's explicit
+        cancellation result, never this scheduler's intent: a victim that
+        instead failed on its own authority stays a failure.
+
         The scheduler blocks here until the owned worker has actually returned.
         A future cancellation request is not CUDA teardown: only the worker's
         own completion establishes that the child process exited and its
         finalization ran, so no replacement admission or restart can be ordered
-        before that boundary.
+        before that boundary. How long that is allowed to take belongs to the
+        execution owner's termination contract, not to any control-loop or
+        liveness cadence.
         """
 
-        nonlocal completed_count, last_decision_reason
+        nonlocal completed_count, failed_count, last_decision_reason
         victim_future = next(reversed(active))
         victim = active[victim_future]
         before = len(active)
@@ -3378,31 +3391,38 @@ def _execute_post_selection_pending_runs(
             flush=True,
         )
         stop_events[victim.slot].set()
-        # Bounded by the existing owned-child liveness freshness policy rather
-        # than a new knob. The production child path terminates on a grace and
-        # always returns, so expiry here means owned TRAIN2 lifetime cleanup
-        # itself failed and no safe owned execution state can be re-established.
+        # Bounded only by the execution owner's own declared termination
+        # contract, which is the authority for how long its terminate/reap
+        # sequence may legitimately take. Expiry therefore means owned TRAIN2
+        # lifetime cleanup itself failed and no safe owned execution state can
+        # be re-established.
         _done, not_done = wait(
             (victim_future,),
-            timeout=float(concurrency_policy.epoch_activity_timeout_seconds),
+            timeout=teardown_bound,
             return_when=ALL_COMPLETED,
         )
         if not_done:
             raise TrainingMemorySafetyError(
-                f"Owned TRAIN2 slot {victim.slot} did not quiesce within "
-                f"{float(concurrency_policy.epoch_activity_timeout_seconds):.0f}s "
-                "of its demotion request, so its accelerator lifetime cannot be "
-                "confirmed released and no safe owned execution state can be "
-                "re-established."
+                f"Owned TRAIN2 slot {victim.slot} did not quiesce within the "
+                f"execution owner's own {teardown_bound:.1f}s child "
+                "termination/reaping bound after its demotion request, so its "
+                "accelerator lifetime cannot be confirmed released and no safe "
+                "owned execution state can be re-established."
             )
         active.pop(victim_future, None)
         stop_events.pop(victim.slot, None)
         with state_lock:
             states[victim.slot].update({"true_epoch": False, "phase": "demoted"})
         error = victim_future.exception()
-        if error is not None and not isinstance(error, Exception):
-            # An interrupt is never a resource demotion; it keeps the existing
-            # terminal path rather than being requeued as restartable work.
+        if error is not None and not isinstance(error, PostSelectionCancelledError):
+            # Asking a job to stop is not evidence that it raised *because* it
+            # was asked. Only the execution owner's explicit cancellation
+            # outcome is retractable resource work; a backend fault, a MACE
+            # nonzero exit, a CUDA failure, an interrupt or a programmer error
+            # that races the request keeps its own authority and escapes into
+            # the existing terminal path instead of being requeued. It is
+            # counted exactly as any other owned-job failure would be.
+            failed_count += 1
             raise error
         if error is None:
             # The worker reached its authenticated TRAIN2 summary before it

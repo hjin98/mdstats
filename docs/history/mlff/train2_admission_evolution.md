@@ -146,6 +146,37 @@ restarting the wave, unconditional serialization, an external watchdog or second
 scheduler, persisted hardware tuning state, and treating `Future.cancel()` as
 proof that CUDA state was reclaimed.
 
+## The fourth falsification: inferring cancellation from the request
+
+The first backoff implementation was correct about concurrency but wrong about
+two boundaries below it, both found in review before release.
+
+It read the demoted worker's outcome as "no exception means it finished first,
+any ordinary exception means my cancellation worked". That inference is invalid:
+a backend fault, a nonzero MACE exit, a CUDA allocation failure, or a programmer
+error that raced the stop request would have been silently reclassified as
+retryable resource work and returned to the pending queue - masking exactly the
+authoritative failures the admission invariants require to stay authoritative,
+and able to loop on a deterministic child defect. The correction narrows the
+existing execution contract instead of adding a classifier: the trainer raises
+an explicit cancellation outcome, a subclass of its own execution error, only
+after it has observed the requested stop and terminated and finalized its child.
+Only that outcome is requeueable; everything else keeps its own authority.
+
+It also used the child optimizer-activity freshness bound as the deadline for
+waiting on the demoted worker. Those are different meanings with different
+owners: the freshness bound is operator-tunable liveness tuning and legally
+zero, so a zero or short value could fail a healthy teardown and mislabel it a
+CUDA-lifetime defect. Process teardown duration belongs to the execution owner,
+so the trainer now declares its own observe-stop/terminate/reap bound from the
+poll interval and termination grace it already had, and the scheduler reads
+that. No new operator knob and no second termination policy were introduced.
+
+Both defects were one shape: resource adaptation, execution failure, and process
+lifetime had been allowed to share an interface meaning. What was rejected here:
+parsing the cancellation message, a parallel failure registry, a retry manager
+or watchdog, a new teardown timeout key, and weakening the falsification tests.
+
 ## Phase ownership
 
 The training scheduler previously submitted the whole fold lifecycle as one

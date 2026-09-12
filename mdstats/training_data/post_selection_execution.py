@@ -90,6 +90,19 @@ class PostSelectionExecutionError(PostSelectionError):
     """A post-selection execution owner refused to produce or accept evidence."""
 
 
+class PostSelectionCancelledError(PostSelectionExecutionError):
+    """A requested cooperative stop was observed and the owned child reaped.
+
+    This is the execution owner's *explicit* statement that the caller's own
+    cancellation request - not a backend fault, a nonzero MACE exit, a CUDA
+    allocation failure, or a programmer error - ended this attempt, and that it
+    ended through the normal child termination/finalization path. It is
+    therefore the only execution outcome a supervisor may treat as retractable
+    work rather than an execution failure: a supervisor's intent to stop a job
+    is never by itself evidence about why the job raised.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Fitted preparation (fold-local or final)
 # ---------------------------------------------------------------------------
@@ -1380,6 +1393,28 @@ class MacePostSelectionTrainer:
     timeout_seconds: float | None = None
     terminate_grace_seconds: float = 30.0
 
+    @property
+    def cancellation_teardown_seconds(self) -> float:
+        """This owner's own bound on observing a stop and reaping its child.
+
+        Worst case for one cooperative stop: up to one poll interval before the
+        supervision loop observes the request, then the escalating
+        SIGINT/SIGTERM/SIGKILL sequence of
+        ``_terminate_post_selection_process``, which waits the termination
+        grace after each of the first two signals before the unconditional
+        kill/reap, then one more poll interval for the cancellation
+        finalization to emit and return.
+
+        A supervisor that waits on this owner reads the bound from here so it
+        cannot expire before the termination path it already authorized. No
+        unrelated policy - in particular not optimizer-activity freshness -
+        owns this duration, and no second operator knob describes it.
+        """
+
+        poll = max(0.05, float(self.poll_interval_seconds))
+        grace = max(0.1, float(self.terminate_grace_seconds))
+        return 2.0 * poll + 2.0 * grace
+
     def __call__(self, request: PostSelectionRungRequest) -> Any:
         import os
         import subprocess
@@ -1785,7 +1820,7 @@ class MacePostSelectionTrainer:
                                 status="cancelled",
                                 force=True,
                             )
-                            raise PostSelectionExecutionError(
+                            raise PostSelectionCancelledError(
                                 "Post-selection MACE training was cancelled."
                             )
                         if self.minimum_free_disk_bytes is not None:
@@ -2621,6 +2656,7 @@ __all__ = [
     "POST_SELECTION_REPLAY_HEAD_NAME",
     "POST_SELECTION_TARGET_HEAD_NAME",
     "MacePostSelectionTrainer",
+    "PostSelectionCancelledError",
     "PostSelectionExecutionError",
     "PostSelectionFittedPreparation",
     "PostSelectionMaterialization",

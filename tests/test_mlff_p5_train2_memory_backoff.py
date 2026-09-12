@@ -95,7 +95,7 @@ def _cuda_cv_context(config: Path, harness):
         cfg,
         paths,
         store,
-        trainer=harness.train,
+        trainer=harness,
         inference_evaluator=harness.evaluate,
         admit=True,
     )[0]
@@ -141,9 +141,17 @@ class _OccupancyHarness(fx.PostSelectionHarness):
         sticky_pressure: bool = False,
         occupancy_gib_by_active: dict[int, float] | None = None,
         peak_jobs: int = 2,
+        failing_victim: bool = False,
+        teardown_delay_seconds: float = 0.0,
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
+        #: The demotion victim raises an unrelated authoritative failure at the
+        #: stop boundary instead of the owner's cancellation outcome.
+        self._failing_victim = bool(failing_victim)
+        #: How long the child takes to reap and finalize after observing its
+        #: stop, i.e. deliberately not instantaneous teardown.
+        self._teardown_delay_seconds = float(teardown_delay_seconds)
         #: Occupancy that does not fall back when concurrency does, i.e. the
         #: demoted worker's memory was not reclaimed.
         self._sticky_pressure = bool(sticky_pressure)
@@ -217,18 +225,34 @@ class _OccupancyHarness(fx.PostSelectionHarness):
                     )
                 if stop is not None and stop.is_set():
                     from mdstats.training_data.post_selection_execution import (
-                        PostSelectionExecutionError,
+                        PostSelectionCancelledError,
                     )
 
                     with self.lock:
                         self.stopped.append(identity)
-                    raise PostSelectionExecutionError(
+                    if self._teardown_delay_seconds > 0.0:
+                        # Real teardown is not instantaneous: the production
+                        # child is signalled, reaped, and finalized before the
+                        # owner returns its cancellation outcome.
+                        time.sleep(self._teardown_delay_seconds)
+                    if self._failing_victim:
+                        # An unrelated backend fault that races the stop
+                        # request. The owner did not produce a cancellation
+                        # outcome, so nothing about it is retractable work.
+                        raise RuntimeError(
+                            "mace backend crashed: libcudart.so relocation error"
+                        )
+                    raise PostSelectionCancelledError(
                         "Post-selection MACE training was cancelled."
                     )
                 with self.lock:
                     settled = (
                         self._peaked.is_set()
                         and self.active <= self.peak_jobs - 1
+                        # When the victim fails on its own authority there is no
+                        # resumed wave to settle into: every remaining child
+                        # stays live until the terminal path stops and reaps it.
+                        and not self._failing_victim
                     )
                 if settled and not victim:
                     break
@@ -644,11 +668,7 @@ def test_a_worker_that_never_quiesces_is_a_causal_terminal_memory_failure(
     )
     from mdstats.training_data.training_parallel import TrainingMemorySafetyError
 
-    config = _selected_campaign(
-        tmp_path,
-        execution=_FAST_CONTROL
-        + "\nparallel_training_epoch_activity_timeout_seconds = 0.5",
-    )
+    config = _selected_campaign(tmp_path, execution=_FAST_CONTROL)
 
     live = {"active": 0}
     lock = threading.Lock()
@@ -677,6 +697,11 @@ def test_a_worker_that_never_quiesces_is_a_causal_terminal_memory_failure(
         return _sample(used, 40.0)
 
     harness = _DeafHarness()
+    # The execution owner's own child termination/reaping bound, the same
+    # contract ``MacePostSelectionTrainer`` derives from its termination grace.
+    # A child that is still running after it has elapsed has violated the
+    # termination path the scheduler authorized.
+    harness.cancellation_teardown_seconds = 0.5
     _install_telemetry(monkeypatch, probe)
     context, store = _cuda_cv_context(config, harness)
     try:
@@ -688,3 +713,163 @@ def test_a_worker_that_never_quiesces_is_a_causal_terminal_memory_failure(
     message = str(stop.value)
     assert "did not quiesce" in message, message
     assert "accelerator lifetime cannot be confirmed released" in message, message
+    assert "execution owner" in message, (
+        "the teardown deadline must name the termination authority it came from"
+    )
+
+
+# --- 8. Demotion never reclassifies an independent child failure ----------
+
+
+def test_a_victim_that_fails_at_the_demotion_boundary_stays_a_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """B1: the scheduler's intent to stop a job is not evidence about why it raised.
+
+    Two owned jobs, persistent soft pressure, the most recently admitted job
+    selected for demotion - but that job then raises an unrelated backend
+    failure instead of the execution owner's cancellation outcome. Only the
+    explicit cancellation outcome is retractable resource work, so this failure
+    must keep its own authority.
+    """
+
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        execute_post_selection_cross_validation,
+    )
+
+    config = _selected_campaign(tmp_path, execution=_FAST_CONTROL)
+    harness = _OccupancyHarness(failing_victim=True)
+    _install_telemetry(
+        monkeypatch, lambda device: _sample(harness.occupancy_gib(), 40.0)
+    )
+
+    context, store = _cuda_cv_context(config, harness)
+    try:
+        with pytest.raises(RuntimeError, match="mace backend crashed"):
+            execute_post_selection_cross_validation(context)
+    finally:
+        store.close()
+
+    printed = capsys.readouterr().out
+    assert "backoff 2->1" in printed, printed
+
+    # 1. The failure propagated causally and was not requeued or retried.
+    victim = harness.order[1]
+    assert harness.attempts[victim] == 1, (
+        "an authoritative child failure at the demotion boundary was requeued"
+    )
+    assert harness.stopped[0] == victim
+
+    # 2. The terminal path, not the adaptation loop, owns the outcome: the
+    #    surviving owned job - which would otherwise still be running - was
+    #    signalled and reaped by the whole-wave cleanup.
+    survivor = harness.order[0]
+    assert harness.attempts[survivor] == 1
+    assert survivor in harness.stopped, (
+        "the terminal cleanup path did not stop and reap the remaining owned job"
+    )
+    assert (survivor, 1) in harness.windows
+    assert "status=failed" in printed, printed
+    assert "failed_jobs=1" in printed, printed
+
+    # 3. No acceptance was published from a failed wave.
+    cfg, paths, acceptance_store = fx.load_context(config)
+    try:
+        from mdstats.training_data.campaign_post_selection_runtime import (
+            build_post_selection_contexts,
+        )
+
+        contexts = build_post_selection_contexts(
+            cfg, paths, acceptance_store, trainer=None, inference_evaluator=None
+        )
+        assert resolve_current_cv_acceptance(contexts[0]) is None
+    finally:
+        acceptance_store.close()
+
+
+# --- 9. Teardown duration is not optimizer-liveness freshness --------------
+
+
+def test_backoff_survives_a_zero_optimizer_activity_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """B2: optimizer-progress freshness never bounds child teardown.
+
+    ``parallel_training_epoch_activity_timeout_seconds = 0`` is a legal
+    liveness-tuning value that makes every child's optimizer activity look
+    stale immediately. Teardown here is deliberately not instantaneous, so if
+    that number were still the demotion deadline the barrier would fail. The
+    demotion must instead complete through the execution owner's own
+    termination contract and requeue normally.
+    """
+
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        execute_post_selection_cross_validation,
+    )
+
+    config = _selected_campaign(
+        tmp_path,
+        execution=_FAST_CONTROL
+        + "\nparallel_training_epoch_activity_timeout_seconds = 0.0",
+    )
+    harness = _OccupancyHarness(
+        partial_stop_victim=True, teardown_delay_seconds=0.3
+    )
+    _install_telemetry(
+        monkeypatch, lambda device: _sample(harness.occupancy_gib(), 40.0)
+    )
+
+    context, store = _cuda_cv_context(config, harness)
+    try:
+        _plan, acceptance = execute_post_selection_cross_validation(context)
+    finally:
+        store.close()
+
+    printed = capsys.readouterr().out
+    assert "backoff 2->1" in printed, printed
+    assert "did not quiesce" not in printed, printed
+    victim = harness.order[1]
+    assert harness.stopped == [victim]
+    assert harness.attempts[victim] == 2, (
+        "a non-instantaneous cooperative teardown was rejected"
+    )
+    assert acceptance.accepted
+    assert len(harness.attempts) == 2
+
+
+def test_the_demotion_barrier_reads_only_the_execution_owner_contract() -> None:
+    """Structural: no liveness/control cadence can be the teardown deadline.
+
+    Runtime evidence cannot show the absence of a coupling, so the one
+    admissible deadline source is asserted directly on the owning source.
+    """
+
+    import inspect
+
+    from mdstats.training_data import campaign_post_selection_runtime as runtime
+    from mdstats.training_data.post_selection_execution import (
+        MacePostSelectionTrainer,
+    )
+
+    source = inspect.getsource(runtime.__dict__["_execute_post_selection_pending_runs"])
+    barrier = source.split("def demote_most_recently_admitted", 1)[1].split(
+        "def complete_eval2_for_trained_slots", 1
+    )[0]
+    for forbidden in (
+        "epoch_activity_timeout_seconds",
+        "monitor_interval_seconds",
+        "poll_interval",
+    ):
+        assert forbidden not in barrier, (
+            f"the demotion teardown barrier reuses {forbidden} as a deadline"
+        )
+    assert "teardown_bound" in barrier
+
+    # The bound is declared by the execution owner and cannot expire before its
+    # own escalating terminate/reap sequence.
+    trainer = MacePostSelectionTrainer(
+        wrapper_path=Path("unused"),
+        poll_interval_seconds=1.0,
+        terminate_grace_seconds=30.0,
+    )
+    assert trainer.cancellation_teardown_seconds >= 2.0 * 30.0

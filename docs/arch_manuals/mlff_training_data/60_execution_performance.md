@@ -457,12 +457,35 @@ finalization has run, and only then does it re-observe device occupancy and make
 the next scheduling decision. No replacement admission, requeue, or restart may
 be ordered before that boundary.
 
-A resource demotion is not a scientific run failure. The demoted task returns to
-the pending/restartable queue with its frozen slot identity, is not counted as a
-failed job, publishes no partial fold, and resumes later through the existing
-checkpoint/continuation authority rather than any retry identity or second
-checkpoint convention. Completed folds stay completed, and the planned folds
-still complete exactly once.
+How long that teardown may legitimately take is owned by the execution owner,
+not by any control-loop or liveness cadence. The trainer declares its own
+observe-stop/terminate/reap bound, derived from the poll interval at which it
+observes a stop request and the escalating termination grace it applies to its
+child; the scheduler reads that declared bound and can therefore never expire
+before the termination path it just authorized. Optimizer-activity freshness
+(`parallel_training_epoch_activity_timeout_seconds`) remains purely a child
+progress-liveness bound and has no authority over process teardown, so changing
+it cannot change resource-safety semantics. An execution owner that declares no
+bound keeps sole authority over its stop duration. Expiry of a declared bound is
+evidence about owned teardown itself: accelerator lifetime cannot be confirmed
+released, no safe owned execution state can be re-established, and that is a
+terminal resource stop.
+
+A resource demotion is not a scientific run failure, but only the execution
+owner may say that a demotion is what happened. The trainer reports an explicit
+cancellation outcome when - and only when - it observed the requested stop and
+terminated its child through the normal termination/finalization path; a
+supervisor's intent to stop a job is never evidence about why that job raised.
+On that explicit outcome the demoted task returns to the pending/restartable
+queue with its frozen slot identity, is not counted as a failed job, publishes
+no partial fold, and resumes later through the existing checkpoint/continuation
+authority rather than any retry identity or second checkpoint convention.
+Completed folds stay completed, and the planned folds still complete exactly
+once. Any other exception from a job selected for demotion - a backend fault, a
+nonzero MACE exit, a CUDA allocation failure, an interrupt, or a programmer
+error that races the stop request - keeps its own authority, is counted as a
+failed job, and ends the invocation through the terminal path instead of being
+requeued.
 
 A concurrency level that live telemetry has disproven lowers a scheduler-owned
 effective ceiling to one level below it for the rest of the current

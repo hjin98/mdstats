@@ -470,6 +470,23 @@ class PostSelectionHarness:
         #: metrics.  The toy trainer writes byte-identical logs, so the run's
         #: authenticated checkpoint locator is what distinguishes the runs.
         self.run_force_offsets = dict(run_force_offsets or {})
+        #: The execution owner's declared child termination/reaping bound, read
+        #: by a supervisor that waits on a cooperative stop. ``None`` is the
+        #: production default for a harness whose child always returns: the
+        #: owner keeps sole authority over its stop duration. A test that
+        #: injects a non-quiescing child sets it, exactly as
+        #: ``MacePostSelectionTrainer`` derives it from its own grace.
+        self.cancellation_teardown_seconds: float | None = None
+
+    def __call__(self, request):
+        """Be the execution owner object, not just its call.
+
+        Passing the harness itself as ``trainer`` keeps owner-level contracts
+        such as ``cancellation_teardown_seconds`` visible to supervisors the
+        same way the production trainer exposes them.
+        """
+
+        return self.train(request)
 
     def train(self, request):
         from mdstats.training_data.post_selection_execution import (
