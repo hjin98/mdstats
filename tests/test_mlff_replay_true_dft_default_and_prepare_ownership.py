@@ -2916,3 +2916,271 @@ def test_public_prepare_rejects_invalid_replay_topology_before_expensive_replay_
     # Asserts that neither foundation potential resolution nor target size cutover ran!
     assert expensive_calls == []
 
+
+# ---------------------------------------------------------------------------
+# B17 Replay Qualification Gate Exact Domain Falsification Tests
+# ---------------------------------------------------------------------------
+
+
+def test_replay_qualification_gate_minimum_count_fields_reject_coercions(tmp_path: Path):
+    """B17: minimum_train_configurations and minimum_monitor_configurations reject non-integers, floats, bools."""
+    import copy
+
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 6)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+
+    # Counterexample demonstration: old coercive implementation would accept 1.5 -> 1, True -> 1
+    assert int(1.5) == 1
+    assert int(True) == 1
+    assert int(False) == 0
+
+    invalid_counts = (1.5, 0.5, -1, -10, True, False, "100", "0", 1.0, None, object(), [10])
+
+    for field in ("minimum_train_configurations", "minimum_monitor_configurations"):
+        for val in invalid_counts:
+            test_cfg = copy.deepcopy(cfg)
+            test_cfg["replay"][field] = val
+            with pytest.raises(cli.CampaignCliError, match=f"{field}"):
+                cli._replay_qualification_gate_semantics(test_cfg)
+            with pytest.raises(cli.CampaignCliError, match=f"{field}"):
+                cli._replay_topology_preflight(test_cfg, paths)
+
+    # Valid canonical values preserve exact domains
+    cfg["replay"]["minimum_train_configurations"] = 100
+    cfg["replay"]["minimum_monitor_configurations"] = 20
+    gates = cli._replay_qualification_gate_semantics(cfg)
+    assert gates["minimum_train_configurations"] == 100
+    assert type(gates["minimum_train_configurations"]) is int
+    assert gates["minimum_monitor_configurations"] == 20
+    assert type(gates["minimum_monitor_configurations"]) is int
+
+    # Exact nonnegative zero count is supported
+    cfg["replay"]["minimum_train_configurations"] = 0
+    cfg["replay"]["minimum_monitor_configurations"] = 0
+    gates_zero = cli._replay_qualification_gate_semantics(cfg)
+    assert gates_zero["minimum_train_configurations"] == 0
+    assert gates_zero["minimum_monitor_configurations"] == 0
+
+
+def test_replay_qualification_gate_booleans_reject_non_booleans(tmp_path: Path):
+    """B17: allow_small_corpus, require_target_elements, allow_unspecified_label_provenance reject non-booleans."""
+    import copy
+
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 6)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+
+    # Counterexample demonstration: old bool(...) coercion would treat "false" as True!
+    assert bool("false") is True
+    assert bool("False") is True
+    assert bool(1) is True
+    assert bool(0) is False
+
+    invalid_bools = ("false", "true", "False", "True", 0, 1, -1, 1.0, 0.0, None, object(), [], {})
+
+    for field in (
+        "allow_small_corpus",
+        "require_target_elements",
+        "allow_unspecified_label_provenance",
+    ):
+        for val in invalid_bools:
+            test_cfg = copy.deepcopy(cfg)
+            test_cfg["replay"][field] = val
+            with pytest.raises(cli.CampaignCliError, match=f"{field}"):
+                cli._replay_qualification_gate_semantics(test_cfg)
+            with pytest.raises(cli.CampaignCliError, match=f"{field}"):
+                cli._replay_topology_preflight(test_cfg, paths)
+
+    # Valid boolean values preserve exact domains
+    cfg["replay"]["allow_small_corpus"] = True
+    cfg["replay"]["require_target_elements"] = False
+    cfg["replay"]["allow_unspecified_label_provenance"] = True
+    gates = cli._replay_qualification_gate_semantics(cfg)
+    assert gates["allow_small_corpus"] is True
+    assert gates["require_target_elements"] is False
+    assert gates["allow_unspecified_label_provenance"] is True
+
+
+def test_replay_qualification_gate_profile_all_atomic_numbers_validation(tmp_path: Path):
+    """B17: profile all_atomic_numbers rejects non-sequences, floats, bools, non-positive atomic numbers."""
+    import copy
+
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 6)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+
+    # Default profile all_atomic_numbers without explicit setting is empty tuple
+    test_cfg = copy.deepcopy(cfg)
+    test_cfg.get("profile", {}).pop("all_atomic_numbers", None)
+    gates_default = cli._replay_qualification_gate_semantics(test_cfg)
+    assert gates_default["target_atomic_numbers"] == ()
+
+    # Valid sequence of positive integers
+    test_cfg = copy.deepcopy(cfg)
+    test_cfg["profile"]["all_atomic_numbers"] = [14, 8, 11, 3]
+    gates = cli._replay_qualification_gate_semantics(test_cfg)
+    assert gates["target_atomic_numbers"] == (3, 8, 11, 14)
+
+    # Counterexample demonstration: int(True) is 1, int(1.5) is 1
+    for invalid in ("not_a_sequence", 14, [14, 8, 1.5], [14, True], [14, -1], [0]):
+        test_cfg = copy.deepcopy(cfg)
+        test_cfg["profile"]["all_atomic_numbers"] = invalid
+        with pytest.raises(cli.CampaignCliError, match="all_atomic_numbers"):
+            cli._replay_qualification_gate_semantics(test_cfg)
+        with pytest.raises(cli.CampaignCliError, match="all_atomic_numbers"):
+            cli._replay_topology_preflight(test_cfg, paths)
+
+
+def test_public_prepare_rejects_malformed_qualification_gates_before_expensive_work(
+    tmp_path: Path, monkeypatch
+):
+    """B17: public execute_current_prepare rejects malformed gates during preflight before model load/hash/cutover."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    _cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+
+    # Invalidate replay qualification gate via string-valued boolean replacing existing allow_small_corpus
+    orig_text = paths.config.read_text(encoding="utf-8")
+    assert "allow_small_corpus = false" in orig_text
+    paths.config.write_text(
+        orig_text.replace("allow_small_corpus = false", 'allow_small_corpus = "false"'),
+        encoding="utf-8",
+    )
+
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        cli._mark_stage(store, paths, "doctor", cli.StageState.COMPLETE, "doctor ok")
+    finally:
+        store.close()
+
+    expensive_calls = []
+
+    def spy_potential(*args, **kwargs):
+        expensive_calls.append("_resolved_foundation_potential_identity")
+        raise AssertionError("expensive potential resolution was called")
+
+    def spy_cutover(*args, **kwargs):
+        expensive_calls.append("ensure_current_target_size_authorities")
+        raise AssertionError("expensive target size cutover was called")
+
+    from mdstats.training_data import campaign_target_size_cutover as ctsc
+    from mdstats.training_data import campaign_target_size_runtime as ctsr
+
+    monkeypatch.setattr(cli, "_resolved_foundation_potential_identity", spy_potential)
+    monkeypatch.setattr(ctsc, "ensure_current_target_size_authorities", spy_cutover)
+
+    args = SimpleNamespace(
+        config=str(paths.config),
+        approve_manifest=False,
+        refresh_inferences=False,
+        continue_after_approval=False,
+    )
+
+    with pytest.raises(cli.CampaignCliError, match="allow_small_corpus"):
+        ctsr.execute_current_prepare(args)
+
+    # Asserts that neither foundation potential resolution nor target size cutover ran!
+    assert expensive_calls == []
+
+    # Also test float minimum_train_configurations rejects before expensive work
+    paths.config.write_text(
+        orig_text.replace(
+            "minimum_train_configurations = 1",
+            "minimum_train_configurations = 1.5",
+        ),
+        encoding="utf-8",
+    )
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        cli._mark_stage(store, paths, "doctor", cli.StageState.COMPLETE, "doctor ok")
+    finally:
+        store.close()
+
+    with pytest.raises(cli.CampaignCliError, match="minimum_train_configurations"):
+        ctsr.execute_current_prepare(args)
+    assert expensive_calls == []
+
+
+def test_replay_basis_and_qualify_replay_consume_same_normalized_gate_semantics(
+    tmp_path: Path, monkeypatch
+):
+    """B17: replay basis and _qualify_replay consume identical normalized gate semantics from canonical owner."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+
+    # Set specific canonical non-default values on disk and in memory; source has atomic number 1 (H)
+    orig_text = paths.config.read_text(encoding="utf-8")
+    new_text = (
+        orig_text.replace("minimum_train_configurations = 1", "minimum_train_configurations = 5")
+        .replace("minimum_monitor_configurations = 1", "minimum_monitor_configurations = 2")
+        .replace("allow_small_corpus = false", "allow_small_corpus = true")
+        .replace("all_atomic_numbers = [3, 8, 11, 13, 14, 19]", "all_atomic_numbers = [1]")
+    )
+    paths.config.write_text(new_text, encoding="utf-8")
+    cfg, paths = cli._load_config(paths.config)
+
+    # Both call _replay_qualification_gate_semantics(cfg) directly and consume the same normalized dict
+    expected_gates = cli._replay_qualification_gate_semantics(cfg)
+    assert expected_gates == {
+        "minimum_train_configurations": 5,
+        "minimum_monitor_configurations": 2,
+        "allow_small_corpus": True,
+        "require_target_elements": False,
+        "target_atomic_numbers": (1,),
+        "allow_unspecified_label_provenance": False,
+    }
+
+    basis = cli._single_source_replay_basis(cfg, paths)
+    assert basis["qualification_gates"] == expected_gates
+
+    # Set up plan and qualify replay
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        cli._prepare_single_source_replay(cfg, paths, store, command_replay_basis=basis)
+        _plan, summary, failures, _warnings = cli._qualify_replay(cfg, paths)
+        assert summary["minimum_train_configurations"] == 5
+        assert type(summary["minimum_train_configurations"]) is int
+        assert summary["minimum_monitor_configurations"] == 2
+        assert type(summary["minimum_monitor_configurations"]) is int
+        assert summary["allow_small_corpus"] is True
+        assert type(summary["allow_small_corpus"]) is bool
+        assert summary["atomic_numbers"] == [1]
+        assert not failures
+    finally:
+        store.close()
+
+
+from hypothesis import given, strategies as st
+
+
+@given(
+    st.one_of(
+        st.floats(allow_nan=False, allow_infinity=False).filter(lambda x: not x.is_integer()),
+        st.text(alphabet=st.characters(blacklist_categories=("Cs",))),
+        st.integers(max_value=-1),
+        st.booleans(),
+    )
+)
+def test_hypothesis_exact_count_gate_rejection(val):
+    """Property test using hypothesis: exact count fields reject non-exact nonnegative integers."""
+    cfg = {"replay": {"minimum_train_configurations": val}}
+    with pytest.raises(cli.CampaignCliError, match="minimum_train_configurations"):
+        cli._replay_qualification_gate_semantics(cfg)
+
+
+@given(
+    st.one_of(
+        st.text(alphabet=st.characters(blacklist_categories=("Cs",))),
+        st.integers(),
+        st.floats(allow_nan=False, allow_infinity=False),
+        st.none(),
+    )
+)
+def test_hypothesis_exact_bool_gate_rejection(val):
+    """Property test using hypothesis: exact boolean fields reject non-booleans."""
+    cfg = {"replay": {"allow_small_corpus": val}}
+    with pytest.raises(cli.CampaignCliError, match="allow_small_corpus"):
+        cli._replay_qualification_gate_semantics(cfg)
+

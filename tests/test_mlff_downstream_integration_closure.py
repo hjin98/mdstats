@@ -369,6 +369,10 @@ def test_single_source_replay_path_forms_reach_p5_and_relocate_path_free(
 
     relocated = home / "relocated-replay.extxyz"
     relocated.write_bytes(source.read_bytes())
+    paths.config.write_text(
+        paths.config.read_text(encoding="utf-8").replace(str(source), str(relocated)),
+        encoding="utf-8",
+    )
     relocated_cfg = json.loads(json.dumps(cfg))
     relocated_cfg["paths"]["replay_set"] = str(relocated)
     relocated_paths = cli.CampaignPaths.from_config(paths.config, relocated_cfg)

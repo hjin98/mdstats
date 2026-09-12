@@ -2842,24 +2842,63 @@ def _single_source_replay_config(cfg: Mapping[str, Any], paths: CampaignPaths) -
 
 def _replay_qualification_gate_semantics(cfg: Mapping[str, Any]) -> dict[str, Any]:
     """Extract canonical replay qualification gates from configuration."""
+
+    def _validate_gate_count(val: Any, name: str) -> int:
+        if isinstance(val, bool) or not isinstance(val, int):
+            raise CampaignCliError(
+                f"Replay qualification {name} must be an exact integer; got {val!r}."
+            )
+        if val < 0:
+            raise CampaignCliError(
+                f"Replay qualification {name} must be nonnegative; got {val!r}."
+            )
+        return int(val)
+
+    def _validate_gate_bool(val: Any, name: str) -> bool:
+        if not isinstance(val, bool):
+            raise CampaignCliError(
+                f"Replay qualification {name} must be an exact boolean; got {val!r}."
+            )
+        return val
+
+    raw_numbers = _cfg(cfg, "profile", "all_atomic_numbers", ())
+    if not isinstance(raw_numbers, (list, tuple, set)):
+        raise CampaignCliError(
+            f"Profile all_atomic_numbers must be a sequence of positive integers; got {raw_numbers!r}."
+        )
+    atomic_numbers: list[int] = []
+    for v in raw_numbers:
+        if isinstance(v, bool) or not isinstance(v, int):
+            raise CampaignCliError(
+                f"Profile all_atomic_numbers elements must be exact positive integers; got {v!r}."
+            )
+        if v <= 0:
+            raise CampaignCliError(
+                f"Profile all_atomic_numbers elements must be positive; got {v!r}."
+            )
+        atomic_numbers.append(int(v))
+
     return {
-        "minimum_train_configurations": int(
-            _cfg(cfg, "replay", "minimum_train_configurations", 100)
+        "minimum_train_configurations": _validate_gate_count(
+            _cfg(cfg, "replay", "minimum_train_configurations", 100),
+            "minimum_train_configurations",
         ),
-        "minimum_monitor_configurations": int(
-            _cfg(cfg, "replay", "minimum_monitor_configurations", 20)
+        "minimum_monitor_configurations": _validate_gate_count(
+            _cfg(cfg, "replay", "minimum_monitor_configurations", 20),
+            "minimum_monitor_configurations",
         ),
-        "allow_small_corpus": bool(
-            _cfg(cfg, "replay", "allow_small_corpus", False)
+        "allow_small_corpus": _validate_gate_bool(
+            _cfg(cfg, "replay", "allow_small_corpus", False),
+            "allow_small_corpus",
         ),
-        "require_target_elements": bool(
-            _cfg(cfg, "replay", "require_target_elements", True)
+        "require_target_elements": _validate_gate_bool(
+            _cfg(cfg, "replay", "require_target_elements", True),
+            "require_target_elements",
         ),
-        "target_atomic_numbers": tuple(
-            sorted(int(v) for v in _cfg(cfg, "profile", "all_atomic_numbers", ()))
-        ),
-        "allow_unspecified_label_provenance": bool(
-            _cfg(cfg, "replay", "allow_unspecified_label_provenance", False)
+        "target_atomic_numbers": tuple(sorted(set(atomic_numbers))),
+        "allow_unspecified_label_provenance": _validate_gate_bool(
+            _cfg(cfg, "replay", "allow_unspecified_label_provenance", False),
+            "allow_unspecified_label_provenance",
         ),
     }
 
@@ -2965,6 +3004,8 @@ def _replay_topology_preflight(cfg: Mapping[str, Any], paths: CampaignPaths) -> 
     """
 
     single = _single_source_replay_config(cfg, paths)
+    if single is not None or _configured_replay_source_present(cfg):
+        _replay_qualification_gate_semantics(cfg)
     if single is not None:
         replay_table = cfg.get("replay", {})
         if isinstance(replay_table, Mapping):
