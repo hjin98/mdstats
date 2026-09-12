@@ -47,9 +47,16 @@ Evaluation/verification and training windows SHALL be configured independently.
 
 ## 4. Resource admission
 
-CUDA starts with one job. The controller SHALL average aggregate VRAM use and GPU
-utilization over the mixed-stage window and project one additional job using
-observed growth, configured lower-bound per-job estimates, and safety margins.
+This section governs **evaluation/verification (inference) admission only**. TRAIN2
+admission is owned separately and does not share the serial floor below: CUDA
+training starts with one job only when one job is currently resource-admissible,
+and zero safe admission is a valid training execution state. See
+`docs/arch_manuals/mlff_training_data/60_execution_performance.md`.
+
+CUDA evaluation/verification starts with one job. The controller SHALL average
+aggregate VRAM use and GPU utilization over the mixed-stage window and project one
+additional job using observed growth, configured lower-bound per-job estimates,
+and safety margins.
 Projected VRAM and projected GPU utilization must both remain strictly below their
 90% ceilings.
 

@@ -58,6 +58,22 @@ foundation_model = "/path/to/mace-foundation.model"
 replay_set = "/path/to/replay.extxyz"
 ```
 
+The replay label policy is explicit in the generated file and defaults to the
+source DFT labels:
+
+```toml
+[replay]
+label_mode = "true_dft"
+```
+
+`true_dft` trains the replay head on the source labels and runs no foundation
+inference during `prepare`. `foundation_pseudolabel` is an explicit opt-in:
+`prepare` then owns one replay-wide foundation inference pass - potentially
+long and VRAM-heavy - and an independent TRUE_DFT monitor is still mandatory.
+Replay pseudo labels are never a silent fallback for missing source labels, and
+`prediction_batch_size`/`prediction_shard_size` are execution realization only:
+editing them never causes reinference.
+
 The generator exposes the current target-size policy explicitly:
 
 ```toml
@@ -151,6 +167,14 @@ and runtime checks pass. `doctor` records the manifest approval and the exact
 runtime realization used by later owners. A missing accelerator or unavailable
 long-production environment is reported as unavailable; it is not converted
 into a qualification pass.
+
+For a single-source replay campaign `doctor` validates replay prerequisites
+only. It does not build the prediction cache, run replay inference, or publish
+replay records, and it says so: prediction-dependent replay eligibility and
+qualification are deferred to `prepare`. If `doctor` is fast on a
+`foundation_pseudolabel` campaign, that is correct - the replay-wide inference
+pass belongs to `prepare`, which reports whether it reused an authenticated
+prediction cache, built a new one, or rebuilt an invalid one.
 
 ## 3. Prepare the current substrate
 

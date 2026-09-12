@@ -807,6 +807,89 @@ replay-retention requirement is inadmissible even when its target metric
 improves. Replay values receive no target-size ranking, tie-break, fold, or
 seed credit.
 
+### Replay label policy
+
+A campaign declares one external replay source and one canonical label policy.
+Omitting every label selector next to that source resolves to the source
+`TRUE_DFT` labels, and generated configuration states that default explicitly.
+Foundation pseudo-label replay is always an explicit opt-in; it is never a
+silent fallback for missing or incomplete source labels. Agreeing legacy
+compatibility spellings normalize to the same canonical choice, while
+conflicting or unsupported selectors, inexact split domains, mixed replay
+interfaces, and replay declarations incompatible with the resolved training
+method are rejected rather than defaulted.
+
+### Replay stage ownership
+
+Replay science has exactly one construction owner. `doctor` validates
+prerequisites - replay topology, source accessibility and label inventory, and,
+for explicit pseudo mode, the frozen foundation/head/runtime/acceleration
+realization - and constructs nothing: it runs no replay-wide prediction,
+creates no mode-specific materialization, and publishes no current replay
+record. Prediction-dependent eligibility, cardinality, and qualification are
+reported as deferred.
+
+`prepare` owns construction and reuse: source/index/true-label authentication,
+the foundation prediction cache and its qualification under explicit pseudo
+mode, the deterministic split, the training transport and the independent
+mandatory `TRUE_DFT` monitor, the post-qualification minimum counts, realized
+replay qualification, and retirement of the prepare-owned accelerator state
+before it returns. TRUE_DFT preparation performs zero foundation inference.
+Public `prepare` coordinates two independent preparation owners - target-size
+and replay - without merging them into one scientific generation, so a replay
+failure after target-size publication makes public prepare incomplete while
+the target-size generation stays valid.
+
+Post-selection consumers are scientific readers. Cross-validation, final
+production, restart/continuation, and representative re-evaluation authenticate
+the published replay authority; none of them may build foundation predictions,
+requalify under a changed policy, or create a scientific split. They may
+reconstruct only disposable representations - a source byte index, a role view,
+a transport receipt - from parents that are already authenticated, and missing
+required prediction values route to `prepare`.
+
+### Current replay records and external input stability
+
+Current replay records are one exact interface- and mode-appropriate alias set,
+published atomically after the filesystem products exist. Switching pseudo/true
+mode, and switching between single-source, no replay, and supported legacy
+split-file replay, retires the aliases that no longer belong in the same short
+transaction. Physical content-addressed caches, materialized views, and
+immutable evidence are left to their own owners and are never deleted to tidy
+the mutable current namespace. The long build never holds the campaign-state
+writer lock, and a stale builder that finishes after a newer `prepare` cannot
+overwrite the newer current authority.
+
+The replay source is external mutable input. A content check taken before a
+long streaming operation proves only what the file was then, so every frame
+consumed during replay construction reproduces its authenticated canonical
+geometry identity before any dependent prediction or materialized row is
+recorded under it, and the whole source is re-authenticated once more before
+prepared aliases become current. A mid-build geometry mutation therefore cannot
+leave a prediction cache that later validates for the old geometry set. A
+same-key cold prediction build is single-flight: two concurrent prepares
+produce exactly one foundation-inference owner, and the internally constructed
+provider has exactly one terminal retirement owner across success, failure,
+ownership transfer, and catchable cancellation.
+
+### What is not replay scientific identity
+
+Canonically equivalent configuration spelling and execution/storage realization
+are not scientific identity. An omitted TRUE_DFT mode and an explicit
+`label_mode = "true_dft"` are one preparation identity. Prediction batch width,
+physical shard size, graph-cache locator/layout, progress reporting, and a
+process-local learned OOM-safe batch never trigger foundation reinference and
+never change replay or post-selection lineage. An identical-byte source
+relocation is an operational rebind, not a scientific change. A genuine
+effective-mode, source-content, prediction-policy, qualification, or split
+change does change lineage.
+
+For explicit pseudo mode, a source mutation that changes only `TRUE_DFT` labels
+while geometry is unchanged preserves the valid foundation predictions, their
+qualification, and the split, and refreshes the independent mandatory
+`TRUE_DFT` monitor on its own. Replay lineage then changes, so the dependent
+cross-validation and final-production evidence becomes historical.
+
 ## Monitoring and checkpoint choice
 
 The common target monitor is development/model-selection evidence. It supplies
@@ -986,8 +1069,26 @@ never rewrites its authorizing plan.
 CV freezes each fold representative on its authorized target monitor before
 evaluating the held-out fold. A required fold or seed failure is a
 methodological failure: it leaves the frozen design and its evidence unchanged
-and does not authorize final production. A materially different method requires
-a new target-size experiment because the measured method has changed.
+and does not authorize final production.
+
+A materially different *target* method or population requires a new target-size
+experiment, because the quantity the screen measured has changed. The current
+target-size screen is target-only and carries no replay exposure, so this is
+not a rule that every downstream method change regenerates the target-size
+experiment: a replay-only method or lineage change leaves the prepared
+generation, the screen evidence, the provisional selection, and the frozen
+collection intact, and instead makes the post-selection descendants that
+measured the old replay lineage historical, requiring new cross-validation
+under the same frozen target collection.
+
+Public status reflects that separation. A binding-keyed post-selection or
+qualification pointer survives a replay-only change because the target binding
+is unchanged, so pointer existence is not currentness: current status checks
+that the pointed descendants still bind the replay lineage that is current now.
+The target revision, the compact current replay lineage, and every P5/P7
+pointer row are read in one coherent observation snapshot, so a concurrent
+publication cannot produce a status combination that never existed. Nothing is
+deleted to make status correct.
 
 Campaign-level acceptance is all-sizes. Cross-validation is accepted only when
 every frozen size is accepted, and final production admits no new run for any
@@ -1756,6 +1857,67 @@ expansion. Soft utilization and fractional-VRAM envelopes regulate additional
 jobs, while a hard live-VRAM guard protects against OOM. Missing telemetry at
 calibration startup selects conservative serial execution when the device is
 otherwise usable; it does not create parallel evidence.
+
+Training admission additionally recognizes infeasibility. CUDA training starts
+with one job only when one job is currently resource-admissible; zero safe
+admission is a valid execution state rather than a floor to be rounded up.
+Current aggregate occupancy counts regardless of which process owns it, a
+configured minimum concurrency is subordinate to current feasibility, and a
+positive configured job count is a maximum cap rather than launch permission.
+Pending training work with an idle queue and no feasible slot resolves to an
+explicit resource failure, not a launch or a wait. Device availability and
+memory observability are separate facts, and absent a trustworthy current memory
+observation automatic training admission is blocked. Memory safety is evaluated
+on every trustworthy sample independently of optimizer/epoch calibration
+readiness, which remains the prerequisite only for estimating scalable demand.
+A training slot owns training lifetime alone; post-training evaluation must not
+inherit a training slot. The evaluation/inference controller keeps its own
+accepted serial-floor calibration contract, which these training rules do not
+replace.
+
+For training, the configured `training_gpu_memory_fraction` is the admission
+ceiling *and* the live aggregate safety envelope, not merely a promotion
+preference. One trustworthy observation at or above that envelope immediately
+blocks any further admission or promotion at every active-job count. That single
+observation is only a candidate hazard: it may be rechecked once so an allocator
+fluctuation does not stop a run. If the next normal control observation is still
+at or above the envelope while any owned training job is active, the wave is a
+hard memory hazard and the whole training wave - never an arbitrarily selected
+victim job - is cancelled and reaped. Throttling future replacements cannot
+return memory that running jobs already hold, so it is not an admissible
+response to a sustained envelope violation. GPU-utilization saturation stays
+soft: while memory itself remains inside the envelope, saturation only lowers
+the replacement target and never stops running work.
+
+Live memory observability is a precondition for continuing to own accelerator
+work, not merely for promoting it. While training is active, a missing current
+memory observation admits and promotes nothing. One isolated missing observation
+is tolerated only when the immediately preceding trustworthy observation was
+safe; a second consecutive control observation without a trustworthy sample, or
+a lost observation immediately after an unsafe one - where recovery can no
+longer be established - is a terminal resource-observability failure for the
+current training wave. A later invocation retries normally once observability is
+restored. This is expressed in the existing control loop; no second telemetry
+thread, monitor daemon, or persisted observability state is introduced, and the
+bounded transient tolerance is controller-local rather than operator
+configuration.
+
+Any exception escaping the training scheduling wave ends the invocation. It
+stops new admission, signals cancellation, reaps every owned active child
+through the existing supervision path, and is re-raised before any post-training
+evaluation begins - including for previously completed sibling slots. A device
+whose training state is unknown or already unsafe must not receive fresh
+accelerator work in the same invocation. Progress is not lost: authenticated
+training summaries and their materializations remain durable restartable state,
+and the next healthy invocation resumes outstanding training/evaluation work
+through the ordinary continuation path. No out-of-memory stderr classifier,
+retry database, or alternate handoff record is involved.
+
+A transient architecture or classification realization is not training. A
+temporary accelerator model built to answer a recovery or currentness question
+is retired at its own ownership boundary, including on failure paths, so it
+cannot contribute residency to the baseline a later admission decision is
+measured against.
 
 An execution controller may lower concurrency after measured resource pressure,
 but it cannot change scientific batch/exposure semantics, precision policy,

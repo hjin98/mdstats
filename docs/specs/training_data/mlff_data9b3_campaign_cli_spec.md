@@ -138,6 +138,17 @@ resources. A successful result records the exact runtime realization used by
 later owners. Unsupported hardware or unavailable long-production resources
 remain an explicit unavailable/deferred condition, never a fabricated pass.
 
+For the current single-source replay interface `doctor` validates prerequisites
+only. It must not call the replay-wide prediction-cache builder, perform replay
+pseudo inference, run prediction-dependent pseudo qualification, create
+mode-specific train/monitor materializations, or publish any current
+single-source replay alias. Its report states that prediction-dependent
+eligibility, cardinality, and qualification are deferred to `prepare`, and
+`replay_plan_doctor` is retired from current single-source use rather than
+reused with weaker semantics. Supported legacy split-file replay keeps its
+existing doctor-owned realized qualification, which is realizable under that
+contract without constructing anything.
+
 ### `prepare`
 
 `prepare` authenticates the manifest and constructs/reuses the current neutral
@@ -156,6 +167,27 @@ inputs and identities match, including when the current generation already
 carries a complete automatic diagnostic: an unchanged `prepare` is a successful
 no-op that leaves the canonical generation, its diagnostic evidence, and its
 derived result view exactly as they were.
+
+`prepare` also owns replay construction and reuse. Before any expensive work it
+runs the cheap canonical replay configuration/topology validation, so a
+conflicting or unsupported label selector, an inexact split domain, a mixed
+replay interface, or a replay declaration incompatible with the resolved
+training method is rejected at entry. TRUE_DFT preparation authenticates the
+source/index/true-label basis, builds or reuses the deterministic split,
+materializes and authenticates the required transports, and performs zero
+foundation inference. Explicit pseudo preparation additionally resolves the
+current foundation prediction policy, builds or reuses the prediction cache
+under a same-key single-flight fence, qualifies the cached predictions,
+materializes the pseudo training transport and the independent TRUE_DFT
+monitor, enforces the post-qualification minimum counts, and retires its
+accelerator owner before returning. It then publishes exactly one interface-
+and mode-appropriate current replay alias set - including realized replay
+qualification - in one transaction, retiring every inapplicable alias.
+
+`prepare` is COMPLETE only when every configured preparation prerequisite for
+that invocation is current and authenticated. A replay failure after the
+target-size generation is published makes public `prepare` incomplete without
+rolling back the independently valid target-size generation.
 
 `prepare` is the sole command permitted to interpret live inputs, so it also
 owns detecting that they changed. Before reusing the stored lower-level
@@ -470,6 +502,17 @@ protected relations, unsupported policy generation, stale current pointers,
 missing required folds/seeds, corrupt checkpoint/companion state, no admissible
 checkpoint, target-size lineage mismatch, incompatible persisted state, or a
 currentness race at publication.
+
+Replay adds the same fail-closed discipline: conflicting or unsupported replay
+label selectors, inexact replay split-domain values, mixed replay interfaces, a
+replay declaration incompatible with the resolved training method, a replay
+frame that does not reproduce its authenticated canonical geometry identity
+during a long read, a replay source mutated before prepared aliases become
+current, a prepared replay authority that no longer matches the declared replay
+semantics or the source/foundation bytes on disk, and a stale replay builder
+losing a publication race are all errors rather than silent reinterpretation.
+Missing required replay prediction state routes to `prepare` and is never
+rebuilt by a post-selection consumer.
 
 Keyboard interruption returns the parser's documented interruption status and
 states that authenticated records remain resumable. Errors identify the owning

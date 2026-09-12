@@ -41,3 +41,17 @@ Archived in this closeout:
 - the cycle-local `CURRENT_IMPLEMENTATION_ENTRYPOINT.md` and `CONSOLIDATION_NOTICE.md`.
 
 The final review accepted the revised serial-size oracle because the frozen architecture requires only the outer selected-size dimension to remain serial while allowing the existing scheduler inside each selected size. Historical REPLAY-UNIFY1A/1E tests that require superseded current-manual/current-graph revision/schema text are not current P5 acceptance authority. Production-scale GPU/CuEq/LAMMPS/MLIAP qualification remains deferred to the complete final release package.
+
+## 2026-09-12 replay TRUE_DFT default / pseudolabel PREP / CUDA lifetime closeout
+
+Independent Software Design and Implementation review closed the replay TRUE_DFT default, pseudolabel prepare stage ownership, and CUDA lifetime repair cycle under SSDP Protocol 6.2. All blockers (B1 through B19) were closed: exact qualification-gate validation (B17), cheap-preflight ordering, provider retirement lifecycle (B1), and the qualification observation regression suite (`tests/test_mlff_qualification_status_observation.py`, B19) were verified on the candidate host. The executable realization remains candidate `eb3221397457b5cf374298c4b4979e1e1d0c0c96` (tree `2bc60f52d6eba36f65a25d2f6aa28cf96975a43e`), with 320/320 functional acceptance tests passing alongside target-host E1/E2 CUDA lifetime proofs.
+
+Archived in this closeout:
+
+- `MLFF_REPLAY_TRUE_DFT_DEFAULT_PSEUDOLABEL_PREP_AND_CUDA_LIFETIME_REPAIR_WORKPLAN.md`;
+- `MLFF_REPLAY_TRUE_DFT_DEFAULT_PSEUDOLABEL_PREP_AND_CUDA_LIFETIME_REPAIR_FIRST_REVIEW_REOPEN.md`;
+- `MLFF_REPLAY_TRUE_DFT_DEFAULT_PSEUDOLABEL_PREP_AND_CUDA_LIFETIME_REPAIR_SECOND_REVIEW_REOPEN.md`;
+- `MLFF_REPLAY_TRUE_DFT_DEFAULT_PSEUDOLABEL_PREP_AND_CUDA_LIFETIME_REPAIR_THIRD_REVIEW_REOPEN.md`;
+- `MLFF_REPLAY_TRUE_DFT_DEFAULT_PSEUDOLABEL_PREP_AND_CUDA_LIFETIME_REPAIR_FOURTH_REVIEW_REOPEN.md`;
+- `MLFF_REPLAY_TRUE_DFT_DEFAULT_PSEUDOLABEL_PREP_AND_CUDA_LIFETIME_REPAIR_FIFTH_REVIEW_REOPEN.md`;
+- `MLFF_REPLAY_TRUE_DFT_DEFAULT_PSEUDOLABEL_PREP_AND_CUDA_LIFETIME_REPAIR_SIXTH_REVIEW_REOPEN.md`.

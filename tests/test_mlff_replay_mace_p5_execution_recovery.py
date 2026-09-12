@@ -200,6 +200,15 @@ if claim is not None:
         owner = True
     if owner:
         time.sleep({float(pre_train_sleep)!r})
+        # Representative CUDA-OOM text on the child's stderr. The parent must
+        # reach the same outcome without classifying it: production owns no OOM
+        # stderr parser.
+        print(
+            'torch.OutOfMemoryError: CUDA out of memory. Tried to allocate '
+            '646.00 MiB. GPU 0 has a total capacity of 24.00 GiB',
+            file=sys.stderr,
+            flush=True,
+        )
         raise SystemExit(37)
     try:
         while True:
@@ -526,6 +535,7 @@ def test_real_p5_process_failure_stops_admission_and_reaps_sibling(
     assert len(started) == 2
     assert cancelled
     assert not completed
+    assert not evaluator.evaluations, "no EVAL2 may follow a failed TRAIN wave"
     post_selection_root = Path(paths.state_db).parent / "post-selection"
     assert not list(post_selection_root.rglob(runtime.FOLD_ACCEPTANCE_FILENAME))
     assert not list(post_selection_root.rglob(runtime.RUN_EVIDENCE_FILENAME))

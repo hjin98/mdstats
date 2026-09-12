@@ -1387,6 +1387,7 @@ class MacePostSelectionTrainer:
         import yaml
 
         from ._common import sha256_file_cached
+        from .precision_runtime import MACE_RESTART_EPOCH_ENVIRONMENT_VARIABLE
         from .train2_runtime import (
             TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE,
             TRAIN2_TRUE_REPLAY_PATH_ENVIRONMENT_VARIABLE,
@@ -1698,8 +1699,16 @@ class MacePostSelectionTrainer:
             "--results_dir",
             str(run_root / "results"),
         ]
+        if int(request.start_epoch) > 0:
+            command.append("--restart_latest")
 
         env = dict(os.environ)
+        if int(request.start_epoch) > 0:
+            env[MACE_RESTART_EPOCH_ENVIRONMENT_VARIABLE] = str(
+                int(request.start_epoch) - 1
+            )
+        else:
+            env.pop(MACE_RESTART_EPOCH_ENVIRONMENT_VARIABLE, None)
         env[MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE] = (
             mace_execution_authority_to_environment(authority)
         )

@@ -525,63 +525,38 @@ def _resolve_post_selection_replay_resolution(
             "Replay-enabled post-selection requires configured campaign paths."
         )
     from ._campaign_cli_core import (
+        CampaignCliError,
         _build_replay_plan,
         _resolve_true_label_replay_inputs,
         _single_source_replay_context,
+        _single_source_replay_config,
     )
     from .replay import ReplayLabelMode, ReplayMode
 
-    single_ctx = _single_source_replay_context(context.cfg, context.paths)
-    if single_ctx is not None:
-        plan = single_ctx.get("plan")
-        true_resolution = single_ctx.get("true_resolution")
-        if plan is None or true_resolution is None:
+    # Post-selection is a scientific *read*.  The current single-source
+    # interface is resolved through the authenticated published authority, which
+    # cannot build foundation predictions, requalify under a changed policy, or
+    # create a scientific split; a missing or stale scientific parent routes to
+    # `prepare` instead of being rebuilt here.
+    if _single_source_replay_config(context.cfg, context.paths) is not None:
+        try:
+            single_ctx = _single_source_replay_context(context.cfg, context.paths)
+        except CampaignCliError as exc:
             raise PostSelectionError(
-                "Single-source replay did not produce both training and TRUE_DFT "
-                "monitor authorities."
-            )
-        training_artifact = getattr(plan, "train_artifact", None)
-        if training_artifact is None:
+                f"Single-source replay authority is not current for post-selection: {exc}"
+            ) from exc
+        if single_ctx is None:
             raise PostSelectionError(
-                "Single-source replay did not produce a canonical training artifact."
+                "Single-source replay is configured but no prepared replay "
+                "authority could be authenticated; run `prepare`."
             )
-        training_path = getattr(training_artifact, "path", None)
-        if training_path is None:
+        try:
+            return PostSelectionReplayResolution(**dict(single_ctx["resolution_fields"]))
+        except KeyError as exc:
             raise PostSelectionError(
-                "Single-source replay training artifact does not identify its source file."
-            )
-        monitor_artifact = getattr(true_resolution, "monitor_artifact", None)
-        monitor_path = getattr(true_resolution, "monitor_path", None)
-        if monitor_artifact is None or monitor_path is None:
-            raise PostSelectionError(
-                "Single-source replay did not produce an independent TRUE_DFT "
-                "monitor artifact."
-            )
-        source_art = single_ctx["source"]
-        split_manifest = single_ctx["split"]
-        train_geometry_set = set(split_manifest.train_geometry_identities)
-        return PostSelectionReplayResolution(
-            interface="single_source",
-            train_path=str(training_path),
-            monitor_path=str(monitor_path),
-            train_artifact=training_artifact,
-            monitor_artifact=monitor_artifact,
-            training_label_mode=getattr(training_artifact, "label_mode", None),
-            true_label_mode=getattr(monitor_artifact, "label_mode", None),
-            source_path=str(source_art.path),
-            source_content_digest=source_art.content_digest,
-            source_sha256=source_art.sha256,
-            split_manifest_digest=split_manifest.content_digest,
-            # The materializer writes source-index order. Preserve that order
-            # from the already-authenticated source authority so the child can
-            # compare its loaded Configuration sequence without reparsing the
-            # replay view or treating the split-rank order as transport order.
-            replay_geometry_identities=tuple(
-                identity
-                for identity in source_art.geometry_identities
-                if identity in train_geometry_set
-            ),
-        )
+                "Prepared single-source replay did not provide a complete "
+                f"post-selection resolution: {exc}."
+            ) from exc
 
     # Legacy split replay has one canonical training plan and a separate true
     # label resolver.  In particular, asking the latter for a TRUE_DFT train
@@ -922,12 +897,20 @@ def execute_post_selection_run(
     progress_callback: Callable[[str], None] | None = None,
     progress_observer: Callable[[Mapping[str, Any]], None] | None = None,
     telemetry_ref: Any | None = None,
-) -> tuple[PostSelectionRunEvidence, Any, Any]:
+    stop_after_training: bool = False,
+) -> tuple[PostSelectionRunEvidence, Any, Any] | None:
     """Run one post-selection job end to end and return its bound evidence.
 
     Order matters and is enforced by construction: the representative is frozen
     from the run's own monitor before the held-out outer data is evaluated at
     all, so outer evidence cannot influence the checkpoint it judges.
+
+    ``stop_after_training`` ends the call at the authenticated TRAIN2 summary
+    and returns ``None``. That summary and its materialization are already
+    durable, so a later call with the same arguments resumes through the
+    existing continuation path and performs EVAL2 without retraining. The TRAIN
+    scheduler uses this so one training slot owns TRAIN2 accelerator lifetime
+    only and never carries post-TRAIN EVAL2 work.
     """
 
     run_root = context.run_root(run_plan.run_identity)
@@ -945,6 +928,7 @@ def execute_post_selection_run(
             progress_callback=progress_callback,
             progress_observer=progress_observer,
             telemetry_ref=telemetry_ref,
+            stop_after_training=stop_after_training,
         )
 
 
@@ -1396,22 +1380,36 @@ def _post_selection_current_training_architecture(
     realizes the current frozen configuration through the existing MACE model
     and CuEq/OEq conversion owners; it creates no restart or architecture
     record of its own.
+
+    Classification is not training. The temporary portable and CuEq/OEq models
+    are model-scale accelerator owners, so they are retired here - including on
+    the conversion/digest exception paths - rather than left to function-scope
+    collection. Otherwise recovery preflight would silently contribute its own
+    residency to the baseline that TRAIN2 admission is later measured against.
     """
 
     from .model_features import (
         build_mace_model_from_configuration,
         mace_model_execution_architecture_digest,
         realize_mace_training_model,
+        release_mace_accelerator_residency,
     )
 
-    portable_model = build_mace_model_from_configuration(
-        current_config,
-        foundation_model_path=context.method_policies.foundation_model,
-    )
-    training_model, realization = realize_mace_training_model(
-        portable_model, current_config
-    )
-    return mace_model_execution_architecture_digest(training_model), realization
+    portable_model = None
+    training_model = None
+    try:
+        portable_model = build_mace_model_from_configuration(
+            current_config,
+            foundation_model_path=context.method_policies.foundation_model,
+        )
+        training_model, realization = realize_mace_training_model(
+            portable_model, current_config
+        )
+        return mace_model_execution_architecture_digest(training_model), realization
+    finally:
+        training_model = None
+        portable_model = None
+        release_mace_accelerator_residency()
 
 
 def _validate_post_selection_materialization_artifacts(
@@ -1904,7 +1902,8 @@ def _execute_post_selection_run_locked(
     progress_callback: Callable[[str], None] | None = None,
     progress_observer: Callable[[Mapping[str, Any]], None] | None = None,
     telemetry_ref: Any | None = None,
-) -> tuple[PostSelectionRunEvidence, Any, Any]:
+    stop_after_training: bool = False,
+) -> tuple[PostSelectionRunEvidence, Any, Any] | None:
     """The run body, executed while this run root's activity lease is held."""
 
     from ._campaign_cli_core import _cfg
@@ -2068,6 +2067,12 @@ def _execute_post_selection_run_locked(
         raise PostSelectionExecutionError(
             "The TRAIN2 runtime summary does not belong to this run's runtime plan."
         )
+
+    if stop_after_training:
+        # TRAIN2 ownership ends here. The authenticated summary, checkpoints,
+        # and materialization are the durable boundary; no additional handoff
+        # record is created, and an interruption before EVAL2 resumes from them.
+        return None
 
     catalog, representative, monitor_metrics = evaluate_post_selection_run_candidates(
         context,
@@ -3050,6 +3055,26 @@ def _post_selection_training_concurrency_policy(
     )
 
 
+def _report_post_selection_gpu_occupancy(
+    stage: str, device: str, sample: Any
+) -> None:
+    """Print one aggregate GPU occupancy observation at a named boundary.
+
+    Aggregate occupancy is authoritative for admission regardless of which
+    process owns it. This is diagnostics only and carries no completion or
+    scientific authority.
+    """
+
+    if not str(device).startswith("cuda"):
+        return
+    observed = (
+        "unavailable"
+        if sample is None
+        else str(sample.summary()).replace(";", ",")
+    )
+    print(f"[TRAIN scheduler] occupancy at {stage}: {observed}", flush=True)
+
+
 def _preflight_post_selection_pending_runs(
     context: PostSelectionContext,
     *,
@@ -3095,6 +3120,12 @@ def _execute_post_selection_pending_runs(
     canonical run plan and classified reusable evidence. This function owns
     admission and supervision, but it never reorders or ranks the returned
     scientific evidence: callers reduce results by the frozen slot number.
+
+    One scheduler slot corresponds to TRAIN2 ownership only. Post-TRAIN EVAL2
+    runs afterwards through the same run path, so a fold entering EVAL2 can
+    never hold accelerator memory while an independently admitted TRAIN2 child
+    is still active, and the scheduler's VRAM telemetry window describes TRAIN2
+    rather than a mixed TRAIN/EVAL phase.
     """
 
     if not pending:
@@ -3108,11 +3139,22 @@ def _execute_post_selection_pending_runs(
     from .progress_timing import ProgressRateTracker, format_progress_fraction, format_progress_timing_fields
     from .training_parallel import (
         AdaptiveTrainingConcurrency,
+        TrainingAdmissionBlockedError,
+        TrainingMemorySafetyError,
+        TrainingResourceObservabilityError,
         build_training_concurrency_plan,
         query_gpu_telemetry,
     )
 
     ordered_pending = tuple(sorted(pending, key=lambda item: int(item.slot)))
+    device = str(context.method_policies.device)
+    # Bind the admission baseline to the recovery preflight that precedes it.
+    # Recovery classification can realize a CUDA training model, so the two
+    # observations make any parent-side contribution to the baseline visible
+    # instead of silently inflating the envelope TRAIN2 is measured against.
+    _report_post_selection_gpu_occupancy(
+        "pre-recovery-preflight", device, query_gpu_telemetry(device)
+    )
     _preflight_post_selection_pending_runs(
         context,
         pending=ordered_pending,
@@ -3123,10 +3165,14 @@ def _execute_post_selection_pending_runs(
         seed=ordered_pending[0].run_plan.optimizer_seed,
         planned_epochs=ordered_pending[0].run_plan.planned_epochs,
     )
-    device = str(context.method_policies.device)
     resources = _performance_resources(context.cfg)
     concurrency_policy = _post_selection_training_concurrency_policy(context)
+    # This is both the post-preflight observation and the authoritative TRAIN
+    # admission baseline; they are the same instant by construction.
     initial_sample = query_gpu_telemetry(device)
+    _report_post_selection_gpu_occupancy(
+        "post-recovery-preflight TRAIN admission", device, initial_sample
+    )
     concurrency_plan = build_training_concurrency_plan(
         task_count=len(ordered_pending),
         device=device,
@@ -3154,12 +3200,16 @@ def _execute_post_selection_pending_runs(
     started = time.monotonic()
     outer_tracker = ProgressRateTracker(completed=0, started_at=started)
     completed_count = 0
+    failed_count = 0
     next_task = 0
     active: dict[Any, _PendingPostSelectionRun] = {}
-    results: dict[int, tuple[PostSelectionRunEvidence, Any, Any]] = {}
+    trained_slots: list[int] = []
     last_sample_at = started
     last_report_at: float | None = None
     last_decision_reason = "initial one-job admission"
+    # Set from the last control observation: admission stops on any unsafe or
+    # unobservable aggregate-memory state, including while nothing is owned.
+    admission_blocked = False
     visible_interval = max(
         0.05,
         float(
@@ -3222,7 +3272,11 @@ def _execute_post_selection_pending_runs(
                 f"true_epoch_jobs={true_epoch_count}",
                 f"target_jobs={controller.target_jobs}",
                 f"ceiling={concurrency_plan.maximum_jobs}",
-                f"pending_jobs={len(ordered_pending) - completed_count - active_count}",
+                # Counted from actual scheduler ownership: a submitted slot that
+                # already failed is never reported as still queued.
+                f"queued_jobs={len(ordered_pending) - next_task}",
+                f"completed_jobs={completed_count}",
+                f"failed_jobs={failed_count}",
                 timing,
                 *gpu_fields,
                 f"plan={plan_summary}",
@@ -3234,7 +3288,14 @@ def _execute_post_selection_pending_runs(
 
     def submit_available(executor: ThreadPoolExecutor) -> None:
         nonlocal next_task
-        target = max(1, int(controller.target_jobs))
+        if admission_blocked:
+            # The last control observation was over the envelope or blind. No
+            # new accelerator work is admitted until a trustworthy safe
+            # observation returns; the controller decides whether the condition
+            # is transient or terminal.
+            return
+        # A zero target is a truthful resource state, not a value to floor.
+        target = max(0, int(controller.target_jobs))
         while next_task < len(ordered_pending) and len(active) < target:
             task = ordered_pending[next_task]
             next_task += 1
@@ -3259,8 +3320,62 @@ def _execute_post_selection_pending_runs(
                 cancellation_event=cancellation_event,
                 progress_observer=observe,
                 telemetry_ref=telemetry_ref,
+                stop_after_training=True,
             )
             active[future] = task
+
+    def complete_eval2_for_trained_slots() -> dict[
+        int, tuple[PostSelectionRunEvidence, Any, Any]
+    ]:
+        """Finish every authenticated TRAIN2 slot through the same run path.
+
+        Every TRAIN2 child has exited and released the device before this runs.
+        The authenticated TRAIN2 summary lets the existing continuation logic
+        skip retraining, so no second scheduler, lease, or handoff record is
+        involved, and each run reaches its own durable publication boundary in
+        frozen slot order. This runs only after the whole TRAIN wave succeeded:
+        a failed wave raises before any post-TRAIN evaluation begins.
+        """
+
+        completed: dict[int, tuple[PostSelectionRunEvidence, Any, Any]] = {}
+        if not trained_slots:
+            return completed
+        _report_post_selection_gpu_occupancy(
+            "post-TRAIN EVAL2 entry", device, query_gpu_telemetry(device)
+        )
+        by_slot = {int(task.slot): task for task in ordered_pending}
+        ordered_slots = sorted(trained_slots)
+        for index, slot in enumerate(ordered_slots):
+            task = by_slot[slot]
+            print(
+                f"[EVAL2 serial] status=running; "
+                f"progress={format_progress_fraction(index, len(ordered_slots))}; "
+                f"unit=training-run; slot={slot}",
+                flush=True,
+            )
+            result = execute_post_selection_run(
+                context,
+                run_plan=task.run_plan,
+                budget_policy=budget_policy,
+                training_frame_uids=task.training_frame_uids,
+                monitor_frame_uids=task.monitor_frame_uids,
+                outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
+                progress_context=task.progress_context,
+                telemetry_ref=telemetry_ref,
+            )
+            if result is None:
+                raise PostSelectionExecutionError(
+                    "Post-TRAIN EVAL2 returned no bound evidence for slot "
+                    f"{slot}; the authenticated TRAIN2 continuation is unusable."
+                )
+            completed[slot] = result
+        print(
+            f"[EVAL2 serial] status=completed; "
+            f"progress={format_progress_fraction(len(ordered_slots), len(ordered_slots))}; "
+            "unit=training-run",
+            flush=True,
+        )
+        return completed
 
     executor = ThreadPoolExecutor(
         max_workers=max(1, int(concurrency_plan.maximum_jobs)),
@@ -3271,16 +3386,41 @@ def _execute_post_selection_pending_runs(
         submit_available(executor)
         report("running", force=True)
         while active or next_task < len(ordered_pending):
-            done, _ = wait(
-                tuple(active),
-                timeout=poll_interval,
-                return_when=FIRST_COMPLETED,
-            ) if active else (set(), set())
+            if (
+                not active
+                and next_task < len(ordered_pending)
+                and int(controller.target_jobs) < 1
+            ):
+                # Pending work with an idle queue and no feasible slot is a
+                # terminal resource state; busy-waiting would hide it.
+                raise TrainingAdmissionBlockedError(
+                    f"{len(ordered_pending) - next_task} pending TRAIN2 job(s) "
+                    "remain but no job is currently resource-admissible: "
+                    f"{concurrency_plan.summary()}"
+                )
+            if active:
+                done, _ = wait(
+                    tuple(active),
+                    timeout=poll_interval,
+                    return_when=FIRST_COMPLETED,
+                )
+            else:
+                done = set()
+                if admission_blocked and next_task < len(ordered_pending):
+                    time.sleep(poll_interval)
+            first_failure: BaseException | None = None
             for future in done:
                 task = active.pop(future)
-                result = future.result()
-                results[task.slot] = result
-                completed_count += 1
+                try:
+                    future.result()
+                    trained_slots.append(task.slot)
+                    completed_count += 1
+                except BaseException as exc:
+                    failed_count += 1
+                    if first_failure is None:
+                        first_failure = exc
+            if first_failure is not None:
+                raise first_failure
 
             now = time.monotonic()
             if now - last_sample_at >= float(concurrency_policy.monitor_interval_seconds):
@@ -3299,13 +3439,33 @@ def _execute_post_selection_pending_runs(
                     now=now,
                 )
                 last_decision_reason = decision.reason
+                admission_blocked = (
+                    decision.memory_safe is not True
+                    if concurrency_plan.gpu_memory_budget_bytes is not None
+                    else False
+                )
                 last_sample_at = now
+                if decision.memory_hazard:
+                    # A resource stop before CUDA exhausts the device, routed
+                    # through the existing cancellation/reaping path. An unknown
+                    # ``memory_safe`` means the live observation itself was lost,
+                    # which is the observability failure rather than an observed
+                    # envelope violation.
+                    if decision.memory_safe is None:
+                        raise TrainingResourceObservabilityError(
+                            "Stopping owned TRAIN2 execution because live GPU "
+                            f"memory safety is unobservable: {decision.reason}"
+                        )
+                    raise TrainingMemorySafetyError(
+                        "Stopping owned TRAIN2 execution before CUDA out of "
+                        f"memory: {decision.reason}"
+                    )
 
             submit_available(executor)
             report("running", force=bool(done))
             if not done and active:
                 report("running")
-        report("completed", force=True)
+        report("training-completed", force=True)
     except BaseException as exc:
         cancellation_event.set()
         for future in active:
@@ -3317,10 +3477,15 @@ def _execute_post_selection_pending_runs(
             force=True,
         )
         executor.shutdown(wait=True, cancel_futures=True)
+        # A failed TRAIN wave ends this invocation. Owned children have been
+        # signalled and reaped above, and no fresh accelerator work may begin on
+        # a device whose TRAIN2 state is unknown or already unsafe. Progress is
+        # not lost: every authenticated TRAIN2 summary is durable, so the next
+        # healthy invocation resumes outstanding TRAIN2/EVAL2 work through the
+        # ordinary continuation path instead of a same-invocation sibling EVAL2.
         raise
-    else:
-        executor.shutdown(wait=True, cancel_futures=True)
-    return results
+    executor.shutdown(wait=True, cancel_futures=True)
+    return complete_eval2_for_trained_slots()
 
 
 def execute_post_selection_cross_validation(

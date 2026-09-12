@@ -11,10 +11,21 @@ The single-source replay migration is complete. The executable invalidation plan
 ## MLFF replay-evaluation semantics
 
 Checkpoint accuracy is judged against the current target-side development
-policy. Foundation-generated replay pseudolabels remain an optional replay
-training realization and a separate retention diagnostic. Set
-`[paths].replay_true_labels` when the replay contract requires an independent
-true-label monitor; replay evidence never becomes target-size authority.
+policy. A single-source replay campaign declares one external
+`[paths].replay_set` corpus; omitting every label selector resolves to the
+source `TRUE_DFT` labels, and generated configuration states
+`label_mode = "true_dft"` explicitly. Foundation-generated replay pseudolabels
+remain an explicit opt-in replay training realization and a separate retention
+diagnostic; they are never a silent fallback for missing source labels. Set
+`[paths].replay_true_labels` when a legacy split-file replay contract requires
+an independent true-label monitor; replay evidence never becomes target-size
+authority.
+
+`doctor` validates replay prerequisites and constructs nothing. `prepare` owns
+replay construction/reuse, including the one legitimate replay-wide foundation
+inference pass under explicit pseudo mode, and retires that provider before
+cross-validation or final production begins. Post-selection consumes the
+authenticated prepared replay authority and never cold-builds replay science.
 
 Current development release: **0.20.242a0**. MLFF campaigns use exactly one target-size architecture:
 
@@ -333,7 +344,7 @@ Production `train` now handles `Ctrl-C` and low-disk stops as durable interrupti
 
 ## True-epoch adaptive GPU training concurrency in 0.20.73a0
 
-Production `train` now begins with exactly one CUDA job and adds at most one job per calibration step. Initialization, graph construction, initial validation, and checkpoint export cannot authorize expansion: every active job must first produce fresh optimizer records and remain in sustained epoch work for a fixed-duration averaging window. Natural utilization fluctuations are averaged rather than waited out. The projected mean aggregate VRAM **and** GPU utilization after adding the next job must both remain strictly below their admission ceilings (90% defaults). After each promotion, calibration resets. If stable post-add utilization reaches a ceiling, current jobs continue but the future replacement target is reduced. Runtime scheduling does not change DATA8 scientific identity, so no `prepare` or preflight rerun is required. See `docs/history/mlff/release_notes/PATCH_NOTES_0.20.73a0.md`.
+Production `train` now begins with exactly one CUDA job *when one job is currently resource-admissible* - zero safe admission is a valid execution state, and pending work with no feasible slot fails explicitly rather than launching into an envelope that cannot hold it - and adds at most one job per calibration step. Memory safety is judged on every trustworthy telemetry sample regardless of child phase **and regardless of how many jobs are active**, so aggregate occupancy that stays above the configured VRAM envelope across consecutive monitor observations stops the whole owned training wave instead of being reported as waiting for epoch compute or left to replacement throttling. GPU-utilization saturation stays soft. Live memory observability fails closed the same way: persistent loss of a trustworthy current memory observation, or loss immediately after an unsafe one, stops the active training wave rather than assuming the device is safe. One training slot owns TRAIN2 only; post-TRAIN EVAL2 runs after the scheduler releases the device, and any failed TRAIN wave cancels and reaps its owned children and ends the invocation before EVAL2 begins - the authenticated TRAIN2 summaries stay durable, so the next healthy invocation resumes without retraining. Initialization, graph construction, initial validation, and checkpoint export cannot authorize expansion: every active job must first produce fresh optimizer records and remain in sustained epoch work for a fixed-duration averaging window. Natural utilization fluctuations are averaged rather than waited out. The projected mean aggregate VRAM **and** GPU utilization after adding the next job must both remain strictly below their admission ceilings (90% defaults). After each promotion, calibration resets. If stable post-add utilization reaches a ceiling, current jobs continue but the future replacement target is reduced. Runtime scheduling does not change DATA8 scientific identity, so no `prepare` or preflight rerun is required. See `docs/history/mlff/release_notes/PATCH_NOTES_0.20.73a0.md`.
 
 ## Production training runtime-path correction in 0.20.71a0
 

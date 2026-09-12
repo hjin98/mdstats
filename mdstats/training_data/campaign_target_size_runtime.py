@@ -921,8 +921,12 @@ def execute_current_prepare(args: Any) -> int:
         _mark_stage,
         _ok,
         _prepare_catalog,
+        _preparation_config_digest,
         _print_header,
+        _prepare_single_source_replay,
+        _replay_topology_preflight,
         _require_stage_complete,
+        _single_source_replay_basis,
     )
     from .campaign_prepared_generation import (
         preparation_configuration_identity,
@@ -937,7 +941,15 @@ def execute_current_prepare(args: Any) -> int:
 
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
+    command_preparation_digest = _preparation_config_digest(cfg)
     _require_stage_complete(store, paths, "doctor")
+    # Cheap canonical configuration/topology validation first.  A conflicting
+    # replay selector, a malformed exact split domain, a mixed replay
+    # interface, or a replay declaration incompatible with the resolved
+    # training mode is knowable here, and must not cost a full target-source
+    # rebuild, a replay-wide parse, or a model load before it is reported.
+    _replay_topology_preflight(cfg, paths)
+    command_replay_basis = _single_source_replay_basis(cfg, paths, store=store)
     refresh_inferences = bool(getattr(args, "refresh_inferences", False))
     if bool(getattr(args, "approve_manifest", False)):
         # Approval is an operator gate on the exact reviewed manifest digest and
@@ -1032,6 +1044,27 @@ def execute_current_prepare(args: Any) -> int:
     except Exception as exc:
         _mark_stage(store, paths, "prepare", StageState.FAILED, str(exc))
         raise
+    # Public `prepare` coordinates two *independent* preparation owners; it does
+    # not merge them into one scientific generation.  Replay runs after the
+    # target-size substrate is bound, so the replay foundation provider is only
+    # ever acquired once the earlier prepare-owned model-scale provider has
+    # reached its final consumer and been retired.  A replay failure here makes
+    # public prepare incomplete without rolling back the independently valid
+    # target-size generation.
+    try:
+        _prepare_single_source_replay(
+            cfg, paths, store, command_replay_basis=command_replay_basis
+        )
+    except Exception as exc:
+        _mark_stage(
+            store,
+            paths,
+            "prepare",
+            StageState.FAILED,
+            f"replay preparation failed after the target-size generation was "
+            f"published (target-size science remains valid): {exc}",
+        )
+        raise
     _ok(
         "current target-size substrate is bound: canonical generation "
         f"{revision.state.generation}; "
@@ -1060,12 +1093,44 @@ def execute_current_prepare(args: Any) -> int:
         )
     else:
         write_target_size_result_view(view_path, revision)
+    try:
+        live_cfg, _ = _load_config(paths.config)
+        live_prep_digest = _preparation_config_digest(live_cfg)
+    except Exception as exc:
+        _mark_stage(
+            store,
+            paths,
+            "prepare",
+            StageState.WAITING,
+            f"configuration at {paths.config} could not be validated at stage completion: {exc}",
+            config_digest=command_preparation_digest,
+        )
+        raise RuntimeError(
+            f"Configuration at {paths.config} could not be validated at stage completion: {exc}"
+        ) from exc
+
+    if live_prep_digest != command_preparation_digest:
+        _mark_stage(
+            store,
+            paths,
+            "prepare",
+            StageState.WAITING,
+            f"configuration at {paths.config} was modified during prepare; stage left WAITING",
+            config_digest=command_preparation_digest,
+        )
+        raise RuntimeError(
+            f"Configuration at {paths.config} was modified during prepare execution "
+            f"(digest {command_preparation_digest[:12]}... -> {live_prep_digest[:12]}...); "
+            "refusing to mark prepare COMPLETE."
+        )
+
     _mark_stage(
         store,
         paths,
         "prepare",
         StageState.COMPLETE,
         f"current target-size substrate bound at generation {revision.state.generation}",
+        config_digest=command_preparation_digest,
     )
     print(
         "Next: `select-target-size <N>` (or `select-target-size --auto`).",

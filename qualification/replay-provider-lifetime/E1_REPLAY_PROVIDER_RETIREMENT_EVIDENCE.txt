@@ -1,0 +1,32 @@
+[E1] two disjoint cold replay subsets of 128 real frames each
+{"phase": "baseline_context_scale", "torch_allocated_mib": 0.0, "torch_reserved_mib": 2.0, "torch_max_allocated_mib": 0.0, "torch_max_reserved_mib": 2.0, "nvml_device_used_mib": 1168.7, "nvml_this_process_mib": 300.0}
+{"phase": "after_source_and_identity_resolution", "torch_allocated_mib": 0.0, "torch_reserved_mib": 2.0, "torch_max_allocated_mib": 0.0, "torch_max_reserved_mib": 2.0, "nvml_device_used_mib": 1168.6, "nvml_this_process_mib": 300.0}
+{"phase": "cycle_a:one_replay_provider_resident", "torch_allocated_mib": 28.1, "torch_reserved_mib": 72.0, "torch_max_allocated_mib": 56.3, "torch_max_reserved_mib": 72.0, "nvml_device_used_mib": 1238.6, "nvml_this_process_mib": 370.0}
+{"phase": "cycle_a:final_consumer_complete_before_close", "torch_allocated_mib": 44.3, "torch_reserved_mib": 2196.0, "torch_max_allocated_mib": 1437.6, "torch_max_reserved_mib": 2196.0, "nvml_device_used_mib": 3382.6, "nvml_this_process_mib": 2514.0}
+{"phase": "cycle_a:explicit_owner_cleanup_returned", "torch_allocated_mib": 16.2, "torch_reserved_mib": 216.0, "torch_max_allocated_mib": 1437.6, "torch_max_reserved_mib": 2196.0, "nvml_device_used_mib": 1402.6, "nvml_this_process_mib": 534.0}
+[E1] cycle_a: cache published with 128 predictions, 2 shards, key=b08228145196e34d...
+{"phase": "cycle_a:owner_returned_process_still_alive", "torch_allocated_mib": 16.2, "torch_reserved_mib": 216.0, "torch_max_allocated_mib": 1437.6, "torch_max_reserved_mib": 2196.0, "nvml_device_used_mib": 1402.6, "nvml_this_process_mib": 534.0}
+{"phase": "cycle_a:post_close_after_allocator_release", "torch_allocated_mib": 16.2, "torch_reserved_mib": 216.0, "torch_max_allocated_mib": 1437.6, "torch_max_reserved_mib": 2196.0, "nvml_device_used_mib": 1402.6, "nvml_this_process_mib": 534.0}
+{"phase": "cycle_b:one_replay_provider_resident", "torch_allocated_mib": 44.9, "torch_reserved_mib": 228.0, "torch_max_allocated_mib": 1437.6, "torch_max_reserved_mib": 2196.0, "nvml_device_used_mib": 1414.6, "nvml_this_process_mib": 546.0}
+{"phase": "cycle_b:final_consumer_complete_before_close", "torch_allocated_mib": 44.9, "torch_reserved_mib": 2920.0, "torch_max_allocated_mib": 1437.6, "torch_max_reserved_mib": 2920.0, "nvml_device_used_mib": 4105.3, "nvml_this_process_mib": 3238.0}
+{"phase": "cycle_b:explicit_owner_cleanup_returned", "torch_allocated_mib": 16.2, "torch_reserved_mib": 216.0, "torch_max_allocated_mib": 1437.6, "torch_max_reserved_mib": 2920.0, "nvml_device_used_mib": 1401.3, "nvml_this_process_mib": 534.0}
+[E1] cycle_b: cache published with 128 predictions, 2 shards, key=d9581892dbf64918...
+{"phase": "cycle_b:owner_returned_process_still_alive", "torch_allocated_mib": 16.2, "torch_reserved_mib": 216.0, "torch_max_allocated_mib": 1437.6, "torch_max_reserved_mib": 2920.0, "nvml_device_used_mib": 1401.3, "nvml_this_process_mib": 534.0}
+{"phase": "cycle_b:post_close_after_allocator_release", "torch_allocated_mib": 16.2, "torch_reserved_mib": 216.0, "torch_max_allocated_mib": 1437.6, "torch_max_reserved_mib": 2920.0, "nvml_device_used_mib": 1401.3, "nvml_this_process_mib": 534.0}
+{
+  "summary": {
+    "baseline_allocated_mib": 0.0,
+    "baseline_reserved_mib": 2.0,
+    "inference_peak_allocated_mib": 1437.6,
+    "inference_peak_reserved_mib": 2920.0,
+    "inference_peak_process_nvml_mib": 3238.0,
+    "cycle_a_post_close_allocated_mib": 16.2,
+    "cycle_b_post_close_allocated_mib": 16.2,
+    "cycle_a_post_close_reserved_mib": 216.0,
+    "cycle_b_post_close_reserved_mib": 216.0,
+    "cycle_a_post_close_process_nvml_mib": 534.0,
+    "cycle_b_post_close_process_nvml_mib": 534.0,
+    "process_alive": true
+  }
+}
+[E1] PASS: one provider per cold build, exactly one explicit retirement, bounded non-accumulating post-close residency, process still alive

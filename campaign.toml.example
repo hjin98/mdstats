@@ -290,16 +290,27 @@ progress_interval_seconds = 60.0
 # Visible production-training updates. Cancellation is still polled silently
 # every second so Ctrl-C and disk-reserve stops remain responsive.
 training_progress_interval_seconds = 10.0
-# 0 enables adaptive CUDA concurrency. CUDA always starts with one job.
-# Additional jobs are admitted one at a time only after every active job has
-# reached sustained optimizer/epoch work for the full averaging window. The
-# projected mean aggregate VRAM and GPU utilization must both remain below
-# their admission ceilings. Natural telemetry fluctuation is averaged rather
-# than treated as a reason to wait indefinitely. A positive value is only a
-# maximum cap; it does not bypass adaptive admission.
+# 0 enables adaptive CUDA concurrency. CUDA starts with one training job only
+# when one job is currently resource-admissible; zero safe admission is a valid
+# execution state and pending work then fails explicitly instead of launching
+# into an envelope that cannot hold it. Additional jobs are admitted one at a
+# time only after every active job has reached sustained optimizer/epoch work
+# for the full averaging window. The projected mean aggregate VRAM and GPU
+# utilization must both remain below their admission ceilings. Natural
+# telemetry fluctuation is averaged rather than treated as a reason to wait
+# indefinitely. A positive value is only a maximum cap; it does not bypass
+# adaptive admission.
 parallel_training_jobs = 0
 minimum_parallel_training_jobs = 1
 maximum_parallel_training_jobs = 4
+# The training VRAM fraction is both the admission ceiling and the live
+# aggregate safety envelope, not merely a promotion preference. One aggregate
+# observation at or above it blocks further admission at any active-job count;
+# if the next monitor observation is still above it while training is active,
+# the whole training wave is stopped and reaped before CUDA exhausts the device.
+# GPU-utilization saturation stays soft and only throttles future replacements.
+# The transient recheck is the scheduler's own monitor cadence below and is
+# deliberately not an operator knob.
 training_gpu_memory_fraction = 0.90
 training_gpu_utilization_fraction = 0.90
 estimated_training_vram_mib_per_job = 6144.0
@@ -313,6 +324,10 @@ parallel_training_stability_relative_tolerance = 0.10
 parallel_training_utilization_stability_absolute_tolerance = 8.0
 parallel_training_memory_growth_margin = 1.05
 parallel_training_utilization_growth_margin = 1.05
+# Also the cadence at which live aggregate VRAM safety and memory observability
+# are judged: persistent loss of a trustworthy current memory observation across
+# consecutive intervals stops the active training wave rather than assuming the
+# device is safe.
 parallel_training_monitor_interval_seconds = 10.0
 # Staged evaluation uses a one-time single-job CUDA calibration. CUDA
 # starts with exactly one job and samples GPU utilization plus incremental VRAM.
@@ -395,17 +410,29 @@ stale_age_hours = 6.0
 maximum_event_records = 10000
 
 [replay]
-# REPLAY-UNIFY1: one external replay source. Foundation pseudo labels and source
-# true labels are separate internal namespaces over the same frozen split.
-label_mode = "foundation_pseudolabel"
+# One external replay source. Foundation pseudo labels and source true labels
+# are separate internal namespaces over the same frozen split.
+#
+# label_mode is the replay label policy. "true_dft" trains the replay head on
+# the source DFT labels and runs zero foundation inference during prepare; it
+# is the default for a new single-source campaign and is stated explicitly
+# here. "foundation_pseudolabel" is an explicit opt-in: prepare then owns one
+# replay-wide foundation inference pass, and an independent TRUE_DFT monitor
+# is still mandatory. Replay pseudo labels are never a silent fallback for
+# missing source labels.
+label_mode = "true_dft"
 split_ratio = "5:1"
 split_seed = 42
-# Foundation-pseudolabel qualification defaults inherited from the standalone
-# replay preparation workflow. Threshold-only edits reuse cached predictions.
+# Foundation-pseudolabel qualification thresholds, used only when
+# label_mode = "foundation_pseudolabel". Threshold-only edits requalify
+# cached predictions without new foundation inference.
 maximum_force_ev_per_angstrom = 20.0
 force_component_rms_ev_per_angstrom = 5.0
 maximum_abs_stress_ev_per_angstrom3 = 0.5
 require_stress = false
+# Execution/storage realization for the pseudo prediction pass only. These are
+# not scientific identity: editing them never triggers reinference and never
+# changes replay or post-selection lineage.
 prediction_batch_size = 32
 prediction_shard_size = 256
 minimum_train_configurations = 100

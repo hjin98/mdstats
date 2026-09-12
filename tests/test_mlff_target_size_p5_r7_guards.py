@@ -460,15 +460,17 @@ def test_guard_p5_r7_10_11_12_14_mace_trainer_environment_and_cwd(tmp_path: Path
     dummy_wrapper.write_text(
         f"""#!/usr/bin/env bash
 python3 -c "
-import os, json
+import os, sys, json
 data = {{
     'TRAIN2_PLAN': os.environ.get('{TRAIN2_RUNTIME_ENVIRONMENT_VARIABLE}'),
     'PYTHONHASHSEED': os.environ.get('PYTHONHASHSEED'),
     'TRUE_REPLAY_PATH': os.environ.get('{TRAIN2_TRUE_REPLAY_PATH_ENVIRONMENT_VARIABLE}'),
+    'RESTART_EPOCH': os.environ.get('MDSTATS_MACE_RESTART_EPOCH'),
+    'ARGV': sys.argv[1:],
     'CWD': os.getcwd(),
 }}
 open('{wrapper_record_file}', 'w').write(json.dumps(data))
-"
+" "$@"
 exit 0
 """,
         encoding="utf-8",
@@ -552,6 +554,13 @@ exit 0
     assert recorded["TRUE_REPLAY_PATH"] == str(monitor_file.resolve())
     # Guard 14: cwd is materialization directory
     assert recorded["CWD"] == str(mat_dir.resolve())
+    assert "--restart_latest" not in recorded["ARGV"]
+    assert recorded["RESTART_EPOCH"] is None
+
+    trainer(replace(request, start_epoch=2))
+    recorded_resumed = json.loads(wrapper_record_file.read_text(encoding="utf-8"))
+    assert "--restart_latest" in recorded_resumed["ARGV"]
+    assert recorded_resumed["RESTART_EPOCH"] == "1"
 
     # Revision 10: the executable replay paths remain bound to the authenticated
     # request artifacts after pre-launch validation.

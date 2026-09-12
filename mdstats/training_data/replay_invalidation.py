@@ -12,7 +12,11 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from ._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
-from .replay import ReplayLabelMode, normalize_replay_split_ratio
+from .replay import (
+    ReplayLabelMode,
+    normalize_replay_split_ratio,
+    normalize_replay_split_seed,
+)
 
 REPLAY_INVALIDATION_PLAN_SCHEMA = "mdstats.replay-invalidation-plan.v1"
 REPLAY_INVALIDATION_VERSION = "REPLAY-UNIFY1E-v1"
@@ -137,7 +141,7 @@ def build_replay_invalidation_plan(
     eligible_changed = old_eligible_geometry_set_digest != new_eligible_geometry_set_digest
     split_policy_changed = (
         normalize_replay_split_ratio(old_split_ratio) != normalize_replay_split_ratio(new_split_ratio)
-        or int(old_split_seed) != int(new_split_seed)
+        or normalize_replay_split_seed(old_split_seed) != normalize_replay_split_seed(new_split_seed)
     )
 
     reasons: list[str] = []
@@ -179,6 +183,18 @@ def build_replay_invalidation_plan(
         rematerialize.update(requested)
     elif mode is ReplayLabelMode.FOUNDATION_PSEUDOLABEL and rerun_prediction:
         rematerialize.update(requested)
+    if (
+        mode is ReplayLabelMode.FOUNDATION_PSEUDOLABEL
+        and true_labels_changed
+        and "monitor" in requested
+    ):
+        # Pseudo-mode training labels do not descend from source truth, so a
+        # truth-only mutation with unchanged geometry correctly preserves the
+        # foundation predictions, the qualification, and the split.  The
+        # mandatory *independent* TRUE_DFT monitor does descend from source
+        # truth, and a preserved pseudo-training result is not permission to
+        # keep a stale one: it is refreshed on its own.
+        rematerialize.add("monitor")
 
     return ReplayInvalidationPlan(
         label_mode=mode,

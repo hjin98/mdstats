@@ -907,6 +907,7 @@ def test_p5e_r9_mandatory_case2_one_of_two_runs_complete_resumes_only_missing_ru
         _completed_run_evidence,
         resolve_current_final_production_completion,
     )
+    from mdstats.training_data.train2_runtime import load_train2_runtime_summary
 
     config, _workspace = _build_two_seed_campaign(tmp_path)
     assert run_cross_validate(config) == 0
@@ -931,9 +932,15 @@ def test_p5e_r9_mandatory_case2_one_of_two_runs_complete_resumes_only_missing_ru
         run5_plan = build_final_production_run_plan(plan, optimizer_seed=5)
         run6_plan = build_final_production_run_plan(plan, optimizer_seed=6)
 
-        ev5 = _completed_run_evidence(context, run5_plan)
-        assert ev5 is not None
-        assert ev5.run_plan_digest == run5_plan.content_digest
+        # A failed TRAIN wave ends the invocation before any EVAL2, so the
+        # restart boundary for the already-trained seed is its authenticated
+        # TRAIN2 summary rather than completed run evidence. Run evidence is
+        # published only once a slot finishes EVAL2 in a healthy invocation.
+        summary5 = load_train2_runtime_summary(
+            context.run_root(run5_plan.run_identity) / "checkpoints"
+        )
+        assert summary5.content_digest
+        assert _completed_run_evidence(context, run5_plan) is None
 
         assert _completed_run_evidence(context, run6_plan) is None
         assert resolve_current_final_production_completion(context) is None
@@ -946,7 +953,9 @@ def test_p5e_r9_mandatory_case2_one_of_two_runs_complete_resumes_only_missing_ru
         # Storage cleanup safe and cache preserve seed 5 evidence
         assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "safe"]) == 0
         assert cli.main(["--config", str(config), "storage", "cleanup", "--tier", "cache"]) == 0
-        assert _completed_run_evidence(context, run5_plan) is not None
+        assert load_train2_runtime_summary(
+            context.run_root(run5_plan.run_identity) / "checkpoints"
+        ).content_digest == summary5.content_digest
     finally:
         store.close()
 
