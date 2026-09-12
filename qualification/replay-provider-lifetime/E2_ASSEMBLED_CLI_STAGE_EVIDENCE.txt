@@ -1,9 +1,10 @@
 [E2] Host GPU: NVIDIA GeForce RTX 3090 (23.6 GiB)
+[E2] Candidate provenance: commit=71a9b9f4f2217c6e102d41e8245b04cc183f15e2 tree=c2c0001c81ded4b9eccfe768825a0adeec536e1d clean=True
 [E2] Preparing 128 real frames from replay_fps_12000.extxyz...
-{"phase": "baseline_clean_device", "torch_allocated_mib": 0.0, "torch_reserved_mib": 2.0, "torch_max_allocated_mib": 0.0, "torch_max_reserved_mib": 2.0, "nvml_device_used_mib": 1173.0, "nvml_this_process_mib": 300.0}
+{"phase": "baseline_clean_device", "torch_allocated_mib": 0.0, "torch_reserved_mib": 2.0, "torch_max_allocated_mib": 0.0, "torch_max_reserved_mib": 2.0, "nvml_device_used_mib": 1315.8, "nvml_this_process_mib": 300.0}
 
 [E2] === Stage 1: Doctor ===
-{"phase": "doctor:before", "torch_allocated_mib": 0.0, "torch_reserved_mib": 2.0, "torch_max_allocated_mib": 0.0, "torch_max_reserved_mib": 2.0, "nvml_device_used_mib": 1173.0, "nvml_this_process_mib": 300.0}
+{"phase": "doctor:before", "torch_allocated_mib": 0.0, "torch_reserved_mib": 2.0, "torch_max_allocated_mib": 0.0, "torch_max_reserved_mib": 2.0, "nvml_device_used_mib": 1315.8, "nvml_this_process_mib": 300.0}
 
 MLFF campaign doctor
 --------------------
@@ -22,23 +23,23 @@ MLFF campaign doctor
 [PASS] MACE runtime source/dependency compatibility: mace=0.3.16; e3nn=0.4.4; source_mode=semantic
 [WARN] MACE 0.3.16 source bytes differ from the locked reference, but required semantic compatibility probes passed; continuing under semantic source qualification. Differing/missing files: mace/calculators/mace.py.
 [PASS] accelerator capabilities: CuEq=available; OpenEquivariance=available
-[PASS] workspace free disk: 274.0 GiB
+[PASS] workspace free disk: 273.3 GiB
 [PASS] mdstats-mace-train: /home/samjin/miniconda3/envs/mace/bin/mdstats-mace-train
 [PASS] mdstats-mace-eval: /home/samjin/miniconda3/envs/mace/bin/mdstats-mace-eval
 [PASS] mdstats-mace-select-head: /home/samjin/miniconda3/envs/mace/bin/mdstats-mace-select-head
 [PASS] CUDA device: NVIDIA GeForce RTX 3090 (23.6 GiB)
-[PASS] selected-head training foundation qualified: omat_pbe; derived_sha=0ca93f5453f0b0d3
+[PASS] selected-head training foundation qualified: omat_pbe; derived_sha=ed14f4114f4549bd
 [PASS] acceleration backend: e3nn; inference kernel=e3nn; training kernel=e3nn; corpus=3 structures
 [PASS] DATA6 descriptor capacity: signature=8e96a07faf9f, recommended_batch=8, descriptor_bytes/structure=40960
-[PASS] resource budget: CPU 28/32 threads; RAM 53.7 GiB available / 42.9 GiB budget; GPU NVIDIA GeForce RTX 3090; 22.7 GiB free / 20.4 GiB budget
+[PASS] resource budget: CPU 28/32 threads; RAM 51.5 GiB available / 41.2 GiB budget; GPU NVIDIA GeForce RTX 3090; 22.5 GiB free / 20.3 GiB budget
 [PASS] single-source replay interface validated (label_mode=foundation_pseudolabel); foundation pseudo-label generation, qualification and the deterministic split are deferred to prepare
 
 Doctor passed. Next: run `prepare`; review the automatically populated manifest, then rerun with `--approve-manifest`.
-{"phase": "doctor:after", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 616.0, "torch_max_reserved_mib": 830.0, "nvml_device_used_mib": 1349.1, "nvml_this_process_mib": 476.0}
+{"phase": "doctor:after", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 616.0, "torch_max_reserved_mib": 830.0, "nvml_device_used_mib": 1485.1, "nvml_this_process_mib": 476.0}
 [E2] Doctor PASS: validated campaign and environment, 0 foundation predictions, 0 replay aliases.
 
 [E2] === Stage 2: Prepare ===
-{"phase": "prepare:before", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 616.0, "torch_max_reserved_mib": 830.0, "nvml_device_used_mib": 1349.1, "nvml_this_process_mib": 476.0}
+{"phase": "prepare:before", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 616.0, "torch_max_reserved_mib": 830.0, "nvml_device_used_mib": 1485.1, "nvml_this_process_mib": 476.0}
 
 Preparing the current target-size scientific substrate
 ------------------------------------------------------
@@ -54,7 +55,7 @@ Preparing the current target-size scientific substrate
 [PASS] normalized frame cache rebuilt on demand; elapsed=00:00:00
 [authority] normalized frame data; status=complete; elapsed=00:00:00
 [authority] P1 canonical frame authority; status=start
-[canonical frames] resource plan: 1 isolated run worker(s); CPU 28/32 threads; RAM 53.7 GiB available / 42.9 GiB budget; GPU NVIDIA GeForce RTX 3090; 22.7 GiB free / 20.4 GiB budget
+[canonical frames] resource plan: 1 isolated run worker(s); CPU 28/32 threads; RAM 51.5 GiB available / 41.2 GiB budget; GPU NVIDIA GeForce RTX 3090; 22.5 GiB free / 20.3 GiB budget
 [canonical frames] canonical frames; status=item-complete; progress=1/1 (100.0%); item=run; frames=48; workers=1
 [authority] P1 canonical frame authority; status=complete; elapsed=00:00:00
 [authority] neutral statistical substrate; status=start
@@ -64,31 +65,31 @@ Preparing the current target-size scientific substrate
 [authority] P3 common preparation; status=start
 [authority] P3 common preparation; status=complete; elapsed=00:00:00
 [PREPARE] explicit foundation_pseudolabel replay: no authenticated prediction cache (cold); prepare owns one replay-wide foundation inference pass. This can take a long time and use substantial VRAM, and the provider is retired before cross-validation or final production begins.
-{"phase": "prepare:executor_close_called", "torch_allocated_mib": 74.3, "torch_reserved_mib": 2864.0, "torch_max_allocated_mib": 2198.2, "torch_max_reserved_mib": 2864.0, "nvml_device_used_mib": 4094.4, "nvml_this_process_mib": 3218.0}
-{"phase": "prepare:executor_close_completed", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 2198.2, "torch_max_reserved_mib": 2864.0, "nvml_device_used_mib": 1352.4, "nvml_this_process_mib": 476.0}
-[PASS] single-source replay prepared (label_mode=foundation_pseudolabel; train=102 / monitor=26 configurations; split=0e47c0da0de6...); built a new foundation prediction cache (one replay-wide inference pass)
+{"phase": "prepare:executor_close_called", "torch_allocated_mib": 74.3, "torch_reserved_mib": 2864.0, "torch_max_allocated_mib": 2198.2, "torch_max_reserved_mib": 2864.0, "nvml_device_used_mib": 4222.8, "nvml_this_process_mib": 3218.0}
+{"phase": "prepare:executor_close_completed", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 2198.2, "torch_max_reserved_mib": 2864.0, "nvml_device_used_mib": 1480.8, "nvml_this_process_mib": 476.0}
+[PASS] single-source replay prepared (label_mode=foundation_pseudolabel; train=102 / monitor=26 configurations; split=e67b61568962...); built a new foundation prediction cache (one replay-wide inference pass)
 [PASS] current target-size substrate is bound: canonical generation 1; experiment=8552d4fb4938...; common preparation=c09b2739428b...
 `prepare` does not select a target size. The candidate ladder [2, 4, 8] is a configured experiment definition. `prepare` decides nothing about N: run `select-target-size <N>` to choose the provisional downstream target size, or `select-target-size --auto` to run the optional paired-seed diagnostic first and adopt its recommendation.
 Next: `select-target-size <N>` (or `select-target-size --auto`).
-{"phase": "prepare:after_return", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 2198.2, "torch_max_reserved_mib": 2864.0, "nvml_device_used_mib": 1350.4, "nvml_this_process_mib": 476.0}
-{"phase": "prepare:post_gc_and_empty_cache", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 2198.2, "torch_max_reserved_mib": 2864.0, "nvml_device_used_mib": 1350.4, "nvml_this_process_mib": 476.0}
+{"phase": "prepare:after_return", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 2198.2, "torch_max_reserved_mib": 2864.0, "nvml_device_used_mib": 1474.1, "nvml_this_process_mib": 476.0}
+{"phase": "prepare:post_gc_and_empty_cache", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 2198.2, "torch_max_reserved_mib": 2864.0, "nvml_device_used_mib": 1474.1, "nvml_this_process_mib": 476.0}
 [E2] Prepare cache disposition: dir=/tmp/e2_scratch/campaign/.mdstats/replay-unified/foundation-predictions/b9/b9f3b040b614956ff7715bd52d16a58fe0a934a94fe83312b8d3c7425f28cbb9, key=b9f3b040b614956f..., shards=2, predictions=128
 [E2] Prepare PASS: single-flight inference, cache published, provider retired, clean post-prepare memory.
 
 [E2] === Stage 3: P5 Post-Selection Replay Resolution ===
-{"phase": "p5:before", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 2198.2, "torch_max_reserved_mib": 2864.0, "nvml_device_used_mib": 1350.4, "nvml_this_process_mib": 476.0}
-{"phase": "p5:after", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 2198.2, "torch_max_reserved_mib": 2864.0, "nvml_device_used_mib": 1350.4, "nvml_this_process_mib": 476.0}
+{"phase": "p5:before", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 2198.2, "torch_max_reserved_mib": 2864.0, "nvml_device_used_mib": 1474.1, "nvml_this_process_mib": 476.0}
+{"phase": "p5:after", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 2198.2, "torch_max_reserved_mib": 2864.0, "nvml_device_used_mib": 1474.1, "nvml_this_process_mib": 476.0}
 P5 resolution identities:
   source_path: /tmp/e2_scratch/replay.extxyz
   source_content_digest: 50aad221c4abce71...
   source_sha256: 4f0a4c2fc2007b11...
-  split_manifest_digest: 0e47c0da0de6ae3f...
-  lineage_digest: 935dbff19a0fb2ec...
+  split_manifest_digest: e67b6156896201da...
+  lineage_digest: 3298ba6383ddeb89...
 [E2] P5 PASS: read-only consumption of prepared authority, zero inference, matching lineage digest.
 
 [E2] === Stage 4: Pre-TRAIN2 CV Scheduler Observation ===
-{"phase": "scheduler:concurrency_plan_built", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 2198.2, "torch_max_reserved_mib": 2864.0, "nvml_device_used_mib": 1350.4, "nvml_this_process_mib": 476.0}
-[E2] Concurrency plan summary: initial=1; ceiling=1; native CPU threads/job=28; baseline VRAM=1.3 GiB (telemetry); VRAM admission ceiling=21.6 GiB; VRAM headroom=20.3 GiB; GPU-utilization admission ceiling=90%; initial VRAM estimate/job=6.0 GiB; CUDA starts one job while one job is resource-admissible and ramps one at a time after sustained epoch telemetry satisfies both VRAM and utilization projections
+{"phase": "scheduler:concurrency_plan_built", "torch_allocated_mib": 45.9, "torch_reserved_mib": 122.0, "torch_max_allocated_mib": 2198.2, "torch_max_reserved_mib": 2864.0, "nvml_device_used_mib": 1474.1, "nvml_this_process_mib": 476.0}
+[E2] Concurrency plan summary: initial=1; ceiling=1; native CPU threads/job=28; baseline VRAM=1.4 GiB (telemetry); VRAM admission ceiling=21.6 GiB; VRAM headroom=20.2 GiB; GPU-utilization admission ceiling=90%; initial VRAM estimate/job=6.0 GiB; CUDA starts one job while one job is resource-admissible and ramps one at a time after sustained epoch telemetry satisfies both VRAM and utilization projections
 [E2] Zero safe admission: False
 
 {
@@ -109,14 +110,16 @@ P5 resolution identities:
     "inference_peak_reserved_mib": 2864.0,
     "post_prepare_allocated_mib": 45.9,
     "post_prepare_reserved_mib": 122.0,
-    "p5_lineage_digest": "935dbff19a0fb2ecd042d3ce0b3e7df0ff2e5e8d0e0197c854dde0585214277a",
-    "p5_split_manifest_digest": "0e47c0da0de6ae3ff4b006d1d199b675ee18301f3178144c11b92cbe28ebf217",
+    "p5_lineage_digest": "3298ba6383ddeb89b30bbd7a6a40b3bd8bd0dfbf80ebd30b28fb5aacc80a323d",
+    "p5_split_manifest_digest": "e67b6156896201da480f54e1156d73a957465536a0505cff271e3442525470a5",
     "p5_source_sha256": "4f0a4c2fc2007b11ead0088c34bfa8cb92afea38f69f110a48384af775b3b37d",
     "p5_new_predictions": 0,
     "p5_new_providers": 0,
-    "scheduler_baseline_vram_gib": 1.32,
+    "scheduler_baseline_vram_gib": 1.44,
     "scheduler_admission_ceiling_jobs": 1,
-    "scheduler_zero_safe_admission": false,
+    "candidate_commit": "71a9b9f4f2217c6e102d41e8245b04cc183f15e2",
+    "candidate_tree": "c2c0001c81ded4b9eccfe768825a0adeec536e1d",
+    "candidate_clean": true,
     "overall_verdict": "PASS"
   }
 }

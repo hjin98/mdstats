@@ -67,14 +67,16 @@ Evidence file: `E2_ASSEMBLED_CLI_STAGE_EVIDENCE.txt`
     "inference_peak_reserved_mib": 2864.0,
     "post_prepare_allocated_mib": 45.9,
     "post_prepare_reserved_mib": 122.0,
-    "p5_lineage_digest": "935dbff19a0fb2ecd042d3ce0b3e7df0ff2e5e8d0e0197c854dde0585214277a",
-    "p5_split_manifest_digest": "0e47c0da0de6ae3ff4b006d1d199b675ee18301f3178144c11b92cbe28ebf217",
+    "p5_lineage_digest": "3298ba6383ddeb89b30bbd7a6a40b3bd8bd0dfbf80ebd30b28fb5aacc80a323d",
+    "p5_split_manifest_digest": "e67b6156896201da480f54e1156d73a957465536a0505cff271e3442525470a5",
     "p5_source_sha256": "4f0a4c2fc2007b11ead0088c34bfa8cb92afea38f69f110a48384af775b3b37d",
     "p5_new_predictions": 0,
     "p5_new_providers": 0,
-    "scheduler_baseline_vram_gib": 1.32,
+    "scheduler_baseline_vram_gib": 1.44,
     "scheduler_admission_ceiling_jobs": 1,
-    "scheduler_zero_safe_admission": false,
+    "candidate_commit": "71a9b9f4f2217c6e102d41e8245b04cc183f15e2",
+    "candidate_tree": "c2c0001c81ded4b9eccfe768825a0adeec536e1d",
+    "candidate_clean": true,
     "overall_verdict": "PASS"
   }
 }
