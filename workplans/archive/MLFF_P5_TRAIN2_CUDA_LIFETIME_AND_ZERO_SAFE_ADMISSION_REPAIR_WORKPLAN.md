@@ -13,6 +13,7 @@ serious_challenge: none
 trigger: target-host P5 cross-validation CUDA OOM after scheduler restoration
 predecessor_context: archived MLFF P5 replay/MACE execution-recovery work
 precedence: This workplan supersedes only the P5 TRAIN2 resource-admission, live-memory-safety, TRAIN-wave failure-transition, and TRAIN2/EVAL2 phase-ownership behavior identified below. All non-conflicting frozen P5 scientific, numerical, identity, restart, replay, publication, and execution authority remains binding.
+superseded_in_part_by: CODE-MLFF-P5-TRAIN2-MEMORY-PRESSURE-BACKOFF - the clause that promotes a sustained multi-job soft-VRAM-envelope violation into a hard whole-wave memory hazard (see 88, 160, 202 below) is replaced by deterministic one-job backoff. Terminal memory infeasibility now requires convergence to the minimum owned concurrency or an independent hard condition. All other admission, observability, CUDA-lifetime, and phase-ownership authority in this workplan remains binding.
 ---
 
 # MLFF P5 TRAIN2 CUDA lifetime, zero-safe admission, and phase-ownership repair

@@ -1854,7 +1854,8 @@ GPU jobs are admitted against explicit device availability, free memory, and
 configured budget evidence. A one-job calibration establishes whether the
 applicable serial workload is viable; it does not by itself authorize parallel
 expansion. Soft utilization and fractional-VRAM envelopes regulate additional
-jobs, while a hard live-VRAM guard protects against OOM. Missing telemetry at
+jobs both upward and downward, while independent hard conditions protect against
+OOM. Missing telemetry at
 calibration startup selects conservative serial execution when the device is
 otherwise usable; it does not create parallel evidence.
 
@@ -1876,18 +1877,96 @@ accepted serial-floor calibration contract, which these training rules do not
 replace.
 
 For training, the configured `training_gpu_memory_fraction` is the admission
-ceiling *and* the live aggregate safety envelope, not merely a promotion
-preference. One trustworthy observation at or above that envelope immediately
-blocks any further admission or promotion at every active-job count. That single
-observation is only a candidate hazard: it may be rechecked once so an allocator
-fluctuation does not stop a run. If the next normal control observation is still
-at or above the envelope while any owned training job is active, the wave is a
-hard memory hazard and the whole training wave - never an arbitrarily selected
-victim job - is cancelled and reaped. Throttling future replacements cannot
-return memory that running jobs already hold, so it is not an admissible
-response to a sustained envelope violation. GPU-utilization saturation stays
-soft: while memory itself remains inside the envelope, saturation only lowers
-the replacement target and never stops running work.
+ceiling *and* the live aggregate **soft** admission/backoff boundary. It is a
+control boundary, not a scientific or execution verdict: crossing it is never by
+itself terminal memory infeasibility. One trustworthy observation at or above
+that envelope immediately blocks any further admission or promotion at every
+active-job count. That single observation is only a candidate: it may be
+rechecked once so an allocator fluctuation does not stop a run.
+
+Training admission is therefore symmetric. The controller admits upward one job
+at a time on sustained true-epoch evidence, and it backs off downward one job at
+a time on sustained aggregate pressure. If the next normal control observation
+is still at or above the envelope while more than one owned training job is
+active, that persistence proves *the current concurrency* is unsafe, not that
+the workload is infeasible. The scheduler retracts exactly one prior admission:
+the most recently admitted currently active owned job is demoted
+(reverse-most-recent-promotion), which reuses the existing admission ordering
+rather than any victim-selection subsystem. Unaffected active jobs keep running.
+Backoff proceeds one level at a time - `3 -> 2`, then `2 -> 1` only on fresh
+persistent evidence at two - so every transition has its own observable causal
+evidence.
+
+A demoted job's cooperative stop is per job. The scheduler hands every admitted
+job its own stop handle; backoff sets exactly one of them, and a terminal abort
+sets every one of them, which is what whole-wave cancellation means. A future
+cancellation request is not teardown: the scheduler blocks until the demoted
+worker has actually returned, so the child process has exited and the run's own
+finalization has run, and only then does it re-observe device occupancy and make
+the next scheduling decision. No replacement admission, requeue, or restart may
+be ordered before that boundary.
+
+How long that teardown may legitimately take is owned by the process owner, and
+the scheduler imposes no deadline of its own on the demoted future. That future
+is the whole run: when the stop is requested it may still be in run-owned
+preparation, recovery classification, or materialization and may never have
+reached the trainer, so no subprocess-termination clock describes it and elapsed
+time there is not evidence about owned teardown. Child termination is instead
+bounded where the child is owned: the process owner escalates SIGINT, one
+termination grace, SIGTERM, one termination grace, then an unconditional
+SIGKILL and reap, so a stopped child always terminates inside its owner and
+whatever verdict that produces reaches the scheduler as the future's own
+outcome. Optimizer-activity freshness
+(`parallel_training_epoch_activity_timeout_seconds`) remains purely a child
+progress-liveness bound and has no authority over process teardown, so changing
+it cannot change resource-safety semantics, and no operator-facing teardown knob
+exists at all.
+
+The same per-job stop handle is also read at run-phase boundaries that precede
+the trainer, so a slot demoted while still preparing or materializing stops
+spending effort it will not use instead of launching MACE. That is the one
+cancellation mechanism, not a second one: those boundaries sit before any
+partial fold evidence exists, they leave the run root under the existing
+materialization/checkpoint authority, and they produce the same explicit
+cancellation outcome the trainer produces, so the scheduler classifies them as
+an ordinary retractable demotion.
+
+A resource demotion is not a scientific run failure, but only the execution
+owner may say that a demotion is what happened. The trainer reports an explicit
+cancellation outcome when - and only when - it observed the requested stop and
+terminated its child through the normal termination/finalization path; a
+supervisor's intent to stop a job is never evidence about why that job raised.
+On that explicit outcome the demoted task returns to the pending/restartable
+queue with its frozen slot identity, is not counted as a failed job, publishes
+no partial fold, and resumes later through the existing checkpoint/continuation
+authority rather than any retry identity or second checkpoint convention.
+Completed folds stay completed, and the planned folds still complete exactly
+once. Any other exception from a job selected for demotion - a backend fault, a
+nonzero MACE exit, a CUDA allocation failure, an interrupt, or a programmer
+error that races the stop request - keeps its own authority, is counted as a
+failed job, and ends the invocation through the terminal path instead of being
+requeued.
+
+A concurrency level that live telemetry has disproven lowers a scheduler-owned
+effective ceiling to one level below it for the rest of the current
+post-selection execution, and that ceiling is monotone downward: the same
+execution cannot oscillate back into a level it already falsified. The ceiling
+is runtime control state only - not campaign configuration, not durable
+scientific evidence, and not a persisted hardware profile. The per-job VRAM
+estimate is advisory admission input; live aggregate telemetry is authoritative
+for runtime adaptation, so an estimate the device later disproves is a reason to
+adapt concurrency rather than to fail.
+
+Terminal memory infeasibility sits outside this adaptation loop. It may be
+declared only when no lower owned concurrency state remains capable of resolving
+the problem - that is, after convergence to the minimum executable concurrency -
+or when an independent authoritative hard condition applies: a backend/device
+allocation failure, a failure of owned teardown/reclamation to re-establish a
+safe owned execution state, or another established hard-failure invariant such
+as sustained loss of live memory observability. Raising the configured envelope
+is not a repair for concurrency pressure. GPU-utilization saturation stays soft
+in the same way: while memory itself remains inside the envelope, saturation
+lowers the replacement target and never stops running work.
 
 Live memory observability is a precondition for continuing to own accelerator
 work, not merely for promoting it. While training is active, a missing current
@@ -1903,7 +1982,7 @@ bounded transient tolerance is controller-local rather than operator
 configuration.
 
 Any exception escaping the training scheduling wave ends the invocation. It
-stops new admission, signals cancellation, reaps every owned active child
+stops new admission, signals every owned child's stop handle, reaps every owned active child
 through the existing supervision path, and is re-raised before any post-training
 evaluation begins - including for previously completed sibling slots. A device
 whose training state is unknown or already unsafe must not receive fresh

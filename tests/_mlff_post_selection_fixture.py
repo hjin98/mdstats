@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import threading
 from contextlib import ExitStack
 from pathlib import Path
 from types import SimpleNamespace
@@ -224,6 +225,11 @@ def _seeded_raw_checkpoint(
     return path
 
 
+#: Serializes the process-global child-authority environment window that the
+#: stand-in TRAIN2 child publishes; several children run concurrently.
+_CHILD_AUTHORITY_ENVIRONMENT_LOCK = threading.Lock()
+
+
 def record_child_mace_execution_evidence(authority):
     """Attach executed-run evidence to one launch authority, as the child does.
 
@@ -334,6 +340,15 @@ def train_like_mace(
     optimizer = torch.optim.SGD(model.parameters(), lr=base_lr, momentum=0.9)
     ema = ExponentialMovingAverage(model.parameters(), decay=0.95)
     runtime_environment = ExitStack()
+    # ``patch.dict(os.environ, ...)`` mutates process-global state, and the TRAIN
+    # scheduler runs several of these stand-in children in threads at once.
+    # Without this, one child restores the environment its sibling had just
+    # published and that sibling persists a TRAIN2 summary with no MACE
+    # execution evidence, which its own EVAL2 continuation then rejects. The
+    # lock is released with the rest of this stack once the runtime has read the
+    # authority; the training loop below stays concurrent, which is what the
+    # scheduler tests actually observe.
+    runtime_environment.enter_context(_CHILD_AUTHORITY_ENVIRONMENT_LOCK)
     # Full campaign requests are produced by the real P5 owner and therefore
     # can derive the same authority as MacePostSelectionTrainer. The existing
     # dependency-facing dummy wrapper intentionally passes only a minimal
@@ -470,6 +485,16 @@ class PostSelectionHarness:
         #: metrics.  The toy trainer writes byte-identical logs, so the run's
         #: authenticated checkpoint locator is what distinguishes the runs.
         self.run_force_offsets = dict(run_force_offsets or {})
+
+    def __call__(self, request):
+        """Be the execution owner object, not just its call.
+
+        Passing the harness itself as ``trainer`` keeps it the callable
+        execution owner the run path invokes, the same way the production
+        trainer is invoked.
+        """
+
+        return self.train(request)
 
     def train(self, request):
         from mdstats.training_data.post_selection_execution import (

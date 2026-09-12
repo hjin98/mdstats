@@ -17,6 +17,9 @@ The governed propositions are:
 4. scheduler failure reporting counts queued/active/completed/failed work from
    actual ownership rather than a derived formula;
 5. temporary architecture classification releases its accelerator residency.
+
+TRAIN2 memory-pressure backoff, per-job demotion, and the soft/hard boundary
+separation are governed by ``test_mlff_p5_train2_memory_backoff``.
 """
 
 from __future__ import annotations
@@ -438,7 +441,7 @@ def test_architecture_classification_cleans_up_on_the_exception_path(
     )
 
 
-# --- 6. A sustained memory hazard stops owned TRAIN2 before CUDA OOM -------
+# --- 6. A live child that must be stopped mid-flight -----------------------
 
 
 class _SlowTrain(fx.PostSelectionHarness):
@@ -455,90 +458,6 @@ class _SlowTrain(fx.PostSelectionHarness):
         self.live["training"] = True
         time.sleep(self.seconds)
         raise AssertionError("the scheduler should have stopped this child")
-
-
-def test_a_sustained_memory_hazard_stops_owned_training_before_cuda_oom(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Occupancy above the envelope during initialization stops the run.
-
-    This drives the real P5 admission/supervision owner with a CUDA device and a
-    bounded deterministic telemetry fixture: admission sees a clean baseline, and
-    the child is then observed above the configured envelope while it is still
-    initializing - exactly the target-host situation that previously survived as
-    "waiting for true epoch compute" until CUDA ran out of memory.
-    """
-
-    from dataclasses import replace
-
-    from mdstats.training_data import _campaign_cli_core as cli
-    from mdstats.training_data.campaign_post_selection_runtime import (
-        build_post_selection_contexts,
-        execute_post_selection_cross_validation,
-    )
-    from mdstats.training_data.training_parallel import (
-        GpuTelemetrySample,
-        TrainingMemorySafetyError,
-    )
-
-    gib = 1024 ** 3
-    config = _selected_campaign(
-        tmp_path,
-        execution="\n".join(
-            (
-                "parallel_training_monitor_interval_seconds = 0.05",
-                "parallel_training_epoch_stabilization_seconds = 0.0",
-                "training_progress_interval_seconds = 0.05",
-            )
-        ),
-    )
-
-    live = {"training": False}
-
-    def telemetry(device: str):
-        # Admission observes a clean device; the device goes over the envelope
-        # only once the child is actually running, which is the ordering the
-        # target-host failure had.
-        used = 22.5 if live["training"] else 0.4
-        return GpuTelemetrySample(
-            sampled_monotonic=time.monotonic(),
-            device_index=0,
-            utilization_percent=4.0,
-            used_bytes=int(used * gib),
-            total_bytes=24 * gib,
-        )
-
-    # The scheduler resolves this from ``training_parallel`` at call time, so the
-    # bounded resource fixture is installed on the owning module.
-    from mdstats.training_data import training_parallel
-
-    monkeypatch.setattr(training_parallel, "query_gpu_telemetry", telemetry)
-
-    harness = _SlowTrain(live=live, seconds=2.0)
-    cfg, paths = cli._load_config(config)
-    store = cli.CampaignStore(paths.state_db)
-    try:
-        context = build_post_selection_contexts(
-            cfg,
-            paths,
-            store,
-            trainer=harness.train,
-            inference_evaluator=harness.evaluate,
-            admit=True,
-        )[0]
-        context = replace(
-            context,
-            method_policies=replace(context.method_policies, device="cuda:0"),
-        )
-        with pytest.raises(TrainingMemorySafetyError) as stop:
-            execute_post_selection_cross_validation(context)
-    finally:
-        store.close()
-
-    assert "before CUDA out of memory" in str(stop.value)
-    assert "training envelope" in str(stop.value)
-    assert len(harness.runs) == 1, "admission must not have launched a second job"
-    _no_cv_acceptance(config)
 
 
 # --- 7. Runtime memory-observability loss fails closed ---------------------

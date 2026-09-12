@@ -35,7 +35,7 @@ import shutil
 import stat
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Deque, Mapping, Sequence
 
 from ._common import (
     TrainingDataInputError,
@@ -72,6 +72,7 @@ from .post_selection_execution import (
     DATASET_ROLE_CHECKPOINT_MONITOR,
     DATASET_ROLE_OUTER_EVALUATION,
     MacePostSelectionTrainer,
+    PostSelectionCancelledError,
     PostSelectionExecutionError,
     PostSelectionMaterialization,
     PostSelectionRunEvidence,
@@ -882,6 +883,29 @@ def evaluate_post_selection_run_candidates(
     ]
 
     return catalog, representative, monitor_metrics
+
+
+def _abort_post_selection_run_if_cancelled(
+    cancellation_event: Any | None, *, phase: str
+) -> None:
+    """Leave a run at a recoverable pre-trainer boundary once stopped.
+
+    The scheduler's per-slot stop handle already travels down this path to the
+    trainer. Reading the same handle at run-phase boundaries that precede the
+    trainer is how a demoted slot stops spending preparation/materialization
+    effort it will not use; it is not a second cancellation mechanism and it
+    produces the same explicit cancellation outcome the trainer produces, so the
+    scheduler classifies it as a retractable demotion rather than a failure.
+
+    Every call site sits before any partial fold evidence exists: the run root
+    stays under the existing materialization/checkpoint authority and the next
+    attempt resumes through the ordinary continuation path.
+    """
+
+    if cancellation_event is not None and cancellation_event.is_set():
+        raise PostSelectionCancelledError(
+            f"Post-selection run stopped at the {phase} boundary before training."
+        )
 
 
 def execute_post_selection_run(
@@ -1910,6 +1934,7 @@ def _execute_post_selection_run_locked(
 
     context_cfg = getattr(context, "cfg", None)
     selected = context.selected
+    _abort_post_selection_run_if_cancelled(cancellation_event, phase="run-entry")
     setup = _prepare_post_selection_run(
         context,
         run_plan=run_plan,
@@ -2000,6 +2025,13 @@ def _execute_post_selection_run_locked(
         # the trainer seam to perform a zero-epoch call.
         summary = continuation_summary
     else:
+        # The last boundary before the trainer takes ownership of a child
+        # process: stopping here avoids launching MACE for a slot that has
+        # already been demoted, and the materialization just written stays
+        # canonical for the restart.
+        _abort_post_selection_run_if_cancelled(
+            cancellation_event, phase="pre-training"
+        )
         summary = context.trainer(
             PostSelectionRungRequest(
                 plan=runtime_plan,
@@ -3131,7 +3163,8 @@ def _execute_post_selection_pending_runs(
     if not pending:
         return {}
 
-    from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+    from collections import deque
+    from concurrent.futures import ALL_COMPLETED, FIRST_COMPLETED, ThreadPoolExecutor, wait
     import threading
     import time
 
@@ -3183,7 +3216,12 @@ def _execute_post_selection_pending_runs(
     )
     controller = AdaptiveTrainingConcurrency(concurrency_plan, concurrency_policy)
     telemetry_ref: dict[str, Any] = {"sample": initial_sample}
-    cancellation_event = threading.Event()
+    # One cooperative stop signal per admitted slot. Backoff sets exactly one of
+    # them; a terminal abort sets every one of them, which *is* the whole-wave
+    # cancellation. A single shared event could not express "stop exactly one
+    # owned job", and a second parallel mechanism for the wave would only
+    # duplicate this one.
+    stop_events: dict[int, threading.Event] = {}
     state_lock = threading.Lock()
     states: dict[int, dict[str, Any]] = {
         task.slot: {
@@ -3201,7 +3239,11 @@ def _execute_post_selection_pending_runs(
     outer_tracker = ProgressRateTracker(completed=0, started_at=started)
     completed_count = 0
     failed_count = 0
-    next_task = 0
+    # Restartable pending work. A memory-pressure demotion returns its task
+    # here; it is neither a completion nor a scientific failure.
+    pending_queue: Deque[_PendingPostSelectionRun] = deque(ordered_pending)
+    # Insertion-ordered by construction, so the last key is the most recently
+    # admitted currently active owned job - the deterministic backoff victim.
     active: dict[Any, _PendingPostSelectionRun] = {}
     trained_slots: list[int] = []
     last_sample_at = started
@@ -3272,9 +3314,11 @@ def _execute_post_selection_pending_runs(
                 f"true_epoch_jobs={true_epoch_count}",
                 f"target_jobs={controller.target_jobs}",
                 f"ceiling={concurrency_plan.maximum_jobs}",
+                f"effective_ceiling={controller.effective_ceiling}",
                 # Counted from actual scheduler ownership: a submitted slot that
-                # already failed is never reported as still queued.
-                f"queued_jobs={len(ordered_pending) - next_task}",
+                # already failed is never reported as still queued, and a
+                # demoted slot is queued again rather than counted as failed.
+                f"queued_jobs={len(pending_queue)}",
                 f"completed_jobs={completed_count}",
                 f"failed_jobs={failed_count}",
                 timing,
@@ -3287,7 +3331,6 @@ def _execute_post_selection_pending_runs(
         last_report_at = now
 
     def submit_available(executor: ThreadPoolExecutor) -> None:
-        nonlocal next_task
         if admission_blocked:
             # The last control observation was over the envelope or blind. No
             # new accelerator work is admitted until a trustworthy safe
@@ -3296,9 +3339,14 @@ def _execute_post_selection_pending_runs(
             return
         # A zero target is a truthful resource state, not a value to floor.
         target = max(0, int(controller.target_jobs))
-        while next_task < len(ordered_pending) and len(active) < target:
-            task = ordered_pending[next_task]
-            next_task += 1
+        while pending_queue and len(active) < target:
+            task = pending_queue.popleft()
+            with state_lock:
+                # A restarted slot re-earns its own liveness observations; the
+                # dead attempt's must not be read as current epoch activity.
+                states[task.slot].update({"true_epoch": False, "phase": "launching"})
+            stop_event = threading.Event()
+            stop_events[task.slot] = stop_event
 
             def observe(
                 observation: Mapping[str, Any],
@@ -3317,12 +3365,99 @@ def _execute_post_selection_pending_runs(
                 monitor_frame_uids=task.monitor_frame_uids,
                 outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
                 progress_context=task.progress_context,
-                cancellation_event=cancellation_event,
+                cancellation_event=stop_event,
                 progress_observer=observe,
                 telemetry_ref=telemetry_ref,
                 stop_after_training=True,
             )
             active[future] = task
+
+    def demote_most_recently_admitted(pre_sample: Any) -> None:
+        """Retract one prior admission and prove its resource lifetime is gone.
+
+        Reverse-most-recent-promotion: ``active`` is insertion-ordered by
+        admission, so the last key is the victim. A resource demotion is not a
+        scientific failure - the task returns to the pending/restartable queue
+        with its frozen slot identity and resumes later through the existing
+        checkpoint/continuation authority - so it never increments the failed
+        count and never publishes partial evidence.
+
+        What makes an outcome a demotion is the execution owner's explicit
+        cancellation result, never this scheduler's intent: a victim that
+        instead failed on its own authority stays a failure.
+
+        The scheduler blocks here until the owned worker has actually returned.
+        A future cancellation request is not CUDA teardown: only the worker's
+        own completion establishes that the child process exited and its
+        finalization ran, so no replacement admission or restart can be ordered
+        before that boundary.
+
+        The wait is unbounded on purpose. This future is the whole run, which
+        may still be in run-owned preparation or materialization and may not
+        have entered the trainer at all, so no subprocess-termination clock
+        describes it. Bounding child termination belongs to the process owner,
+        which already escalates SIGINT/SIGTERM/SIGKILL and reaps
+        unconditionally; whatever verdict that produces arrives here as the
+        future's own outcome.
+        """
+
+        nonlocal completed_count, failed_count, last_decision_reason
+        victim_future = next(reversed(active))
+        victim = active[victim_future]
+        before = len(active)
+        used_text = (
+            "unavailable"
+            if pre_sample is None
+            else f"{int(getattr(pre_sample, 'used_bytes', 0)) / 1024**3:.1f} GiB"
+        )
+        last_decision_reason = (
+            f"backoff {before}->{before - 1}: aggregate VRAM {used_text} remained "
+            f"above the soft training envelope; demoting most recently admitted "
+            f"slot={victim.slot}"
+        )
+        print(
+            f"[TRAIN scheduler] backoff {before}->{before - 1}; slot={victim.slot}; "
+            f"pre-demotion VRAM={used_text}; "
+            f"effective_ceiling={controller.effective_ceiling}",
+            flush=True,
+        )
+        stop_events[victim.slot].set()
+        wait((victim_future,), return_when=ALL_COMPLETED)
+        active.pop(victim_future, None)
+        stop_events.pop(victim.slot, None)
+        with state_lock:
+            states[victim.slot].update({"true_epoch": False, "phase": "demoted"})
+        error = victim_future.exception()
+        if error is not None and not isinstance(error, PostSelectionCancelledError):
+            # Asking a job to stop is not evidence that it raised *because* it
+            # was asked. Only the execution owner's explicit cancellation
+            # outcome is retractable resource work; a backend fault, a MACE
+            # nonzero exit, a CUDA failure, an interrupt or a programmer error
+            # that races the request keeps its own authority and escapes into
+            # the existing terminal path instead of being requeued. It is
+            # counted exactly as any other owned-job failure would be.
+            failed_count += 1
+            raise error
+        if error is None:
+            # The worker reached its authenticated TRAIN2 summary before it
+            # observed the stop. That slot is genuinely done; requeueing it
+            # would duplicate completed work.
+            trained_slots.append(victim.slot)
+            completed_count += 1
+            outcome = "completed before stopping"
+        else:
+            pending_queue.appendleft(victim)
+            outcome = "returned to the pending/restartable queue"
+        post_sample = query_gpu_telemetry(device)
+        telemetry_ref["sample"] = post_sample
+        _report_post_selection_gpu_occupancy(
+            f"post-demotion slot={victim.slot} teardown", device, post_sample
+        )
+        print(
+            f"[TRAIN scheduler] slot={victim.slot} worker teardown observed; "
+            f"{outcome}",
+            flush=True,
+        )
 
     def complete_eval2_for_trained_slots() -> dict[
         int, tuple[PostSelectionRunEvidence, Any, Any]
@@ -3385,16 +3520,16 @@ def _execute_post_selection_pending_runs(
     try:
         submit_available(executor)
         report("running", force=True)
-        while active or next_task < len(ordered_pending):
+        while active or pending_queue:
             if (
                 not active
-                and next_task < len(ordered_pending)
+                and pending_queue
                 and int(controller.target_jobs) < 1
             ):
                 # Pending work with an idle queue and no feasible slot is a
                 # terminal resource state; busy-waiting would hide it.
                 raise TrainingAdmissionBlockedError(
-                    f"{len(ordered_pending) - next_task} pending TRAIN2 job(s) "
+                    f"{len(pending_queue)} pending TRAIN2 job(s) "
                     "remain but no job is currently resource-admissible: "
                     f"{concurrency_plan.summary()}"
                 )
@@ -3406,11 +3541,12 @@ def _execute_post_selection_pending_runs(
                 )
             else:
                 done = set()
-                if admission_blocked and next_task < len(ordered_pending):
+                if admission_blocked and pending_queue:
                     time.sleep(poll_interval)
             first_failure: BaseException | None = None
             for future in done:
                 task = active.pop(future)
+                stop_events.pop(task.slot, None)
                 try:
                     future.result()
                     trained_slots.append(task.slot)
@@ -3445,6 +3581,14 @@ def _execute_post_selection_pending_runs(
                     else False
                 )
                 last_sample_at = now
+                if decision.memory_backoff and active:
+                    # Sustained soft-envelope pressure above the minimum owned
+                    # concurrency. The controller has already closed this level;
+                    # the scheduler retracts exactly one prior admission and
+                    # reclaims it before any further scheduling decision.
+                    demote_most_recently_admitted(sample)
+                    report("running", force=True)
+                    continue
                 if decision.memory_hazard:
                     # A resource stop before CUDA exhausts the device, routed
                     # through the existing cancellation/reaping path. An unknown
@@ -3467,7 +3611,9 @@ def _execute_post_selection_pending_runs(
                 report("running")
         report("training-completed", force=True)
     except BaseException as exc:
-        cancellation_event.set()
+        # Terminal/global abort: signal every owned child, not one victim.
+        for event in stop_events.values():
+            event.set()
         for future in active:
             future.cancel()
         report(

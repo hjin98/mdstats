@@ -114,6 +114,84 @@ tuning was never an accepted requirement, so the public surface was removed
 rather than documented. Expressing the bound in control observations also made
 the state a two-value controller-local flag instead of a timestamp.
 
+## The third falsification: whole-wave cancellation for a soft boundary
+
+The uniform live-safety rule above was still an over-reading of the evidence. A
+later 24 GiB run admitted two owned jobs, reached roughly 22.2 GiB aggregate
+against the 21.6 GiB envelope with GPU utilization far below its ceiling, and
+was cancelled outright - while both jobs were making progress and the device had
+produced no allocation failure at all.
+
+A persistent envelope violation at concurrency `N > 1` proves that concurrency
+`N` is unsafe. It does not prove the training workload is infeasible. The
+controller had adaptive upward admission but no symmetric downward transition,
+so the only vocabulary it had for "this is too much" was "stop everything".
+
+The correction makes the aggregate envelope a soft admission/backoff boundary.
+Sustained pressure above one owned job retracts exactly one prior admission -
+the most recently admitted active owned job - waits for that worker to return so
+its accelerator lifetime is actually released, requeues it as restartable work,
+and lowers a monotone effective ceiling so the disproven level cannot be
+re-entered in the same execution. A demotion is a resource-control transition,
+not a scientific failure: completed folds stay completed, no partial fold is
+published, and the demoted run resumes through the existing checkpoint
+authority. Terminal memory infeasibility now requires convergence to the minimum
+owned concurrency or an independent hard condition - an authoritative allocation
+failure or sustained loss of live memory observability.
+
+What was rejected again: raising the 90% envelope until the observed run passes,
+suppressing the terminal error without correct backoff semantics, catching and
+restarting the wave, unconditional serialization, an external watchdog or second
+scheduler, persisted hardware tuning state, and treating `Future.cancel()` as
+proof that CUDA state was reclaimed.
+
+## The fourth falsification: inferring cancellation from the request
+
+The first backoff implementation was correct about concurrency but wrong about
+two boundaries below it, both found in review before release.
+
+It read the demoted worker's outcome as "no exception means it finished first,
+any ordinary exception means my cancellation worked". That inference is invalid:
+a backend fault, a nonzero MACE exit, a CUDA allocation failure, or a programmer
+error that raced the stop request would have been silently reclassified as
+retryable resource work and returned to the pending queue - masking exactly the
+authoritative failures the admission invariants require to stay authoritative,
+and able to loop on a deterministic child defect. The correction narrows the
+existing execution contract instead of adding a classifier: the trainer raises
+an explicit cancellation outcome, a subclass of its own execution error, only
+after it has observed the requested stop and terminated and finalized its child.
+Only that outcome is requeueable; everything else keeps its own authority.
+
+It also used the child optimizer-activity freshness bound as the deadline for
+waiting on the demoted worker. Those are different meanings with different
+owners: the freshness bound is operator-tunable liveness tuning and legally
+zero, so a zero or short value could fail a healthy teardown and mislabel it a
+CUDA-lifetime defect.
+
+Replacing that number with one the trainer derived from its own poll interval
+and termination grace fixed the provenance but not the scope, and review found
+the remainder. The timed object was the whole run future, which may still be in
+preparation, recovery classification, or materialization and may never have
+entered the trainer at all; a slot demoted while merely slow to materialize
+could therefore be declared a teardown failure though no child process was owned
+and no termination contract had been violated - recreating the original
+user-visible shape, feasible work killed by a controller-side resource error.
+The correction removes the deadline rather than moving it again. The scheduler
+waits for the whole owned future, which was already the correct reuse barrier;
+child termination stays bounded where the child is owned, by the escalating
+SIGINT/SIGTERM/SIGKILL reap the process owner already performed; and the
+trainer-side bound, having no owner-local consumer left, was deleted rather than
+kept as dead policy surface. The same per-job stop handle is now also read at
+run-phase boundaries before the trainer, so a demoted slot stops preparing work
+it will not use through the one existing cancellation mechanism.
+
+All three defects were one shape: resource adaptation, execution failure, and
+process lifetime had been allowed to share an interface meaning, and a
+sub-owner's contract had been allowed to govern ancestor work. What was rejected
+here: parsing the cancellation message, a parallel failure registry, a retry
+manager or watchdog, a new teardown timeout key, a second cancellation
+mechanism, and weakening the falsification tests.
+
 ## Phase ownership
 
 The training scheduler previously submitted the whole fold lifecycle as one

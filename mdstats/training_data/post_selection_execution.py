@@ -90,6 +90,19 @@ class PostSelectionExecutionError(PostSelectionError):
     """A post-selection execution owner refused to produce or accept evidence."""
 
 
+class PostSelectionCancelledError(PostSelectionExecutionError):
+    """A requested cooperative stop was observed and the owned child reaped.
+
+    This is the execution owner's *explicit* statement that the caller's own
+    cancellation request - not a backend fault, a nonzero MACE exit, a CUDA
+    allocation failure, or a programmer error - ended this attempt, and that it
+    ended through the normal child termination/finalization path. It is
+    therefore the only execution outcome a supervisor may treat as retractable
+    work rather than an execution failure: a supervisor's intent to stop a job
+    is never by itself evidence about why the job raised.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Fitted preparation (fold-local or final)
 # ---------------------------------------------------------------------------
@@ -1001,7 +1014,14 @@ def _build_post_selection_mace_execution_authority(
 def _terminate_post_selection_process(
     process: subprocess.Popen[Any], *, grace_seconds: float
 ) -> None:
-    """Stop one detached wrapper/process group without leaving descendants."""
+    """Stop one detached wrapper/process group without leaving descendants.
+
+    This is the only owner of child-termination timing. The escalation is
+    bounded by construction - SIGINT, one grace, SIGTERM, one grace, then an
+    unconditional SIGKILL and reap - so a stopped child always terminates here
+    and no supervisor above needs, or is entitled to, a termination clock of its
+    own for work it does not own.
+    """
 
     if process.poll() is not None:
         return
@@ -1785,7 +1805,7 @@ class MacePostSelectionTrainer:
                                 status="cancelled",
                                 force=True,
                             )
-                            raise PostSelectionExecutionError(
+                            raise PostSelectionCancelledError(
                                 "Post-selection MACE training was cancelled."
                             )
                         if self.minimum_free_disk_bytes is not None:
@@ -2621,6 +2641,7 @@ __all__ = [
     "POST_SELECTION_REPLAY_HEAD_NAME",
     "POST_SELECTION_TARGET_HEAD_NAME",
     "MacePostSelectionTrainer",
+    "PostSelectionCancelledError",
     "PostSelectionExecutionError",
     "PostSelectionFittedPreparation",
     "PostSelectionMaterialization",
