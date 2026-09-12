@@ -244,3 +244,56 @@ A subsequent SSDP 6.2 Review may PASS only when one final candidate-bound state 
 11. no new scheduler, watchdog, retry wrapper, timeout configuration surface, duplicate queue, or persistent tuning state is introduced.
 
 Until these conditions are satisfied, the parent workplan remains **NO-PASS / REOPENED**.
+
+---
+
+## 6. Implementation response — B4/B5 closure
+
+**Executable candidate:** `04bd758b` (tree `fbc3bdfef2a69df9e6debfb5ffb5606ec6936823`), clean working tree, branch `fix/mlff-p5-train2-memory-pressure-backoff`.
+
+### B4 repair (reduction, not re-timing)
+
+- `demote_most_recently_admitted()` now waits `wait((victim_future,), return_when=ALL_COMPLETED)` with **no timeout of any provenance**. `teardown_bound` and its `TrainingMemorySafetyError` branch are deleted. The full-future quiescence barrier, which was already the correct reuse boundary, is the only barrier.
+- `MacePostSelectionTrainer.cancellation_teardown_seconds` had no owner-local consumer after that removal and is **deleted**, not kept as dead policy surface. `_terminate_post_selection_process` is documented as the sole owner of child-termination timing; it is bounded by construction (SIGINT, grace, SIGTERM, grace, unconditional SIGKILL + reap).
+- The existing per-slot `cancellation_event` is now read at two pre-trainer run-phase boundaries through one helper, `_abort_post_selection_run_if_cancelled`: at run entry and immediately before `context.trainer(...)`. It raises the existing `PostSelectionCancelledError`, so the scheduler classifies it as an ordinary retractable demotion. No second cancellation mechanism, no new event, no new error type, no new configuration key.
+- Nothing was added: no scheduler, watchdog, retry wrapper, timeout knob, queue, or persistent state. Net product change is `-24 / +30` lines, most of it comment.
+
+### B4 falsification
+
+`test_a_pre_trainer_victim_is_demoted_without_a_false_teardown_failure` drives the real `execute_post_selection_cross_validation`, the real controller, scheduler and run owner. Only the device probe and MACE numerics are bounded, plus a delegating wrapper that delays the second admitted run's entry into the real run body. It proves, on one execution: `backoff 2->1` occurs; the victim owned no trainer entry at the moment it observed its stop; no `did not quiesce` verdict; `post-demotion` device re-observation precedes any further admission; the victim's second run-body call starts only after its first returned and its single trainer entry belongs to that restart; both folds complete exactly once and acceptance publishes.
+
+Replacements at the correct owners:
+
+- `test_the_process_owner_bounds_its_own_termination_of_a_deaf_child` — a real child process ignoring SIGINT and SIGTERM is still reaped by `_terminate_post_selection_process` inside its own escalation. This replaces the retired scheduler-side terminal-teardown test, whose claim B4 invalidated.
+- `test_the_demotion_barrier_imposes_no_deadline_on_the_owned_future` — structural/negative evidence that the barrier contains no `timeout`, no `teardown_bound`, no cadence, and that `cancellation_teardown_seconds` is absent from both owning modules.
+
+Retained unchanged: the independent-failure race test, the zero-optimizer-freshness falsification, and the 24.0 / 21.6 / approximately 22.2 GiB deterministic challenge.
+
+### Pre-existing fixture race, root-caused and fixed
+
+`tests/test_mlff_p5_train2_memory_backoff.py::test_backoff_from_three_demotes_the_third_admitted_job` failed under CPU load with `TRAIN2 continuation has no persisted MACE execution evidence`. Attribution: on the **stashed baseline tree** it reproduces **2 of 6** runs under the same injected load (repeated twice). Cause: the stand-in TRAIN2 child publishes its launch authority through process-global `patch.dict(os.environ, ...)` while several scheduler threads run concurrently, so one child restores the environment a sibling had just published and that sibling's `_Train2Runtime` reads no evidence. The fix serializes only that publication window (`_CHILD_AUTHORITY_ENVIRONMENT_LOCK` entered on the existing `ExitStack`); the training loop stays concurrent. After the fix: **6 of 6** pass under the identical load. No assertion was weakened and no product code was changed for it.
+
+### Evidence actually executed
+
+All from the repository root, `conda run -n mace`, candidate `04bd758b`.
+
+| # | Command | Result |
+| --- | --- | --- |
+| 1 | `python -m pytest tests/test_mlff_p5_train2_memory_backoff.py -q -p no:randomly` | **12 passed**, exit 0, 126.71s |
+| 2 | `python -m pytest tests/test_mlff_training_parallel_scheduler.py tests/test_mlff_p5_train2_zero_safe_admission.py -q -p no:randomly -n 8` | **57 passed**, exit 0, 67.81s |
+| 3 | 45 affected suites (every `tests/*.py` referencing `campaign_post_selection_runtime`, `post_selection_execution`, `training_parallel`, or the shared post-selection fixture, plus the architecture specification suite), `-q -p no:randomly -n 16` | **1394 passed, 3 failed, 1 skipped**, 1679.63s |
+| 4 | `python -m pytest tests/test_mlff_doc_arch1_specification.py -q -p no:randomly` (also inside item 3) | **9 passed**, exit 0 |
+| 5 | `python -m compileall -q mdstats tests` | exit 0 |
+| 6 | `conda run -n mace pip check` | `No broken requirements found.`, exit 0 |
+| 7 | `conda run -n mace python -m build --wheel --no-isolation` | exit 0, `dist/mdstats-0.20.242a0-py3-none-any.whl` |
+| 8 | Baseline-vs-candidate load reproduction of the fixture race (6 runs each) | baseline 4 pass / 2 fail (x2 independent trials); candidate 6 pass / 0 fail |
+
+Item 3's three failures are the same pre-existing, unrelated drift recorded for the previous candidate, with unchanged identity: `test_opt_ctrl1_release_identity_preserves_scientific_compatibility` (pinned `0.20.140a0` text), `test_opt_ctrl1_architecture_and_spec_close_roadmap` (retired OPT-CTRL1 roadmap text), `test_p5f_no_screening_continuation_owner_is_reachable_from_post_selection` (the authorized `--restart_latest` seam). The previous candidate's fourth observed failure, the three-job backoff test, is resolved by the fixture repair above. The one skip is the standing `UNAVAILABLE/BLOCKING` LAMMPS/MACE callback on this host.
+
+### Documentation
+
+`docs/arch_manuals/mlff_training_data/60_execution_performance.md` now states that the scheduler imposes no deadline on the demoted future, that child termination is bounded inside the process owner, and that the same stop handle is read at pre-trainer boundaries as the one cancellation mechanism. `docs/history/mlff/train2_admission_evolution.md` records the scope defect and its reduction. The assembled `mlff_training_data_architecture.md` was regenerated with `tools/build_mlff_architecture_manual.py`; the PDF and manifest are regenerated by `docs-build.yml` in CI, as pandoc/typst are not installed on this workstation.
+
+### Qualification
+
+Physical-GPU CUDA-lifetime qualification remains **explicitly deferred** to the consolidated final-release GPU qualification package under the standing project policy. All telemetry in the evidence above is deterministic fixture telemetry and is not labelled physical GPU evidence.
