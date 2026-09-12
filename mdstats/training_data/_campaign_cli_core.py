@@ -868,6 +868,13 @@ class CampaignStore:
         """
 
         self._require_writable("replace campaign records")
+        encoded_rows = self._encode_record_rows_for_storage(records)
+        self._commit_encoded_records_atomically(encoded_rows, delete_keys=delete_keys)
+
+    def _encode_record_rows_for_storage(
+        self, records: Mapping[str, Any]
+    ) -> list[tuple[str, str, str | None, str, str]]:
+        self._require_writable("replace campaign records")
         encoded_rows: list[tuple[str, str, str | None, str, str]] = []
         timestamp = _utc_now()
         for key, record in records.items():
@@ -875,6 +882,14 @@ class CampaignStore:
                 str(key), record
             )
             encoded_rows.append((str(key), class_name, record_digest, encoded, timestamp))
+        return encoded_rows
+
+    def _commit_encoded_records_atomically(
+        self,
+        encoded_rows: Sequence[tuple[str, str, str | None, str, str]],
+        *,
+        delete_keys: Sequence[str] = (),
+    ) -> None:
         delete = tuple(dict.fromkeys(str(key) for key in delete_keys if str(key)))
         with self.writer_exclusion(), self._connect() as db:
             if delete:
@@ -2825,23 +2840,70 @@ def _single_source_replay_config(cfg: Mapping[str, Any], paths: CampaignPaths) -
         raise CampaignCliError(f"Invalid single-source replay configuration: {exc}") from exc
 
 
-def _single_source_replay_basis(
-    cfg: Mapping[str, Any], paths: CampaignPaths
-) -> dict[str, Any] | None:
-    """Capture the compact canonical replay semantics from configuration.
-
-    This captures the command-start replay expectation before any long build runs.
-    Revalidation compares the live configuration against this basis to detect
-    any semantic drift before adopting current replay aliases.
-    """
-    single = _single_source_replay_config(cfg, paths)
-    if single is None:
-        return None
+def _replay_qualification_gate_semantics(cfg: Mapping[str, Any]) -> dict[str, Any]:
+    """Extract canonical replay qualification gates from configuration."""
     return {
+        "minimum_train_configurations": int(
+            _cfg(cfg, "replay", "minimum_train_configurations", 100)
+        ),
+        "minimum_monitor_configurations": int(
+            _cfg(cfg, "replay", "minimum_monitor_configurations", 20)
+        ),
+        "allow_small_corpus": bool(
+            _cfg(cfg, "replay", "allow_small_corpus", False)
+        ),
+        "require_target_elements": bool(
+            _cfg(cfg, "replay", "require_target_elements", True)
+        ),
+        "target_atomic_numbers": tuple(
+            sorted(int(v) for v in _cfg(cfg, "profile", "all_atomic_numbers", ()))
+        ),
+        "allow_unspecified_label_provenance": bool(
+            _cfg(cfg, "replay", "allow_unspecified_label_provenance", False)
+        ),
+    }
+
+
+def _single_source_replay_basis(
+    cfg: Mapping[str, Any],
+    paths: CampaignPaths,
+    *,
+    store: CampaignStore | None = None,
+) -> dict[str, Any]:
+    """Capture the compact canonical replay expectation from configuration.
+
+    Captures interface discriminator, canonical ReplaySingleSourceConfig
+    semantics, qualification gates, and for pseudo mode the exact foundation
+    potential, qualification policy, and acceleration parents.
+    Revalidation derives the live expectation through the exact same owners.
+    """
+    import mdstats
+
+    single = _single_source_replay_config(cfg, paths)
+    baseline_lineage = None
+    if store is not None:
+        baseline_lineage = store.get_payload_optional("replay_current_lineage")
+
+    if single is None:
+        interface = "legacy_split" if _configured_replay_source_present(cfg) else "none"
+        return {
+            "interface": interface,
+            "baseline_lineage": baseline_lineage,
+        }
+
+    source_path = Path(single.replay_set_path).expanduser().resolve()
+    source_sha256 = _sha256(source_path) if source_path.is_file() else None
+
+    basis: dict[str, Any] = {
+        "interface": "single_source",
+        "baseline_lineage": baseline_lineage,
+        "config_semantics": _replay_config_semantics(single),
         "label_mode": single.label_mode,
         "split_ratio": single.split_ratio,
         "split_seed": single.split_seed,
         "replay_set_path": single.replay_set_path,
+        "source_sha256": source_sha256,
+        "qualification_gates": _replay_qualification_gate_semantics(cfg),
         "minimum_train_configurations": int(
             _cfg(cfg, "replay", "minimum_train_configurations", 100)
         ),
@@ -2849,6 +2911,46 @@ def _single_source_replay_basis(
             _cfg(cfg, "replay", "minimum_monitor_configurations", 20)
         ),
     }
+
+    if single.label_mode is mdstats.ReplayLabelMode.FOUNDATION_PSEUDOLABEL:
+        try:
+            pseudo_policy = _replay_pseudolabel_qualification_policy(cfg)
+            basis["pseudolabel_qualification_policy_digest"] = pseudo_policy.content_digest
+            basis["pseudolabel_qualification_policy"] = pseudo_policy.to_dict()
+        except Exception:
+            pass
+
+        try:
+            potential = _resolved_foundation_potential_identity(cfg, paths)
+            basis["foundation_potential_digest"] = potential.content_digest
+            basis["foundation_potential_reference"] = potential.reference
+            basis["foundation_checkpoint_sha256"] = potential.sha256
+        except Exception:
+            pass
+
+        try:
+            realization = _stored_acceleration_realization(cfg, paths, require_qualified=True)
+            if realization is not None:
+                basis["acceleration_realization_digest"] = getattr(
+                    realization,
+                    "content_digest",
+                    getattr(realization, "foundation_inference_identity_digest", None),
+                )
+                if "foundation_potential_digest" in basis:
+                    inference = _foundation_inference_identity(
+                        cfg,
+                        potential,
+                        adapter_version=mdstats.MACE_ADAPTER_VERSION,
+                        resolved_kernel_mode=realization.resolved_kernel_mode,
+                    )
+                    basis["foundation_inference_digest"] = inference.content_digest
+        except Exception:
+            pass
+
+        basis["device"] = _canonical_model_device(cfg)
+        basis["dtype"] = _canonical_model_dtype(cfg)
+
+    return basis
 
 
 def _configured_replay_source_present(cfg: Mapping[str, Any]) -> bool:
@@ -3556,6 +3658,8 @@ def _single_source_replay_context(
 
 
 _TEST_REPLAY_PUBLICATION_PRE_REVALIDATION_HOOK: Any | None = None
+_TEST_REPLAY_PUBLICATION_PRE_COMMIT_SEAM_HOOK: Any | None = None
+_TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT: int = 0
 
 
 def _publish_single_source_replay_authority(
@@ -3581,13 +3685,48 @@ def _publish_single_source_replay_authority(
     ``single-source -> legacy split replay`` are interface transitions with the
     same stale-current-state hazard as a pseudo/true mode switch.
     """
+    import mdstats
 
-    baseline_lineage = store.get_payload_optional("replay_current_lineage")
     if command_replay_basis is None:
-        command_replay_basis = _single_source_replay_basis(cfg, paths)
+        command_replay_basis = _single_source_replay_basis(cfg, paths, store=store)
+    if "baseline_lineage" in command_replay_basis:
+        baseline_lineage = command_replay_basis["baseline_lineage"]
+    else:
+        baseline_lineage = store.get_payload_optional("replay_current_lineage")
+
     context = _construct_single_source_replay_context(cfg, paths)
     if context is None:
-        _retire_single_source_replay_aliases(store)
+        with store.writer_exclusion():
+            observed = store.get_payload_optional("replay_current_lineage")
+            if observed != baseline_lineage:
+                raise CampaignCliError(
+                    "A newer `prepare` published a different current replay authority "
+                    "while preparation was running; refusing to retire it. "
+                    "Rerun `prepare` to observe and extend the current state."
+                )
+            if not paths.config.is_file():
+                raise CampaignCliError(
+                    "The campaign configuration file was removed while preparation was running. Rerun `prepare`."
+                )
+            try:
+                live_cfg, _ = _load_config(paths.config)
+                live_basis = _single_source_replay_basis(live_cfg, paths, store=store)
+            except Exception as exc:
+                raise CampaignCliError(
+                    f"The campaign configuration changed or became invalid while preparation was running: {exc}"
+                ) from exc
+
+            if live_basis["interface"] != command_replay_basis["interface"]:
+                if command_replay_basis.get("interface") == "single_source":
+                    raise CampaignCliError(
+                        "The campaign configuration no longer declares single-source replay; "
+                        "refusing to publish stale single-source replay authority. Rerun `prepare`."
+                    )
+                raise CampaignCliError(
+                    "The campaign configuration changed to single-source replay while preparation was running; "
+                    "refusing to retire current replay authority. Rerun `prepare`."
+                )
+            _retire_single_source_replay_aliases(store)
         return None
 
     single = context["config"]
@@ -3644,14 +3783,14 @@ def _publish_single_source_replay_authority(
             )
         try:
             live_cfg, _ = _load_config(paths.config)
-            live_basis = _single_source_replay_basis(live_cfg, paths)
+            live_basis = _single_source_replay_basis(live_cfg, paths, store=store)
         except Exception as exc:
             raise CampaignCliError(
                 f"The campaign configuration changed or became invalid while replay preparation was running: {exc}"
             ) from exc
 
         if command_replay_basis is not None:
-            if live_basis is None:
+            if live_basis.get("interface") != "single_source":
                 raise CampaignCliError(
                     "The campaign configuration no longer declares single-source replay; "
                     "refusing to publish stale single-source replay authority. Rerun `prepare`."
@@ -3666,13 +3805,68 @@ def _publish_single_source_replay_authority(
                     "running; refusing to publish a stale replay authority. Rerun `prepare`."
                 )
             if (
-                live_basis["minimum_train_configurations"] != command_replay_basis["minimum_train_configurations"]
+                live_basis.get("qualification_gates") != command_replay_basis.get("qualification_gates")
+                or live_basis["minimum_train_configurations"] != command_replay_basis["minimum_train_configurations"]
                 or live_basis["minimum_monitor_configurations"] != command_replay_basis["minimum_monitor_configurations"]
             ):
                 raise CampaignCliError(
                     "Campaign replay qualification configuration changed while replay preparation was "
                     "running; refusing to publish a stale replay authority. Rerun `prepare`."
                 )
+            if single.label_mode is mdstats.ReplayLabelMode.FOUNDATION_PSEUDOLABEL:
+                if (
+                    live_basis.get("pseudolabel_qualification_policy_digest")
+                    != command_replay_basis.get("pseudolabel_qualification_policy_digest")
+                ):
+                    raise CampaignCliError(
+                        "Campaign pseudo-label qualification policy changed while replay preparation was "
+                        "running; refusing to publish a stale pseudo-label authority. Rerun `prepare`."
+                    )
+                if (
+                    live_basis.get("foundation_checkpoint_sha256")
+                    != command_replay_basis.get("foundation_checkpoint_sha256")
+                ):
+                    raise CampaignCliError(
+                        "The foundation checkpoint file changed or was removed while "
+                        "replay preparation was running; refusing to publish a stale "
+                        "pseudo-label authority. Rerun `prepare`."
+                    )
+                if (
+                    live_basis.get("foundation_potential_digest")
+                    != command_replay_basis.get("foundation_potential_digest")
+                ):
+                    raise CampaignCliError(
+                        "Campaign foundation potential configuration changed while replay preparation was "
+                        "running; refusing to publish stale pseudo-label authority. Rerun `doctor` and `prepare`."
+                    )
+                if (
+                    live_basis.get("acceleration_realization_digest")
+                    != command_replay_basis.get("acceleration_realization_digest")
+                ):
+                    raise CampaignCliError(
+                        "The doctor-frozen acceleration realization turned over while replay "
+                        "preparation was running; refusing to publish a stale pseudo-label authority. "
+                        "Rerun `prepare`."
+                    )
+                if (
+                    live_basis.get("foundation_inference_digest")
+                    != command_replay_basis.get("foundation_inference_digest")
+                ):
+                    raise CampaignCliError(
+                        "The doctor-frozen acceleration realization turned over while replay "
+                        "preparation was running; refusing to publish a stale pseudo-label authority. "
+                        "Rerun `prepare`."
+                    )
+                if (
+                    live_basis.get("device") != command_replay_basis.get("device")
+                    or live_basis.get("dtype") != command_replay_basis.get("dtype")
+                ):
+                    raise CampaignCliError(
+                        "Campaign foundation runtime model configuration changed while replay "
+                        "preparation was running; refusing to publish stale pseudo-label authority. "
+                        "Rerun `prepare`."
+                    )
+
             live_source_file = Path(live_basis["replay_set_path"]).expanduser().resolve()
             if not live_source_file.is_file() or _sha256(live_source_file) != published_source.sha256:
                 if live_source_file != source_file:
@@ -3686,6 +3880,8 @@ def _publish_single_source_replay_authority(
                     "running; refusing to publish a prepared replay authority that would "
                     "mix source generations. Rerun `prepare`."
                 )
+        else:
+            live_source_file = source_file
 
         if not source_file.is_file() or _sha256(source_file) != published_source.sha256:
             raise CampaignCliError(
@@ -3694,7 +3890,8 @@ def _publish_single_source_replay_authority(
                 "mix source generations. Rerun `prepare`."
             )
 
-        if single.label_mode is ReplayLabelMode.FOUNDATION_PSEUDOLABEL:
+        ckpt_path = None
+        if single.label_mode is mdstats.ReplayLabelMode.FOUNDATION_PSEUDOLABEL:
             prediction_policy = context.get("prediction_policy")
             if prediction_policy is not None:
                 ckpt_path = Path(prediction_policy.foundation_potential.reference).expanduser().resolve()
@@ -3704,39 +3901,33 @@ def _publish_single_source_replay_authority(
                         "replay preparation was running; refusing to publish a stale "
                         "pseudo-label authority. Rerun `prepare`."
                     )
-                expected_realization_digest = context.get("expected_acceleration_realization_digest")
-                try:
-                    live_realization = _stored_acceleration_realization(
-                        live_cfg, paths, require_qualified=True
-                    )
-                except Exception as exc:
-                    raise CampaignCliError(
-                        f"The doctor-frozen acceleration realization could not be validated: {exc}"
-                    ) from exc
-                if live_realization is None:
-                    raise CampaignCliError(
-                        "The doctor-frozen acceleration realization is missing; "
-                        "refusing to publish stale replay authority. Rerun `doctor` and `prepare`."
-                    )
-                live_digest = getattr(
-                    live_realization,
-                    "content_digest",
-                    getattr(live_realization, "foundation_inference_identity_digest", None),
-                )
-                if (
-                    expected_realization_digest is not None
-                    and live_digest != expected_realization_digest
-                ) or (
-                    getattr(live_realization, "foundation_inference_identity_digest", None)
-                    != prediction_policy.foundation_inference.content_digest
-                ):
-                    raise CampaignCliError(
-                        "The doctor-frozen acceleration realization turned over while replay "
-                        "preparation was running; refusing to publish a stale pseudo-label authority. "
-                        "Rerun `prepare`."
-                    )
 
-        store.replace_records_atomically(records, delete_keys=delete_keys)
+        # Pre-encode records before the final mutable-parent check so serialization
+        # cannot widen the last-check -> database-adoption window.
+        encoded_rows = store._encode_record_rows_for_storage(records)
+
+        # Deterministic race hook at the last revalidation -> alias commit seam.
+        global _TEST_REPLAY_PUBLICATION_PRE_COMMIT_SEAM_HOOK, _TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT
+        if _TEST_REPLAY_PUBLICATION_PRE_COMMIT_SEAM_HOOK is not None:
+            _TEST_REPLAY_PUBLICATION_PRE_COMMIT_SEAM_HOOK()
+
+        # Final byte re-authentication immediately adjacent to database replacement.
+        _TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT += 1
+        if not live_source_file.is_file() or _sha256(live_source_file) != published_source.sha256:
+            raise CampaignCliError(
+                "The external replay source changed while replay preparation was "
+                "running; refusing to publish a prepared replay authority that would "
+                "mix source generations. Rerun `prepare`."
+            )
+        if single.label_mode is mdstats.ReplayLabelMode.FOUNDATION_PSEUDOLABEL and ckpt_path is not None:
+            if not ckpt_path.is_file() or _sha256(ckpt_path) != prediction_policy.foundation_potential.sha256:
+                raise CampaignCliError(
+                    "The foundation checkpoint file changed or was removed while "
+                    "replay preparation was running; refusing to publish a stale "
+                    "pseudo-label authority. Rerun `prepare`."
+                )
+
+        store._commit_encoded_records_atomically(encoded_rows, delete_keys=delete_keys)
     return context
 
 
@@ -3967,9 +4158,10 @@ def _qualify_replay(
     train = plan.train_artifact
     monitor = plan.monitor_artifact
     assert train is not None and monitor is not None
-    minimum_train = int(_cfg(cfg, "replay", "minimum_train_configurations", 100))
-    minimum_monitor = int(_cfg(cfg, "replay", "minimum_monitor_configurations", 20))
-    allow_small = bool(_cfg(cfg, "replay", "allow_small_corpus", False))
+    gates = _replay_qualification_gate_semantics(cfg)
+    minimum_train = gates["minimum_train_configurations"]
+    minimum_monitor = gates["minimum_monitor_configurations"]
+    allow_small = gates["allow_small_corpus"]
     if train.configuration_count < minimum_train:
         message = (
             f"replay-training corpus has {train.configuration_count} configurations; "
@@ -3983,17 +4175,15 @@ def _qualify_replay(
         )
         (warnings if allow_small else failures).append(message)
 
-    required_numbers = set(int(v) for v in _cfg(cfg, "profile", "all_atomic_numbers", ()))
+    required_numbers = set(gates["target_atomic_numbers"])
     observed_numbers = set(train.atomic_numbers) | set(monitor.atomic_numbers)
     missing_numbers = tuple(sorted(required_numbers - observed_numbers))
-    if missing_numbers and bool(_cfg(cfg, "replay", "require_target_elements", True)):
+    if missing_numbers and gates["require_target_elements"]:
         failures.append(
             "replay corpus does not cover target atomic numbers: "
             + ", ".join(str(v) for v in missing_numbers)
         )
-    if plan.mode is mdstats.ReplayMode.PRESELECTED and not bool(
-        _cfg(cfg, "replay", "allow_unspecified_label_provenance", False)
-    ):
+    if plan.mode is mdstats.ReplayMode.PRESELECTED and not gates["allow_unspecified_label_provenance"]:
         failures.append(
             "[replay].mode=preselected has unspecified label provenance; declare "
             "external_pseudolabel or external_true_label, or explicitly allow it for exploratory work"

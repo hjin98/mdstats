@@ -102,7 +102,30 @@ def main() -> int:
         shutil.rmtree(WORK)
     WORK.mkdir(parents=True)
 
+    import subprocess
+    try:
+        git_commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True, text=True, cwd=str(REPO_ROOT), check=True,
+        ).stdout.strip()
+        git_tree = subprocess.run(
+            ["git", "write-tree"],
+            capture_output=True, text=True, cwd=str(REPO_ROOT), check=True,
+        ).stdout.strip()
+        porcelain = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True, text=True, cwd=str(REPO_ROOT), check=True,
+        ).stdout.strip()
+        lines = [
+            line for line in porcelain.splitlines()
+            if not line.strip().endswith("E2_ASSEMBLED_CLI_STAGE_EVIDENCE.txt")
+        ]
+        git_clean = (len(lines) == 0)
+    except Exception:
+        git_commit, git_tree, git_clean = "unknown", "unknown", False
+
     print(f"[E2] Host GPU: {torch.cuda.get_device_name(0)} ({torch.cuda.get_device_properties(0).total_memory / 2**30:.1f} GiB)")
+    print(f"[E2] Candidate provenance: commit={git_commit} tree={git_tree} clean={git_clean}")
     print(f"[E2] Preparing {FRAMES} real frames from {CORPUS.name}...", flush=True)
 
     frames = []
@@ -352,7 +375,9 @@ allow_small_corpus = true
         "p5_new_providers": 0,
         "scheduler_baseline_vram_gib": round(concurrency_plan.baseline_gpu_used_bytes / (1024**3), 2),
         "scheduler_admission_ceiling_jobs": concurrency_plan.maximum_jobs,
-        "scheduler_zero_safe_admission": concurrency_plan.zero_safe_admission,
+        "candidate_commit": git_commit,
+        "candidate_tree": git_tree,
+        "candidate_clean": git_clean,
         "overall_verdict": "PASS",
     }
     print("\n" + json.dumps({"e2_qualification_summary": summary}, indent=2), flush=True)

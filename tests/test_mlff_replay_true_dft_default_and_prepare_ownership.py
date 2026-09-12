@@ -132,18 +132,20 @@ def _switch_to_naive_only(text: str) -> str:
 
 def _pseudo_identities(cfg: dict):
     model_path = Path(cfg["paths"]["foundation_model"]).resolve()
+    head = cfg.get("foundation", {}).get("head", "default")
+    family = cfg.get("foundation", {}).get("family", "mace_custom")
     potential = FoundationPotentialIdentity(
         reference=str(model_path),
         sha256=sha256_file_cached(model_path),
-        foundation_head="default",
-        model_family="mace_custom",
+        foundation_head=head,
+        model_family=family,
         model_atomic_numbers=(1,),
-        available_heads=("default",),
+        available_heads=("default", head) if head != "default" else ("default",),
         inspection_state="inspected",
     )
     inference = FoundationInferenceIdentity(
         foundation_potential_digest=potential.canonical_content_digest,
-        default_dtype="float32",
+        default_dtype=cfg.get("model", {}).get("dtype", "float32"),
         backend="e3nn",
         resolved_kernel_mode="e3nn",
         mace_version="test",
@@ -159,15 +161,19 @@ def _pseudo_identities(cfg: dict):
 def _install_pseudo_prerequisites(monkeypatch, cfg: dict):
     potential, inference, realization = _pseudo_identities(cfg)
     monkeypatch.setattr(
-        cli, "_resolved_foundation_potential_identity", lambda cfg, paths: potential
+        cli,
+        "_resolved_foundation_potential_identity",
+        lambda c, paths: _pseudo_identities(c)[0],
     )
     monkeypatch.setattr(
         cli,
         "_stored_acceleration_realization",
-        lambda cfg, paths, require_qualified=False: realization,
+        lambda c, paths, require_qualified=False: _pseudo_identities(c)[2],
     )
     monkeypatch.setattr(
-        cli, "_foundation_inference_identity", lambda cfg, potential_arg, **kw: inference
+        cli,
+        "_foundation_inference_identity",
+        lambda c, potential_arg, **kw: _pseudo_identities(c)[1],
     )
     return potential, inference
 
@@ -188,7 +194,7 @@ class _CountingProvider:
         )
 
     def set_head(self, head: str) -> None:
-        assert head == "default"
+        assert head in self.policy.foundation_potential.available_heads
 
     def close(self, **kwargs) -> None:
         self.close_count += 1
@@ -1410,7 +1416,8 @@ def test_cold_build_retires_internal_provider_on_early_failure(tmp_path: Path, m
         )
 
     assert provider_instance.close_count == 1
-    assert not list(cache_root.glob("manifest.json"))
+    assert not list(cache_root.rglob("manifest.json"))
+    assert not list(cache_root.rglob("*work*"))
 
 
 def test_cold_build_retires_internal_provider_on_mid_execution_failure(tmp_path: Path, monkeypatch):
@@ -1439,8 +1446,9 @@ def test_cold_build_retires_internal_provider_on_mid_execution_failure(tmp_path:
         )
 
     assert provider_instance.close_count == 1
-    assert not list(cache_root.glob("manifest.json"))
-    assert not list(cache_root.glob(".attempt*"))
+    assert not list(cache_root.rglob("manifest.json"))
+    assert not list(cache_root.rglob("*work*"))
+    assert not list(cache_root.rglob(".attempt*"))
 
 
 def test_cold_build_does_not_retire_caller_provided_provider(tmp_path: Path, monkeypatch):
@@ -1693,9 +1701,10 @@ def test_command_prepare_fences_against_config_drift_at_completion(tmp_path: Pat
     monkeypatch.setattr(ctsv, "write_target_size_result_view", lambda *a, **k: None)
 
     orig_replay = cli._prepare_single_source_replay
-    def drift_config(c, p, s):
+    def drift_config(c, p, s, **kw):
+        res = orig_replay(c, p, s, **kw)
         p.config.write_text(p.config.read_text().replace("require_target_elements = false", "require_target_elements = true"))
-        return orig_replay(c, p, s)
+        return res
 
     monkeypatch.setattr(cli, "_prepare_single_source_replay", drift_config)
 
@@ -1853,8 +1862,8 @@ def test_cold_build_retires_internal_provider_on_chmod_failure(tmp_path: Path, m
         )
 
     assert provider_instance.close_count == 1
-    assert not list(cache_root.glob("manifest.json"))
-    assert not list(cache_root.glob("*.work.*"))
+    assert not list(cache_root.rglob("manifest.json"))
+    assert not list(cache_root.rglob("*work*"))
 
 
 def test_cold_build_does_not_retire_caller_provider_on_chmod_failure(tmp_path: Path, monkeypatch):
@@ -1887,8 +1896,8 @@ def test_cold_build_does_not_retire_caller_provider_on_chmod_failure(tmp_path: P
         )
 
     assert caller_provider.close_count == 0
-    assert not list(cache_root.glob("manifest.json"))
-    assert not list(cache_root.glob("*.work.*"))
+    assert not list(cache_root.rglob("manifest.json"))
+    assert not list(cache_root.rglob("*work*"))
 
 
 def test_cold_build_retires_internal_provider_on_pre_executor_setup_failure(tmp_path: Path, monkeypatch):
@@ -1919,8 +1928,8 @@ def test_cold_build_retires_internal_provider_on_pre_executor_setup_failure(tmp_
         )
 
     assert provider_instance.close_count == 1
-    assert not list(cache_root.glob("manifest.json"))
-    assert not list(cache_root.glob("*.work.*"))
+    assert not list(cache_root.rglob("manifest.json"))
+    assert not list(cache_root.rglob("*work*"))
 
 
 def test_cold_build_does_not_retire_caller_provider_on_pre_executor_setup_failure(tmp_path: Path, monkeypatch):
@@ -1949,8 +1958,8 @@ def test_cold_build_does_not_retire_caller_provider_on_pre_executor_setup_failur
         )
 
     assert caller_provider.close_count == 0
-    assert not list(cache_root.glob("manifest.json"))
-    assert not list(cache_root.glob("*.work.*"))
+    assert not list(cache_root.rglob("manifest.json"))
+    assert not list(cache_root.rglob("*work*"))
 
 
 # ---------------------------------------------------------------------------
@@ -2310,6 +2319,317 @@ def test_replay_publication_allows_canonical_equivalent_spelling_and_identical_b
         # Publication succeeds with identical-byte relocation
         cli._publish_single_source_replay_authority(store, cfg, paths, command_replay_basis=basis)
         assert store.get_payload_optional("replay_current_lineage") is not None
+    finally:
+        store.close()
+
+
+# ---------------------------------------------------------------------------
+# B12 Oracle Sensitivity & B11 No-Retry Falsification Tests
+# ---------------------------------------------------------------------------
+
+
+def test_cold_build_partial_state_oracle_sensitivity_proof(tmp_path: Path):
+    """B12: prove shallow glob misses nested attempt/manifest artifacts while rglob detects them."""
+    cache_root = tmp_path / "predictions"
+    nested_dir = cache_root / "ab" / "ab123456"
+    nested_dir.mkdir(parents=True)
+    nested_manifest = nested_dir / "manifest.json"
+    nested_manifest.write_text("{}", encoding="utf-8")
+    nested_work = nested_dir.parent / "ab123456.work.tmp"
+    nested_work.mkdir(parents=True)
+
+    # Shallow glob completely misses nested production layout
+    assert not list(cache_root.glob("manifest.json"))
+    assert not list(cache_root.glob("*.work.*"))
+
+    # Recursive rglob detects both nested artifacts sensitivity
+    assert list(cache_root.rglob("manifest.json")) == [nested_manifest]
+    assert list(cache_root.rglob("*work*")) == [nested_work]
+
+
+def test_prepare_single_source_replay_propagates_internal_type_error_without_retry(tmp_path: Path, monkeypatch):
+    """B11: genuine internal TypeError inside replay prep propagates and is called exactly once without retry."""
+    from mdstats.training_data import campaign_target_size_runtime as ctsr
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+
+    calls = 0
+
+    def failing_replay(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise TypeError("genuine internal type error in replay prep")
+
+    monkeypatch.setattr(cli, "_prepare_single_source_replay", failing_replay)
+    # Stub target size substrate so prepare proceeds to replay
+    monkeypatch.setattr(
+        ctsr,
+        "build_prepared_target_size_substrate",
+        lambda *a, **kw: SimpleNamespace(
+            components=(),
+            frame_records=(),
+            identity=SimpleNamespace(content_digest="i" * 64),
+            common=SimpleNamespace(content_digest="c" * 64),
+            aggregate=SimpleNamespace(definition=SimpleNamespace(qualified_candidate_sizes=(10,))),
+        ),
+    )
+    import mdstats.training_data.campaign_prepared_generation as cpg
+    import mdstats.training_data.campaign_target_size_cutover as ctsc
+
+    monkeypatch.setattr(cli, "_prepare_catalog", lambda *a, **k: {"data4": None})
+    monkeypatch.setattr(
+        cpg,
+        "publish_prepared_generation",
+        lambda *a, **kw: SimpleNamespace(content_digest="p" * 64),
+    )
+    monkeypatch.setattr(
+        ctsc,
+        "ensure_current_target_size_authorities",
+        lambda *a, **kw: SimpleNamespace(
+            state=SimpleNamespace(generation=1, experiment_definition_digest="e" * 64, auto_diagnostic=None)
+        ),
+    )
+
+    store = cli.CampaignStore(paths.state_db)
+    cli._mark_stage(store, paths, "doctor", cli.StageState.COMPLETE, "doctor passed")
+    store.close()
+
+    args = SimpleNamespace(config=str(paths.config), approve_manifest=False, refresh_inferences=False)
+
+    with pytest.raises(TypeError, match="genuine internal type error in replay prep"):
+        ctsr.execute_current_prepare(args)
+
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        # Must have been called exactly once: no second compatibility fallback retry
+        assert calls == 1
+        assert store.get_payload_optional("replay_current_lineage") is None
+        stage, msg = store.stage("prepare")
+        assert stage is cli.StageState.FAILED
+        assert "genuine internal type error in replay prep" in msg
+    finally:
+        store.close()
+
+
+# ---------------------------------------------------------------------------
+# B10 Deterministic Last-Seam Recheck & Fenced Retirement Tests
+# ---------------------------------------------------------------------------
+
+
+def test_replay_publication_race_source_replacement_at_last_commit_seam(tmp_path: Path, monkeypatch):
+    """B10 Finding A: mutation after ordinary revalidation at last commit seam triggers final recheck and aborts."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        seam_hook_called = False
+
+        def mutate_source_at_seam():
+            nonlocal seam_hook_called
+            seam_hook_called = True
+            source.write_bytes(b"corrupted-source-bytes-at-last-seam")
+
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_PRE_COMMIT_SEAM_HOOK", mutate_source_at_seam)
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT", 0)
+
+        with pytest.raises(cli.CampaignCliError, match="The external replay source changed while replay preparation was running"):
+            cli._publish_single_source_replay_authority(store, cfg, paths)
+
+        assert seam_hook_called is True
+        assert cli._TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT >= 1
+        assert store.get_payload_optional("replay_current_lineage") is None
+        for alias in cli._REPLAY_SINGLE_SOURCE_ALIASES:
+            assert store.get_payload_optional(alias) is None
+    finally:
+        store.close()
+
+
+def test_replay_publication_race_checkpoint_replacement_at_last_commit_seam(tmp_path: Path, monkeypatch):
+    """B10 Finding A: checkpoint replacement at last commit seam triggers final recheck and aborts."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    _potential, _inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+    checkpoint = Path(cfg["paths"]["foundation_model"]).resolve()
+
+    original = mdstats.build_replay_foundation_prediction_cache
+
+    def build_with_double(src, policy, cache_root, **kwargs):
+        provider = _CountingProvider(policy)
+        return original(src, policy, cache_root, provider=provider, **kwargs)
+
+    monkeypatch.setattr(mdstats, "build_replay_foundation_prediction_cache", build_with_double)
+
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        seam_hook_called = False
+
+        def mutate_checkpoint_at_seam():
+            nonlocal seam_hook_called
+            seam_hook_called = True
+            checkpoint.write_bytes(b"corrupted-checkpoint-bytes-at-last-seam")
+
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_PRE_COMMIT_SEAM_HOOK", mutate_checkpoint_at_seam)
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT", 0)
+
+        with pytest.raises(cli.CampaignCliError, match="foundation checkpoint file changed or was removed"):
+            cli._publish_single_source_replay_authority(store, cfg, paths)
+
+        assert seam_hook_called is True
+        assert cli._TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT >= 1
+        assert store.get_payload_optional("replay_current_lineage") is None
+        for alias in cli._REPLAY_SINGLE_SOURCE_ALIASES:
+            assert store.get_payload_optional(alias) is None
+    finally:
+        store.close()
+
+
+def test_replay_publication_race_pseudolabel_qualification_threshold_drift(tmp_path: Path, monkeypatch):
+    """B10 Finding B: pseudo qualification threshold drift during prep refuses stale publication."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    _potential, _inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+
+    original = mdstats.build_replay_foundation_prediction_cache
+
+    def build_with_double(src, policy, cache_root, **kwargs):
+        provider = _CountingProvider(policy)
+        return original(src, policy, cache_root, provider=provider, **kwargs)
+
+    monkeypatch.setattr(mdstats, "build_replay_foundation_prediction_cache", build_with_double)
+
+    store = cli.CampaignStore(paths.state_db)
+    basis = cli._single_source_replay_basis(cfg, paths, store=store)
+
+    # Drift qualification threshold in campaign.toml
+    text = paths.config.read_text()
+    if "maximum_force_ev_per_angstrom" in text:
+        paths.config.write_text(text.replace("maximum_force_ev_per_angstrom = 20.0", "maximum_force_ev_per_angstrom = 10.0"))
+    else:
+        paths.config.write_text(text + "\n[replay]\nmaximum_force_ev_per_angstrom = 10.0\n")
+
+    live_cfg, _ = cli._load_config(paths.config)
+
+    try:
+        with pytest.raises(cli.CampaignCliError, match="Campaign pseudo-label qualification policy changed while replay preparation was running"):
+            cli._publish_single_source_replay_authority(store, live_cfg, paths, command_replay_basis=basis)
+
+        assert store.get_payload_optional("replay_current_lineage") is None
+        for alias in cli._REPLAY_SINGLE_SOURCE_ALIASES:
+            assert store.get_payload_optional(alias) is None
+    finally:
+        store.close()
+
+
+def test_replay_publication_race_foundation_potential_and_head_drift(tmp_path: Path, monkeypatch):
+    """B10 Finding C: foundation head / potential drift during pseudo preparation refuses stale publication."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    _potential, _inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+
+    original = mdstats.build_replay_foundation_prediction_cache
+
+    def build_with_double(src, policy, cache_root, **kwargs):
+        provider = _CountingProvider(policy)
+        return original(src, policy, cache_root, provider=provider, **kwargs)
+
+    monkeypatch.setattr(mdstats, "build_replay_foundation_prediction_cache", build_with_double)
+
+    store = cli.CampaignStore(paths.state_db)
+    basis = cli._single_source_replay_basis(cfg, paths, store=store)
+
+    # Drift foundation head in campaign.toml
+    text = paths.config.read_text()
+    if "[foundation]" in text:
+        paths.config.write_text(text.replace('head = "default"', 'head = "different_head"'))
+    else:
+        paths.config.write_text(text + '\n[foundation]\nfamily = "mace"\nhead = "different_head"\n')
+
+    live_cfg, _ = cli._load_config(paths.config)
+
+    try:
+        with pytest.raises(cli.CampaignCliError, match="Campaign foundation potential configuration changed while replay preparation was running"):
+            cli._publish_single_source_replay_authority(store, live_cfg, paths, command_replay_basis=basis)
+
+        assert store.get_payload_optional("replay_current_lineage") is None
+        for alias in cli._REPLAY_SINGLE_SOURCE_ALIASES:
+            assert store.get_payload_optional(alias) is None
+    finally:
+        store.close()
+
+
+def test_replay_publication_race_stale_legacy_prepare_cannot_retire_newer_single_source_winner(tmp_path: Path):
+    """B10 Finding D: stale no-replay/legacy prepare finishing after newer single-source prepare must NOT retire winner."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    # Start prepare A under no-replay
+    cfg_legacy, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    # Remove replay configuration so interface is "none"
+    text = paths.config.read_text()
+    text_no_replay = "\n".join(line for line in text.splitlines() if not line.startswith("replay_set") and not line.startswith("[replay]"))
+    paths.config.write_text(text_no_replay)
+
+    cfg_no_replay, _ = cli._load_config(paths.config)
+    store = cli.CampaignStore(paths.state_db)
+
+    try:
+        basis_no_replay = cli._single_source_replay_basis(cfg_no_replay, paths, store=store)
+        assert basis_no_replay["interface"] == "none"
+
+        # Now simulate prepare B winning concurrently and publishing valid single-source aliases
+        winner_digest = "b" * 64
+        winner_payload = {"replay_lineage_digest": winner_digest, "schema": "mdstats.replay-lineage.v1"}
+        with store._connect() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO records (key, class_name, digest, payload, updated_utc) "
+                "VALUES ('replay_current_lineage', 'ReplayLineage', ?, ?, '2026-09-11T00:00:00Z')",
+                (winner_digest, json.dumps(winner_payload)),
+            )
+            db.execute(
+                "INSERT OR REPLACE INTO records (key, class_name, digest, payload, updated_utc) "
+                "VALUES ('replay_source', 'ReplaySourceArtifact', ?, ?, '2026-09-11T00:00:00Z')",
+                (winner_digest, json.dumps({"schema": "mdstats.replay-source.v1"})),
+            )
+
+        # Stale prepare A finishes and attempts retirement with its command_replay_basis
+        with pytest.raises(cli.CampaignCliError, match="A newer `prepare` published a different current replay authority"):
+            cli._publish_single_source_replay_authority(store, cfg_no_replay, paths, command_replay_basis=basis_no_replay)
+
+        # Winning single-source aliases survive!
+        surviving = store.get_payload("replay_current_lineage")
+        assert surviving["replay_lineage_digest"] == winner_digest
+        assert store.get_payload_optional("replay_source") is not None
+    finally:
+        store.close()
+
+
+def test_replay_publication_race_stale_single_source_cannot_publish_after_legacy_transition(tmp_path: Path):
+    """B10: stale single-source prepare finishing after campaign switched to legacy/none cannot publish."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    store = cli.CampaignStore(paths.state_db)
+    basis = cli._single_source_replay_basis(cfg, paths, store=store)
+    assert basis["interface"] == "single_source"
+
+    try:
+        # Campaign switches to no replay on disk
+        text = paths.config.read_text()
+        text_no_replay = "\n".join(line for line in text.splitlines() if not line.startswith("replay_set") and not line.startswith("[replay]"))
+        paths.config.write_text(text_no_replay)
+        live_cfg, _ = cli._load_config(paths.config)
+
+        # Stale single-source prepare attempts to publish
+        with pytest.raises(cli.CampaignCliError, match="The campaign configuration no longer declares single-source replay"):
+            cli._publish_single_source_replay_authority(store, live_cfg, paths, command_replay_basis=basis)
+
+        assert store.get_payload_optional("replay_current_lineage") is None
+        for alias in cli._REPLAY_SINGLE_SOURCE_ALIASES:
+            assert store.get_payload_optional(alias) is None
     finally:
         store.close()
 

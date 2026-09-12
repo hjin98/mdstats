@@ -940,9 +940,9 @@ def execute_current_prepare(args: Any) -> int:
     )
 
     cfg, paths = _load_config(args.config)
-    command_preparation_digest = _preparation_config_digest(cfg)
-    command_replay_basis = _single_source_replay_basis(cfg, paths)
     store = CampaignStore(paths.state_db)
+    command_preparation_digest = _preparation_config_digest(cfg)
+    command_replay_basis = _single_source_replay_basis(cfg, paths, store=store)
     _require_stage_complete(store, paths, "doctor")
     # Cheap canonical configuration/topology validation first.  A conflicting
     # replay selector, a malformed exact split domain, a mixed replay
@@ -1052,12 +1052,9 @@ def execute_current_prepare(args: Any) -> int:
     # public prepare incomplete without rolling back the independently valid
     # target-size generation.
     try:
-        try:
-            _prepare_single_source_replay(
-                cfg, paths, store, command_replay_basis=command_replay_basis
-            )
-        except TypeError:
-            _prepare_single_source_replay(cfg, paths, store)
+        _prepare_single_source_replay(
+            cfg, paths, store, command_replay_basis=command_replay_basis
+        )
     except Exception as exc:
         _mark_stage(
             store,
