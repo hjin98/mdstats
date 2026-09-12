@@ -22,9 +22,11 @@ conda run -n mace python qualification/replay-provider-lifetime/e1_replay_provid
 Evidence file: `E1_REPLAY_PROVIDER_RETIREMENT_EVIDENCE.txt`
 
 ### Key Results
-- Cycle 1 peak allocated: 2198.2 MiB (reserved: 2864.0 MiB)
-- Cycle 1 post-close allocated: 16.2 MiB (reserved: 216.0 MiB)
-- Cycle 2 post-close allocated: 16.2 MiB (reserved: 216.0 MiB) — identical to Cycle 1, zero leak.
+- Baseline allocated: 0.0 MiB (reserved: 2.0 MiB)
+- Inference peak allocated: 1437.6 MiB (reserved: 2920.0 MiB, process NVML: 3238.0 MiB)
+- Cycle 1 (A) post-close allocated: 16.2 MiB (reserved: 216.0 MiB, process NVML: 534.0 MiB)
+- Cycle 2 (B) post-close allocated: 16.2 MiB (reserved: 216.0 MiB, process NVML: 534.0 MiB) — identical to Cycle 1, zero leak.
+- Post-close allocated is only 1.1% of inference peak (16.2 MiB / 1437.6 MiB), with the process remaining alive.
 
 ---
 
@@ -35,7 +37,7 @@ Evidence file: `E1_REPLAY_PROVIDER_RETIREMENT_EVIDENCE.txt`
 1. **Stage 1 (Doctor):** Runs `cli.command_doctor`. Asserts zero replay provider construction, zero foundation inference, and zero mutable replay aliases published.
 2. **Stage 2 (Prepare):** Runs `ctsr.execute_current_prepare`. Asserts exactly one provider construction, one executor construction, one executor close, exactly 128 predictions evaluated, cache published, and post-prepare CUDA memory drops to baseline (< 2.1% of peak).
 3. **Stage 3 (P5 Post-Selection Resolution):** Resolves post-selection replay authority via `_resolve_post_selection_replay_resolution(..., require_train=True)`. Asserts read-only consumption: zero new provider constructs, zero new predictions, and identical `lineage_digest`.
-4. **Stage 4 (Pre-TRAIN2 Scheduler Observation):** Runs `build_training_concurrency_plan` against live GPU telemetry. Asserts baseline VRAM is clean (~1.5 GiB), initial/ceiling jobs >= 1, and `zero_safe_admission` is `False`.
+4. **Stage 4 (Pre-TRAIN2 Scheduler Observation):** Runs `build_training_concurrency_plan` against live GPU telemetry. Asserts baseline VRAM is clean (~1.3 GiB), initial/ceiling jobs >= 1, and `zero_safe_admission` is `False`.
 
 ### Reproduction
 
@@ -65,12 +67,12 @@ Evidence file: `E2_ASSEMBLED_CLI_STAGE_EVIDENCE.txt`
     "inference_peak_reserved_mib": 2864.0,
     "post_prepare_allocated_mib": 45.9,
     "post_prepare_reserved_mib": 122.0,
-    "p5_lineage_digest": "f3d6e5e458305f6ae5da429f80db8ab98253ab4aafab1484f8ccec1e74b3d069",
-    "p5_split_manifest_digest": "d41af11dc0fc109497e6466bb8a738fc905a6d12f310e3bec847e6789ba20a1e",
+    "p5_lineage_digest": "935dbff19a0fb2ecd042d3ce0b3e7df0ff2e5e8d0e0197c854dde0585214277a",
+    "p5_split_manifest_digest": "0e47c0da0de6ae3ff4b006d1d199b675ee18301f3178144c11b92cbe28ebf217",
     "p5_source_sha256": "4f0a4c2fc2007b11ead0088c34bfa8cb92afea38f69f110a48384af775b3b37d",
     "p5_new_predictions": 0,
     "p5_new_providers": 0,
-    "scheduler_baseline_vram_gib": 1.46,
+    "scheduler_baseline_vram_gib": 1.32,
     "scheduler_admission_ceiling_jobs": 1,
     "scheduler_zero_safe_admission": false,
     "overall_verdict": "PASS"

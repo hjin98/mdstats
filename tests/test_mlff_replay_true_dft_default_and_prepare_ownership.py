@@ -1280,7 +1280,7 @@ def test_lifecycle_snapshot_is_one_read_transaction_over_replay_and_pointers():
     end = text.index("\ndef _authenticated(", start)
     body = text[start:end]
     assert 'db.execute("BEGIN")' in body
-    assert "_current_replay_lineage_digest(db)" in body
+    assert "_current_replay_lineage_snapshot(db)" in body
 
 
 def test_stale_replay_lineage_makes_post_selection_evidence_historical():
@@ -1812,3 +1812,504 @@ def test_replay_invalidation_planner_uses_exact_seed_normalizer():
             old_split_seed=True,
             new_split_seed=42,
         )
+
+
+# ---------------------------------------------------------------------------
+# B8 Fault-Injection Tests
+# ---------------------------------------------------------------------------
+
+
+def test_cold_build_retires_internal_provider_on_chmod_failure(tmp_path: Path, monkeypatch):
+    """B8: internal provider is retired and attempt scratch cleaned when os.chmod fails after executor acquisition."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 6)
+    cfg, _paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    potential, inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+    artifact = mdstats.inspect_replay_source_extxyz(source)
+    policy = mdstats.ReplayFoundationPredictionPolicy(
+        foundation_potential=potential, foundation_inference=inference, device="cpu"
+    )
+    cache_root = tmp_path / "predictions"
+    provider_instance = _CountingProvider(policy)
+
+    import os
+
+    import mdstats.training_data.replay_pseudolabel as rpl
+
+    monkeypatch.setattr(rpl, "_construct_prediction_provider", lambda *a, **kw: provider_instance)
+
+    orig_chmod = os.chmod
+
+    def fail_chmod(path, mode, *a, **kw):
+        if "work." in str(path):
+            raise OSError("injected chmod failure")
+        return orig_chmod(path, mode, *a, **kw)
+
+    monkeypatch.setattr(os, "chmod", fail_chmod)
+
+    with pytest.raises(OSError, match="injected chmod failure"):
+        mdstats.build_replay_foundation_prediction_cache(
+            artifact, policy, cache_root, provider=None, batch_size=2, shard_size=4
+        )
+
+    assert provider_instance.close_count == 1
+    assert not list(cache_root.glob("manifest.json"))
+    assert not list(cache_root.glob("*.work.*"))
+
+
+def test_cold_build_does_not_retire_caller_provider_on_chmod_failure(tmp_path: Path, monkeypatch):
+    """B8: caller-owned provider is NOT retired when os.chmod fails after executor acquisition."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 6)
+    cfg, _paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    potential, inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+    artifact = mdstats.inspect_replay_source_extxyz(source)
+    policy = mdstats.ReplayFoundationPredictionPolicy(
+        foundation_potential=potential, foundation_inference=inference, device="cpu"
+    )
+    cache_root = tmp_path / "predictions"
+    caller_provider = _CountingProvider(policy)
+
+    import os
+
+    orig_chmod = os.chmod
+
+    def fail_chmod(path, mode, *a, **kw):
+        if "work." in str(path):
+            raise OSError("injected chmod failure")
+        return orig_chmod(path, mode, *a, **kw)
+
+    monkeypatch.setattr(os, "chmod", fail_chmod)
+
+    with pytest.raises(OSError, match="injected chmod failure"):
+        mdstats.build_replay_foundation_prediction_cache(
+            artifact, policy, cache_root, provider=caller_provider, batch_size=2, shard_size=4
+        )
+
+    assert caller_provider.close_count == 0
+    assert not list(cache_root.glob("manifest.json"))
+    assert not list(cache_root.glob("*.work.*"))
+
+
+def test_cold_build_retires_internal_provider_on_pre_executor_setup_failure(tmp_path: Path, monkeypatch):
+    """B8: internal provider is retired when post-provider setup/validation fails before executor construction."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 6)
+    cfg, _paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    potential, inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+    artifact = mdstats.inspect_replay_source_extxyz(source)
+    policy = mdstats.ReplayFoundationPredictionPolicy(
+        foundation_potential=potential, foundation_inference=inference, device="cpu"
+    )
+    cache_root = tmp_path / "predictions"
+    provider_instance = _CountingProvider(policy)
+
+    import mdstats.training_data.replay_pseudolabel as rpl
+
+    monkeypatch.setattr(rpl, "_construct_prediction_provider", lambda *a, **kw: provider_instance)
+
+    def fail_validation(prov, pol):
+        raise RuntimeError("injected pre-executor setup failure")
+
+    monkeypatch.setattr(rpl, "_validate_prediction_provider", fail_validation)
+
+    with pytest.raises(RuntimeError, match="injected pre-executor setup failure"):
+        mdstats.build_replay_foundation_prediction_cache(
+            artifact, policy, cache_root, provider=None, batch_size=2, shard_size=4
+        )
+
+    assert provider_instance.close_count == 1
+    assert not list(cache_root.glob("manifest.json"))
+    assert not list(cache_root.glob("*.work.*"))
+
+
+def test_cold_build_does_not_retire_caller_provider_on_pre_executor_setup_failure(tmp_path: Path, monkeypatch):
+    """B8: caller-owned provider is NOT retired when post-provider setup fails."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 6)
+    cfg, _paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    potential, inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+    artifact = mdstats.inspect_replay_source_extxyz(source)
+    policy = mdstats.ReplayFoundationPredictionPolicy(
+        foundation_potential=potential, foundation_inference=inference, device="cpu"
+    )
+    cache_root = tmp_path / "predictions"
+    caller_provider = _CountingProvider(policy)
+
+    import mdstats.training_data.replay_pseudolabel as rpl
+
+    def fail_validation(prov, pol):
+        raise RuntimeError("injected pre-executor setup failure")
+
+    monkeypatch.setattr(rpl, "_validate_prediction_provider", fail_validation)
+
+    with pytest.raises(RuntimeError, match="injected pre-executor setup failure"):
+        mdstats.build_replay_foundation_prediction_cache(
+            artifact, policy, cache_root, provider=caller_provider, batch_size=2, shard_size=4
+        )
+
+    assert caller_provider.close_count == 0
+    assert not list(cache_root.glob("manifest.json"))
+    assert not list(cache_root.glob("*.work.*"))
+
+
+# ---------------------------------------------------------------------------
+# B7 Lineage Authentication & Snapshot Coherence Tests
+# ---------------------------------------------------------------------------
+
+
+def test_lifecycle_fail_closed_on_invalid_lineage_digest_syntax(tmp_path: Path, monkeypatch):
+    """B7: syntactically valid JSON containing non-digest value fails closed to malformed."""
+    import mdstats.training_data.campaign_target_size_state as ctss
+    from mdstats.training_data.campaign_lifecycle import (
+        LifecycleObservationState,
+        _current_replay_lineage_snapshot,
+        campaign_owner_snapshot,
+        project_campaign_lifecycle,
+    )
+    from mdstats.training_data.campaign_target_size_state import (
+        TargetSizeLifecycle,
+        TargetSizeRegime,
+    )
+    from mdstats.training_data.qualification.observation import (
+        observe_current_qualification,
+    )
+
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    _cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    store = cli.CampaignStore(paths.state_db)
+
+    monkeypatch.setattr(
+        ctss,
+        "_load_head",
+        lambda db: SimpleNamespace(
+            state=SimpleNamespace(
+                regime=TargetSizeRegime.CURRENT,
+                lifecycle=TargetSizeLifecycle.AUTHORITIES_BOUND,
+                generation=1,
+                prepared_manifest_digest="a" * 64,
+                experiment_definition_digest="b" * 64,
+                common_preparation_digest="c" * 64,
+                candidate_sizes=(10, 20),
+                auto_diagnostic=None,
+                provisional_entries=(),
+                frozen_entries=(),
+            ),
+            state_revision="rev1",
+        ),
+    )
+
+    invalid_digests = [
+        "not-a-valid-hex-digest",
+        "0" * 32,  # wrong length
+        "g" * 64,  # non-hex char
+        12345,     # non-string
+        "",        # empty string
+        None,      # null
+    ]
+
+    try:
+        cli._mark_stage(store, paths, "doctor", cli.StageState.COMPLETE, "doctor ok")
+        cli._mark_stage(store, paths, "prepare", cli.StageState.COMPLETE, "prepare ok")
+
+        for bad in invalid_digests:
+            payload_str = json.dumps({"replay_lineage_digest": bad, "schema": "mdstats.replay-lineage.v1"})
+            with store._connect() as db:
+                db.execute(
+                    "INSERT OR REPLACE INTO records (key, class_name, digest, payload, updated_utc) "
+                    "VALUES ('replay_current_lineage', 'ReplayLineage', 'x'*64, ?, '2026-09-11T00:00:00Z')",
+                    (payload_str,),
+                )
+            with store._connect() as db:
+                digest_val, status = _current_replay_lineage_snapshot(db)
+                assert digest_val is None
+                assert status == "malformed"
+
+            stage, msg = cli._effective_stage(store, paths, "prepare")
+            assert stage is cli.StageState.WAITING
+            assert "single-source replay authority is missing or malformed" in msg
+
+            lifecycle = project_campaign_lifecycle(paths, store)
+            assert lifecycle.step("current_prepare").state == LifecycleObservationState.WAITING
+            assert "replay authority is missing or malformed" in lifecycle.step("current_prepare").message
+            assert lifecycle.next_command == "prepare"
+
+            _rev, _b, pointers = campaign_owner_snapshot(store)
+            binding = SimpleNamespace(campaign_generation=1, content_digest="b" * 64)
+            qual = observe_current_qualification(paths, binding, pointers)
+            assert qual.verdict is None
+            assert qual.superseded_detail is not None
+            assert "replay current lineage is missing or malformed" in qual.superseded_detail
+    finally:
+        store.close()
+
+
+def test_lifecycle_snapshot_coherence_against_interleaved_writer(tmp_path: Path, monkeypatch):
+    """B7: interleaved write after campaign_owner_snapshot does not produce hybrid lifecycle observation."""
+    import mdstats.training_data.campaign_target_size_state as ctss
+    from mdstats.training_data import campaign_lifecycle as cl
+    from mdstats.training_data.campaign_lifecycle import (
+        LifecycleObservationState,
+        project_campaign_lifecycle,
+    )
+    from mdstats.training_data.campaign_target_size_state import (
+        TargetSizeLifecycle,
+        TargetSizeRegime,
+    )
+
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    _cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    store = cli.CampaignStore(paths.state_db)
+
+    monkeypatch.setattr(
+        ctss,
+        "_load_head",
+        lambda db: SimpleNamespace(
+            state=SimpleNamespace(
+                regime=TargetSizeRegime.CURRENT,
+                lifecycle=TargetSizeLifecycle.AUTHORITIES_BOUND,
+                generation=1,
+                prepared_manifest_digest="a" * 64,
+                experiment_definition_digest="b" * 64,
+                common_preparation_digest="c" * 64,
+                candidate_sizes=(10, 20),
+                auto_diagnostic=None,
+                provisional_entries=(),
+                frozen_entries=(),
+            ),
+            state_revision="rev1",
+        ),
+    )
+
+    try:
+        cli._mark_stage(store, paths, "doctor", cli.StageState.COMPLETE, "doctor ok")
+        cli._publish_single_source_replay_authority(store, _cfg, paths)
+        cli._mark_stage(store, paths, "prepare", cli.StageState.COMPLETE, "prepare ok")
+
+        # Scenario 1: Snapshot sees valid replay lineage. An interleaved writer deletes it right after snapshot.
+        orig_snapshot = cl.campaign_owner_snapshot
+
+        def snapshot_and_delete(st):
+            res = orig_snapshot(st)
+            with st._connect() as db:
+                db.execute("DELETE FROM records WHERE key = 'replay_current_lineage'")
+            return res
+
+        monkeypatch.setattr(cl, "campaign_owner_snapshot", snapshot_and_delete)
+        lifecycle = project_campaign_lifecycle(paths, store)
+        # Because prepare step uses pointers from the snapshot (where it was valid),
+        # prepare state is COMPLETE, not WAITING.
+        assert lifecycle.step("current_prepare").state == LifecycleObservationState.COMPLETE
+
+        # Scenario 2: Snapshot sees missing replay lineage. An interleaved writer publishes it right after snapshot.
+        monkeypatch.setattr(cl, "campaign_owner_snapshot", orig_snapshot)
+        with store._connect() as db:
+            assert cl._current_replay_lineage_snapshot(db)[1] == "missing"
+
+        def snapshot_and_publish(st):
+            res = orig_snapshot(st)
+            cli._publish_single_source_replay_authority(st, _cfg, paths)
+            return res
+
+        monkeypatch.setattr(cl, "campaign_owner_snapshot", snapshot_and_publish)
+        lifecycle2 = project_campaign_lifecycle(paths, store)
+        # Because snapshot observed missing, prepare step remains WAITING.
+        assert lifecycle2.step("current_prepare").state == LifecycleObservationState.WAITING
+        assert "replay authority is missing or malformed" in lifecycle2.step("current_prepare").message
+    finally:
+        store.close()
+
+
+# ---------------------------------------------------------------------------
+# B6 Publication Barrier & Seam Race Tests
+# ---------------------------------------------------------------------------
+
+
+def test_replay_publication_race_source_replacement_in_final_publication_window(tmp_path: Path, monkeypatch):
+    """B6: source replacement in the final publication window raises and commits no aliases."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        def mutate_source():
+            source.write_bytes(b"replacement-source-bytes")
+
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_PRE_REVALIDATION_HOOK", mutate_source)
+
+        with pytest.raises(cli.CampaignCliError, match="The external replay source changed while replay preparation was running"):
+            cli._publish_single_source_replay_authority(store, cfg, paths)
+
+        assert store.get_payload_optional("replay_current_lineage") is None
+        for alias in cli._REPLAY_SINGLE_SOURCE_ALIASES:
+            assert store.get_payload_optional(alias) is None
+    finally:
+        store.close()
+
+
+def test_replay_publication_race_checkpoint_replacement_in_final_publication_window(tmp_path: Path, monkeypatch):
+    """B6: checkpoint replacement in the final publication window raises and commits no aliases."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    _potential, _inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+    checkpoint = Path(cfg["paths"]["foundation_model"]).resolve()
+
+    original = mdstats.build_replay_foundation_prediction_cache
+
+    def build_with_double(src, policy, cache_root, **kwargs):
+        provider = _CountingProvider(policy)
+        return original(src, policy, cache_root, provider=provider, **kwargs)
+
+    monkeypatch.setattr(mdstats, "build_replay_foundation_prediction_cache", build_with_double)
+
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        def mutate_checkpoint():
+            checkpoint.write_bytes(b"mutated-checkpoint-different-content")
+
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_PRE_REVALIDATION_HOOK", mutate_checkpoint)
+
+        with pytest.raises(cli.CampaignCliError, match="foundation checkpoint file changed or was removed"):
+            cli._publish_single_source_replay_authority(store, cfg, paths)
+
+        assert store.get_payload_optional("replay_current_lineage") is None
+        for alias in cli._REPLAY_SINGLE_SOURCE_ALIASES:
+            assert store.get_payload_optional(alias) is None
+    finally:
+        store.close()
+
+
+def test_replay_publication_race_command_start_drift_before_replay_substage(tmp_path: Path):
+    """B6: config drift occurring between command start and replay substage raises and commits no aliases."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    basis = cli._single_source_replay_basis(cfg, paths)
+    store = cli.CampaignStore(paths.state_db)
+
+    # Drift config before replay substage runs
+    paths.config.write_text(paths.config.read_text().replace("split_seed = 42", "split_seed = 99"))
+    live_cfg, _ = cli._load_config(paths.config)
+
+    try:
+        with pytest.raises(cli.CampaignCliError, match="Campaign replay configuration changed while replay preparation was running"):
+            cli._prepare_single_source_replay(live_cfg, paths, store, command_replay_basis=basis)
+
+        assert store.get_payload_optional("replay_current_lineage") is None
+        for alias in cli._REPLAY_SINGLE_SOURCE_ALIASES:
+            assert store.get_payload_optional(alias) is None
+    finally:
+        store.close()
+
+
+def test_replay_publication_race_doctor_acceleration_turnover_in_final_window(tmp_path: Path, monkeypatch):
+    """B6: doctor acceleration turnover in the final publication window raises and commits no aliases."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    _potential, _inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+
+    original = mdstats.build_replay_foundation_prediction_cache
+
+    def build_with_double(src, policy, cache_root, **kwargs):
+        provider = _CountingProvider(policy)
+        return original(src, policy, cache_root, provider=provider, **kwargs)
+
+    monkeypatch.setattr(mdstats, "build_replay_foundation_prediction_cache", build_with_double)
+
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        def turnover_doctor():
+            monkeypatch.setattr(
+                cli,
+                "_stored_acceleration_realization",
+                lambda *a, **kw: SimpleNamespace(
+                    resolved_kernel_mode="e3nn",
+                    foundation_inference_identity_digest="turnover" * 4,
+                    content_digest="turnover" * 4,
+                ),
+            )
+
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_PRE_REVALIDATION_HOOK", turnover_doctor)
+
+        with pytest.raises(cli.CampaignCliError, match="doctor-frozen acceleration realization turned over"):
+            cli._publish_single_source_replay_authority(store, cfg, paths)
+
+        assert store.get_payload_optional("replay_current_lineage") is None
+        for alias in cli._REPLAY_SINGLE_SOURCE_ALIASES:
+            assert store.get_payload_optional(alias) is None
+    finally:
+        store.close()
+
+
+def test_replay_publication_race_competing_prepare_in_final_window(tmp_path: Path, monkeypatch):
+    """B6: competing prepare publication under writer exclusion raises and preserves winner."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    store = cli.CampaignStore(paths.state_db)
+
+    try:
+        winner_digest = "w" * 64
+        winner_payload = {"replay_lineage_digest": winner_digest, "schema": "mdstats.replay-lineage.v1"}
+
+        def competing_winner():
+            with store._connect() as db:
+                db.execute(
+                    "INSERT OR REPLACE INTO records (key, class_name, digest, payload, updated_utc) "
+                    "VALUES ('replay_current_lineage', 'ReplayLineage', ?, ?, '2026-09-11T00:00:00Z')",
+                    (winner_digest, json.dumps(winner_payload)),
+                )
+
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_PRE_REVALIDATION_HOOK", competing_winner)
+
+        with pytest.raises(cli.CampaignCliError, match="A newer `prepare` published a different current replay authority"):
+            cli._publish_single_source_replay_authority(store, cfg, paths)
+
+        # Assert winning prepare's authority is preserved
+        current = store.get_payload("replay_current_lineage")
+        assert current["replay_lineage_digest"] == winner_digest
+    finally:
+        store.close()
+
+
+def test_replay_publication_allows_canonical_equivalent_spelling_and_identical_byte_relocation(tmp_path: Path, monkeypatch):
+    """B6: canonical-equivalent path spelling and identical-byte relocation pass publication revalidation."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    basis = cli._single_source_replay_basis(cfg, paths)
+    store = cli.CampaignStore(paths.state_db)
+
+    try:
+        # Test A: canonical-equivalent spelling (redundant relative equivalent path)
+        rel_spelling = f"./{source.name}"
+        paths.config.write_text(paths.config.read_text().replace(f'replay_set = "{source}"', f'replay_set = "{rel_spelling}"'))
+
+        # Publication succeeds with canonical equivalent spelling
+        cli._prepare_single_source_replay(cfg, paths, store, command_replay_basis=basis)
+        assert store.get_payload_optional("replay_current_lineage") is not None
+
+        # Test B: identical-byte relocation in publication window
+        moved = tmp_path / "relocated" / "replay.extxyz"
+        moved.parent.mkdir()
+        moved.write_bytes(source.read_bytes())
+
+        def relocate_source():
+            paths.config.write_text(paths.config.read_text().replace(f'replay_set = "{rel_spelling}"', f'replay_set = "{moved}"'))
+
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_PRE_REVALIDATION_HOOK", relocate_source)
+
+        # Clear existing publication to test clean re-publication
+        with store._connect() as db:
+            db.execute("DELETE FROM records WHERE key = 'replay_current_lineage'")
+
+        # Publication succeeds with identical-byte relocation
+        cli._publish_single_source_replay_authority(store, cfg, paths, command_replay_basis=basis)
+        assert store.get_payload_optional("replay_current_lineage") is not None
+    finally:
+        store.close()
+

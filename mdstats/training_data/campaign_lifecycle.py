@@ -184,6 +184,7 @@ def _current_replay_lineage_snapshot(db: Any) -> tuple[str | None, str]:
     (b) 'valid': row exists and contains a valid replay_lineage_digest
     (c) 'malformed': row exists but is unparseable or contains an empty/missing digest
     """
+    from ._common import validate_digest
 
     row = db.execute(
         "SELECT payload FROM records WHERE key=?", ("replay_current_lineage",)
@@ -199,7 +200,11 @@ def _current_replay_lineage_snapshot(db: Any) -> tuple[str | None, str]:
     digest_value = payload.get("replay_lineage_digest")
     if digest_value in (None, ""):
         return None, "malformed"
-    return str(digest_value), "valid"
+    try:
+        valid_digest = validate_digest(str(digest_value), name="replay_lineage_digest")
+    except Exception:  # noqa: BLE001 - malformed fail-closed
+        return None, "malformed"
+    return valid_digest, "valid"
 
 
 def _current_replay_lineage_digest(db: Any) -> str | None:
@@ -263,8 +268,7 @@ def campaign_owner_snapshot(store: Any) -> tuple[Any, tuple[Any, ...], dict[str,
     try:
         revision = _load_head(db)
         bindings = () if revision is None else _bindings_for(revision)
-        digest_val = _current_replay_lineage_digest(db)
-        status_val = "valid" if digest_val is not None else _current_replay_lineage_snapshot(db)[1]
+        digest_val, status_val = _current_replay_lineage_snapshot(db)
         pointers: dict[str, str | None] = {
             REPLAY_CURRENT_LINEAGE_OBSERVATION: digest_val,
             REPLAY_CURRENT_LINEAGE_STATUS_OBSERVATION: status_val,
@@ -346,7 +350,12 @@ def _short(value: Any) -> str:
     return f"{text[:12]}..." if text else "unbound"
 
 
-def _prepare_step(state: Any, store: Any = None, paths: Any = None) -> LifecycleStep:
+def _prepare_step(
+    state: Any,
+    store: Any = None,
+    paths: Any = None,
+    pointers: Mapping[str, str | None] | None = None,
+) -> LifecycleStep:
     if state is None or state.regime is TargetSizeRegime.LEGACY:
         observed = LifecycleObservationState.NOT_STARTED
         message = (
@@ -386,7 +395,12 @@ def _prepare_step(state: Any, store: Any = None, paths: Any = None) -> Lifecycle
         # truth, so nothing new decides it here. A *missing* stage record is not
         # an opinion: a generation bound before this contract existed keeps the
         # target-size substrate as the only authority there is.
-        durable, durable_message = _durable_prepare_stage(store, paths)
+        replay_status = (
+            None if pointers is None else pointers.get(REPLAY_CURRENT_LINEAGE_STATUS_OBSERVATION)
+        )
+        durable, durable_message = _durable_prepare_stage(
+            store, paths, replay_lineage_status=replay_status
+        )
         if durable in {
             LifecycleObservationState.FAILED,
             LifecycleObservationState.RUNNING,
@@ -398,19 +412,6 @@ def _prepare_step(state: Any, store: Any = None, paths: Any = None) -> Lifecycle
                 "valid, but public `prepare` is not complete for this campaign: "
                 f"{durable_message}"
             )
-        elif _single_source_replay_applicable(paths):
-            lineage_record = store.get_payload_optional("replay_current_lineage")
-            if (
-                lineage_record is None
-                or not isinstance(lineage_record, Mapping)
-                or not lineage_record.get("replay_lineage_digest")
-            ):
-                observed = LifecycleObservationState.WAITING
-                message = (
-                    f"{message}. The target-size scientific substrate above remains "
-                    "valid, but public `prepare` is not complete for this campaign: "
-                    "single-source replay authority is missing or malformed; rerun `prepare`"
-                )
     return LifecycleStep(
         "current_prepare",
         "prepare",
@@ -421,7 +422,9 @@ def _prepare_step(state: Any, store: Any = None, paths: Any = None) -> Lifecycle
     )
 
 
-def _durable_prepare_stage(store: Any, paths: Any) -> tuple[str, str]:
+def _durable_prepare_stage(
+    store: Any, paths: Any, *, replay_lineage_status: str | None = None
+) -> tuple[str, str]:
     """Read the durable public-prepare stage through its existing owner."""
 
     from ._campaign_cli_core import StageState, _effective_stage
@@ -434,7 +437,9 @@ def _durable_prepare_stage(store: Any, paths: Any) -> tuple[str, str]:
         StageState.NOT_STARTED: LifecycleObservationState.NOT_STARTED,
     }
     try:
-        state, message = _effective_stage(store, paths, "prepare")
+        state, message = _effective_stage(
+            store, paths, "prepare", replay_lineage_status=replay_lineage_status
+        )
     except Exception:  # noqa: BLE001 - one blocked observation, never a failure
         return LifecycleObservationState.NOT_STARTED, ""
     return mapping[state], message
@@ -954,7 +959,7 @@ def project_campaign_lifecycle(
     steps: list[LifecycleStep] = [_doctor_step(store, paths)]
     revision, bindings, pointers = campaign_owner_snapshot(store)
     state = None if revision is None else revision.state
-    prepare = _prepare_step(state, store, paths)
+    prepare = _prepare_step(state, store, paths, pointers=pointers)
     steps.append(prepare)
     prepare_complete = prepare.state == LifecycleObservationState.COMPLETE
     steps.append(_screen_step(state, prepare_complete))

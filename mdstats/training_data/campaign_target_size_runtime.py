@@ -926,6 +926,7 @@ def execute_current_prepare(args: Any) -> int:
         _prepare_single_source_replay,
         _replay_topology_preflight,
         _require_stage_complete,
+        _single_source_replay_basis,
     )
     from .campaign_prepared_generation import (
         preparation_configuration_identity,
@@ -940,6 +941,7 @@ def execute_current_prepare(args: Any) -> int:
 
     cfg, paths = _load_config(args.config)
     command_preparation_digest = _preparation_config_digest(cfg)
+    command_replay_basis = _single_source_replay_basis(cfg, paths)
     store = CampaignStore(paths.state_db)
     _require_stage_complete(store, paths, "doctor")
     # Cheap canonical configuration/topology validation first.  A conflicting
@@ -1050,7 +1052,12 @@ def execute_current_prepare(args: Any) -> int:
     # public prepare incomplete without rolling back the independently valid
     # target-size generation.
     try:
-        _prepare_single_source_replay(cfg, paths, store)
+        try:
+            _prepare_single_source_replay(
+                cfg, paths, store, command_replay_basis=command_replay_basis
+            )
+        except TypeError:
+            _prepare_single_source_replay(cfg, paths, store)
     except Exception as exc:
         _mark_stage(
             store,
