@@ -885,6 +885,29 @@ def evaluate_post_selection_run_candidates(
     return catalog, representative, monitor_metrics
 
 
+def _abort_post_selection_run_if_cancelled(
+    cancellation_event: Any | None, *, phase: str
+) -> None:
+    """Leave a run at a recoverable pre-trainer boundary once stopped.
+
+    The scheduler's per-slot stop handle already travels down this path to the
+    trainer. Reading the same handle at run-phase boundaries that precede the
+    trainer is how a demoted slot stops spending preparation/materialization
+    effort it will not use; it is not a second cancellation mechanism and it
+    produces the same explicit cancellation outcome the trainer produces, so the
+    scheduler classifies it as a retractable demotion rather than a failure.
+
+    Every call site sits before any partial fold evidence exists: the run root
+    stays under the existing materialization/checkpoint authority and the next
+    attempt resumes through the ordinary continuation path.
+    """
+
+    if cancellation_event is not None and cancellation_event.is_set():
+        raise PostSelectionCancelledError(
+            f"Post-selection run stopped at the {phase} boundary before training."
+        )
+
+
 def execute_post_selection_run(
     context: PostSelectionContext,
     *,
@@ -1911,6 +1934,7 @@ def _execute_post_selection_run_locked(
 
     context_cfg = getattr(context, "cfg", None)
     selected = context.selected
+    _abort_post_selection_run_if_cancelled(cancellation_event, phase="run-entry")
     setup = _prepare_post_selection_run(
         context,
         run_plan=run_plan,
@@ -2001,6 +2025,13 @@ def _execute_post_selection_run_locked(
         # the trainer seam to perform a zero-epoch call.
         summary = continuation_summary
     else:
+        # The last boundary before the trainer takes ownership of a child
+        # process: stopping here avoids launching MACE for a slot that has
+        # already been demoted, and the materialization just written stays
+        # canonical for the restart.
+        _abort_post_selection_run_if_cancelled(
+            cancellation_event, phase="pre-training"
+        )
         summary = context.trainer(
             PostSelectionRungRequest(
                 plan=runtime_plan,
@@ -3184,12 +3215,6 @@ def _execute_post_selection_pending_runs(
         gpu_sample=initial_sample,
     )
     controller = AdaptiveTrainingConcurrency(concurrency_plan, concurrency_policy)
-    # The execution owner states its own observe-stop/terminate/reap bound; the
-    # scheduler never derives one, so an outer barrier cannot expire before the
-    # termination path it already authorized. An owner that declares none keeps
-    # sole authority over its stop duration and the barrier stays unbounded.
-    teardown_bound = getattr(context.trainer, "cancellation_teardown_seconds", None)
-    teardown_bound = None if teardown_bound is None else float(teardown_bound)
     telemetry_ref: dict[str, Any] = {"sample": initial_sample}
     # One cooperative stop signal per admitted slot. Backoff sets exactly one of
     # them; a terminal abort sets every one of them, which *is* the whole-wave
@@ -3365,9 +3390,15 @@ def _execute_post_selection_pending_runs(
         A future cancellation request is not CUDA teardown: only the worker's
         own completion establishes that the child process exited and its
         finalization ran, so no replacement admission or restart can be ordered
-        before that boundary. How long that is allowed to take belongs to the
-        execution owner's termination contract, not to any control-loop or
-        liveness cadence.
+        before that boundary.
+
+        The wait is unbounded on purpose. This future is the whole run, which
+        may still be in run-owned preparation or materialization and may not
+        have entered the trainer at all, so no subprocess-termination clock
+        describes it. Bounding child termination belongs to the process owner,
+        which already escalates SIGINT/SIGTERM/SIGKILL and reaps
+        unconditionally; whatever verdict that produces arrives here as the
+        future's own outcome.
         """
 
         nonlocal completed_count, failed_count, last_decision_reason
@@ -3391,24 +3422,7 @@ def _execute_post_selection_pending_runs(
             flush=True,
         )
         stop_events[victim.slot].set()
-        # Bounded only by the execution owner's own declared termination
-        # contract, which is the authority for how long its terminate/reap
-        # sequence may legitimately take. Expiry therefore means owned TRAIN2
-        # lifetime cleanup itself failed and no safe owned execution state can
-        # be re-established.
-        _done, not_done = wait(
-            (victim_future,),
-            timeout=teardown_bound,
-            return_when=ALL_COMPLETED,
-        )
-        if not_done:
-            raise TrainingMemorySafetyError(
-                f"Owned TRAIN2 slot {victim.slot} did not quiesce within the "
-                f"execution owner's own {teardown_bound:.1f}s child "
-                "termination/reaping bound after its demotion request, so its "
-                "accelerator lifetime cannot be confirmed released and no safe "
-                "owned execution state can be re-established."
-            )
+        wait((victim_future,), return_when=ALL_COMPLETED)
         active.pop(victim_future, None)
         stop_events.pop(victim.slot, None)
         with state_lock:

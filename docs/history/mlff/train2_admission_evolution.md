@@ -137,8 +137,7 @@ not a scientific failure: completed folds stay completed, no partial fold is
 published, and the demoted run resumes through the existing checkpoint
 authority. Terminal memory infeasibility now requires convergence to the minimum
 owned concurrency or an independent hard condition - an authoritative allocation
-failure, sustained loss of live memory observability, or owned teardown that
-cannot be confirmed.
+failure or sustained loss of live memory observability.
 
 What was rejected again: raising the 90% envelope until the observed run passes,
 suppressing the terminal error without correct backoff semantics, catching and
@@ -167,15 +166,31 @@ It also used the child optimizer-activity freshness bound as the deadline for
 waiting on the demoted worker. Those are different meanings with different
 owners: the freshness bound is operator-tunable liveness tuning and legally
 zero, so a zero or short value could fail a healthy teardown and mislabel it a
-CUDA-lifetime defect. Process teardown duration belongs to the execution owner,
-so the trainer now declares its own observe-stop/terminate/reap bound from the
-poll interval and termination grace it already had, and the scheduler reads
-that. No new operator knob and no second termination policy were introduced.
+CUDA-lifetime defect.
 
-Both defects were one shape: resource adaptation, execution failure, and process
-lifetime had been allowed to share an interface meaning. What was rejected here:
-parsing the cancellation message, a parallel failure registry, a retry manager
-or watchdog, a new teardown timeout key, and weakening the falsification tests.
+Replacing that number with one the trainer derived from its own poll interval
+and termination grace fixed the provenance but not the scope, and review found
+the remainder. The timed object was the whole run future, which may still be in
+preparation, recovery classification, or materialization and may never have
+entered the trainer at all; a slot demoted while merely slow to materialize
+could therefore be declared a teardown failure though no child process was owned
+and no termination contract had been violated - recreating the original
+user-visible shape, feasible work killed by a controller-side resource error.
+The correction removes the deadline rather than moving it again. The scheduler
+waits for the whole owned future, which was already the correct reuse barrier;
+child termination stays bounded where the child is owned, by the escalating
+SIGINT/SIGTERM/SIGKILL reap the process owner already performed; and the
+trainer-side bound, having no owner-local consumer left, was deleted rather than
+kept as dead policy surface. The same per-job stop handle is now also read at
+run-phase boundaries before the trainer, so a demoted slot stops preparing work
+it will not use through the one existing cancellation mechanism.
+
+All three defects were one shape: resource adaptation, execution failure, and
+process lifetime had been allowed to share an interface meaning, and a
+sub-owner's contract had been allowed to govern ancestor work. What was rejected
+here: parsing the cancellation message, a parallel failure registry, a retry
+manager or watchdog, a new teardown timeout key, a second cancellation
+mechanism, and weakening the falsification tests.
 
 ## Phase ownership
 

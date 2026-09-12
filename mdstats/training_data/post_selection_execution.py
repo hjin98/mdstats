@@ -1014,7 +1014,14 @@ def _build_post_selection_mace_execution_authority(
 def _terminate_post_selection_process(
     process: subprocess.Popen[Any], *, grace_seconds: float
 ) -> None:
-    """Stop one detached wrapper/process group without leaving descendants."""
+    """Stop one detached wrapper/process group without leaving descendants.
+
+    This is the only owner of child-termination timing. The escalation is
+    bounded by construction - SIGINT, one grace, SIGTERM, one grace, then an
+    unconditional SIGKILL and reap - so a stopped child always terminates here
+    and no supervisor above needs, or is entitled to, a termination clock of its
+    own for work it does not own.
+    """
 
     if process.poll() is not None:
         return
@@ -1392,28 +1399,6 @@ class MacePostSelectionTrainer:
     minimum_free_disk_bytes: int | None = None
     timeout_seconds: float | None = None
     terminate_grace_seconds: float = 30.0
-
-    @property
-    def cancellation_teardown_seconds(self) -> float:
-        """This owner's own bound on observing a stop and reaping its child.
-
-        Worst case for one cooperative stop: up to one poll interval before the
-        supervision loop observes the request, then the escalating
-        SIGINT/SIGTERM/SIGKILL sequence of
-        ``_terminate_post_selection_process``, which waits the termination
-        grace after each of the first two signals before the unconditional
-        kill/reap, then one more poll interval for the cancellation
-        finalization to emit and return.
-
-        A supervisor that waits on this owner reads the bound from here so it
-        cannot expire before the termination path it already authorized. No
-        unrelated policy - in particular not optimizer-activity freshness -
-        owns this duration, and no second operator knob describes it.
-        """
-
-        poll = max(0.05, float(self.poll_interval_seconds))
-        grace = max(0.1, float(self.terminate_grace_seconds))
-        return 2.0 * poll + 2.0 * grace
 
     def __call__(self, request: PostSelectionRungRequest) -> Any:
         import os

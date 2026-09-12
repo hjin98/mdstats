@@ -647,74 +647,58 @@ def test_backoff_from_three_demotes_the_third_admitted_job(
     assert len(harness.attempts) == 3
 
 
-# --- 7. Teardown that cannot be confirmed is a causal terminal failure -----
+# --- 7. Child termination is bounded by the process owner, not the scheduler --
 
 
-def test_a_worker_that_never_quiesces_is_a_causal_terminal_memory_failure(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """INV-3(3)/Q11: an owning-layer teardown defect is surfaced, not looped.
+def test_the_process_owner_bounds_its_own_termination_of_a_deaf_child() -> None:
+    """B4: the termination clock lives with the process it owns.
 
-    Bounded deterministic failure injection: the demoted child ignores its
-    cooperative stop while the real scheduler, controller, telemetry loop and
-    run path stay live. Because owned accelerator lifetime cannot then be
-    confirmed released, no safe owned execution state can be re-established and
-    the existing terminal safety error is raised with its causal reason - rather
-    than the scheduler blocking forever or retrying a replacement.
+    Real-owner evidence at the only boundary that owns a subprocess:
+    ``_terminate_post_selection_process`` drives a genuine child that ignores
+    both cooperative signals. The escalation still reaps it unconditionally, so
+    a stopped child always terminates inside its owner and the scheduler needs
+    no termination deadline of its own for a future that may not even have
+    reached the trainer.
     """
 
-    from mdstats.training_data.campaign_post_selection_runtime import (
-        execute_post_selection_cross_validation,
+    import subprocess
+    import sys
+
+    from mdstats.training_data.post_selection_execution import (
+        _terminate_post_selection_process,
     )
-    from mdstats.training_data.training_parallel import TrainingMemorySafetyError
 
-    config = _selected_campaign(tmp_path, execution=_FAST_CONTROL)
-
-    live = {"active": 0}
-    lock = threading.Lock()
-
-    class _DeafHarness(fx.PostSelectionHarness):
-        """A child that never honours its stop handle."""
-
-        def train(self, request):
-            with lock:
-                live["active"] += 1
-            try:
-                if request.progress_observer is not None:
-                    request.progress_observer(
-                        {"true_epoch": True, "phase": "training"}
-                    )
-                time.sleep(4.0)
-                raise AssertionError("the scheduler should have stopped waiting")
-            finally:
-                with lock:
-                    live["active"] -= 1
-
-    def probe(device):
-        with lock:
-            active = live["active"]
-        used = {0: 0.4, 1: 10.0}.get(active, 22.2)
-        return _sample(used, 40.0)
-
-    harness = _DeafHarness()
-    # The execution owner's own child termination/reaping bound, the same
-    # contract ``MacePostSelectionTrainer`` derives from its termination grace.
-    # A child that is still running after it has elapsed has violated the
-    # termination path the scheduler authorized.
-    harness.cancellation_teardown_seconds = 0.5
-    _install_telemetry(monkeypatch, probe)
-    context, store = _cuda_cv_context(config, harness)
+    script = (
+        "import signal, sys, time\n"
+        "signal.signal(signal.SIGINT, signal.SIG_IGN)\n"
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+        "sys.stdout.write('ready\\n')\n"
+        "sys.stdout.flush()\n"
+        "time.sleep(600)\n"
+    )
+    process = subprocess.Popen(
+        [sys.executable, "-c", script],
+        stdout=subprocess.PIPE,
+        start_new_session=True,
+    )
     try:
-        with pytest.raises(TrainingMemorySafetyError) as stop:
-            execute_post_selection_cross_validation(context)
+        assert process.stdout.readline().strip() == b"ready"
+        grace = 0.2
+        started = time.monotonic()
+        _terminate_post_selection_process(process, grace_seconds=grace)
+        elapsed = time.monotonic() - started
     finally:
-        store.close()
+        if process.poll() is None:  # pragma: no cover - owner failed its contract
+            process.kill()
+            process.wait()
+        if process.stdout is not None:
+            process.stdout.close()
 
-    message = str(stop.value)
-    assert "did not quiesce" in message, message
-    assert "accelerator lifetime cannot be confirmed released" in message, message
-    assert "execution owner" in message, (
-        "the teardown deadline must name the termination authority it came from"
+    assert process.poll() is not None, (
+        "the process owner returned without reaping its deaf child"
+    )
+    assert elapsed < 2.0 + 2.0 * grace, (
+        "the owner's escalating terminate/reap sequence is not bounded"
     )
 
 
@@ -837,39 +821,227 @@ def test_backoff_survives_a_zero_optimizer_activity_timeout(
     assert len(harness.attempts) == 2
 
 
-def test_the_demotion_barrier_reads_only_the_execution_owner_contract() -> None:
-    """Structural: no liveness/control cadence can be the teardown deadline.
+def test_the_demotion_barrier_imposes_no_deadline_on_the_owned_future() -> None:
+    """B4 structural: no clock of any provenance times the whole run future.
 
-    Runtime evidence cannot show the absence of a coupling, so the one
-    admissible deadline source is asserted directly on the owning source.
+    Runtime evidence cannot show the absence of a coupling. The demotion
+    barrier waits on work that may still be in run-owned preparation or
+    materialization, so it must carry no timeout at all - neither a control
+    cadence, nor optimizer freshness, nor a trainer-derived subprocess bound -
+    and the retired trainer-side policy surface must be gone rather than kept
+    alive for a supervisor that no longer reads it.
     """
 
     import inspect
 
     from mdstats.training_data import campaign_post_selection_runtime as runtime
-    from mdstats.training_data.post_selection_execution import (
-        MacePostSelectionTrainer,
-    )
+    from mdstats.training_data import post_selection_execution
 
     source = inspect.getsource(runtime.__dict__["_execute_post_selection_pending_runs"])
     barrier = source.split("def demote_most_recently_admitted", 1)[1].split(
         "def complete_eval2_for_trained_slots", 1
     )[0]
     for forbidden in (
+        "timeout",
+        "teardown_bound",
+        "cancellation_teardown_seconds",
         "epoch_activity_timeout_seconds",
         "monitor_interval_seconds",
         "poll_interval",
     ):
         assert forbidden not in barrier, (
-            f"the demotion teardown barrier reuses {forbidden} as a deadline"
+            f"the demotion teardown barrier still times the run future by {forbidden}"
         )
-    assert "teardown_bound" in barrier
+    assert "wait((victim_future,), return_when=ALL_COMPLETED)" in barrier
 
-    # The bound is declared by the execution owner and cannot expire before its
-    # own escalating terminate/reap sequence.
-    trainer = MacePostSelectionTrainer(
-        wrapper_path=Path("unused"),
-        poll_interval_seconds=1.0,
-        terminate_grace_seconds=30.0,
+    # Dead policy surface is removed, not merely unused.
+    for module in (runtime, post_selection_execution):
+        assert "cancellation_teardown_seconds" not in inspect.getsource(module), (
+            f"{module.__name__} still declares a retired teardown-deadline knob"
+        )
+
+
+# --- 10. A pre-trainer victim cannot be turned into a teardown failure -----
+
+
+class _PreTrainerHarness(fx.PostSelectionHarness):
+    """A child that trains until the wave has settled after one demotion."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.lock = threading.Lock()
+        self.active = 0
+        self.max_active = 0
+        self.attempts: dict[str, int] = {}
+        #: (identity, attempt) -> monotonic entry into the trainer.
+        self.trainer_entries: dict[tuple[str, int], float] = {}
+        #: Set by the gate once the held victim has observed its stop request.
+        self.demoted = threading.Event()
+        #: Set while the victim is parked in its pre-trainer run phase.
+        self.held = threading.Event()
+        #: (identity, entered, exited) for every gated run-body call.
+        self.gate_windows: list[tuple[str, float, float]] = []
+
+    def train(self, request):
+        identity = str(request.run_plan.run_identity)
+        with self.lock:
+            attempt = self.attempts.get(identity, 0) + 1
+            self.attempts[identity] = attempt
+            self.trainer_entries[(identity, attempt)] = time.monotonic()
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+        try:
+            if request.progress_observer is not None:
+                request.progress_observer({"true_epoch": True, "phase": "training"})
+            stop = request.cancellation_event
+            limit = time.monotonic() + 180.0
+            while not self.demoted.is_set():
+                assert not (stop is not None and stop.is_set()), (
+                    "the surviving job was demoted instead of the pre-trainer victim"
+                )
+                assert time.monotonic() < limit, (
+                    "the scheduler never demoted the held pre-trainer slot"
+                )
+                time.sleep(0.005)
+            return super().train(request)
+        finally:
+            with self.lock:
+                self.active -= 1
+
+
+def _hold_second_run_before_the_trainer(monkeypatch, harness) -> dict:
+    """Park the second admitted run inside the real run body, pre-trainer.
+
+    The real run owner still executes: this wrapper only delays its entry, so
+    the victim is genuinely before preparation, materialization and the trainer
+    when the scheduler selects it. Nothing about the scheduler, the controller
+    or the run path is replaced.
+    """
+
+    from mdstats.training_data import campaign_post_selection_runtime as runtime
+
+    real = runtime._execute_post_selection_run_locked
+    state: dict = {
+        "victim": None,
+        "stop_seen_at": None,
+        "train_entries": 0,
+        "trained_at_stop": set(),
+    }
+
+    def gated(context, **kwargs):
+        identity = str(kwargs["run_plan"].run_identity)
+        entered = time.monotonic()
+        # Only TRAIN2 slots pass through the scheduler; the serial post-TRAIN
+        # EVAL2 calls reuse this same run path and are left untouched.
+        training = bool(kwargs.get("stop_after_training"))
+        is_victim = False
+        if training:
+            with harness.lock:
+                state["train_entries"] += 1
+                is_victim = state["train_entries"] == 2 and state["victim"] is None
+                if is_victim:
+                    state["victim"] = identity
+        if is_victim:
+            event = kwargs.get("cancellation_event")
+            harness.held.set()
+            limit = entered + 180.0
+            while event is None or not event.is_set():
+                assert time.monotonic() < limit, (
+                    "the scheduler never requested the pre-trainer demotion"
+                )
+                time.sleep(0.005)
+            state["stop_seen_at"] = time.monotonic()
+            with harness.lock:
+                state["trained_at_stop"] = set(harness.trainer_entries)
+            harness.demoted.set()
+        try:
+            return real(context, **kwargs)
+        finally:
+            if training:
+                with harness.lock:
+                    harness.gate_windows.append(
+                        (identity, entered, time.monotonic())
+                    )
+
+    monkeypatch.setattr(runtime, "_execute_post_selection_run_locked", gated)
+    return state
+
+
+def test_a_pre_trainer_victim_is_demoted_without_a_false_teardown_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """B4: slow preparation cannot manufacture a terminal resource failure.
+
+    Two owned slots reach persistent soft-envelope pressure while the most
+    recently admitted slot is still in its pre-trainer run phase - no child
+    process is owned by the trainer and no trainer cancellation contract exists
+    yet. The scheduler must still request exactly one backoff, wait for that
+    whole future, and receive the explicit cancellation outcome from the
+    existing run path, without raising a teardown failure and without admitting
+    a replacement while the victim future is alive.
+    """
+
+    from mdstats.training_data.campaign_post_selection_runtime import (
+        execute_post_selection_cross_validation,
     )
-    assert trainer.cancellation_teardown_seconds >= 2.0 * 30.0
+
+    config = _selected_campaign(tmp_path, execution=_FAST_CONTROL)
+    harness = _PreTrainerHarness()
+    state = _hold_second_run_before_the_trainer(monkeypatch, harness)
+
+    def probe(device):
+        if harness.held.is_set() and not harness.demoted.is_set():
+            # Two slots are admitted; the aggregate stays above the soft
+            # envelope for the whole persistence window.
+            return _sample(22.2, 40.0)
+        with harness.lock:
+            active = harness.active
+        return _sample({0: 0.4, 1: 10.0}.get(active, 22.2), 40.0)
+
+    _install_telemetry(monkeypatch, probe)
+
+    context, store = _cuda_cv_context(config, harness)
+    try:
+        _plan, acceptance = execute_post_selection_cross_validation(context)
+    finally:
+        store.close()
+
+    printed = capsys.readouterr().out
+    victim = state["victim"]
+
+    # 1. The backoff happened and no false terminal teardown verdict was made.
+    assert "backoff 2->1" in printed, printed
+    assert victim is not None, printed
+    assert state["stop_seen_at"] is not None
+    assert "did not quiesce" not in printed, printed
+
+    # 2. The victim was genuinely pre-trainer when it was selected: no trainer
+    #    ownership existed for it at the moment the stop was observed, so no
+    #    trainer teardown contract could have been violated.
+    assert not any(
+        identity == victim for identity, _attempt in state["trained_at_stop"]
+    ), "the victim entered the trainer before it was demoted"
+
+    # 3. Device telemetry was re-observed after the demotion, before any
+    #    subsequent admission.
+    assert "post-demotion" in printed, printed
+
+    # 4. The victim's full future quiesced before its slot was reused.
+    victim_windows = [w for w in harness.gate_windows if w[0] == victim]
+    assert len(victim_windows) == 2, harness.gate_windows
+    assert victim_windows[0][2] <= victim_windows[1][1], (
+        "the demoted slot restarted before its own future had returned"
+    )
+    # Its single trainer entry belongs to that restart, not to the demoted
+    # attempt: the cancelled future never owned a child process.
+    assert harness.trainer_entries[(victim, 1)] >= victim_windows[0][2]
+    assert harness.max_active == 1, (
+        "a replacement was admitted while the victim future was still alive"
+    )
+
+    # 5. The cancelled attempt published no evidence and every fold still ran
+    #    exactly once through the ordinary continuation path.
+    assert harness.attempts[victim] == 1
+    assert len(harness.attempts) == 2
+    assert len(harness.runs) == 2, harness.runs
+    assert acceptance.accepted

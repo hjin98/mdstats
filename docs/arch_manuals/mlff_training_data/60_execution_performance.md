@@ -457,19 +457,30 @@ finalization has run, and only then does it re-observe device occupancy and make
 the next scheduling decision. No replacement admission, requeue, or restart may
 be ordered before that boundary.
 
-How long that teardown may legitimately take is owned by the execution owner,
-not by any control-loop or liveness cadence. The trainer declares its own
-observe-stop/terminate/reap bound, derived from the poll interval at which it
-observes a stop request and the escalating termination grace it applies to its
-child; the scheduler reads that declared bound and can therefore never expire
-before the termination path it just authorized. Optimizer-activity freshness
+How long that teardown may legitimately take is owned by the process owner, and
+the scheduler imposes no deadline of its own on the demoted future. That future
+is the whole run: when the stop is requested it may still be in run-owned
+preparation, recovery classification, or materialization and may never have
+reached the trainer, so no subprocess-termination clock describes it and elapsed
+time there is not evidence about owned teardown. Child termination is instead
+bounded where the child is owned: the process owner escalates SIGINT, one
+termination grace, SIGTERM, one termination grace, then an unconditional
+SIGKILL and reap, so a stopped child always terminates inside its owner and
+whatever verdict that produces reaches the scheduler as the future's own
+outcome. Optimizer-activity freshness
 (`parallel_training_epoch_activity_timeout_seconds`) remains purely a child
 progress-liveness bound and has no authority over process teardown, so changing
-it cannot change resource-safety semantics. An execution owner that declares no
-bound keeps sole authority over its stop duration. Expiry of a declared bound is
-evidence about owned teardown itself: accelerator lifetime cannot be confirmed
-released, no safe owned execution state can be re-established, and that is a
-terminal resource stop.
+it cannot change resource-safety semantics, and no operator-facing teardown knob
+exists at all.
+
+The same per-job stop handle is also read at run-phase boundaries that precede
+the trainer, so a slot demoted while still preparing or materializing stops
+spending effort it will not use instead of launching MACE. That is the one
+cancellation mechanism, not a second one: those boundaries sit before any
+partial fold evidence exists, they leave the run root under the existing
+materialization/checkpoint authority, and they produce the same explicit
+cancellation outcome the trainer produces, so the scheduler classifies them as
+an ordinary retractable demotion.
 
 A resource demotion is not a scientific run failure, but only the execution
 owner may say that a demotion is what happened. The trainer reports an explicit
