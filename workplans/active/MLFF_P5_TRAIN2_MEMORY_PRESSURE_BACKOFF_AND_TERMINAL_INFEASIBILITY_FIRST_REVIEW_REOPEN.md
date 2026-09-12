@@ -185,3 +185,55 @@ A subsequent SSDP 6.2 Review may PASS only when all of the following are true on
 8. No D1/D2 scientific method identity, training labels, fold/seed membership, horizons, checkpoint identity, evaluation authority, or publication semantics change.
 
 Until those conditions are satisfied, the parent workplan remains **NO-PASS / REOPENED**.
+
+## 7. Implementation response to B1/B2/B3 (candidate-bound)
+
+Repaired executable candidate: `46049fed` on `fix/mlff-p5-train2-memory-pressure-backoff`, tree `07b8eaaf67231bf2b924a7f2716d3edda9ff5afe`. Environment: conda env `mace`, Python 3.11, PyTorch 2.13.0+cu126, mace-torch 0.3.16, 32 CPU cores.
+
+### B1 closure
+
+- `post_selection_execution.py` declares `PostSelectionCancelledError(PostSelectionExecutionError)` - a narrowing of the existing execution-error contract, exported in `__all__` - and the MACE cancellation branch raises it *after* `_terminate_post_selection_process` and the `status="cancelled"` finalization emit. Every other execution failure keeps `PostSelectionExecutionError` or its own type.
+- `demote_most_recently_admitted()` now requeues only that explicit outcome. `future.exception() is None` remains completion-before-stop; anything else increments `failed_count` and is re-raised into the pre-existing terminal/global path. No exception-message parsing, retry wrapper, second scheduler, or parallel failure registry was added.
+- The deterministic harness raises the same explicit outcome as the production trainer.
+
+### B2 closure
+
+- `epoch_activity_timeout_seconds` no longer appears in the demotion barrier; it remains solely the child optimizer-activity freshness bound passed as `optimizer_activity_timeout_seconds`.
+- `MacePostSelectionTrainer.cancellation_teardown_seconds` derives the barrier bound from the owner's own contract - `2 * poll_interval + 2 * terminate_grace` - which cannot expire before the escalating SIGINT/SIGTERM/SIGKILL sequence it already authorizes. The scheduler reads that declared bound via the trainer object; an owner declaring none keeps sole authority and the barrier stays unbounded. No new operator knob and no second termination policy surface.
+
+### B3 evidence actually executed
+
+All commands run from the repository root as `conda run -n mace python -m pytest ... -q -p no:randomly`.
+
+| # | Target | Result |
+| --- | --- | --- |
+| 1 | `tests/test_mlff_p5_train2_memory_backoff.py` | **11 passed**, exit 0, 129.84s |
+| 2 | `tests/test_mlff_training_parallel_scheduler.py tests/test_mlff_p5_train2_zero_safe_admission.py` (`-n 8`) | **57 passed**, exit 0, 67.53s |
+| 3 | 41 affected suites touching `campaign_post_selection_runtime.py`, `training_parallel.py`, `post_selection_execution.py` and the shared post-selection fixture (`-n 16`) | **1316 passed, 3 failed, 1 skipped**, 1754.81s |
+| 4 | `tests/test_mlff_doc_arch1_specification.py` | **9 passed**, exit 0 |
+| 5 | `python -m compileall mdstats`; import of both edited modules | clean |
+
+Item 3's three failures reproduce **byte-identically on the stashed baseline tree** and are pre-existing, unrelated drift:
+
+- `test_mlff_opt_ctrl1_specification.py::test_opt_ctrl1_release_identity_preserves_scientific_compatibility` - asserts the pinned `version = "0.20.140a0"` in `pyproject.toml`;
+- `test_mlff_opt_ctrl1_specification.py::test_opt_ctrl1_architecture_and_spec_close_roadmap` - asserts OPT-CTRL1 roadmap text absent from the current manual;
+- `test_mlff_target_size_p5f_structure.py::test_p5f_no_screening_continuation_owner_is_reachable_from_post_selection` - flags the long-standing `--restart_latest` MACE wrapper flag.
+
+Item 3's one skip is the standing `UNAVAILABLE/BLOCKING` LAMMPS/MACE callback on this host, deferred to target-machine qualification.
+
+Item 1 includes the B1/B2 falsification set required above:
+
+- `test_a_victim_that_fails_at_the_demotion_boundary_stays_a_failure` - two active jobs, `backoff 2->1` reached, victim raises an unrelated backend failure at the stop boundary; the failure propagates causally, `attempts[victim] == 1` (no requeue, no second attempt), the surviving owned job is stopped and reaped by the terminal path, `failed_jobs=1` / `status=failed`, and `resolve_current_cv_acceptance` is `None`;
+- `test_sustained_two_job_pressure_demotes_one_job_and_completes_every_fold` - the paired positive: the explicit cancellation outcome still requeues, resumes from its authenticated TRAIN2 summary, and both folds complete exactly once (the 24.0 / 21.6 / 22.2 GiB challenge, run through the real `execute_post_selection_cross_validation`);
+- `test_backoff_survives_a_zero_optimizer_activity_timeout` - `parallel_training_epoch_activity_timeout_seconds = 0.0` with a deliberately non-instantaneous (0.3s) teardown still backs off and requeues;
+- `test_a_worker_that_never_quiesces_is_a_causal_terminal_memory_failure` - a child that ignores its stop still reaches `TrainingMemorySafetyError`, now through the execution owner's declared termination bound;
+- `test_the_demotion_barrier_reads_only_the_execution_owner_contract` - structural/negative evidence that no liveness or control cadence is the teardown deadline, which runtime tests cannot establish.
+
+### Documentation
+
+`docs/arch_manuals/mlff_training_data/60_execution_performance.md`, the assembled `mlff_training_data_architecture.md` (regenerated with `tools/build_mlff_architecture_manual.py`, byte-identical to the edit), and `docs/history/mlff/train2_admission_evolution.md` ("The fourth falsification") record both narrowings. `mlff_training_data_architecture.pdf` + manifest are regenerated by the `docs-build.yml` CI workflow on push, as they were for the previous candidate; pandoc 3.10.2 / typst 0.15.1 are not installed on this workstation, so local regeneration is **unavailable**.
+
+### Physical-GPU qualification
+
+**Explicitly deferred** to the consolidated final-release GPU qualification package under standing project policy. The deterministic telemetry fixture is not claimed as physical CUDA-lifetime evidence.
+
