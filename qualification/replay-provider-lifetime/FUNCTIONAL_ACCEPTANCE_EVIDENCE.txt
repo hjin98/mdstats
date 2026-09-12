@@ -1,0 +1,147 @@
+================================================================================
+MDSTATS REPLAY CANDIDATE FUNCTIONAL ACCEPTANCE EVIDENCE RECORD
+================================================================================
+Candidate Commit: eb3221397457b5cf374298c4b4979e1e1d0c0c96
+Candidate Tree:   2bc60f52d6eba36f65a25d2f6aa28cf96975a43e
+Candidate Clean:  true
+Branch:           fix/mlff-p5-train2-cuda-lifetime-zero-safe-admission
+Host System:      Linux (32 CPU cores)
+Host GPU:         NVIDIA GeForce RTX 3090 (24 GiB VRAM, driver CUDA 12.6)
+Environment:      Conda environment `mace` (Python 3.11.15, PyTorch 2.13.0+cu126, mace-torch 0.3.16)
+Workplan:         workplans/active/MLFF_REPLAY_TRUE_DFT_DEFAULT_PSEUDOLABEL_PREP_AND_CUDA_LIFETIME_REPAIR_FIFTH_REVIEW_REOPEN.md
+Governing Spec:   SSDP 6.2 (D3 replay configuration/currentness owner -> D4 exact-domain implementation)
+================================================================================
+
+--------------------------------------------------------------------------------
+1. E1 PROVIDER LIFETIME APPLICABILITY STATEMENT
+--------------------------------------------------------------------------------
+The provider-lifetime product implementation in `mdstats/training_data/replay_pseudolabel.py`
+was not altered by the B17 qualification gate repair (which modified only
+qualification-gate domain validation in `_campaign_cli_core.py` and downstream test wiring).
+The existing E1 provider retirement qualification (recorded in
+`qualification/replay-provider-lifetime/E1_REPLAY_PROVIDER_RETIREMENT_EVIDENCE.txt`)
+demonstrates single internal provider construction, transfer to operation-scoped
+executor, explicit cleanup in a `finally` block, non-accumulating post-close CUDA
+residency (16.2 MiB post-close vs 1437.6 MiB peak, 1.1%), and zero leak across two
+disjoint cold build cycles while the process remains alive.
+Under Blocker B18 item 7, this evidence remains directly applicable to candidate
+`eb3221397457b5cf374298c4b4979e1e1d0c0c96`.
+
+--------------------------------------------------------------------------------
+2. E2 ASSEMBLED CLI STAGE TARGET-HOST QUALIFICATION
+--------------------------------------------------------------------------------
+Command:
+  conda run -n mace python qualification/replay-provider-lifetime/e2_assembled_cli_stage_proof.py /tmp/e2_assembled_proof 128 > qualification/replay-provider-lifetime/E2_ASSEMBLED_CLI_STAGE_EVIDENCE.txt
+
+Exit Status: 0 (PASS)
+Raw Evidence File: `qualification/replay-provider-lifetime/E2_ASSEMBLED_CLI_STAGE_EVIDENCE.txt`
+
+Execution Summary:
+  - Host GPU: NVIDIA GeForce RTX 3090 (23.55 GiB VRAM)
+  - Frames Evaluated: 128
+  - Stage 1 (Doctor):
+      doctor_provider_constructs: 0
+      doctor_predictions: 0
+      doctor_published_aliases: 0
+  - Stage 2 (Prepare):
+      prepare_provider_constructs: 1
+      prepare_executor_constructs: 1
+      prepare_executor_closes: 1
+      prepare_predictions: 128
+      prepare_cache_key: b9f3b040b614956ff7715bd52d16a58fe0a934a94fe83312b8d3c7425f28cbb9
+      prepare_shards: 2
+      inference_peak_allocated_mib: 2198.2
+      inference_peak_reserved_mib: 2864.0
+      post_prepare_allocated_mib: 45.9 (2.1% of peak)
+      post_prepare_reserved_mib: 122.0
+  - Stage 3 (P5 Resolution):
+      p5_lineage_digest: 786752e97367d40271f37eb7e998300e89bb193289a5c8add18f29d30d875d5e
+      p5_split_manifest_digest: 6594fe01258777ac9050fe03ec8a8bff30d632d1b2db39580b234d29fa8d5219
+      p5_source_sha256: 4f0a4c2fc2007b11ead0088c34bfa8cb92afea38f69f110a48384af775b3b37d
+      p5_new_predictions: 0
+      p5_new_providers: 0
+  - Stage 4 (Pre-TRAIN2 CV Scheduler):
+      scheduler_baseline_vram_gib: 1.32
+      scheduler_admission_ceiling_jobs: 1
+      zero_safe_admission: False
+  - Candidate Provenance:
+      candidate_commit: eb3221397457b5cf374298c4b4979e1e1d0c0c96
+      candidate_tree: 2bc60f52d6eba36f65a25d2f6aa28cf96975a43e
+      candidate_clean: true
+      overall_verdict: PASS
+
+--------------------------------------------------------------------------------
+3. FOCUSED REPLAY FALSIFICATION SUITE
+--------------------------------------------------------------------------------
+Command:
+  conda run -n mace pytest tests/test_mlff_replay_true_dft_default_and_prepare_ownership.py
+
+Exit Status: 0
+Results: 118 passed in 29.85s
+Coverage:
+  - B17 exact qualification gate integer domain validation (rejecting bools, floats, negative values)
+  - B17 exact qualification gate boolean domain validation (rejecting non-booleans, string booleans)
+  - B17 profile.all_atomic_numbers exact sequence and positive integer validation
+  - B17 public prepare rejects malformed qualification gates during preflight before expensive hashing/potential loading/target cutover
+  - B17 single canonical owner shared between preflight, basis expectation, and _qualify_replay
+  - B17 Hypothesis property-based fuzzing tests for exact integer and boolean gates
+  - B14 final publication/retirement seam races and adoption fence
+  - B15 cheap public prepare preflight ordering
+  - B11 TypeError retry removal
+  - B12 nested recursive cleanup
+  - Lifecycle snapshot currentness, immutable source hashing, and P5 read-only consumption
+
+--------------------------------------------------------------------------------
+4. MATERIALLY AFFECTED REGRESSION SUITES
+--------------------------------------------------------------------------------
+
+A. Replay Unification Suites (unify1a through unify1e)
+Command:
+  conda run -n mace pytest tests/test_mlff_replay_unify1a.py tests/test_mlff_replay_unify1b.py tests/test_mlff_replay_unify1c.py tests/test_mlff_replay_unify1d.py tests/test_mlff_replay_unify1e.py
+Exit Status: 0
+Results: 41 passed in 6.49s
+
+B. Replay Recovery, Performance, Guards, and Turnover
+Command:
+  conda run -n mace pytest tests/test_mlff_replay_mace_p5_execution_recovery.py tests/test_mlff_replay_perf1.py tests/test_mlff_target_size_p5_r9_guards.py tests/test_mlff_target_size_p5_r10_guards.py tests/test_mlff_target_size_replay_acceleration_turnover.py
+Exit Status: 0
+Results: 57 passed in 273.41s
+
+C. Downstream Integration and Assembled Semantics
+Command:
+  conda run -n mace pytest tests/test_mlff_downstream_integration_closure.py tests/test_mlff_mace_execution_semantics_assembled.py
+Exit Status: 0
+Results: 33 passed in 469.96s
+
+D. Multi-size Integration, Cutover, and Materialization Acceptance
+Command:
+  conda run -n mace pytest tests/test_mlff_target_size_multi_size_integration.py tests/test_mlff_target_size_p4d_runtime_cutover.py tests/test_mlff_post_selection_materialization_acceptance.py
+Exit Status: 0
+Results: 30 passed in 259.76s
+
+--------------------------------------------------------------------------------
+5. REPOSITORY STATIC, COMPILE, BUILD, AND PACKAGE CHECKS
+--------------------------------------------------------------------------------
+
+A. Bytecode Compilation
+Command:
+  conda run -n mace python -m compileall mdstats tests
+Exit Status: 0 (All files compiled successfully)
+
+B. Dependency Integrity Check
+Command:
+  conda run -n mace pip check
+Exit Status: 0 (No broken requirements found)
+
+C. Package Build Check
+Command:
+  conda run -n mace python -m build --wheel --no-isolation
+Exit Status: 0 (Built mdstats-0.20.242a0-py3-none-any.whl successfully)
+
+================================================================================
+TOTAL ACCEPTANCE SUMMARY:
+  Total Test Items Executed: 279 passed, 0 failed
+  Total Target-Host E2 Inference Frames: 128 frames (PASS)
+  Candidate State: Clean, commit eb3221397457b5cf374298c4b4979e1e1d0c0c96, tree 2bc60f52d6eba36f65a25d2f6aa28cf96975a43e
+  Verdict: ALL GATES PASS
+================================================================================
