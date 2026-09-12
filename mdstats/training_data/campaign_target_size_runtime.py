@@ -942,7 +942,6 @@ def execute_current_prepare(args: Any) -> int:
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
     command_preparation_digest = _preparation_config_digest(cfg)
-    command_replay_basis = _single_source_replay_basis(cfg, paths, store=store)
     _require_stage_complete(store, paths, "doctor")
     # Cheap canonical configuration/topology validation first.  A conflicting
     # replay selector, a malformed exact split domain, a mixed replay
@@ -950,6 +949,7 @@ def execute_current_prepare(args: Any) -> int:
     # training mode is knowable here, and must not cost a full target-source
     # rebuild, a replay-wide parse, or a model load before it is reported.
     _replay_topology_preflight(cfg, paths)
+    command_replay_basis = _single_source_replay_basis(cfg, paths, store=store)
     refresh_inferences = bool(getattr(args, "refresh_inferences", False))
     if bool(getattr(args, "approve_manifest", False)):
         # Approval is an operator gate on the exact reviewed manifest digest and

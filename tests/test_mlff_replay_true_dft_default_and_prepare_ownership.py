@@ -2633,3 +2633,286 @@ def test_replay_publication_race_stale_single_source_cannot_publish_after_legacy
     finally:
         store.close()
 
+
+# ---------------------------------------------------------------------------
+# B14 Final Semantic-Parent Seam Falsification Tests
+# ---------------------------------------------------------------------------
+
+
+def test_replay_publication_race_split_seed_drift_at_last_commit_seam(tmp_path: Path, monkeypatch):
+    """B14: split_seed drift at the last commit seam triggers recheck and aborts publication."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    store = cli.CampaignStore(paths.state_db)
+    basis = cli._single_source_replay_basis(cfg, paths, store=store)
+
+    try:
+        seam_hook_called = False
+
+        def mutate_seed_at_seam():
+            nonlocal seam_hook_called
+            seam_hook_called = True
+            paths.config.write_text(paths.config.read_text().replace("split_seed = 42", "split_seed = 99"))
+
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_PRE_COMMIT_SEAM_HOOK", mutate_seed_at_seam)
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT", 0)
+
+        with pytest.raises(cli.CampaignCliError, match="Campaign replay configuration changed while replay preparation was running"):
+            cli._prepare_single_source_replay(cfg, paths, store, command_replay_basis=basis)
+
+        assert seam_hook_called is True
+        assert cli._TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT >= 1
+        assert store.get_payload_optional("replay_current_lineage") is None
+        for alias in cli._REPLAY_SINGLE_SOURCE_ALIASES:
+            assert store.get_payload_optional(alias) is None
+    finally:
+        store.close()
+
+
+def test_replay_publication_race_label_mode_drift_at_last_commit_seam(tmp_path: Path, monkeypatch):
+    """B14: label_mode drift at the last commit seam triggers recheck and aborts publication."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    store = cli.CampaignStore(paths.state_db)
+    basis = cli._single_source_replay_basis(cfg, paths, store=store)
+
+    try:
+        seam_hook_called = False
+
+        def mutate_label_mode_at_seam():
+            nonlocal seam_hook_called
+            seam_hook_called = True
+            paths.config.write_text(paths.config.read_text().replace('label_mode = "true_dft"', 'label_mode = "foundation_pseudolabel"'))
+
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_PRE_COMMIT_SEAM_HOOK", mutate_label_mode_at_seam)
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT", 0)
+
+        with pytest.raises(cli.CampaignCliError, match="Campaign replay configuration changed while replay preparation was running"):
+            cli._prepare_single_source_replay(cfg, paths, store, command_replay_basis=basis)
+
+        assert seam_hook_called is True
+        assert cli._TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT >= 1
+        assert store.get_payload_optional("replay_current_lineage") is None
+        for alias in cli._REPLAY_SINGLE_SOURCE_ALIASES:
+            assert store.get_payload_optional(alias) is None
+    finally:
+        store.close()
+
+
+def test_replay_publication_race_pseudolabel_qualification_threshold_drift_at_last_commit_seam(tmp_path: Path, monkeypatch):
+    """B14: pseudo qualification threshold drift at the last commit seam triggers recheck and aborts."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    _potential, _inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+
+    original = mdstats.build_replay_foundation_prediction_cache
+
+    def build_with_double(src, policy, cache_root, **kwargs):
+        provider = _CountingProvider(policy)
+        return original(src, policy, cache_root, provider=provider, **kwargs)
+
+    monkeypatch.setattr(mdstats, "build_replay_foundation_prediction_cache", build_with_double)
+
+    store = cli.CampaignStore(paths.state_db)
+    basis = cli._single_source_replay_basis(cfg, paths, store=store)
+
+    try:
+        seam_hook_called = False
+
+        def mutate_threshold_at_seam():
+            nonlocal seam_hook_called
+            seam_hook_called = True
+            text = paths.config.read_text()
+            if "maximum_force_ev_per_angstrom" in text:
+                paths.config.write_text(text.replace("maximum_force_ev_per_angstrom = 20.0", "maximum_force_ev_per_angstrom = 10.0"))
+            else:
+                paths.config.write_text(text + "\n[replay]\nmaximum_force_ev_per_angstrom = 10.0\n")
+
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_PRE_COMMIT_SEAM_HOOK", mutate_threshold_at_seam)
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT", 0)
+
+        with pytest.raises(cli.CampaignCliError, match="Campaign pseudo-label qualification policy changed while replay preparation was running"):
+            cli._publish_single_source_replay_authority(store, cfg, paths, command_replay_basis=basis)
+
+        assert seam_hook_called is True
+        assert cli._TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT >= 1
+        assert store.get_payload_optional("replay_current_lineage") is None
+        for alias in cli._REPLAY_SINGLE_SOURCE_ALIASES:
+            assert store.get_payload_optional(alias) is None
+    finally:
+        store.close()
+
+
+def test_replay_publication_race_foundation_potential_and_head_drift_at_last_commit_seam(tmp_path: Path, monkeypatch):
+    """B14: foundation head drift at the last commit seam triggers recheck and aborts publication."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    _potential, _inference = _install_pseudo_prerequisites(monkeypatch, cfg)
+
+    original = mdstats.build_replay_foundation_prediction_cache
+
+    def build_with_double(src, policy, cache_root, **kwargs):
+        provider = _CountingProvider(policy)
+        return original(src, policy, cache_root, provider=provider, **kwargs)
+
+    monkeypatch.setattr(mdstats, "build_replay_foundation_prediction_cache", build_with_double)
+
+    store = cli.CampaignStore(paths.state_db)
+    basis = cli._single_source_replay_basis(cfg, paths, store=store)
+
+    try:
+        seam_hook_called = False
+
+        def mutate_head_at_seam():
+            nonlocal seam_hook_called
+            seam_hook_called = True
+            text = paths.config.read_text()
+            if "[foundation]" in text:
+                paths.config.write_text(text.replace('head = "default"', 'head = "different_head"'))
+            else:
+                paths.config.write_text(text + '\n[foundation]\nfamily = "mace"\nhead = "different_head"\n')
+
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_PRE_COMMIT_SEAM_HOOK", mutate_head_at_seam)
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT", 0)
+
+        with pytest.raises(cli.CampaignCliError, match="Campaign foundation potential configuration changed while replay preparation was running"):
+            cli._publish_single_source_replay_authority(store, cfg, paths, command_replay_basis=basis)
+
+        assert seam_hook_called is True
+        assert cli._TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT >= 1
+        assert store.get_payload_optional("replay_current_lineage") is None
+        for alias in cli._REPLAY_SINGLE_SOURCE_ALIASES:
+            assert store.get_payload_optional(alias) is None
+    finally:
+        store.close()
+
+
+def test_replay_retirement_race_interface_transition_at_last_commit_seam(tmp_path: Path, monkeypatch):
+    """B14: interface change at retirement last commit seam refuses stale deletion and preserves winners."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    _cfg_legacy, paths = _write_config(tmp_path, source, label_mode="true_dft")
+    text = paths.config.read_text()
+    text_no_replay = "\n".join(line for line in text.splitlines() if not line.startswith("replay_set") and not line.startswith("[replay]"))
+    paths.config.write_text(text_no_replay)
+
+    cfg_no_replay, _ = cli._load_config(paths.config)
+    store = cli.CampaignStore(paths.state_db)
+
+    try:
+        basis_no_replay = cli._single_source_replay_basis(cfg_no_replay, paths, store=store)
+        assert basis_no_replay["interface"] == "none"
+
+        # Case A: competitor published winning single-source aliases, and config changes at seam
+        winner_digest = "b" * 64
+        winner_payload = {"replay_lineage_digest": winner_digest, "schema": "mdstats.replay-lineage.v1"}
+        with store._connect() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO records (key, class_name, digest, payload, updated_utc) "
+                "VALUES ('replay_current_lineage', 'ReplayLineage', ?, ?, '2026-09-11T00:00:00Z')",
+                (winner_digest, json.dumps(winner_payload)),
+            )
+            db.execute(
+                "INSERT OR REPLACE INTO records (key, class_name, digest, payload, updated_utc) "
+                "VALUES ('replay_source', 'ReplaySourceArtifact', ?, ?, '2026-09-11T00:00:00Z')",
+                (winner_digest, json.dumps({"schema": "mdstats.replay-source.v1"})),
+            )
+
+        seam_hook_called = False
+
+        def mutate_to_single_source_at_seam():
+            nonlocal seam_hook_called
+            seam_hook_called = True
+            paths.config.write_text(paths.config.read_text().replace("[paths]", f'[paths]\nreplay_set = "{source}"'))
+
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_PRE_COMMIT_SEAM_HOOK", mutate_to_single_source_at_seam)
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT", 0)
+
+        with pytest.raises(cli.CampaignCliError, match="A newer `prepare` published a different current replay authority|The campaign configuration changed to single-source replay"):
+            cli._publish_single_source_replay_authority(store, cfg_no_replay, paths, command_replay_basis=basis_no_replay)
+
+        assert seam_hook_called is True
+        assert cli._TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT >= 1
+
+        # Winning single-source aliases survive!
+        surviving = store.get_payload("replay_current_lineage")
+        assert surviving["replay_lineage_digest"] == winner_digest
+        assert store.get_payload_optional("replay_source") is not None
+
+        # Case B: baseline lineage was matching (e.g. existing old aliases), but config changed to single-source at seam
+        current_lineage = store.get_payload("replay_current_lineage")
+        basis_matching_lineage = {
+            "interface": "none",
+            "baseline_lineage": current_lineage,
+        }
+        seam_hook_called = False
+        monkeypatch.setattr(cli, "_TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT", 0)
+
+        # Ensure config on disk is no-replay before calling, then hook changes it to single-source
+        paths.config.write_text(text_no_replay)
+        cfg_no_replay, _ = cli._load_config(paths.config)
+
+        with pytest.raises(cli.CampaignCliError, match="The campaign configuration changed to single-source replay while preparation was running; refusing to retire current replay authority. Rerun `prepare`."):
+            cli._publish_single_source_replay_authority(store, cfg_no_replay, paths, command_replay_basis=basis_matching_lineage)
+
+        assert seam_hook_called is True
+        assert cli._TEST_REPLAY_PUBLICATION_SEAM_RECHECK_COUNT >= 1
+        # Surviving records still present!
+        assert store.get_payload_optional("replay_current_lineage") is not None
+    finally:
+        store.close()
+
+
+# ---------------------------------------------------------------------------
+# B15 Public Prepare Cheap Topology Preflight Ordering Tests
+# ---------------------------------------------------------------------------
+
+
+def test_public_prepare_rejects_invalid_replay_topology_before_expensive_replay_or_foundation_work(tmp_path: Path, monkeypatch):
+    """B15: public execute_current_prepare rejects invalid replay topology before expensive model loading or hashing."""
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    _cfg, paths = _write_config(tmp_path, source, label_mode="true_dft")
+
+    # Invalidate replay topology via conflicting training mode (replay configured but multihead_replay not enabled)
+    paths.config.write_text(_switch_to_naive_only(paths.config.read_text()), encoding="utf-8")
+
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        cli._mark_stage(store, paths, "doctor", cli.StageState.COMPLETE, "doctor ok")
+    finally:
+        store.close()
+
+    expensive_calls = []
+
+    def spy_potential(*args, **kwargs):
+        expensive_calls.append("_resolved_foundation_potential_identity")
+        raise AssertionError("expensive potential resolution was called")
+
+    def spy_cutover(*args, **kwargs):
+        expensive_calls.append("ensure_current_target_size_authorities")
+        raise AssertionError("expensive target size cutover was called")
+
+    from mdstats.training_data import campaign_target_size_cutover as ctsc
+    from mdstats.training_data import campaign_target_size_runtime as ctsr
+
+    monkeypatch.setattr(cli, "_resolved_foundation_potential_identity", spy_potential)
+    monkeypatch.setattr(ctsc, "ensure_current_target_size_authorities", spy_cutover)
+
+    args = SimpleNamespace(
+        config=str(paths.config),
+        approve_manifest=False,
+        refresh_inferences=False,
+        continue_after_approval=False,
+    )
+
+    with pytest.raises(cli.CampaignCliError, match="A replay source is configured but no enabled training method is multihead_replay"):
+        ctsr.execute_current_prepare(args)
+
+    # Asserts that neither foundation potential resolution nor target size cutover ran!
+    assert expensive_calls == []
+
