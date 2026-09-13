@@ -12,6 +12,12 @@ fresh fold training
  -> fold acceptance
 ```
 
+A fold whose nonempty candidate set contains no admissible checkpoint has no
+representative to freeze and therefore no outer evaluation.  That is still a
+completed fold: its verdict is a rejection that names the mandatory
+admissibility reasons its candidates actually failed.  An empty candidate set is
+missing evidence, never a verdict.
+
 Two separations do the work.  The held-out outer fold is never visible to the
 checkpoint-selection owner, so a fold cannot choose the checkpoint that happens
 to score well on its own evaluation.  And replay evidence is a *constraint*, not
@@ -27,7 +33,7 @@ cross-fold dispersion stays diagnostic.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
 from ._common import (
@@ -40,7 +46,17 @@ from .campaign_post_selection import PostSelectionError
 from .post_selection_cv_plan import PostSelectionCvPlan
 from .post_selection_identity import CvValidationPolicyIdentity
 
-CV_FOLD_ACCEPTANCE_SCHEMA = "mdstats.post-selection-cv-fold-acceptance.v1"
+#: v2 names the fold outcome explicitly and binds the candidate evidence the
+#: outcome was decided from.  v1 records predate the no-admissible outcome, so
+#: each of them is a representative-selected fold; they stay readable and
+#: re-serialize byte-identically under their own schema.
+CV_FOLD_ACCEPTANCE_SCHEMA = "mdstats.post-selection-cv-fold-acceptance.v2"
+CV_FOLD_ACCEPTANCE_SCHEMA_V1 = "mdstats.post-selection-cv-fold-acceptance.v1"
+
+CV_FOLD_OUTCOME_REPRESENTATIVE_SELECTED = "representative_selected"
+CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE = "no_admissible_representative"
+CV_FOLD_NO_ADMISSIBLE_REASON = "no_admissible_checkpoint"
+
 CV_SEED_ACCEPTANCE_SCHEMA = "mdstats.post-selection-cv-seed-acceptance.v1"
 CV_CAMPAIGN_ACCEPTANCE_SCHEMA = "mdstats.post-selection-cv-campaign-acceptance.v1"
 
@@ -89,13 +105,19 @@ def select_cv_fold_representative(
     *,
     selection_policy: Any,
     seed_material_digest: str,
-) -> Any:
+) -> Any | None:
     """Freeze one fold representative from admissible candidates, target-only.
 
     Both steps are delegated to the current TRAIN2/EVAL2 owners: admissibility
     was already decided per candidate by the checkpoint-admissibility policy
     (which is where replay belongs), and ordering is the accepted target-only
     EVAL2 ordering.  No combined target+replay score exists on this path.
+
+    ``None`` means the candidates exist and every one of them failed mandatory
+    admissibility: the fold has no representative, which is a scientific result
+    for the fold rather than an execution failure.  No inadmissible candidate is
+    ever returned, however it ranks.  An empty candidate set is missing evidence
+    and still raises.
     """
 
     from .eval2 import order_eval2_admissible_candidates
@@ -109,59 +131,59 @@ def select_cv_fold_representative(
             str(seed_material_digest), name="seed_material_digest"
         ),
     )
-    if not ordered:
-        reasons = sorted(
-            {reason for item in candidates for reason in item.rejection_reasons}
-        )
-        raise PostSelectionError(
-            "No CV fold checkpoint passed mandatory admissibility; rejection "
-            f"reasons: {reasons}. An inadmissible checkpoint is never promoted to a "
-            "fold representative."
-        )
-    return ordered[0]
+    return ordered[0] if ordered else None
 
 
 @dataclass(frozen=True, slots=True)
 class CvFoldAcceptance:
-    """The acceptance record of one exact ``(seed, fold)`` position."""
+    """The acceptance record of one exact ``(seed, fold)`` position.
+
+    One record, two lawful outcomes.  A ``representative_selected`` fold binds
+    its frozen admissible representative and the held-out outer metric that
+    judged it.  A ``no_admissible_representative`` fold binds the candidates
+    that all failed mandatory admissibility and carries no representative and
+    no outer evidence at all; it is always a rejection.  Mixed states are
+    refused at construction rather than normalized.
+    """
 
     cv_plan_digest: str
     run_plan_digest: str
     run_identity: str
     fold_index: int
     cv_seed: int
-    representative_candidate_identity: str
-    representative_checkpoint_record_digest: str
-    outer_metric_record_digest: str
+    representative_candidate_identity: str | None
+    representative_checkpoint_record_digest: str | None
+    outer_metric_record_digest: str | None
     acceptance_metric: str
     acceptance_maximum: float
-    outer_metric_value: float
+    outer_metric_value: float | None
     accepted: bool
     rejection_reasons: tuple[str, ...]
     replay_degradation_ev_per_angstrom: float | None = None
+    outcome: str = CV_FOLD_OUTCOME_REPRESENTATIVE_SELECTED
+    #: Content digests of every EVAL2 checkpoint record the outcome was decided
+    #: from; the records themselves are durable in the evidence store.
+    candidate_record_digests: tuple[str, ...] = ()
+    #: Union of the mandatory admissibility reasons across those candidates.
+    checkpoint_rejection_reasons: tuple[str, ...] = ()
+    serialization_schema: str = field(
+        default=CV_FOLD_ACCEPTANCE_SCHEMA, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
-        for name in (
-            "cv_plan_digest",
-            "run_plan_digest",
-            "run_identity",
-            "representative_checkpoint_record_digest",
-            "outer_metric_record_digest",
-        ):
+        for name in ("cv_plan_digest", "run_plan_digest", "run_identity"):
             object.__setattr__(
                 self, name, validate_digest(getattr(self, name), name=name)
             )
+        if self.serialization_schema not in (
+            CV_FOLD_ACCEPTANCE_SCHEMA,
+            CV_FOLD_ACCEPTANCE_SCHEMA_V1,
+        ):
+            raise TrainingDataInputError("Unsupported CV fold-acceptance schema.")
         object.__setattr__(self, "fold_index", int(self.fold_index))
         object.__setattr__(self, "cv_seed", int(self.cv_seed))
-        identity = str(self.representative_candidate_identity).strip()
-        if not identity:
-            raise TrainingDataInputError(
-                "A fold acceptance requires its frozen representative identity."
-            )
-        object.__setattr__(self, "representative_candidate_identity", identity)
         object.__setattr__(self, "acceptance_metric", str(self.acceptance_metric))
         object.__setattr__(self, "acceptance_maximum", float(self.acceptance_maximum))
-        object.__setattr__(self, "outer_metric_value", float(self.outer_metric_value))
         object.__setattr__(
             self,
             "rejection_reasons",
@@ -172,16 +194,91 @@ class CvFoldAcceptance:
                 "CV fold acceptance disagrees with its rejection reasons."
             )
         object.__setattr__(self, "accepted", bool(self.accepted))
-        if self.replay_degradation_ev_per_angstrom is not None:
-            object.__setattr__(
-                self,
-                "replay_degradation_ev_per_angstrom",
-                float(self.replay_degradation_ev_per_angstrom),
+        candidates = tuple(
+            validate_digest(str(v), name="candidate_record_digest")
+            for v in self.candidate_record_digests
+        )
+        if len(set(candidates)) != len(candidates):
+            raise TrainingDataInputError(
+                "A CV fold binds the same checkpoint candidate more than once."
+            )
+        object.__setattr__(self, "candidate_record_digests", tuple(sorted(candidates)))
+        object.__setattr__(
+            self,
+            "checkpoint_rejection_reasons",
+            tuple(sorted({str(v) for v in self.checkpoint_rejection_reasons})),
+        )
+        if self.serialization_schema == CV_FOLD_ACCEPTANCE_SCHEMA_V1:
+            if (
+                self.outcome != CV_FOLD_OUTCOME_REPRESENTATIVE_SELECTED
+                or candidates
+                or self.checkpoint_rejection_reasons
+            ):
+                raise TrainingDataInputError(
+                    "A v1 CV fold acceptance can only record a selected representative."
+                )
+        elif not candidates:
+            raise TrainingDataInputError(
+                "A CV fold outcome requires the checkpoint candidates it was decided from."
             )
 
+        if self.outcome == CV_FOLD_OUTCOME_REPRESENTATIVE_SELECTED:
+            identity = str(self.representative_candidate_identity or "").strip()
+            if not identity:
+                raise TrainingDataInputError(
+                    "A fold acceptance requires its frozen representative identity."
+                )
+            object.__setattr__(self, "representative_candidate_identity", identity)
+            for name in ("representative_checkpoint_record_digest", "outer_metric_record_digest"):
+                object.__setattr__(
+                    self, name, validate_digest(str(getattr(self, name)), name=name)
+                )
+            if self.outer_metric_value is None:
+                raise TrainingDataInputError(
+                    "A fold with a representative requires its held-out outer metric."
+                )
+            object.__setattr__(self, "outer_metric_value", float(self.outer_metric_value))
+            if candidates and self.representative_checkpoint_record_digest not in candidates:
+                raise TrainingDataInputError(
+                    "A fold representative must be one of the fold's checkpoint candidates."
+                )
+            if self.replay_degradation_ev_per_angstrom is not None:
+                object.__setattr__(
+                    self,
+                    "replay_degradation_ev_per_angstrom",
+                    float(self.replay_degradation_ev_per_angstrom),
+                )
+        elif self.outcome == CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE:
+            if any(
+                getattr(self, name) is not None
+                for name in (
+                    "representative_candidate_identity",
+                    "representative_checkpoint_record_digest",
+                    "outer_metric_record_digest",
+                    "outer_metric_value",
+                    "replay_degradation_ev_per_angstrom",
+                )
+            ):
+                raise TrainingDataInputError(
+                    "A fold without an admissible checkpoint cannot carry representative "
+                    "or held-out outer evidence."
+                )
+            if self.rejection_reasons != (CV_FOLD_NO_ADMISSIBLE_REASON,):
+                raise TrainingDataInputError(
+                    "A fold without an admissible checkpoint is rejected for exactly that "
+                    "reason."
+                )
+            if not self.checkpoint_rejection_reasons:
+                raise TrainingDataInputError(
+                    "A fold without an admissible checkpoint must name the mandatory "
+                    "admissibility reasons its candidates failed."
+                )
+        else:
+            raise TrainingDataInputError(f"Unsupported CV fold outcome {self.outcome!r}.")
+
     def _payload(self) -> dict[str, Any]:
-        return {
-            "schema": CV_FOLD_ACCEPTANCE_SCHEMA,
+        payload = {
+            "schema": self.serialization_schema,
             "cv_plan_digest": self.cv_plan_digest,
             "run_plan_digest": self.run_plan_digest,
             "run_identity": self.run_identity,
@@ -201,6 +298,13 @@ class CvFoldAcceptance:
                 self.replay_degradation_ev_per_angstrom
             ),
         }
+        if self.serialization_schema != CV_FOLD_ACCEPTANCE_SCHEMA_V1:
+            payload["outcome"] = self.outcome
+            payload["candidate_record_digests"] = list(self.candidate_record_digests)
+            payload["checkpoint_rejection_reasons"] = list(
+                self.checkpoint_rejection_reasons
+            )
+        return payload
 
     @property
     def content_digest(self) -> str:
@@ -211,26 +315,33 @@ class CvFoldAcceptance:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CvFoldAcceptance":
-        if payload.get("schema") != CV_FOLD_ACCEPTANCE_SCHEMA:
+        schema = payload.get("schema")
+        if schema not in (CV_FOLD_ACCEPTANCE_SCHEMA, CV_FOLD_ACCEPTANCE_SCHEMA_V1):
             raise TrainingDataSerializationError(
                 "Unsupported CV fold-acceptance schema."
             )
+        current = schema == CV_FOLD_ACCEPTANCE_SCHEMA
+
+        def optional(name: str, kind: Any) -> Any:
+            value = payload[name] if current else payload.get(name)
+            return None if value is None else kind(value)
+
         result = cls(
             cv_plan_digest=str(payload["cv_plan_digest"]),
             run_plan_digest=str(payload["run_plan_digest"]),
             run_identity=str(payload["run_identity"]),
             fold_index=int(payload["fold_index"]),
             cv_seed=int(payload["cv_seed"]),
-            representative_candidate_identity=str(
-                payload["representative_candidate_identity"]
+            representative_candidate_identity=optional(
+                "representative_candidate_identity", str
             ),
-            representative_checkpoint_record_digest=str(
-                payload["representative_checkpoint_record_digest"]
+            representative_checkpoint_record_digest=optional(
+                "representative_checkpoint_record_digest", str
             ),
-            outer_metric_record_digest=str(payload["outer_metric_record_digest"]),
+            outer_metric_record_digest=optional("outer_metric_record_digest", str),
             acceptance_metric=str(payload["acceptance_metric"]),
             acceptance_maximum=float(payload["acceptance_maximum"]),
-            outer_metric_value=float(payload["outer_metric_value"]),
+            outer_metric_value=optional("outer_metric_value", float),
             accepted=bool(payload["accepted"]),
             rejection_reasons=tuple(str(v) for v in payload["rejection_reasons"]),
             replay_degradation_ev_per_angstrom=(
@@ -238,6 +349,22 @@ class CvFoldAcceptance:
                 if payload.get("replay_degradation_ev_per_angstrom") is None
                 else float(payload["replay_degradation_ev_per_angstrom"])
             ),
+            outcome=(
+                str(payload["outcome"])
+                if current
+                else CV_FOLD_OUTCOME_REPRESENTATIVE_SELECTED
+            ),
+            candidate_record_digests=(
+                tuple(str(v) for v in payload["candidate_record_digests"])
+                if current
+                else ()
+            ),
+            checkpoint_rejection_reasons=(
+                tuple(str(v) for v in payload["checkpoint_rejection_reasons"])
+                if current
+                else ()
+            ),
+            serialization_schema=str(schema),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("CV fold-acceptance digest mismatch.")
@@ -247,35 +374,81 @@ class CvFoldAcceptance:
 def build_cv_fold_acceptance(
     *,
     run_plan: Any,
-    representative: Any,
-    outer_metrics: Any,
+    candidates: Sequence[Any],
+    representative: Any | None,
+    outer_metrics: Any | None,
     policy: CvValidationPolicyIdentity,
 ) -> CvFoldAcceptance:
-    """Decide one fold against the configured target-only outer predicate.
+    """Decide one fold from its checkpoint candidates and frozen representative.
 
-    The representative was already frozen from the fold monitor, so the outer
-    evaluation only decides acceptance.  Replay degradation is carried forward
+    With a representative, the outer evaluation only decides acceptance against
+    the configured target-only predicate.  Replay degradation is carried forward
     as a diagnostic; it is not consulted here and cannot turn a target failure
     into a pass.
+
+    Without one, every candidate must have failed mandatory admissibility and
+    no outer evidence may exist: the fold is rejected with the union of the
+    reasons its candidates actually failed.  Any other combination is an
+    impossible state and fails loudly.
     """
 
+    candidates = tuple(candidates)
+    if not candidates:
+        raise PostSelectionError("A CV fold produced no checkpoint candidates.")
+    common = {
+        "cv_plan_digest": run_plan.cv_plan_digest,
+        "run_plan_digest": run_plan.content_digest,
+        "run_identity": run_plan.run_identity,
+        "fold_index": run_plan.fold_index,
+        "cv_seed": run_plan.optimizer_seed,
+        "acceptance_metric": policy.acceptance_metric,
+        "acceptance_maximum": policy.acceptance_maximum,
+        "candidate_record_digests": tuple(item.content_digest for item in candidates),
+        "checkpoint_rejection_reasons": tuple(
+            reason for item in candidates for reason in item.rejection_reasons
+        ),
+    }
+    if representative is None:
+        if outer_metrics is not None:
+            raise PostSelectionError(
+                "A CV fold without a representative cannot carry held-out outer "
+                "evaluation evidence."
+            )
+        if any(item.admissible for item in candidates):
+            raise PostSelectionError(
+                "A CV fold with an admissible checkpoint candidate must freeze a "
+                "representative before it can be judged."
+            )
+        return CvFoldAcceptance(
+            **common,
+            representative_candidate_identity=None,
+            representative_checkpoint_record_digest=None,
+            outer_metric_record_digest=None,
+            outer_metric_value=None,
+            accepted=False,
+            rejection_reasons=(CV_FOLD_NO_ADMISSIBLE_REASON,),
+            outcome=CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE,
+        )
+    if not representative.admissible or representative.content_digest not in (
+        common["candidate_record_digests"]
+    ):
+        raise PostSelectionError(
+            "A CV fold representative must be an admissible candidate of that fold; "
+            "an inadmissible checkpoint is never promoted to a fold representative."
+        )
+    if outer_metrics is None:
+        raise PostSelectionError(
+            f"CV fold {run_plan.fold_index} produced no held-out outer evaluation."
+        )
     value = cv_acceptance_metric_value(outer_metrics, policy.acceptance_metric)
     reasons: list[str] = []
     if not value <= policy.acceptance_maximum:
         reasons.append("outer_target_metric_above_configured_maximum")
-    if not representative.admissible:
-        reasons.append("representative_not_admissible")
     return CvFoldAcceptance(
-        cv_plan_digest=run_plan.cv_plan_digest,
-        run_plan_digest=run_plan.content_digest,
-        run_identity=run_plan.run_identity,
-        fold_index=run_plan.fold_index,
-        cv_seed=run_plan.optimizer_seed,
+        **common,
         representative_candidate_identity=representative.stable_candidate_identity,
         representative_checkpoint_record_digest=representative.content_digest,
         outer_metric_record_digest=outer_metrics.content_digest,
-        acceptance_metric=policy.acceptance_metric,
-        acceptance_maximum=policy.acceptance_maximum,
         outer_metric_value=value,
         accepted=not reasons,
         rejection_reasons=tuple(reasons),
@@ -504,7 +677,13 @@ def accept_post_selection_cv_campaign(
             elif len(occurrences) > 1:
                 reasons.append(f"duplicate_fold_{fold_index}")
             elif not occurrences[0].accepted:
-                reasons.append(f"fold_{fold_index}_failed_target_predicate")
+                # A fold with no admissible checkpoint is present evidence and a
+                # completed rejection; only its reason differs.
+                reasons.append(
+                    f"fold_{fold_index}_failed_target_predicate"
+                    if occurrences[0].outcome == CV_FOLD_OUTCOME_REPRESENTATIVE_SELECTED
+                    else f"fold_{fold_index}_{CV_FOLD_NO_ADMISSIBLE_REASON}"
+                )
         unexpected = sorted(set(by_fold) - set(required_folds))
         for fold_index in unexpected:
             reasons.append(f"unexpected_fold_{fold_index}")
@@ -526,7 +705,11 @@ def accept_post_selection_cv_campaign(
     for seed in unexpected_seeds:
         campaign_reasons.append(f"unexpected_cv_seed_{seed}")
 
-    values = [item.outer_metric_value for item in fold_acceptances]
+    values = [
+        item.outer_metric_value
+        for item in fold_acceptances
+        if item.outer_metric_value is not None
+    ]
     return CvCampaignAcceptance(
         cv_plan_digest=plan.content_digest,
         method_identity_digest=plan.method_identity_digest,
@@ -589,6 +772,10 @@ __all__ = [
     "CV_ACCEPTANCE_METRICS",
     "CV_CAMPAIGN_ACCEPTANCE_SCHEMA",
     "CV_FOLD_ACCEPTANCE_SCHEMA",
+    "CV_FOLD_ACCEPTANCE_SCHEMA_V1",
+    "CV_FOLD_NO_ADMISSIBLE_REASON",
+    "CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE",
+    "CV_FOLD_OUTCOME_REPRESENTATIVE_SELECTED",
     "CV_SEED_ACCEPTANCE_SCHEMA",
     "CvCampaignAcceptance",
     "CvFoldAcceptance",

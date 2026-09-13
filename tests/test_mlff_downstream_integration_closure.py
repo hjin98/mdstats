@@ -1079,6 +1079,9 @@ def test_corrupt_train2_continuation_is_typed_and_preserved(
 #: checkpoint gate is 0.030 eV/A) but exceeds the strict CV acceptance maximum
 #: below, so the size is rejected by the acceptance predicate itself.
 _REJECTING_FORCE_OFFSET = 0.02
+#: Above the mandatory checkpoint gate: no checkpoint of the rejected size is
+#: admissible, so its folds are rejected without a representative.
+_INADMISSIBLE_FORCE_OFFSET = 0.05
 _STRICT_ACCEPTANCE_MAXIMUM = "acceptance_maximum = 0.005"
 
 
@@ -1133,9 +1136,12 @@ class _PerSizeHarness(fx.PostSelectionHarness):
 
 
 @pytest.mark.slow
+@pytest.mark.parametrize(
+    "rejecting_offset", [_REJECTING_FORCE_OFFSET, _INADMISSIBLE_FORCE_OFFSET]
+)
 @pytest.mark.parametrize("rejected_position", [0, 1])
 def test_every_frozen_size_is_cross_validated_before_the_campaign_rejects(
-    tmp_path: Path, rejected_position: int
+    tmp_path: Path, rejected_position: int, rejecting_offset: float
 ) -> None:
     """A methodological rejection of one size never unruns its siblings.
 
@@ -1156,15 +1162,18 @@ def test_every_frozen_size_is_cross_validated_before_the_campaign_rejects(
         campaign_store.close()
     assert sizes == [multi.FIRST_SIZE, multi.SECOND_SIZE]
 
-    # Both errors stay inside mandatory checkpoint admissibility, so the
-    # rejected size produces a genuine methodological CV verdict rather than an
-    # execution failure that would legitimately abort the command.
+    # Whether the rejected size's checkpoints stay inside mandatory
+    # admissibility (outer-predicate rejection) or all fall outside it (no
+    # admissible representative), it produces a genuine methodological CV
+    # verdict rather than an execution failure that would abort the command.
     offsets = {digest: 1.0e-4 for digest in bindings}
-    offsets[bindings[rejected_position]] = _REJECTING_FORCE_OFFSET
+    offsets[bindings[rejected_position]] = rejecting_offset
 
     harness = _PerSizeHarness(offsets)
     with pytest.raises(PostSelectionError, match="cross-validation rejected"):
         fx.run_cross_validate(config, harness)
+    # The second size really executed rather than being skipped.
+    assert set(harness._binding_by_run.values()) == set(bindings)
 
     cfg, paths, campaign_store = fx.load_context(config)
     try:
@@ -1180,6 +1189,20 @@ def test_every_frozen_size_is_cross_validated_before_the_campaign_rejects(
                 == context.selected.binding.content_digest
             )
             verdicts.append(acceptance.accepted)
+            expected_outcome = (
+                "no_admissible_representative"
+                if rejecting_offset == _INADMISSIBLE_FORCE_OFFSET
+                and context.selected.binding.content_digest
+                == bindings[rejected_position]
+                else "representative_selected"
+            )
+            folds = [
+                fold
+                for seed in acceptance.seed_acceptances
+                for fold in seed.fold_acceptances
+            ]
+            assert len(folds) == plan.fold_count * len(plan.required_cv_seeds)
+            assert {fold.outcome for fold in folds} == {expected_outcome}
         # Both frozen sizes hold their own valid verdict ...
         assert verdicts == [
             position != rejected_position for position in range(len(contexts))

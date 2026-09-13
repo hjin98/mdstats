@@ -500,8 +500,16 @@ The CLI fails closed for unapproved or changed manifests, missing or
 incompatible source/foundation/replay inputs, invalid labels, unresolved
 protected relations, unsupported policy generation, stale current pointers,
 missing required folds/seeds, corrupt checkpoint/companion state, no admissible
-checkpoint, target-size lineage mismatch, incompatible persisted state, or a
-currentness race at publication.
+checkpoint for a final-production run, target-size lineage mismatch,
+incompatible persisted state, or a currentness race at publication.
+
+A cross-validation fold whose nonempty checkpoint candidates all fail mandatory
+admissibility is not an execution failure. It is a completed rejected fold
+verdict with no representative and no held-out outer evaluation, binding its
+candidate records and the mandatory reasons they failed. Sibling folds and later
+frozen sizes still complete; `cross-validate` then reports the methodological
+rejection without a traceback (exit status 2) and final production stays
+unauthorized. An empty candidate set remains missing evidence.
 
 Replay adds the same fail-closed discipline: conflicting or unsupported replay
 label selectors, inexact replay split-domain values, mixed replay interfaces, a

@@ -74,6 +74,7 @@ def _fold_acceptance(plan, policy, *, seed: int, fold_index: int, value: float):
         rejection_reasons=()
         if value <= policy.acceptance_maximum
         else ("outer_target_metric_above_configured_maximum",),
+        candidate_record_digests=("b" * 64,),
     )
 
 
@@ -103,6 +104,7 @@ def test_p5d_fold_acceptance_uses_the_configured_target_only_predicate(
         )
         passing = build_cv_fold_acceptance(
             run_plan=run_plan,
+            candidates=[representative],
             representative=representative,
             outer_metrics=target_metrics(policy.acceptance_maximum / 2.0),
             policy=policy,
@@ -114,6 +116,7 @@ def test_p5d_fold_acceptance_uses_the_configured_target_only_predicate(
 
         failing = build_cv_fold_acceptance(
             run_plan=run_plan,
+            candidates=[representative],
             representative=representative,
             outer_metrics=target_metrics(policy.acceptance_maximum * 2.0),
             policy=policy,
@@ -191,6 +194,14 @@ def test_p5d_replay_cannot_reverse_the_target_only_representative_ordering():
 
 
 def test_p5d_an_inadmissible_checkpoint_is_never_a_representative():
+    """The protected invariant is non-promotion, not an exception shape.
+
+    The inadmissible candidate is numerically *better* on the target ordering
+    than the admissible one, so a selector that ranked before filtering would
+    choose it. With the admissible candidate removed, nothing is promoted: the
+    fold has no representative at all rather than a "least bad" one.
+    """
+
     admissibility = mdstats.CheckpointAdmissibilityPolicy(
         replay_enabled=True,
         replay_degradation_budget_ev_per_angstrom=0.001,
@@ -199,18 +210,41 @@ def test_p5d_an_inadmissible_checkpoint_is_never_a_representative():
     rejected = mdstats.assess_eval2_checkpoint(
         point(1, 0.010),
         evaluation_record_digest="1" * 64,
-        target_metrics=target_metrics(0.010),
+        target_metrics=target_metrics(0.005),
         admissibility_policy=admissibility,
         replay_candidate_force_rmse_ev_per_angstrom=0.500,
         replay_foundation_force_rmse_ev_per_angstrom=0.020,
         replay_label_mode="true_dft",
     )
-    assert not rejected.admissible
-    with pytest.raises(PostSelectionError, match="mandatory admissibility"):
+    admissible = mdstats.assess_eval2_checkpoint(
+        point(2, 0.020),
+        evaluation_record_digest="2" * 64,
+        target_metrics=target_metrics(0.020, pred_digest="3" * 64),
+        admissibility_policy=admissibility,
+        replay_candidate_force_rmse_ev_per_angstrom=0.0205,
+        replay_foundation_force_rmse_ev_per_angstrom=0.020,
+        replay_label_mode="true_dft",
+    )
+    assert not rejected.admissible and admissible.admissible
+    assert (
+        rejected.target_metrics.force_component_rmse_ev_per_angstrom
+        < admissible.target_metrics.force_component_rmse_ev_per_angstrom
+    )
+    selection = mdstats.CheckpointSelectionPolicy()
+    chosen = select_cv_fold_representative(
+        [rejected, admissible], selection_policy=selection, seed_material_digest="5" * 64
+    )
+    assert chosen is admissible
+
+    assert (
         select_cv_fold_representative(
-            [rejected],
-            selection_policy=mdstats.CheckpointSelectionPolicy(),
-            seed_material_digest="5" * 64,
+            [rejected], selection_policy=selection, seed_material_digest="5" * 64
+        )
+        is None
+    )
+    with pytest.raises(PostSelectionError, match="no checkpoint candidates"):
+        select_cv_fold_representative(
+            [], selection_policy=selection, seed_material_digest="5" * 64
         )
 
 
