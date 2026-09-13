@@ -480,3 +480,35 @@ No remaining known design gap requires expanding D1/D2/D3 authority before imple
 Implementation should begin at G0/G1, not by editing the failing exception. The guard is currently protecting a real invariant. The first objective is to establish exactly where actual pinned-MACE construction diverges from independent reconstruction and whether the divergence is portable construction, accelerator realization, persistence timing, descriptor semantics, or an actual frozen-method violation.
 
 Prefer reduction, correction, or consolidation of the existing canonical realization owners. Add no compatibility machinery merely to make the observed checkpoint pass. Preserve the five completed stakeholder TRAIN2 runs until the repaired owner can classify them.
+
+---
+
+## 13. Implementation status (2026-09-12)
+
+**Disposition:** D4 repairs for H1 and H2 implemented and accepted by focused, affected, and assembled evidence. **SERIOUS CHALLENGE raised against accepted D3 amendment A1 step 6** (§10 trigger 3); G5 reuse, G6 cases 4/5 for foundation-backed CuEq, and the CuEq G8 claim are blocked until D3 adjudicates. No forbidden §4 strategy was used; the portable round-trip guard is unchanged.
+
+### G1 classification (stakeholder run `262e…`, RTX 3090, torch 2.13.0+cu126, mace-torch 0.3.16, cuequivariance 0.10.0)
+
+- **H1 confirmed.** Real TRAIN2 z_table = target ∪ pt_head replay data (88 elements; pinned MACE ignores configured `atomic_numbers` for `pt_head`, consistent with DATA8/DATA9A "union of target and replay elements"). Reconstruction used the 6 target elements (`buffers:atomic_numbers`, 7 state-shape mismatches). Not method divergence.
+- **H2 confirmed.** `run_train` passes `init_device(...)` → `torch.device`; the CuEq converter sets `conv_fusion=(device == "cuda")`, so mdstats' string `"cuda"` realized a fused-convolution topology TRAIN2 never trained (18 vs 4 module entries).
+- **H3 excluded.** Persisted digest identical across all 10 epoch boundaries and all 5 runs; two equivalent independent realizations agree (D == F).
+- After repair: independent realization digest == persisted `3c9ab615…` exactly; checkpoint state structure matches with 0 mismatches.
+- **Sibling at A/G (challenge).** For every foundation-backed CuEq method (naive and multihead, FP32 and FP64; scratch round-trips exactly), native `convert_cueq_e3nn.run` rebuilds the target from `extract_config`, so `radial_embedding.bessel_fn.bessel_weights` (a Parameter after `load_foundations_elements`) becomes a buffer and CG `U_matrix` buffers are recomputed (≤1.2e-7 float32 rounding, same basis, deterministic per path). The projection therefore cannot equal the configuration's canonical portable architecture under the strict R17A descriptor. MACE's own saved TRAIN2 `.model` differs from our projection only in one U-matrix value (3e-8).
+
+### D4 changes
+
+- `model_features.realize_mace_training_model` / `restore_mace_portable_model`: device via pinned `mace.tools.init_device`; converter frames are dropped on failure.
+- `model_features.build_mace_model_from_configuration`: `pt_head` elements are read through pinned `get_dataset_from_xyz` (`_mace_replay_head_atomic_numbers`); per-head E0s follow `dict_to_array` zero-padding; the redundant second `load_foundations_elements` call is removed (`configure_model` already applies it; digest-neutral).
+- `mace_model_execution_architecture_first_difference` accepts checkpoint state; both EVAL2 digest gates report `first_difference`; a rejected transient realization is released at `release_mace_accelerator_residency`.
+- G3: only two call sites (EVAL2 authentication, recovery/admission preflight), both on the same two shared owners; no parallel recipe remained.
+
+### Evidence
+
+- `tests/test_mlff_p5_train2_eval2_cueq_realization_parity.py` (CUDA): pinned `run_train` captured at its own conversion call — A == B, C == D == F, dtype/replay/foundation/scratch-normalization rejections before state load with diagnostic, non-accumulating CUDA residency, authentic state reaching the A1-step-6 guard, and a strict xfail recording the challenge. 7/8 fail on the pre-change owners.
+- `test_p5_real_cross_validate_resumes_eval2_for_replay_only_elements`: real CLI `cross-validate` → qualified wrapper → pinned `run_train` with replay-only H → EVAL2 interruption → resume with zero TRAIN2 relaunches. Fails on the pre-change owners.
+- Affected regression (72 files, `-n 16`): 1081 passed, 2 skipped, 1 xfailed, 4 failed; all 4 reproduce identically on a clean HEAD worktree.
+- G5 (read-only, production `authenticate_post_selection_provider`, all 5 stakeholder runs): TRAIN2 architecture, raw checkpoint, companion, and live/EMA digests authenticate; each stops at the A1-step-6 guard with `first_difference=parameters`. Artifacts are preserved.
+
+### Open for D3 (Software Design)
+
+Adjudicate the portable identity for foundation-backed CuEq TRAIN2. Candidates: (a) authorize the deterministic native projection of the authenticated training realization as the portable identity (compare the loaded projection against the unloaded projection; reduction-shaped; matches MACE's saved deployment product); (b) transfer the authenticated state into the reconstructed portable shell through pinned `transfer_weights`; (c) accepted, evidence-backed descriptor narrowing (param/buffer classification of `bessel_weights`, CG U-matrix value binding). Recommendation: (a). When resolved, flip the strict xfail and rerun G5, G6-4/5, and the CuEq G8 claim.

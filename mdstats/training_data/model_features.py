@@ -274,7 +274,32 @@ def mace_model_execution_architecture_first_difference(
     learned tensors or a serialized state dictionary.  Callers use it when a
     representation round-trip or independent reconstruction fails the existing
     digest gate.
+
+    ``observed_model`` may instead be a persisted checkpoint state mapping,
+    whose only architecture evidence is its parameter/buffer structure.  The
+    result is then ``"parameters:<name>"``/``"buffers:<name>"`` (or
+    ``"state:<name>"`` for an entry only the checkpoint has), or ``None`` when
+    the difference lies outside what checkpoint state can show.
     """
+
+    if isinstance(observed_model, Mapping):
+        expected_state = expected_model.state_dict()
+        parameter_names = {name for name, _ in expected_model.named_parameters()}
+        for name in sorted(set(expected_state) | set(observed_model)):
+            left = expected_state.get(name)
+            right = observed_model.get(name)
+            if (
+                left is None
+                or not hasattr(right, "shape")
+                or tuple(left.shape) != tuple(right.shape)
+                or left.dtype != right.dtype
+            ):
+                if left is None:
+                    kind = "state"
+                else:
+                    kind = "parameters" if name in parameter_names else "buffers"
+                return f"{kind}:{name}"
+        return None
 
     expected = _mace_model_execution_architecture_descriptor(expected_model)
     observed = _mace_model_execution_architecture_descriptor(observed_model)
@@ -343,8 +368,9 @@ def realize_mace_training_model(
     realization = _mace_accelerator_realization(config_payload)
     if realization is None:
         return portable_model, None
-    device = str(config_payload.get("device", "cpu"))
     try:
+        from mace.tools import init_device
+
         if realization == "cueq":
             from mace.cli.convert_e3nn_cueq import run
         else:
@@ -353,13 +379,20 @@ def realize_mace_training_model(
         raise TrainingDataInputError(
             f"MACE {realization} training realization is unavailable."
         ) from exc
+    # ``run_train`` hands the converter the ``torch.device`` from
+    # ``init_device``, not the configured string.  The CuEq converter derives
+    # ``conv_fusion=(device == "cuda")`` from that argument, so the string would
+    # realize a different fused convolution topology than TRAIN2 trained.
     with _MACE_ACCELERATOR_CONVERSION_LOCK:
         try:
+            device = init_device(str(config_payload.get("device", "cpu")))
             realized = run(portable_model, device=device, return_model=True)
         except (AssertionError, AttributeError, RuntimeError, TypeError, ValueError) as exc:
+            # Drop the converter frames: they own the partially built
+            # accelerator model, which must not outlive this failure.
             raise TrainingDataInputError(
                 f"MACE {realization} training realization could not be reconstructed."
-            ) from exc
+            ) from exc.with_traceback(None)
     if realized is None:
         raise TrainingDataInputError(
             f"MACE {realization} training realization returned no model."
@@ -376,6 +409,8 @@ def restore_mace_portable_model(
     if realization is None:
         return realized_model
     try:
+        from mace.tools import init_device
+
         if realization == "cueq":
             from mace.cli.convert_cueq_e3nn import run
         else:
@@ -384,14 +419,15 @@ def restore_mace_portable_model(
         raise TrainingDataInputError(
             f"MACE {realization} portable conversion is unavailable."
         ) from exc
-    device = str(config_payload.get("device", "cpu"))
+    # Same call shape as ``run_train``'s own accelerator -> e3nn projection.
     with _MACE_ACCELERATOR_CONVERSION_LOCK:
         try:
+            device = init_device(str(config_payload.get("device", "cpu")))
             portable = run(realized_model, device=device, return_model=True)
         except (AssertionError, AttributeError, RuntimeError, TypeError, ValueError) as exc:
             raise TrainingDataInputError(
                 f"MACE {realization} realization could not be converted back to portable e3nn."
-            ) from exc
+            ) from exc.with_traceback(None)
     if portable is None:
         raise TrainingDataInputError(
             f"MACE {realization} portable conversion returned no model."
@@ -733,6 +769,65 @@ def canonicalize_mace_candidate_architecture(
     return _validate_mace_candidate_architecture(value)
 
 
+def _mace_replay_head_atomic_numbers(
+    config_payload: Mapping[str, Any], head_payload: Mapping[str, Any]
+) -> tuple[int, ...]:
+    """Return the pt_head elements exactly as pinned MACE ``run_train`` loads them.
+
+    The replay files named by the authenticated executable configuration are
+    read through MACE's own dataset loader, so isolated-atom handling and the
+    train/valid composition stay dependency-owned.
+    """
+
+    paths = []
+    for name in ("pt_train_file", "pt_valid_file"):
+        raw = config_payload.get(name)
+        if raw in (None, "") or not Path(str(raw)).is_absolute():
+            raise TrainingDataInputError(
+                f"MACE replay-head reconstruction requires an absolute {name}."
+            )
+        paths.append(str(raw))
+    try:
+        from mace.data import KeySpecification
+        from mace.data.utils import update_keyspec_from_kwargs
+        from mace.tools.scripts_utils import get_dataset_from_xyz
+    except ModuleNotFoundError as exc:  # pragma: no cover - optional dependency
+        raise TrainingDataInputError(
+            "Real MACE replay-head reconstruction requires mace-torch."
+        ) from exc
+    key_specification = update_keyspec_from_kwargs(
+        KeySpecification.from_defaults(),
+        {
+            key: str(head_payload[key])
+            for key in ("energy_key", "forces_key", "stress_key")
+            if isinstance(head_payload, Mapping) and key in head_payload
+        },
+    )
+    try:
+        collections, _atomic_energies = get_dataset_from_xyz(
+            work_dir=".",
+            train_path=[paths[0]],
+            valid_path=[paths[1]],
+            valid_fraction=0.1,
+            key_specification=key_specification,
+            head_name="pt_head",
+        )
+    except (OSError, AssertionError, KeyError, RuntimeError, ValueError) as exc:
+        raise TrainingDataInputError(
+            "MACE replay-head data could not be read for architecture reconstruction."
+        ) from exc
+    return tuple(
+        sorted(
+            {
+                int(z)
+                for configurations in (collections.train, collections.valid)
+                for configuration in configurations
+                for z in configuration.atomic_numbers
+            }
+        )
+    )
+
+
 def build_mace_model_from_configuration(
     config_payload: Mapping[str, Any],
     *,
@@ -781,8 +876,7 @@ def build_mace_model_from_configuration(
         ) from exc
     if np.any(~np.isfinite(atomic_energies)):
         raise TrainingDataInputError("MACE model configuration E0s must be finite.")
-    configuration_atomic_energies = atomic_energies.copy()
-    device = str(config_payload.get("device", "")).strip()
+    device =str(config_payload.get("device", "")).strip()
     default_dtype = str(config_payload.get("default_dtype", "")).strip()
     if device not in {"cpu", "cuda", "mps", "xpu"}:
         raise TrainingDataInputError("MACE model configuration device is unsupported.")
@@ -794,7 +888,6 @@ def build_mace_model_from_configuration(
         import torch
         from mace import tools
         from mace.data import KeySpecification as MaceKeySpecification
-        from mace.tools.finetuning_utils import load_foundations_elements
         from mace.tools.model_script_utils import configure_model
         from mace.tools.multihead_tools import HeadConfig as MaceHeadConfig
         from mace.tools.scripts_utils import remove_pt_head
@@ -891,7 +984,26 @@ def build_mace_model_from_configuration(
         args.compute_forces = True
         args.compute_dipole = False
         args.compute_polarizability = False
-        z_table = tools.AtomicNumberTable(list(atomic_numbers))
+        head_payloads = configured_heads if isinstance(configured_heads, Mapping) else {}
+        # Pinned MACE builds one element table from every dataset head.  For
+        # multihead replay it ignores configured atomic_numbers on pt_head and
+        # reads that head's elements from its own replay data, so the realized
+        # table is the target/replay union rather than the target elements.
+        model_atomic_numbers = atomic_numbers
+        if POST_SELECTION_REPLAY_HEAD_NAME in heads and bool(
+            config_payload.get("multiheads_finetuning")
+        ):
+            model_atomic_numbers = tuple(
+                sorted(
+                    set(atomic_numbers).union(
+                        _mace_replay_head_atomic_numbers(
+                            config_payload,
+                            head_payloads.get(POST_SELECTION_REPLAY_HEAD_NAME, {}),
+                        )
+                    )
+                )
+            )
+        z_table = tools.AtomicNumberTable(list(model_atomic_numbers))
 
         foundation_model = None
         foundation_path = foundation_model_path
@@ -915,8 +1027,6 @@ def build_mace_model_from_configuration(
                     foundation_model, requested_foundation_head
                 )
 
-        head_payloads = configured_heads if isinstance(configured_heads, Mapping) else {}
-
         def _foundation_atomic_energies() -> dict[int, float]:
             if foundation_model is None:
                 return {}
@@ -935,34 +1045,36 @@ def build_mace_model_from_configuration(
             )
             return {
                 int(z): float(values[foundation_z.z_to_index(int(z))].item())
-                for z in atomic_numbers
+                for z in model_atomic_numbers
             }
 
         foundation_e0s = _foundation_atomic_energies()
 
         def _head_atomic_energies(head: str) -> list[float]:
             head_payload = head_payloads.get(head, {})
-            e0_payload = (
+            head_e0s = (
                 head_payload.get("E0s")
                 if isinstance(head_payload, Mapping)
                 else None
             )
-            if isinstance(e0_payload, Mapping):
-                return [
-                    float(
-                        e0_payload[str(z)]
-                        if str(z) in e0_payload
-                        else e0_payload[z]
-                    )
-                    for z in atomic_numbers
-                ]
             # MACE's replay pt_head derives its calibration from the
             # authenticated foundation.  Ordinary P5 Default and P3 target
             # heads use the explicit configuration E0s even when a foundation
             # model is present.
-            if head == POST_SELECTION_REPLAY_HEAD_NAME and foundation_e0s:
-                return [foundation_e0s[int(z)] for z in atomic_numbers]
-            return list(configuration_atomic_energies)
+            if not isinstance(head_e0s, Mapping):
+                if head == POST_SELECTION_REPLAY_HEAD_NAME and foundation_e0s:
+                    return [foundation_e0s[int(z)] for z in model_atomic_numbers]
+                head_e0s = e0_payload
+
+            def energy(z: int) -> float:
+                if str(z) in head_e0s:
+                    return float(head_e0s[str(z)])
+                if z in head_e0s or z in atomic_numbers:
+                    return float(head_e0s[z])
+                # ``dict_to_array`` zero-pads replay-only elements of a head.
+                return 0.0
+
+            return [energy(z) for z in model_atomic_numbers]
 
         atomic_energies = np.asarray(
             [_head_atomic_energies(head) for head in heads], dtype=np.float64
@@ -988,6 +1100,8 @@ def build_mace_model_from_configuration(
         previous_dtype = torch.get_default_dtype()
         torch.set_default_dtype(requested_dtype)
         try:
+            # With a foundation, ``configure_model`` itself applies
+            # ``load_foundations_elements`` exactly as ``run_train`` does.
             model, _output_args = configure_model(
                 args,
                 None,
@@ -999,15 +1113,6 @@ def build_mace_model_from_configuration(
             )
         finally:
             torch.set_default_dtype(previous_dtype)
-        if foundation_model is not None:
-            model = load_foundations_elements(
-                model,
-                foundation_model,
-                z_table,
-                load_readout=bool(getattr(args, "foundation_filter_elements", True)),
-                max_L=int(getattr(args, "max_L", architecture["max_L"])),
-                default_dtype=requested_dtype,
-            )
         model = model.to(device="cpu", dtype=requested_dtype)
     except (AssertionError, AttributeError, KeyError, RuntimeError, TypeError, ValueError) as exc:
         raise TrainingDataInputError(

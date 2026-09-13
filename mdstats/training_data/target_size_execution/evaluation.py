@@ -162,6 +162,7 @@ def authenticate_train2_checkpoint_provider(
         mace_model_execution_architecture_digest,
         mace_model_execution_architecture_first_difference,
         realize_mace_training_model,
+        release_mace_accelerator_residency,
         restore_mace_portable_model,
     )
     from ..train2_runtime import (
@@ -340,23 +341,37 @@ def authenticate_train2_checkpoint_provider(
                 "head": configured_target_head,
             }
 
-        training_model, training_realization = realize_mace_training_model(
-            provider_model, config_payload
-        )
-        if training_realization is not None:
-            # TRAIN2 persists the state of the transient accelerator model.  It
-            # must be authenticated in that same realization before the model
-            # is projected back to the portable e3nn provider used by EVAL2.
-            training_architecture_digest = mace_model_execution_architecture_digest(
-                training_model
+        try:
+            training_model, training_realization = realize_mace_training_model(
+                provider_model, config_payload
             )
-            if training_architecture_digest != expected_architecture_digest:
-                raise TrainingDataInputError(
-                    "TRAIN2 and independent MACE architecture differ in the "
-                    f"{training_realization} realization: "
-                    f"summary={expected_architecture_digest}; "
-                    f"reconstructed={training_architecture_digest}."
+            if training_realization is not None:
+                # TRAIN2 persists the state of the transient accelerator model.
+                # It must be authenticated in that same realization before the
+                # model is projected back to the portable e3nn provider used by
+                # EVAL2.
+                training_architecture_digest = mace_model_execution_architecture_digest(
+                    training_model
                 )
+                if training_architecture_digest != expected_architecture_digest:
+                    first_difference = mace_model_execution_architecture_first_difference(
+                        training_model, raw_checkpoint_state
+                    )
+                    raise TrainingDataInputError(
+                        "TRAIN2 and independent MACE architecture differ in the "
+                        f"{training_realization} realization: "
+                        f"summary={expected_architecture_digest}; "
+                        f"reconstructed={training_architecture_digest}; "
+                        f"first_difference={first_difference or 'not visible in checkpoint state'}."
+                    )
+        except TrainingDataInputError:
+            # The rejected realization is a model-scale accelerator owner; it
+            # must not stay resident while the failure propagates.
+            training_model = None
+            provider_model = None
+            release_mace_accelerator_residency()
+            raise
+        if training_realization is not None:
             training_provider = MaceCalculatorProvider.from_authenticated_model(
                 training_model, **provider_kwargs
             )
@@ -517,9 +532,13 @@ def authenticate_train2_checkpoint_provider(
             provider.model
         )
         if reconstructed_architecture_digest != expected_architecture_digest:
+            first_difference = mace_model_execution_architecture_first_difference(
+                provider.model, raw_checkpoint_state
+            )
             raise TrainingDataInputError(
                 "Candidate MACE configuration reconstructs a different execution architecture "
-                "from the authenticated TRAIN2 model."
+                "from the authenticated TRAIN2 model: "
+                f"first_difference={first_difference or 'not visible in checkpoint state'}."
             )
         provider.load_authenticated_model_state_dict(
             raw_checkpoint_state, state_name="TRAIN2 checkpoint model state"
