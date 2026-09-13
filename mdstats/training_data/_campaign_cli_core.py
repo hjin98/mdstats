@@ -8188,6 +8188,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             pass
         print(f"mdstats-mlff-campaign: {exc}", file=sys.stderr)
         return 2
+    except ValueError as exc:
+        # A cross-validation rejection is a completed methodological result with
+        # its verdicts already published, not a crash: report it without a
+        # traceback. Every other error keeps its own propagation.
+        from .post_selection_cv_acceptance import PostSelectionCvRejectedError
+
+        if not isinstance(exc, PostSelectionCvRejectedError):
+            raise
+        print(f"mdstats-mlff-campaign: {exc}", file=sys.stderr)
+        return 2
     except KeyboardInterrupt:
         print("mdstats-mlff-campaign: interrupted; completed records remain resumable", file=sys.stderr)
         return 130

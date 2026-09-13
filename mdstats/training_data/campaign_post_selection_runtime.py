@@ -54,8 +54,11 @@ from .neutral_substrate.split_exclusion import (
     frame_split_exclusion_component_membership,
 )
 from .post_selection_cv_acceptance import (
+    CV_FOLD_ACCEPTANCE_SCHEMA_V1,
+    CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE,
     CvCampaignAcceptance,
     CvFoldAcceptance,
+    PostSelectionCvRejectedError,
     accept_post_selection_cv_campaign,
     build_cv_fold_acceptance,
     require_cv_acceptance_for_method,
@@ -125,6 +128,13 @@ from .post_selection_store import (
     read_current_post_selection_pointer,
     resolve_current_post_selection_record,
 )
+
+#: ``(run evidence, assessed candidate records, representative, outer metrics)``
+#: of one executed run.  Evidence and representative are absent together, and
+#: only for a cross-validation fold whose candidates were all inadmissible.
+PostSelectionRunResult = tuple[
+    PostSelectionRunEvidence | None, tuple[Any, ...], Any | None, Any | None
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -675,11 +685,14 @@ def evaluate_post_selection_run_candidates(
     summary: Any,
     monitor_frame_uids: Sequence[str],
     replay_resolution: Any,
-) -> tuple[Any, Any, Any]:
+) -> tuple[Any, tuple[Any, ...], Any | None, Any | None]:
     """Evaluate the run's checkpoint candidates and freeze its representative.
 
     This is the one implementation of "which checkpoint does this run publish,
-    and what were its exact M3 target metrics".  It is used both while a run
+    and what were its exact M3 target metrics".  It returns the catalog, every
+    assessed candidate record, and the representative with its monitor metrics;
+    the last two are ``None`` exactly when every candidate failed mandatory
+    admissibility, which the caller owns interpreting for its run role.  It is used both while a run
     executes and when an already completed run's durable representative records
     have to be recovered, so recovery re-evaluates through the real EVAL2 owner
     instead of reconstructing evidence from stored digests.
@@ -878,11 +891,13 @@ def evaluate_post_selection_run_candidates(
         selection_policy=selection_policy,
         seed_material_digest=run_plan.content_digest,
     )
+    if representative is None:
+        return catalog, tuple(records), None, None
     monitor_metrics = monitor_metrics_by_identity[
         representative.stable_candidate_identity
     ]
 
-    return catalog, representative, monitor_metrics
+    return catalog, tuple(records), representative, monitor_metrics
 
 
 def _abort_post_selection_run_if_cancelled(
@@ -922,12 +937,17 @@ def execute_post_selection_run(
     progress_observer: Callable[[Mapping[str, Any]], None] | None = None,
     telemetry_ref: Any | None = None,
     stop_after_training: bool = False,
-) -> tuple[PostSelectionRunEvidence, Any, Any] | None:
+) -> PostSelectionRunResult | None:
     """Run one post-selection job end to end and return its bound evidence.
 
     Order matters and is enforced by construction: the representative is frozen
     from the run's own monitor before the held-out outer data is evaluated at
     all, so outer evidence cannot influence the checkpoint it judges.
+
+    A cross-validation run whose checkpoint candidates are all inadmissible
+    returns no run evidence, no representative and no outer metrics - only its
+    candidate records - because there is no checkpoint to judge.  A
+    final-production run in that state cannot publish anything and fails.
 
     ``stop_after_training`` ends the call at the authenticated TRAIN2 summary
     and returns ``None``. That summary and its materialization are already
@@ -1927,7 +1947,7 @@ def _execute_post_selection_run_locked(
     progress_observer: Callable[[Mapping[str, Any]], None] | None = None,
     telemetry_ref: Any | None = None,
     stop_after_training: bool = False,
-) -> tuple[PostSelectionRunEvidence, Any, Any] | None:
+) -> PostSelectionRunResult | None:
     """The run body, executed while this run root's activity lease is held."""
 
     from ._campaign_cli_core import _cfg
@@ -2106,17 +2126,38 @@ def _execute_post_selection_run_locked(
         # record is created, and an interruption before EVAL2 resumes from them.
         return None
 
-    catalog, representative, monitor_metrics = evaluate_post_selection_run_candidates(
-        context,
-        run_plan=run_plan,
-        runtime_plan=runtime_plan,
-        materialization=materialization,
-        material_directory=material_directory,
-        checkpoint_directory=checkpoint_directory,
-        summary=summary,
-        monitor_frame_uids=monitor_frame_uids,
-        replay_resolution=replay_resolution,
+    catalog, candidates, representative, monitor_metrics = (
+        evaluate_post_selection_run_candidates(
+            context,
+            run_plan=run_plan,
+            runtime_plan=runtime_plan,
+            materialization=materialization,
+            material_directory=material_directory,
+            checkpoint_directory=checkpoint_directory,
+            summary=summary,
+            monitor_frame_uids=monitor_frame_uids,
+            replay_resolution=replay_resolution,
+        )
     )
+    store = context.evidence_store
+    if representative is None:
+        reasons = sorted(
+            {reason for item in candidates for reason in item.rejection_reasons}
+        )
+        if str(getattr(run_plan, "run_role", "")) != "post_selection_cv":
+            raise PostSelectionError(
+                f"No checkpoint of run {run_plan.run_identity[:12]}... passed "
+                f"mandatory admissibility; rejection reasons: {reasons}. An "
+                "inadmissible checkpoint is never promoted to a representative."
+            )
+        # The fold's scientific result is decided by these records alone, so
+        # they are published as the durable candidate evidence its verdict
+        # binds. No representative exists, so no outer evaluation happens.
+        store.put(preparation)
+        store.put(materialization)
+        for record in candidates:
+            store.put(record)
+        return None, candidates, None, None
 
     outer_metrics = None
     if outer_evaluation_frame_uids:
@@ -2171,13 +2212,13 @@ def _execute_post_selection_run_locked(
             None if outer_metrics is None else outer_metrics.content_digest
         ),
     )
-    store = context.evidence_store
     store.put(preparation)
     store.put(materialization)
     # The exact records that *decided* this run's representative are durable
     # evidence, not intermediate state.  A later cross-seed publication decision
     # has to authenticate them rather than reconstruct a ranking from digests.
-    store.put(representative)
+    for record in candidates:
+        store.put(record)
     store.put(monitor_metrics)
     store.put(evidence)
     # Final-production evidence is independently restartable. Publish its
@@ -2185,7 +2226,7 @@ def _execute_post_selection_run_locked(
     # failure; CV still waits for its separate fold-acceptance authority.
     if str(getattr(run_plan, "run_role", "")) == "final_production":
         _record_completed_run_evidence(context, run_plan, evidence)
-    return evidence, representative, outer_metrics
+    return evidence, candidates, representative, outer_metrics
 
 
 def authenticated_run_representative_records(
@@ -2288,17 +2329,25 @@ def _reevaluate_run_representative_records(
             "deterministically re-evaluated: its runtime plan is no longer "
             "reproducible from current authority. Rerun the affected work."
         )
-    _catalog, representative, monitor_metrics = evaluate_post_selection_run_candidates(
-        context,
-        run_plan=run_plan,
-        runtime_plan=runtime_plan,
-        materialization=materialization,
-        material_directory=material_directory,
-        checkpoint_directory=checkpoint_directory,
-        summary=summary,
-        monitor_frame_uids=m3_membership,
-        replay_resolution=replay_resolution,
+    _catalog, _candidates, representative, monitor_metrics = (
+        evaluate_post_selection_run_candidates(
+            context,
+            run_plan=run_plan,
+            runtime_plan=runtime_plan,
+            materialization=materialization,
+            material_directory=material_directory,
+            checkpoint_directory=checkpoint_directory,
+            summary=summary,
+            monitor_frame_uids=m3_membership,
+            replay_resolution=replay_resolution,
+        )
     )
+    if representative is None:
+        raise PostSelectionError(
+            f"Re-evaluating completed production run {run_plan.run_identity[:12]}... "
+            "found no admissible checkpoint, so it did not reproduce the "
+            "representative its run evidence published. Rerun the affected work."
+        )
     return representative, monitor_metrics
 
 
@@ -2894,6 +2943,14 @@ def _completed_fold_acceptance(
     starting over. Reuse is still conditional: the stored acceptance must belong
     to this exact run plan and must have been judged under the current
     acceptance predicate, or it is not evidence about the campaign being run now.
+
+    A current (v2) verdict also binds the checkpoint candidates its outcome was
+    decided from.  Those records are re-read through the authenticated evidence
+    store - a missing or corrupt one fails there - and must still reproduce the
+    verdict's candidate classification: the persisted reason union, no
+    admissible candidate behind a no-admissible verdict, and an admissible
+    representative with the recorded identity behind a selected one.  v1
+    verdicts bind no candidate set, so there is nothing further to re-check.
     """
 
     path = context.run_root(run_plan.run_identity) / FOLD_ACCEPTANCE_FILENAME
@@ -2914,6 +2971,44 @@ def _completed_fold_acceptance(
             f"{run_plan.run_identity[:12]}... does not belong to the current plan or "
             "acceptance predicate. Post-selection evidence is never reinterpreted "
             "under a changed policy."
+        )
+    if acceptance.serialization_schema == CV_FOLD_ACCEPTANCE_SCHEMA_V1:
+        return acceptance
+
+    from .eval2 import Eval2CheckpointRecord
+
+    candidates = [
+        context.evidence_store.get(item, Eval2CheckpointRecord.from_dict)
+        for item in acceptance.candidate_record_digests
+    ]
+    # The constructor already guarantees a selected representative's digest is
+    # one of the bound candidates, so it resolves exactly when one was selected.
+    representative = next(
+        (
+            item
+            for item in candidates
+            if item.content_digest == acceptance.representative_checkpoint_record_digest
+        ),
+        None,
+    )
+    reasons = tuple(sorted({r for item in candidates for r in item.rejection_reasons}))
+    if (
+        reasons != acceptance.checkpoint_rejection_reasons
+        or (representative is None and any(item.admissible for item in candidates))
+        or (
+            representative is not None
+            and (
+                not representative.admissible
+                or representative.stable_candidate_identity
+                != acceptance.representative_candidate_identity
+            )
+        )
+    ):
+        raise PostSelectionError(
+            f"Stored fold verdict for cross-validation run "
+            f"{run_plan.run_identity[:12]}... is not reproduced by the checkpoint "
+            "candidate evidence it binds. A fold verdict is never reused on "
+            "evidence that no longer proves it; rerun the affected work."
         )
     return acceptance
 
@@ -3145,7 +3240,7 @@ def _execute_post_selection_pending_runs(
     *,
     pending: Sequence[_PendingPostSelectionRun],
     budget_policy: Any,
-) -> dict[int, tuple[PostSelectionRunEvidence, Any, Any]]:
+) -> dict[int, PostSelectionRunResult]:
     """Run exact pending slots through the existing adaptive controller.
 
     The caller constructs ``pending`` only after it has materialized every
@@ -3459,9 +3554,7 @@ def _execute_post_selection_pending_runs(
             flush=True,
         )
 
-    def complete_eval2_for_trained_slots() -> dict[
-        int, tuple[PostSelectionRunEvidence, Any, Any]
-    ]:
+    def complete_eval2_for_trained_slots() -> dict[int, PostSelectionRunResult]:
         """Finish every authenticated TRAIN2 slot through the same run path.
 
         Every TRAIN2 child has exited and released the device before this runs.
@@ -3472,7 +3565,7 @@ def _execute_post_selection_pending_runs(
         a failed wave raises before any post-TRAIN evaluation begins.
         """
 
-        completed: dict[int, tuple[PostSelectionRunEvidence, Any, Any]] = {}
+        completed: dict[int, PostSelectionRunResult] = {}
         if not trained_slots:
             return completed
         _report_post_selection_gpu_occupancy(
@@ -3734,17 +3827,26 @@ def execute_post_selection_cross_validation(
         budget_policy=budget_policy,
     )
     for task in pending:
-        _evidence, representative, outer_metrics = results[task.slot]
-        if outer_metrics is None:
-            raise PostSelectionError(
-                f"CV fold {task.run_plan.fold_index} produced no held-out outer evaluation."
-            )
+        _evidence, candidates, representative, outer_metrics = results[task.slot]
         acceptance = build_cv_fold_acceptance(
             run_plan=task.run_plan,
+            candidates=candidates,
             representative=representative,
             outer_metrics=outer_metrics,
             policy=context.cv_policy,
         )
+        if acceptance.outcome == CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE:
+            print(
+                "[EVAL2] status=rejected; "
+                f"N_selected={selected.n_selected}; "
+                f"seed={task.run_plan.optimizer_seed}; "
+                f"fold={task.run_plan.fold_index + 1}/{plan.fold_count}; "
+                f"candidates={len(acceptance.candidate_record_digests)}; "
+                "outcome=no admissible checkpoint (methodological rejection); "
+                "mandatory admissibility reasons="
+                f"{list(acceptance.checkpoint_rejection_reasons)}",
+                flush=True,
+            )
         store.put(acceptance)
         _record_completed_fold_acceptance(context, task.run_plan, acceptance)
         acceptances_by_slot[task.slot] = acceptance
@@ -3937,7 +4039,7 @@ def execute_final_production(
         budget_policy=budget_policy,
     )
     for task in pending:
-        run_evidence, _representative, _outer = results[task.slot]
+        run_evidence, _candidates, _representative, _outer = results[task.slot]
         evidence_by_slot[task.slot] = run_evidence
 
     evidence = [evidence_by_slot[slot] for slot in range(total_runs)]
@@ -4133,7 +4235,7 @@ def execute_current_cross_validate(args: Any) -> int:
             StageState.FAILED,
             detail,
         )
-        raise PostSelectionError(
+        raise PostSelectionCvRejectedError(
             "Post-selection cross-validation rejected the training method for "
             f"{detail}. This is a methodological result, not a target-size "
             "result: the frozen design and its evidence are unchanged, no "

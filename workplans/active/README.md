@@ -1,14 +1,12 @@
 # Active workplans
 
-Active workplans are temporary engineering coordination contracts. They do not define current mdstats product behavior by repository presence alone; current behavior remains owned by accepted architecture/specification and the implementation that conforms to them.
+Active workplans are temporary engineering coordination contracts. They do not define current mdstats product behavior by repository presence alone; current behavior remains owned by accepted architecture/specification and conforming implementation.
 
 ## Current MLFF implementation state
 
-No MLFF implementation workplan is currently active in this directory on `fix/mlff-p5-train2-memory-pressure-backoff`.
+No MLFF implementation workplan is currently active in this directory.
 
-The historical `MLFF_P5_TRAIN2_CUDA_LIFETIME_AND_ZERO_SAFE_ADMISSION_*` lineage has been moved to `workplans/archive/` as superseded engineering history. Its latest fifth review remained `NO-PASS / REOPENED` for terminal R5-B target-host evidence plus an independent D3 authority gate; archiving it does not retroactively relabel that historical review as PASS. Later accepted TRAIN2/replay architecture and the closed memory-pressure backoff cycle supersede its role as an active coordination contract.
-
-The replay TRUE_DFT default, pseudolabel prepare stage ownership, and CUDA lifetime repair lineage is complete and accepted under Protocol 6.2 and remains archived as non-normative engineering history.
+The P5 CV no-admissible-checkpoint outcome repair lineage has passed independent SSDP 6.3 re-review and is archived under `workplans/archive/`, including its parent workplan, implementation Review reopen, implementation evidence, and final Review closure. The closure accepts the repaired canonical CV outcome/recovery flow without changing target/replay thresholds, replay semantics, target-only ranking, fold/seed/horizon policy, final-production success evidence, or GPU scheduling architecture.
 
 Completed, superseded, and retired MLFF workplans belong under `workplans/archive/`. Current product behavior is governed by accepted architecture/specification and conforming implementation, not by historical workplan presence.
 

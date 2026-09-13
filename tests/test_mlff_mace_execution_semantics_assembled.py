@@ -473,7 +473,7 @@ legacy_normalized = true
             optimizer_seed=context.cv_policy.required_cv_seeds[0],
             planned_epochs=context.cv_policy.cv_max_num_epochs,
         )
-        evidence, _representative, _outer_metrics = execute_post_selection_run(
+        evidence, _candidates, _representative, _outer_metrics = execute_post_selection_run(
             context,
             run_plan=run_plan,
             budget_policy=cv_training_budget_policy(context.method, context.cv_policy),
@@ -866,7 +866,7 @@ legacy_normalized = true
             optimizer_seed=context.cv_policy.required_cv_seeds[0],
             planned_epochs=context.cv_policy.cv_max_num_epochs,
         )
-        evidence, _representative, _outer_metrics = execute_post_selection_run(
+        evidence, _candidates, _representative, _outer_metrics = execute_post_selection_run(
             context,
             run_plan=run_plan,
             budget_policy=cv_training_budget_policy(context.method, context.cv_policy),
@@ -892,13 +892,17 @@ legacy_normalized = true
         # A second invocation is the real persisted TRAIN2/P5 continuation
         # owner.  It must authenticate the same replay membership and reuse the
         # already prepared source/views without regeneration.
-        resumed, _resumed_representative, _resumed_outer = execute_post_selection_run(
-            context,
-            run_plan=run_plan,
-            budget_policy=cv_training_budget_policy(context.method, context.cv_policy),
-            training_frame_uids=fold.training_frame_uids,
-            monitor_frame_uids=fold.checkpoint_monitor_frame_uids,
-            outer_evaluation_frame_uids=None,
+        resumed, _resumed_candidates, _resumed_representative, _resumed_outer = (
+            execute_post_selection_run(
+                context,
+                run_plan=run_plan,
+                budget_policy=cv_training_budget_policy(
+                    context.method, context.cv_policy
+                ),
+                training_frame_uids=fold.training_frame_uids,
+                monitor_frame_uids=fold.checkpoint_monitor_frame_uids,
+                outer_evaluation_frame_uids=None,
+            )
         )
         assert resumed.content_digest == evidence.content_digest
         assert Path(resolution.source_path).read_bytes() == source_bytes
