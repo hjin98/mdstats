@@ -23,7 +23,7 @@ This is mdstats' project-local Project Engineering Memory (PEM). It records evid
 <!-- BEGIN DERIVED PEM SUMMARY -->
 High-impact unresolved notices:
 
-- **NT-001** [REVIEW_REQUIRED/HEALTHY]: A current real P5 cross-validation run completed TRAIN2 but failed before EVAL2 because the persisted TRAIN2 CuEq architecture digest differs from independent reconstruction; historical FF-001 is materially relevant, but exact recurrence membership and repair ownership remain subject to the active diagnostic gates.
+- **NT-001** [REVIEW_REQUIRED/HEALTHY]: A real P5 cross-validation run completed TRAIN2 but failed before EVAL2 on CuEq architecture authentication. Candidate diagnosis: replay-head element table (H1), converter device type (H2), and a portable projection that rebuilt its own e3nn shell instead of transferring state into the canonical one; all three are repaired on the candidate branch with the fail-closed guards unchanged. Remains REVIEW_REQUIRED because no independent Protocol 6.3 review has accepted the repair, so FF-001 recurrence membership and counts are not updated.
 
 | ID | Kind | Temperature | Maturity/state | Binding | Guidance | Current evidence | Bounded lesson |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -751,7 +751,7 @@ applications:
 ```yaml pem-notice
 id: NT-001
 state: REVIEW_REQUIRED
-summary: A current real P5 cross-validation run completed TRAIN2 but failed before EVAL2 because the persisted TRAIN2 CuEq architecture digest differs from independent reconstruction; historical FF-001 is materially relevant, but exact recurrence membership and repair ownership remain subject to the active diagnostic gates.
+summary: A real P5 cross-validation run completed TRAIN2 but failed before EVAL2 on CuEq architecture authentication. Candidate diagnosis: replay-head element table (H1), converter device type (H2), and a portable projection that rebuilt its own e3nn shell instead of transferring state into the canonical one; all three are repaired on the candidate branch with the fail-closed guards unchanged. Remains REVIEW_REQUIRED because no independent Protocol 6.3 review has accepted the repair, so FF-001 recurrence membership and counts are not updated.
 normative_status: NON_AUTHORITATIVE
 owner: NONE
 applicability:
@@ -762,6 +762,7 @@ applicability:
 binding_health: HEALTHY
 evidence:
   - "hjin98/mdstats@4a4ea51d45ea3082fa1ccb733192c71a10e3cac9:workplans/active/MLFF_P5_TRAIN2_EVAL2_CUEQ_ARCHITECTURE_RECURRENCE_REPAIR_WORKPLAN.md"
+  - "hjin98/mdstats@e2050d0cabac72c2505407fc9bbfc357803072ea:workplans/active/MLFF_P5_TRAIN2_EVAL2_CUEQ_ARCHITECTURE_RECURRENCE_INDEPENDENT_REVIEW_REOPEN.md"
 review_trigger:
   type: accepted_base_change
   basis: b65fa3b02807815d8eca758bc04fb70d514d1f45

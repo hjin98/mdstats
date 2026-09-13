@@ -492,8 +492,13 @@ def authenticate_train2_checkpoint_provider(
                         f"Unsupported evaluation model state: {evaluation_model_state!r}"
                     )
 
+                # The authenticated state is transferred into the canonical
+                # shell itself, so its identity is fixed before projection.
+                canonical_portable_digest = mace_model_execution_architecture_digest(
+                    provider_model
+                )
                 portable_loaded_model = restore_mace_portable_model(
-                    training_provider.model, config_payload
+                    training_provider.model, provider_model, config_payload
                 )
             finally:
                 training_provider.close()
@@ -501,12 +506,12 @@ def authenticate_train2_checkpoint_provider(
             portable_architecture_digest = mace_model_execution_architecture_digest(
                 portable_loaded_model
             )
-            canonical_portable_digest = mace_model_execution_architecture_digest(
-                provider_model
-            )
             if portable_architecture_digest != canonical_portable_digest:
                 first_difference = mace_model_execution_architecture_first_difference(
-                    provider_model, portable_loaded_model
+                    build_mace_model_from_configuration(
+                        config_payload, foundation_model_path=foundation_model_path
+                    ),
+                    portable_loaded_model,
                 )
                 raise TrainingDataInputError(
                     "MACE accelerator checkpoint round-trip changed the portable "

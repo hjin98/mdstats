@@ -6,7 +6,9 @@ only seam: it records the portable model MACE built (A) and the CuEq model it
 trains (C), then stops before optimisation.  The independent mdstats owners
 rebuild the same method from the same configuration (B, D) and must agree with
 what MACE actually constructed, including replay-only elements and the
-``torch.device`` argument ``run_train`` gives the converter.
+``torch.device`` argument ``run_train`` gives the converter.  Authenticated
+CuEq state then projects back into that canonical portable shell and reaches
+real EVAL2 inference.
 """
 
 from __future__ import annotations
@@ -287,20 +289,7 @@ def test_scratch_normalization_perturbation_is_rejected_before_state_load(
 
     import hashlib
 
-    scratch = {
-        key: value
-        for key, value in captured.payload.items()
-        if key
-        not in {
-            "foundation_head",
-            "multiheads_finetuning",
-            "force_mh_ft_lr",
-            "real_pt_data_ratio_threshold",
-            "pt_train_file",
-            "pt_valid_file",
-            "heads",
-        }
-    }
+    scratch = _scratch_payload(captured.payload)
     trained, _kind = realize_mace_training_model(
         build_mace_model_from_configuration(scratch), scratch
     )
@@ -325,47 +314,189 @@ def test_scratch_normalization_perturbation_is_rejected_before_state_load(
         )
 
 
-def test_rejected_realization_does_not_stay_resident(captured, checkpoint) -> None:
-    payload, foundation = _perturbations(captured)["replay_elements"]
+def _structures(*, with_hydrogen: bool):
+    from ase import Atoms
+
+    rng = np.random.default_rng(3)
+    frames = []
+    for symbols in ("LiO", "LiOH" if with_hydrogen else "OLi", "OOLi"):
+        atoms = Atoms(symbols, cell=np.eye(3) * 8.0, pbc=True)
+        atoms.positions = rng.uniform(0.5, 4.5, size=(len(atoms), 3))
+        frames.append(atoms)
+    return frames
+
+
+def _scratch_payload(payload):
+    return {
+        key: value
+        for key, value in payload.items()
+        if key
+        not in {
+            "foundation_head",
+            "multiheads_finetuning",
+            "force_mh_ft_lr",
+            "real_pt_data_ratio_threshold",
+            "pt_train_file",
+            "pt_valid_file",
+            "heads",
+        }
+    }
+
+
+@pytest.mark.parametrize("state", ["live", "ema"])
+@pytest.mark.parametrize(
+    "method", ["foundation-float32", "foundation-float64", "scratch-float32"]
+)
+def test_native_projection_preserves_the_canonical_portable_architecture(
+    captured, method: str, state: str
+) -> None:
+    """R1: CuEq state transferred into the canonical shell keeps its identity and semantics.
+
+    The trained state is a deterministic perturbation of every CuEq parameter
+    (one per live/EMA label).  Its learned values must equal what pinned MACE's
+    own ``convert_cueq_e3nn.run`` projection carries, and the portable model
+    must reproduce the CuEq realization under the accepted acceleration-parity
+    policy.
+    """
+
+    from mace.calculators import MACECalculator
+    from mace.cli.convert_cueq_e3nn import run as native_projection
+
+    from mdstats.training_data.acceleration import compare_mace_acceleration_calculators
+
+    route, dtype = method.split("-")
+    payload = dict(captured.payload, default_dtype=dtype)
+    foundation = captured.foundation
+    if route == "scratch":
+        payload, foundation = _scratch_payload(payload), None
+    shell = build_mace_model_from_configuration(payload, foundation_model_path=foundation)
+    canonical = mace_model_execution_architecture_digest(shell)
+    previous_dtype = torch.get_default_dtype()
+    try:
+        training, kind = realize_mace_training_model(shell, payload)
+        assert kind == "cueq"
+        generator = torch.Generator().manual_seed(11 if state == "live" else 23)
+        with torch.no_grad():
+            for _name, parameter in training.named_parameters():
+                noise = torch.randn(parameter.shape, generator=generator, dtype=parameter.dtype)
+                parameter.add_(0.05 * noise.to(parameter.device))
+        native_state = native_projection(training, device="cpu").state_dict()
+
+        projected = restore_mace_portable_model(training, shell, payload)
+    finally:
+        torch.set_default_dtype(previous_dtype)
+
+    assert projected is shell
+    assert mace_model_execution_architecture_digest(projected) == canonical
+    for name, parameter in projected.named_parameters():
+        assert torch.equal(parameter.detach().cpu(), native_state[name].detach().cpu()), name
+    kwargs = {"head": "target_head"} if route == "foundation" else {}
+    record = compare_mace_acceleration_calculators(
+        MACECalculator(models=[projected], device="cuda", default_dtype=dtype, **kwargs),
+        MACECalculator(models=[training], device="cuda", default_dtype=dtype, **kwargs),
+        _structures(with_hydrogen=route == "foundation"),
+        candidate_mode="cueq_pure",
+        dtype=dtype,
+    )
+    assert record.passed, record
+
+
+def test_authentic_checkpoint_reaches_real_eval2_inference(captured, checkpoint) -> None:
+    """R2: production authentication -> native projection -> portable provider -> bounded forward."""
+
+    from mace.calculators import MACECalculator
+
+    from mdstats.training_data.acceleration import MaceAccelerationParityPolicy
+    from mdstats.training_data.bounded_inference import run_bounded_inference
+
+    provider, live_digest, companion = _authenticate(
+        captured, checkpoint, captured.payload, foundation=captured.foundation
+    )
+    frames = _structures(with_hydrogen=True)
+    try:
+        assert companion is None and live_digest
+        canonical = build_mace_model_from_configuration(
+            captured.payload, foundation_model_path=captured.foundation
+        )
+        assert mace_model_execution_architecture_first_difference(canonical, provider.model) is None
+        predictions = run_bounded_inference(provider, frames, batch_width=2)
+    finally:
+        provider.close()
+    reference = MACECalculator(
+        models=[deepcopy(captured.training)],
+        device="cuda",
+        default_dtype="float32",
+        head="target_head",
+    )
+    rtol, atol = MaceAccelerationParityPolicy().tolerance("float32")
+    assert len(predictions) == len(frames)
+    for atoms, prediction in zip(frames, predictions, strict=True):
+        atoms = atoms.copy()
+        atoms.calc = reference
+        assert np.allclose(prediction.energy_ev, atoms.get_potential_energy(), rtol=rtol, atol=atol)
+        assert np.allclose(
+            prediction.forces_ev_per_angstrom, atoms.get_forces(), rtol=rtol, atol=atol
+        )
+
+
+def test_projection_that_changes_portable_architecture_is_rejected(
+    captured, checkpoint, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The post-projection canonical guard still fails closed with its diagnostic."""
+
+    import mace.cli.convert_cueq_e3nn as converter
+
+    original = converter.transfer_weights
+
+    def drifting_transfer(source_model, target_model, *args):
+        original(source_model, target_model, *args)
+        target_model.interactions[0].avg_num_neighbors += 1.0
+
+    monkeypatch.setattr(converter, "transfer_weights", drifting_transfer)
+    with pytest.raises(
+        TrainingDataInputError,
+        match=(
+            r"round-trip changed the portable architecture: realization=cueq; .*"
+            r"first_difference=interaction_avg_num_neighbors"
+        ),
+    ):
+        _authenticate(captured, checkpoint, captured.payload, foundation=captured.foundation)
+
+
+@pytest.mark.parametrize("outcome", ["rejected", "accepted"])
+def test_authentication_does_not_accumulate_accelerator_residency(
+    captured, checkpoint, outcome: str
+) -> None:
+    payload, foundation = (
+        _perturbations(captured)["replay_elements"]
+        if outcome == "rejected"
+        else (captured.payload, captured.foundation)
+    )
     torch.cuda.synchronize()
     after = []
     for _ in range(3):
-        with pytest.raises(TrainingDataInputError):
-            _authenticate(captured, checkpoint, payload, foundation=foundation)
+        if outcome == "rejected":
+            with pytest.raises(TrainingDataInputError):
+                _authenticate(captured, checkpoint, payload, foundation=foundation)
+        else:
+            provider, _digest, _companion = _authenticate(
+                captured, checkpoint, payload, foundation=foundation
+            )
+            provider.close()
+            del provider
         gc.collect()
         torch.cuda.synchronize()
         after.append(torch.cuda.memory_allocated())
     assert after[2] <= after[0]
 
 
-def test_authentic_state_reaches_the_portable_projection_guard(captured, checkpoint) -> None:
-    """The authentic realization authenticates; EVAL2 then stops at A1 step 6.
+def test_only_cueq_keeps_the_portable_model_as_the_training_realization(captured) -> None:
+    """``only_cueq=true`` is not the phase-separated route: no conversion either way."""
 
-    The raw state loads into the independently realized CuEq model.  The only
-    remaining failure is the accepted portable round-trip guard, which the
-    native pinned-MACE projection cannot satisfy for foundation-backed CuEq.
-    """
-
-    with pytest.raises(
-        TrainingDataInputError,
-        match=r"round-trip changed the portable architecture: realization=cueq; .*first_difference=parameters",
-    ):
-        _authenticate(captured, checkpoint, captured.payload, foundation=captured.foundation)
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "SERIOUS CHALLENGE (D3 amendment A1 step 6): pinned MACE's native CuEq->e3nn "
-        "projection rebuilds the model from extracted config, turning the foundation-"
-        "loaded bessel_weights Parameter into a buffer and recomputing CG U-matrices, so "
-        "a foundation-backed CuEq model cannot project back to its configuration's "
-        "canonical portable architecture."
-    ),
-)
-def test_native_projection_preserves_the_canonical_portable_architecture(captured) -> None:
+    payload = dict(captured.payload, only_cueq=True)
     portable = build_mace_model_from_configuration(
-        captured.payload, foundation_model_path=captured.foundation
+        payload, foundation_model_path=captured.foundation
     )
-    projected = restore_mace_portable_model(captured.training, captured.payload)
-    assert mace_model_execution_architecture_first_difference(portable, projected) is None
+    realized, kind = realize_mace_training_model(portable, payload)
+    assert (realized, kind) == (portable, None)
+    assert restore_mace_portable_model(realized, portable, payload) is realized

@@ -51,6 +51,7 @@ from mdstats.training_data.mace_compatibility import (
 from mdstats.training_data.model_features import (
     build_mace_model_from_configuration,
     mace_model_execution_architecture_digest,
+    realize_mace_training_model,
 )
 from mdstats.training_data.train2_runtime import (
     load_train2_runtime_boundary_summary,
@@ -909,8 +910,9 @@ legacy_normalized = true
         store.close()
 
 
+@pytest.mark.parametrize("training_backend", ["e3nn", "cueq"])
 def test_p5_real_cross_validate_resumes_eval2_for_replay_only_elements(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, training_backend: str
 ) -> None:
     """Assembled ``cross-validate`` over a replay corpus with elements the target lacks.
 
@@ -919,7 +921,14 @@ def test_p5_real_cross_validate_resumes_eval2_for_replay_only_elements(
     real CLI launches the qualified wrapper, EVAL2 independently reconstructs
     and authenticates every run, an interruption at the first EVAL2 consumer
     leaves durable TRAIN2 state, and a second invocation completes EVAL2
-    without launching TRAIN2 again.
+    without launching TRAIN2 again.  Every resumed EVAL2 chunk runs the real
+    authenticated provider forward; only the downstream statistics keep the
+    bounded harness values, since the tiny model's scientific admissibility is
+    not the claim.
+
+    With ``training_backend="cueq"`` TRAIN2 is the phase-separated transient
+    CuEq realization on CUDA, so EVAL2 must authenticate that realization and
+    project its state back into the canonical portable e3nn provider.
     """
 
     import sys
@@ -965,6 +974,50 @@ family = "mace_mpa_0"
 head = "default"
 legacy_normalized = true
 """
+    if training_backend == "cueq":
+        torch = pytest.importorskip("torch")
+        pytest.importorskip("cuequivariance_torch")
+        if not torch.cuda.is_available():
+            pytest.skip("The phase-separated CuEq TRAIN2 realization is CUDA-specific.")
+        config_text = config_text.replace('device = "cpu"', 'device = "cuda"', 1)
+        config_text += """
+
+[acceleration]
+backend = "e3nn"
+training_backend = "cueq"
+only_cueq = false
+require_available = true
+"""
+        fixture_campaign = p4d._fixture_campaign
+
+        def campaign_with_qualified_cueq_training(*args, **kwargs):
+            # Doctor-frozen TRAIN2 runtime qualification, seeded exactly as the
+            # base fixture seeds the source realization.
+            config, workspace = fixture_campaign(*args, **kwargs)
+            _cfg, paths = cli._load_config(config)
+            store = cli.CampaignStore(paths.state_db)
+            try:
+                store.put_record(
+                    "training_acceleration_realization",
+                    mdstats.TrainingAccelerationRealizationRecord(
+                        requested_backend="cueq",
+                        training_kernel_mode="cueq_pure",
+                        device="cuda",
+                        dtype="float32",
+                        training_checkpoint_reference=str(foundation),
+                        training_checkpoint_sha256=cli._sha256(foundation),
+                        selected_head_qualification_digest="b" * 64,
+                        mace_version="0.3.16",
+                        cueq_versions=(("cuequivariance", "fixture"),),
+                        training_parity_record_digest="c" * 64,
+                        qualified=True,
+                    ),
+                )
+            finally:
+                store.close()
+            return config, workspace
+
+        monkeypatch.setattr(p4d, "_fixture_campaign", campaign_with_qualified_cueq_training)
     config, _workspace = build_selected_campaign(
         tmp_path / "campaign",
         config_text=config_text,
@@ -1023,6 +1076,12 @@ legacy_normalized = true
                 config_payload, foundation_model_path=foundation
             )
             assert 1 in [int(z) for z in model.atomic_numbers]
+            if training_backend == "cueq":
+                assert config_payload["enable_cueq"] is True
+                assert config_payload["only_cueq"] is False
+                assert config_payload["device"] == "cuda"
+                model, realization = realize_mace_training_model(model, config_payload)
+                assert realization == "cueq"
             assert (
                 mace_model_execution_architecture_digest(model)
                 == summary.model_architecture_digest
@@ -1030,7 +1089,18 @@ legacy_normalized = true
     finally:
         store.close()
 
-    resumed = PostSelectionHarness()
+    class _RealProviderForward(PostSelectionHarness):
+        def evaluate(self, provider, atoms_list):
+            real = provider.predict_batch(atoms_list)
+            assert len(real) == len(atoms_list)
+            assert all(
+                np.isfinite(prediction.energy_ev)
+                and np.isfinite(prediction.forces_ev_per_angstrom).all()
+                for prediction in real
+            )
+            return super().evaluate(provider, atoms_list)
+
+    resumed = _RealProviderForward()
     assert (
         p4d._run(
             config,

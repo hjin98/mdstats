@@ -401,30 +401,53 @@ def realize_mace_training_model(
 
 
 def restore_mace_portable_model(
-    realized_model: Any, config_payload: Mapping[str, Any]
+    realized_model: Any, portable_model: Any, config_payload: Mapping[str, Any]
 ) -> Any:
-    """Project one transient MACE realization back through its native owner."""
+    """Project one transient MACE realization back to portable e3nn.
+
+    ``portable_model`` is the canonical portable shell the realization was
+    built from.  CuEq state is transferred into that shell in place by pinned
+    MACE's native ``transfer_weights``.  ``convert_cueq_e3nn.run`` would
+    instead rebuild a shell from extracted configuration, which loses the
+    foundation-loaded parameter registration and recomputes static CG buffers,
+    so it is not the authorized portable architecture.
+    """
 
     realization = _mace_accelerator_realization(config_payload)
     if realization is None:
         return realized_model
     try:
-        from mace.tools import init_device
-
         if realization == "cueq":
-            from mace.cli.convert_cueq_e3nn import run
+            from mace.cli.convert_cueq_e3nn import transfer_weights
+            from mace.tools.scripts_utils import extract_config_mace_model
         else:
             from mace.cli.convert_oeq_e3nn import run
+            from mace.tools import init_device
     except ModuleNotFoundError as exc:  # pragma: no cover - optional acceleration
         raise TrainingDataInputError(
             f"MACE {realization} portable conversion is unavailable."
         ) from exc
-    # Same call shape as ``run_train``'s own accelerator -> e3nn projection.
     with _MACE_ACCELERATOR_CONVERSION_LOCK:
         try:
-            device = init_device(str(config_payload.get("device", "cpu")))
-            portable = run(realized_model, device=device, return_model=True)
-        except (AssertionError, AttributeError, RuntimeError, TypeError, ValueError) as exc:
+            if realization == "cueq":
+                # Converter parameters come from the dependency's own
+                # extraction, exactly as ``convert_cueq_e3nn.run`` derives them.
+                config = extract_config_mace_model(realized_model)
+                transfer_weights(
+                    realized_model,
+                    portable_model,
+                    len(config["hidden_irreps"].slices()) - 1,
+                    config["correlation"],
+                    config["num_interactions"],
+                    config.get("use_reduced_cg", True),
+                    config.get("keep_last_layer_irreps", False),
+                )
+                portable = portable_model
+            else:
+                # Same call shape as ``run_train``'s own OEq -> e3nn projection.
+                device = init_device(str(config_payload.get("device", "cpu")))
+                portable = run(realized_model, device=device, return_model=True)
+        except (AssertionError, AttributeError, KeyError, RuntimeError, TypeError, ValueError) as exc:
             raise TrainingDataInputError(
                 f"MACE {realization} realization could not be converted back to portable e3nn."
             ) from exc.with_traceback(None)
