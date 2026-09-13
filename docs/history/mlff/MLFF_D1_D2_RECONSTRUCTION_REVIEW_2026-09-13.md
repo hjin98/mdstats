@@ -133,14 +133,15 @@ No new scientific claim was introduced solely because a citation was added.
 
 ### R12 — math markup was semantically correct but not renderer-safe — CLOSED
 
-A second review pass exercised the reconstructed formulas against the repository's declared Pandoc math reader and Typst publication path. Two classes of representation defects were found:
+A second review pass exercised the reconstructed formulas against the repository's declared Pandoc math reader and Typst publication path. The initial repair exposed three renderer-facing representation defects:
 
-- the D2 EVAL2 unit formulas used LaTeX `\AA`, which the Pandoc-to-Typst conversion rejects as an unexpected control sequence; and
-- textual math annotations written with `\mathrm{...}` or bare multi-letter subscripts were converted as runs of upright/italic math letters rather than stable textual labels, making tags such as `train`, `ref`, `eff`, and `RMSE` render poorly or ambiguously.
+- the D2 EVAL2 unit formulas used LaTeX `\AA`, which the Pandoc-to-Typst conversion rejects as an unexpected control sequence;
+- textual math annotations written with `\mathrm{...}` or bare multi-letter subscripts were converted as runs of upright/italic math letters rather than stable textual labels, making tags such as `train`, `ref`, `eff`, and `RMSE` render poorly or ambiguously; and
+- a follow-up render showed that `\operatorname{...}` is not permitted by the target document renderer, so using it for `RMSE`, `Cov`, or `Var` is not admissible even though it is valid LaTeX in other environments.
 
-The method papers now use `\text{...}` for textual annotations and units, `\operatorname{RMSE}` for the named estimator, and the Unicode angstrom symbol `Å` inside text-mode unit labels. The EVAL2 numerical definition remains exactly the same eV/Å force-component RMSE with the exact `1000` conversion to meV/Å.
+The method papers now use only `\text{...}` for these textual mathematical annotations and units, including `\text{RMSE}`, `\text{Cov}`, and `\text{Var}`, and use the Unicode angstrom symbol `Å` inside text-mode unit labels. The EVAL2 numerical definition remains exactly the same eV/Å force-component RMSE with the exact `1000` conversion to meV/Å.
 
-This repair changes representation only. It does not change any scientific variable, estimator, membership, optimizer rule, threshold, or authority boundary. A complete D1/D2 formula conversion through `markdown+tex_math_single_backslash+tex_math_dollars` to Typst emits no math-conversion warning after the repair.
+This repair changes representation only. It does not change any scientific variable, estimator, membership, optimizer rule, threshold, or authority boundary. The two method-paper sources contain no remaining `\operatorname{...}` or `\AA` markup after the follow-up correction.
 
 The method papers are not registered as direct PDF publications in `docs/pdf_publications.json`; therefore this source-only method-paper repair has no generated PDF descendant to regenerate. The architecture and DATA5 canonical sources were not changed by this pass, so their previously synchronized generated publications remain unaffected.
 

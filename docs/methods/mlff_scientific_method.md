@@ -58,7 +58,7 @@ Molecular-dynamics (MD) trajectories contain serial correlation. Adjacent struct
 For a stationary scalar observable `x_t`, the normalized autocorrelation is
 
 $$
-\rho(k)=\frac{\operatorname{Cov}(x_t,x_{t+k})}{\operatorname{Var}(x_t)},
+\rho(k)=\frac{\text{Cov}(x_t,x_{t+k})}{\text{Var}(x_t)},
 $$
 
 and the integrated autocorrelation time is represented in stored-frame units as
@@ -284,7 +284,7 @@ The automatic stage therefore measures one configured short-horizon screening pr
 The primary automatic-screen response is target-force root-mean-square error (RMSE) on the exact target-side model-selection population,
 
 $$
-\operatorname{RMSE}_F=
+\text{RMSE}_F=
 \sqrt{\frac{1}{K}\sum_{k=1}^{K}
 \left(F_k^{\text{pred}}-F_k^{\text{ref}}\right)^2},
 $$

@@ -417,7 +417,7 @@ Recovery cannot change candidate membership, normalization, common preparation, 
 At boundary `j`, the exact checkpoint is evaluated on exact evaluation membership `M_j`. If `K` Cartesian force components are admitted,
 
 $$
-\operatorname{RMSE}_{F,\text{eV}/\text{Å}}=
+\text{RMSE}_{F,\text{eV}/\text{Å}}=
 \sqrt{\frac{1}{K}\sum_{k=1}^{K}
 (\widehat F_k-F_k)^2},
 $$
@@ -425,8 +425,8 @@ $$
 and the target-size stored metric is
 
 $$
-\operatorname{RMSE}_{F,\text{meV}/\text{Å}}=
-1000\,\operatorname{RMSE}_{F,\text{eV}/\text{Å}}.
+\text{RMSE}_{F,\text{meV}/\text{Å}}=
+1000\,\text{RMSE}_{F,\text{eV}/\text{Å}}.
 $$
 
 Device batching may partition inference to bound memory. Batch width is execution-only only if exact membership/model state/prediction semantics are preserved and the aggregate metric agrees under the accepted floating-point equivalence contract.
