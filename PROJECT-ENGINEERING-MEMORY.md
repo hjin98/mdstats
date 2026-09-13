@@ -5,7 +5,7 @@ project_id: hjin98-mdstats
 repository: hjin98/mdstats
 scope: repository
 coverage_state: PARTIAL
-coverage_basis: "Bounded historical backfill over accepted MLFF campaign/target-size development from August 20 through September 12, 2026, emphasizing archived P1-P7 workplans, TRAIN2/EVAL2 execution and recovery, storage R28-R38, scheduler/CUDA repairs, assembled integration evidence, and accepted-current architecture/code at b65fa3b02807815d8eca758bc04fb70d514d1f45. Earlier mdstats history, non-MLFF subsystems, and unarchived local incidents are not claimed exhaustive."
+coverage_basis: "Bounded historical backfill over accepted MLFF campaign/target-size development from August 20 through September 12, 2026. Reviewed archived P1-P7 target-size/campaign workplans and implementation evidence, TRAIN2/EVAL2 architecture and restart repairs, storage-reset R28-R38, scheduler/CUDA lifetime and memory-pressure repairs, assembled campaign/storage integration, and accepted-current architecture/code at b65fa3b02807815d8eca758bc04fb70d514d1f45. Earlier mdstats history, non-MLFF subsystems, and unarchived local incidents are not claimed exhaustive."
 reconciled_through: b65fa3b02807815d8eca758bc04fb70d514d1f45
 accepted_base:
   project_state: b65fa3b02807815d8eca758bc04fb70d514d1f45
@@ -16,22 +16,26 @@ detail_files: []
 
 # Project Engineering Memory
 
-This is mdstats' project-local Project Engineering Memory (PEM). It records evidence-backed engineering lessons from demonstrated failures and successful repairs. It is not D1-D4 semantic authority. Current scientific, numerical, architectural, specification, project, and external owners define what must be true. Because this first backfill is deliberately partial, absence here does not establish that no relevant historical lesson exists.
+This is mdstats' project-local Project Engineering Memory (PEM). It records evidence-backed recurring failures, successful engineering patterns, and current notices. It is not D1-D4 semantic authority. Current scientific, numerical, architectural, specification, project, and external owners define what must be true. Because this first backfill is deliberately partial, absence here does not establish that no relevant historical lesson exists.
 
 ## Active summary
 
 <!-- BEGIN DERIVED PEM SUMMARY -->
+High-impact unresolved notices:
+
+- **NT-001** [REVIEW_REQUIRED/HEALTHY]: A current real P5 cross-validation run completed TRAIN2 but failed before EVAL2 because the persisted TRAIN2 CuEq architecture digest differs from independent reconstruction; historical FF-001 is materially relevant, but exact recurrence membership and repair ownership remain subject to the active diagnostic gates.
+
 | ID | Kind | Temperature | Maturity/state | Binding | Guidance | Current evidence | Bounded lesson |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| SP-002 | SUCCESS_PATTERN | HOT | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | RECOMMENDED | 3 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Fail-closed authenticated identity/state boundaries catch corruption and semantic drift before downstream consumers can act on plausible-but-wrong data. |
+| SP-003 | SUCCESS_PATTERN | HOT | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | RECOMMENDED | 3 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Immutable/content-addressed durable boundaries make expensive workflows restartable and reusable without reconstructing or retraining already accepted work. |
+| SP-004 | SUCCESS_PATTERN | HOT | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | RECOMMENDED | 3 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Real-owner integration and target-host qualification expose defects that mocks, local unit seams, or isolated component tests can miss. |
+| SP-001 | SUCCESS_PATTERN | WARM | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | RECOMMENDED | 2 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Removing duplicated machinery and returning responsibility to the real owner has repeatedly fixed broad defect families with less state, policy, and code than additive synchronization or wrapper repairs. |
 | FF-001 | FAILURE_FAMILY | UNASSESSED | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | OBSERVED | 1 confirmed | Independently reconstructed MACE execution architecture can drift from the model actually trained when model-affecting construction or accelerator realization is duplicated across owners. |
 | FF-002 | FAILURE_FAMILY | UNASSESSED | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | OBSERVED | 1 confirmed | Restart correctness fails when scratch, continuation metadata, or checkpoint state is treated as durable authority before the exact authenticated boundary has been established. |
 | FF-003 | FAILURE_FAMILY | UNASSESSED | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | OBSERVED | 1 confirmed | Duplicated destructive-storage routing and negative fallthrough can let consequential mutation escape the owner that actually holds authorization and truth about the target. |
 | FF-004 | FAILURE_FAMILY | UNASSESSED | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | OBSERVED | 1 confirmed | GPU admission, cancellation, and teardown become unreliable when scheduler policy is allowed to infer facts owned by the process/run owner or when live memory safety is not enforced at the actual residency boundary. |
 | FF-005 | FAILURE_FAMILY | UNASSESSED | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | OBSERVED | 1 confirmed | Downstream observation/selection commands become expensive and semantically leaky when they reconstruct preparation-owned scientific state instead of consuming an immutable prepared generation. |
-| SP-001 | SUCCESS_PATTERN | WARM | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | OBSERVED | 2 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Removing duplicated machinery and returning responsibility to the real owner has repeatedly fixed broad defect families with less state, policy, and code than additive synchronization or wrapper repairs. |
-| SP-002 | SUCCESS_PATTERN | HOT | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | OBSERVED | 3 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Fail-closed authenticated identity/state boundaries catch corruption and semantic drift before downstream consumers can act on plausible-but-wrong data. |
-| SP-003 | SUCCESS_PATTERN | HOT | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | OBSERVED | 3 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Immutable/content-addressed durable boundaries make expensive workflows restartable and reusable without reconstructing or retraining already accepted work. |
-| SP-004 | SUCCESS_PATTERN | HOT | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | OBSERVED | 3 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Real-owner integration and target-host qualification expose defects that mocks, local unit seams, or isolated component tests can miss. |
 <!-- END DERIVED PEM SUMMARY -->
 
 ## Families
@@ -46,13 +50,13 @@ maturity: SUPPORTED
 temperature: UNASSESSED
 summary: Independently reconstructed MACE execution architecture can drift from the model actually trained when model-affecting construction or accelerator realization is duplicated across owners.
 semantic_identity:
-  invariant_or_claim: A checkpoint may be admitted to EVAL2 only when independently reconstructed training realization identity matches the execution architecture that actually owned TRAIN2 state.
+  invariant_or_claim: A checkpoint may be admitted to EVAL2 only when independently reconstructed training-realization identity matches the execution architecture that actually owned TRAIN2 state.
   owner_class: TRAIN2/EVAL2 model-construction and checkpoint-authentication boundary
   mechanism_family: duplicated or incomplete reconstruction of model-affecting MACE configuration and transient accelerator realization
   applicability_dimensions: MACE 0.3.16, target-size P3/P5, multihead/foundation models, avg_num_neighbors, CuEq/OEq realization, architecture digests
 aggregation_scope: mdstats MACE training/evaluation paths that independently reconstruct a model before authenticated checkpoint state is loaded
 coverage_state: PARTIAL
-coverage_basis: Reviewed the archived P3 realized-architecture repair/evidence and the later P5 scheduler/architecture amendment through accepted baseline b65fa3b; broader MACE history is not claimed exhaustive.
+coverage_basis: Reviewed the archived P3 realized-architecture repair/evidence and the later P5 phase-separated CuEq architecture analysis through accepted baseline b65fa3b; broader MACE history is not claimed exhaustive.
 applicability:
   - TRAIN2 EVAL2 architecture digest mismatch
   - independent MACE reconstruction
@@ -67,28 +71,26 @@ relations: []
 occurrences:
   - id: O01
     event_identity: "hjin98/mdstats@a06e67525a40c2d4e8217fe99bf4ca6821e0ce84"
-    lifecycle_context: target-size P3 realized-MACE architecture repair and subsequent P5 architecture-parity analysis
+    lifecycle_context: target-size P3 realized-MACE architecture repair
     source_project: local
     surfaces:
       - P3 TRAIN2 construction
       - independent EVAL2 reconstruction
-      - P5 post-selection checkpoint authentication
-      - multihead/foundation configuration projection
-    observation: Real pinned-MACE construction and independent reconstruction were shown to disagree on model-affecting realization details; later P5 target-host evidence reached the same fail-closed architecture-authentication boundary under phase-separated CuEq.
-    cause_claim: Construction semantics were represented in more than one path, allowing head/default selection, frozen normalization, buffer shape, and accelerator realization timing to diverge from the model that actually owned training state.
+      - MACE head/default construction
+      - model-affecting normalization and calibration buffers
+    observation: A bounded real pinned-MACE construction census found four concrete pre-repair differences between the model MACE realized and mdstats' independent reconstruction: head identity, avg_num_neighbors, scale/shift shape, and atomic-energy shape.
+    cause_claim: Model-affecting construction semantics were represented in more than one path, allowing the independent reconstruction to diverge from the model that actually owned training state.
     cause_evidence:
       - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/mlff-target-size-v7-packages/P3_TRAIN2_EVAL2_REALIZED_MACE_ARCHITECTURE_IMPLEMENTATION_EVIDENCE.md"
-      - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_REPLAY_MACE_EXECUTION_MEMBERSHIP_IDENTITY_REPAIR_SCHEDULER_ARCHITECTURE_AMENDMENT.md"
     repair: NONE
     repair_acceptance: NONE
-    provenance_cluster: mlff-mace-realized-architecture-2026-09
+    provenance_cluster: p3-realized-mace-architecture
     assessments:
       - id: AS01
         state: ADMISSIBLE
         conclusion: CONFIRMED
         evidence:
           - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/mlff-target-size-v7-packages/P3_TRAIN2_EVAL2_REALIZED_MACE_ARCHITECTURE_IMPLEMENTATION_EVIDENCE.md"
-          - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_REPLAY_MACE_EXECUTION_MEMBERSHIP_IDENTITY_REPAIR_SCHEDULER_ARCHITECTURE_AMENDMENT.md"
 ```
 
 ### FF-002 — Continuation authority admitted before an authenticated restart boundary
@@ -107,7 +109,7 @@ semantic_identity:
   applicability_dimensions: first-rung interruption, boundary summaries, continuation companions, raw checkpoints, restart epoch handoff, resume after process failure
 aggregation_scope: mdstats target-size and post-selection training continuation paths
 coverage_state: PARTIAL
-coverage_basis: Reviewed first-rung restart-gap repair, corrupt-component restart matrix, and restart-epoch workplan through accepted baseline b65fa3b; earlier restart history is not exhaustive.
+coverage_basis: Reviewed first-rung restart-gap repair, corrupt-component restart matrix, and restart-epoch repair lineage through accepted baseline b65fa3b; earlier restart history is not exhaustive.
 applicability:
   - restart
   - resume
@@ -130,14 +132,14 @@ occurrences:
       - continuation companion
       - raw MACE checkpoint
       - restart epoch handoff
-    observation: Interrupted work could leave scratch or malformed durable components that a later invocation might otherwise interpret as resumable state; testing also exposed restart handoff and typed-corruption gaps.
-    cause_claim: The continuation path did not uniformly require the exact authenticated durable boundary before reusing state, allowing process-local remnants or incomplete metadata to influence restart behavior.
+    observation: An interrupted first rung could leave partial checkpoint bytes in a deterministic workspace that a retry then reused even though no authenticated continuation boundary existed; later falsification also exposed corrupt-summary and restart-epoch handoff defects.
+    cause_claim: The continuation path did not uniformly distinguish uncommitted scratch from exact authenticated durable boundary state.
     cause_evidence:
       - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_TARGET_SIZE_MACE_RESTART_EPOCH_HANDOFF_BUGFIX_WORKPLAN.md"
       - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:mdstats/training_data/train2_runtime.py"
     repair: NONE
     repair_acceptance: NONE
-    provenance_cluster: mlff-restart-boundary-2026-09
+    provenance_cluster: train2-restart-boundary
     assessments:
       - id: AS01
         state: ADMISSIBLE
@@ -187,8 +189,8 @@ occurrences:
       - P7 released-attempt cleanup
       - recursive filesystem traversal
       - mutation accounting and fsync
-    observation: Repeated implementation reviews found that duplicated routing/destructive paths could classify unknown owner state as generic, lose live authority between check and mutation, or report mutation/bytes inaccurately.
-    cause_claim: One destructive invariant was represented by multiple routing and mutation owners; negative fallthrough and pathname-based rediscovery forced additional synchronization machinery while still leaving semantic gaps.
+    observation: Repeated independent review found that duplicated cleanup routing/destructive paths could classify unknown owner state as generic, lose live authority between check and mutation, or report mutation/bytes inaccurately.
+    cause_claim: One destructive invariant was represented by multiple routing and mutation owners; negative fallthrough and pathname-based rediscovery forced synchronization machinery while still leaving semantic gaps.
     cause_evidence:
       - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/mlff-storage-io-reset/STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md"
       - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_HARDENING_WORKPLAN.md"
@@ -214,13 +216,13 @@ maturity: SUPPORTED
 temperature: UNASSESSED
 summary: GPU admission, cancellation, and teardown become unreliable when scheduler policy is allowed to infer facts owned by the process/run owner or when live memory safety is not enforced at the actual residency boundary.
 semantic_identity:
-  invariant_or_claim: TRAIN2 resource admission and cancellation may control scheduling, but child-process outcome, teardown completion, and live accelerator residency must be established by the owners that actually hold those resources.
+  invariant_or_claim: TRAIN2 resource admission may control scheduling, but child-process outcome, teardown completion, and live accelerator residency must be established by the owners that actually hold those resources.
   owner_class: P5 TRAIN scheduler, TRAIN2 process supervision, and CUDA residency lifetime
   mechanism_family: cross-layer resource inference, delayed residency release, and scheduler-owned timing/classification of process-local facts
   applicability_dimensions: CUDA TRAIN2 concurrency, memory pressure, cancellation, demotion/backoff, child reaping, EVAL2 phase transition
 aggregation_scope: P5 TRAIN2 GPU scheduling and process/resource lifetime repairs
 coverage_state: PARTIAL
-coverage_basis: Reviewed zero-safe admission workplan, two memory-pressure reopen passes, final review closure, and accepted target-host evidence through b65fa3b; earlier scheduler history is not exhaustive.
+coverage_basis: Reviewed zero-safe admission workplan, two memory-pressure reopen passes, final review closure, and target-host evidence through accepted baseline b65fa3b; earlier scheduler history is not exhaustive.
 applicability:
   - CUDA OOM
   - TRAIN scheduler
@@ -243,14 +245,14 @@ occurrences:
       - run cancellation/demotion
       - child process teardown
       - TRAIN-to-EVAL2 phase boundary
-    observation: A real N=512 campaign reached OOM/resource-safety defects; subsequent reviews found additional cases where scheduler timing or intent could misclassify process outcomes or where active residency could remain unsafe despite throttling future work.
+    observation: A real N=512 campaign reached OOM/resource-safety failure; later reviews exposed additional cases where scheduler intent/timing could misclassify process outcomes or active memory residency.
     cause_claim: Scheduling policy and process/resource ownership were not cleanly separated at every boundary, so admission/backoff logic sometimes inferred teardown, cancellation, or memory safety instead of observing it from the responsible owner.
     cause_evidence:
       - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_P5_TRAIN2_CUDA_LIFETIME_AND_ZERO_SAFE_ADMISSION_REPAIR_WORKPLAN.md"
       - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_P5_TRAIN2_MEMORY_PRESSURE_BACKOFF_AND_TERMINAL_INFEASIBILITY_FINAL_REVIEW_CLOSURE.md"
     repair: NONE
     repair_acceptance: NONE
-    provenance_cluster: p5-train2-cuda-resource-cycle-2026-09
+    provenance_cluster: p5-train2-cuda-resource-cycle
     assessments:
       - id: AS01
         state: ADMISSIBLE
@@ -290,7 +292,7 @@ relations: []
 occurrences:
   - id: O01
     event_identity: "hjin98/mdstats@e5c55b5b9662035e96ef9084d5b5c918c8335dd8"
-    lifecycle_context: assembled campaign prepared-generation and direct-EVAL2 repair
+    lifecycle_context: prepared-generation stage-boundary repair
     source_project: local
     surfaces:
       - prepare
@@ -302,10 +304,9 @@ occurrences:
     cause_claim: The campaign persisted identities of preparation components but not one immutable prepared generation that downstream consumers could authenticate and load directly.
     cause_evidence:
       - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_HARDENING_WORKPLAN.md"
-      - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:README.md"
     repair: NONE
     repair_acceptance: NONE
-    provenance_cluster: prepared-generation-stage-boundary-2026-09
+    provenance_cluster: prepared-generation-stage-boundary
     assessments:
       - id: AS01
         state: ADMISSIBLE
@@ -330,7 +331,7 @@ semantic_identity:
   applicability_dimensions: duplicated cleanup paths, scheduler/process ownership, redundant policy fields, wrapper/fallback accumulation
 aggregation_scope: accepted mdstats repair cycles where the implemented fix materially reduced competing ownership rather than adding another compatibility mechanism
 coverage_state: PARTIAL
-coverage_basis: Reviewed favorable and unfavorable intermediate review history for storage R28-R38 and TRAIN2 memory-pressure backoff; no materially contradicting accepted episode was found in those bounded lineages, but broader project history is not exhaustive.
+coverage_basis: Reviewed supporting implementations and the failed/reopened intermediate states in storage R28-R38 and TRAIN2 memory-pressure backoff; no materially contradicting accepted episode was found in those bounded lineages.
 applicability:
   - duplicate owner
   - fallback path
@@ -340,9 +341,17 @@ applicability:
   - move responsibility to owner
 authority_binding: EVIDENCE_ONLY
 binding_health: HEALTHY
-guidance_level: OBSERVED
-positive_guidance_eligible: false
-comparative_basis: NONE
+guidance_level: RECOMMENDED
+positive_guidance_eligible: true
+counterevidence_search:
+  state: COMPLETE_FOR_DECLARED_SCOPE
+  scope: storage R28-R38 and P5 TRAIN2 memory-pressure/backoff repair lineages
+  search_basis: Reviewed final supporting repairs plus intermediate independent-review reopens and no-pass states for evidence that consolidation/reduction caused loss of required behavior or required additive shadow machinery.
+  outcomes_reviewed: [SUPPORTING, NEUTRAL, CONTRADICTING, INCONCLUSIVE]
+  blind_spots: Earlier storage/scheduler history and unrelated mdstats subsystems were not exhaustively searched.
+  evidence:
+    - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/mlff-storage-io-reset/STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md"
+    - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_P5_TRAIN2_MEMORY_PRESSURE_BACKOFF_AND_TERMINAL_INFEASIBILITY_FINAL_REVIEW_CLOSURE.md"
 relations: []
 applications:
   - id: A01
@@ -411,7 +420,7 @@ semantic_identity:
   applicability_dimensions: TRAIN2 checkpoints, campaign CAS state, CV/currentness, storage target identity, restart components
 aggregation_scope: accepted mdstats boundaries where persisted state gates consequential training/evaluation/storage transitions
 coverage_state: PARTIAL
-coverage_basis: Reviewed restart corruption matrix, canonical campaign-state/CAS design, and storage identity/mutation repairs including review counterexamples; no contradicting accepted episode was found in the bounded scope, but broader history is partial.
+coverage_basis: Reviewed restart corruption matrix, canonical campaign-state/CAS design, and storage identity/mutation repairs including failed intermediate review states; no accepted counterexample was found in the declared scope.
 applicability:
   - fail closed
   - digest mismatch
@@ -421,9 +430,18 @@ applicability:
   - exact identity
 authority_binding: EVIDENCE_ONLY
 binding_health: HEALTHY
-guidance_level: OBSERVED
-positive_guidance_eligible: false
-comparative_basis: NONE
+guidance_level: RECOMMENDED
+positive_guidance_eligible: true
+counterevidence_search:
+  state: COMPLETE_FOR_DECLARED_SCOPE
+  scope: TRAIN2 restart authentication, canonical target-size campaign state, and storage final-apply identity lineages
+  search_basis: Reviewed supporting implementations together with the defects found by corruption/substitution counterfactuals and storage implementation reviews; searched for evidence that strict identity binding itself caused acceptance of wrong state or required bypass to preserve correct behavior.
+  outcomes_reviewed: [SUPPORTING, NEUTRAL, CONTRADICTING, INCONCLUSIVE]
+  blind_spots: Other mdstats persistence domains and historical pre-V7 implementations were not exhaustively searched.
+  evidence:
+    - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:mdstats/training_data/train2_runtime.py"
+    - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:docs/arch_manuals/mlff_training_data_architecture.md"
+    - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/mlff-storage-io-reset/STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md"
 relations: []
 applications:
   - id: A01
@@ -516,7 +534,7 @@ semantic_identity:
   applicability_dimensions: prepared generation, completed CV folds, TRAIN2 summaries/checkpoints, restart/resume, storage retention
 aggregation_scope: MLFF campaign stages with expensive preparation or training whose accepted outputs persist across process lifetimes
 coverage_state: PARTIAL
-coverage_basis: Reviewed prepared-generation integration, post-selection resume behavior, and TRAIN2 restart/resource repair evidence including failure cases; broader persistence history is not exhaustive.
+coverage_basis: Reviewed prepared-generation integration, post-selection resume behavior, and TRAIN2 restart/resource repair evidence including failure cases; no accepted contradiction was found in the declared scope.
 applicability:
   - immutable prepared generation
   - content addressed
@@ -526,9 +544,18 @@ applicability:
   - expensive stage reuse
 authority_binding: EVIDENCE_ONLY
 binding_health: HEALTHY
-guidance_level: OBSERVED
-positive_guidance_eligible: false
-comparative_basis: NONE
+guidance_level: RECOMMENDED
+positive_guidance_eligible: true
+counterevidence_search:
+  state: COMPLETE_FOR_DECLARED_SCOPE
+  scope: prepared-generation publication, post-selection completed-run reuse, and TRAIN2 summary/checkpoint restart boundaries
+  search_basis: Reviewed successful reuse episodes together with interrupted-run, corrupt-component, stale/currentness, and storage-survival failure cases; searched for cases where reuse of authenticated accepted work itself produced wrong continuation.
+  outcomes_reviewed: [SUPPORTING, NEUTRAL, CONTRADICTING, INCONCLUSIVE]
+  blind_spots: Other expensive mdstats stages and historical persistence formats were not exhaustively searched.
+  evidence:
+    - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_HARDENING_WORKPLAN.md"
+    - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:mdstats/training_data/campaign_post_selection_runtime.py"
+    - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_P5_TRAIN2_CUDA_LIFETIME_AND_ZERO_SAFE_ADMISSION_REPAIR_WORKPLAN.md"
 relations: []
 applications:
   - id: A01
@@ -577,7 +604,7 @@ applications:
         state: ADMISSIBLE
         conclusion: SUPPORTS_BOUNDED_CLAIM
         evidence:
-          - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:README.md"
+          - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:mdstats/training_data/campaign_post_selection_runtime.py"
   - id: A03
     episode_identity: "hjin98/mdstats@7f64ca980698575bcb3f25e3fd69684e78fedc4d"
     lifecycle_context: TRAIN2 resource-failure recovery
@@ -618,9 +645,9 @@ semantic_identity:
   owner_class: testing/qualification at semantic-owner and deployment boundaries
   mechanism_family: assembled real-owner counterfactuals plus bounded target-host execution
   applicability_dimensions: MACE construction, CUDA memory behavior, restart, storage integration, campaign lifecycle, orchestration
-aggregation_scope: mdstats qualification episodes where production owner composition or target hardware materially affected correctness
+aggregation_scope: mdstats qualification episodes where production-owner composition or target hardware materially affected correctness
 coverage_state: PARTIAL
-coverage_basis: Reviewed P3 real-MACE architecture evidence, assembled P1-P7 storage/campaign integration, and P5 target-host CUDA qualification including failed intermediate review rounds; broader test history is partial.
+coverage_basis: Reviewed P3 real-MACE architecture evidence, assembled P1-P7 storage/campaign integration, and P5 target-host CUDA qualification including failed intermediate review rounds; no accepted counterexample was found in the declared scope.
 applicability:
   - real owner integration
   - target host
@@ -630,9 +657,18 @@ applicability:
   - mock insufficiency
 authority_binding: EVIDENCE_ONLY
 binding_health: HEALTHY
-guidance_level: OBSERVED
-positive_guidance_eligible: false
-comparative_basis: NONE
+guidance_level: RECOMMENDED
+positive_guidance_eligible: true
+counterevidence_search:
+  state: COMPLETE_FOR_DECLARED_SCOPE
+  scope: P3 real-MACE construction, assembled P1-P7 campaign/storage integration, and P5 target-host CUDA resource qualification
+  search_basis: Reviewed supporting qualification as well as failed fixtures, reopened reviews, pre-existing-baseline comparisons, unavailable toolchain evidence, and target-host failures to determine whether real-owner/real-regime testing produced misleading acceptance guidance.
+  outcomes_reviewed: [SUPPORTING, NEUTRAL, CONTRADICTING, INCONCLUSIVE]
+  blind_spots: Hardware regimes beyond the qualified target host and unrelated mdstats subsystems were not exhaustively searched.
+  evidence:
+    - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/mlff-target-size-v7-packages/P3_TRAIN2_EVAL2_REALIZED_MACE_ARCHITECTURE_IMPLEMENTATION_EVIDENCE.md"
+    - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_HARDENING_WORKPLAN.md"
+    - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_P5_TRAIN2_CUDA_LIFETIME_AND_ZERO_SAFE_ADMISSION_REPAIR_WORKPLAN.md"
 relations: []
 applications:
   - id: A01
@@ -648,7 +684,7 @@ applications:
     comparator: configuration-level or mocked-model parity alone
     intended_benefit: Detect construction drift at the actual dependency boundary before checkpoint admission.
     outcome: SUPPORTING
-    observation: The real-owner census exposed multiple previously hidden differences including head identity, avg_num_neighbors, scale/shift shape, and atomic-energy shape, then verified zero descriptor differences after repair.
+    observation: The real-owner census exposed four previously hidden differences and verified zero descriptor differences after repair.
     quantitative_effect: "Four concrete pre-repair architecture divergences were identified in the bounded census."
     uncertainty: P3 evidence did not cover every later P5 foundation/replay/CuEq regime.
     costs_tradeoffs: Requires running pinned MACE construction in a bounded integration fixture rather than relying only on lightweight stand-ins.
@@ -733,6 +769,6 @@ review_trigger:
 
 ## Coverage and maintenance note
 
-This initial PEM intentionally records a small number of high-leverage families rather than converting every archived bugfix into a memory entry. The reviewed history shows a strong repeated theme: mdstats failures often arise at ownership and stage boundaries rather than from the scientific objective itself, while successful repairs tend to make identity, resource lifetime, persistence, and control flow more explicit at the real owner. That observation remains evidence-backed guidance only; it is not permission to override current D1-D4 authority.
+This initial PEM intentionally records a small number of high-leverage families rather than converting every archived bugfix into a memory entry. The reviewed history shows a repeated project-local pattern: mdstats failures frequently arise at ownership, identity, persistence, resource-lifetime, and stage boundaries even when the scientific objective remains sound. The positive guidance above is bounded to the searched regimes and is evidence-backed rather than universal doctrine.
 
-Future material work should extend this file when new evidence changes a family, when an accepted repair creates a defensible recurrence relation, or when a materially relevant historical episode falls outside this initial bounded coverage. Success patterns should continue to include failed, neutral, or contradicting applications when such evidence exists rather than preserving only wins.
+Future material work should extend this file when new evidence changes a family, when an accepted repair creates a defensible recurrence relation, or when a materially relevant historical episode falls outside this initial bounded coverage. Success patterns must retain neutral, contradicting, and inconclusive applications when such evidence appears rather than preserving only wins.
