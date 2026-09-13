@@ -1,6 +1,6 @@
 # MLFF P5 CV no-admissible-checkpoint outcome representation repair workplan
 
-**Status:** ACTIVE / PROPOSED FOR IMPLEMENTATION  
+**Status:** ACTIVE / REOPENED — independent review NO-PASS in `MLFF_P5_CV_NO_ADMISSIBLE_CHECKPOINT_OUTCOME_REPAIR_IMPLEMENTATION_REVIEW_REOPEN.md`; blockers R1-R3 implemented (see `MLFF_P5_CV_NO_ADMISSIBLE_CHECKPOINT_OUTCOME_REPAIR_IMPLEMENTATION_EVIDENCE.md`), awaiting independent re-review  
 **Protocol:** SSDP 6.3  
 **Repository:** `hjin98/mdstats`  
 **Branch:** `fix/mlff-p5-cv-no-admissible-outcome-repair`  
@@ -114,8 +114,9 @@ Use the canonical root `PROJECT-ENGINEERING-MEMORY.md` from the exact accepted/b
 ```yaml
 pem_basis:
   accepted_project_state: 4eabe2ae9783c7ff92f3a1093c37502a01380812
-  accepted_pem: <resolve exact accepted PEM publication from baseline>
-  candidate_overlay_semantic_candidate: NONE
+  accepted_pem: "hjin98/mdstats@4eabe2ae9783c7ff92f3a1093c37502a01380812:PROJECT-ENGINEERING-MEMORY.md (published still declaring the b65fa3b basis and NT-001 REVIEW_REQUIRED)"
+  candidate_overlay_semantic_candidate: "fix/mlff-p5-cv-no-admissible-outcome-repair: basis reconciled through 4eabe2ae (NT-001 retired after the CuEq repair's PASS closure and merge; FF-001 coverage refreshed without a new occurrence)"
+  closeout_learning_assessment: "No new PEM family, occurrence, or application episode for this defect. It is a first local D4 representation/control-flow gap with no recurrence signal; possible SP-001/SP-002/SP-003/SP-004 application episodes are not recorded while the repair is unaccepted and may be assessed at acceptance."
 has:
   - id: SP-004-real-owner-integration
     disposition: APPLICABLE
@@ -125,7 +126,7 @@ has:
     reason: Repair should alter the canonical CV outcome contract rather than add a parallel exception/status/reconciliation subsystem.
   - id: FF-001-realized-model-identity-drift
     disposition: NOT_APPLICABLE
-    reason: The preceding qualified repair established provider/model projection parity for this exact scientific rejection family; current failure occurs after valid candidate metric evaluation.
+    reason: The preceding qualified repair established provider/model projection parity for this exact scientific rejection family; current failure occurs after valid candidate metric evaluation. Re-confirmed against the reconciled basis; no new provider-parity evidence contradicts it.
 ```
 
 If exact entry identifiers differ in the baseline PEM, preserve the same material dispositions using the canonical IDs actually present. Do not create permanent memory entries merely because this is a bug; closeout learning determines whether evidence justifies a new/revised family.

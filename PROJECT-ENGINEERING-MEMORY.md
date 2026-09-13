@@ -5,12 +5,12 @@ project_id: hjin98-mdstats
 repository: hjin98/mdstats
 scope: repository
 coverage_state: PARTIAL
-coverage_basis: "Bounded historical backfill over accepted MLFF campaign/target-size development from August 20 through September 12, 2026. Reviewed archived P1-P7 target-size/campaign workplans and implementation evidence, TRAIN2/EVAL2 architecture and restart repairs, storage-reset R28-R38, scheduler/CUDA lifetime and memory-pressure repairs, assembled campaign/storage integration, and accepted-current architecture/code at b65fa3b02807815d8eca758bc04fb70d514d1f45. Earlier mdstats history, non-MLFF subsystems, and unarchived local incidents are not claimed exhaustive."
-reconciled_through: b65fa3b02807815d8eca758bc04fb70d514d1f45
+coverage_basis: "Bounded historical backfill over accepted MLFF campaign/target-size development from August 20 through September 12, 2026. Reviewed archived P1-P7 target-size/campaign workplans and implementation evidence, TRAIN2/EVAL2 architecture and restart repairs, storage-reset R28-R38, scheduler/CUDA lifetime and memory-pressure repairs, assembled campaign/storage integration, and accepted-current architecture/code at b65fa3b02807815d8eca758bc04fb70d514d1f45; reconciliation through 4eabe2ae9783c7ff92f3a1093c37502a01380812 reviewed the interval b65fa3b..4eabe2ae (PEM initialization and the P5 TRAIN2/EVAL2 CuEq architecture recurrence repair, its independent review reopen, and its PASS closure). Earlier mdstats history, non-MLFF subsystems, and unarchived local incidents are not claimed exhaustive."
+reconciled_through: 4eabe2ae9783c7ff92f3a1093c37502a01380812
 accepted_base:
-  project_state: b65fa3b02807815d8eca758bc04fb70d514d1f45
-  basis: "Accepted mdstats main baseline at PEM initialization. No prior canonical Protocol 6.3 project PEM exists in the repository."
-candidate_overlay: "fix/mlff-p5-train2-eval2-cueq-architecture-recurrence candidate overlay; publication identity is the containing Git commit and is not self-declared accepted."
+  project_state: 4eabe2ae9783c7ff92f3a1093c37502a01380812
+  basis: "Accepted mdstats main at the merge of hjin98/mdstats PR #9 (P5 TRAIN2/EVAL2 CuEq architecture recurrence repair, independently closed PASS). The PEM published at that state is the accepted memory basis; it was initialized at b65fa3b02807815d8eca758bc04fb70d514d1f45."
+candidate_overlay: "fix/mlff-p5-cv-no-admissible-outcome-repair candidate overlay: accepted-base reconciliation only (NT-001 retirement, FF-001 coverage refresh); no new family, occurrence, or application episode. Publication identity is the containing Git commit and is not self-declared accepted."
 detail_files: []
 ---
 
@@ -21,9 +21,7 @@ This is mdstats' project-local Project Engineering Memory (PEM). It records evid
 ## Active summary
 
 <!-- BEGIN DERIVED PEM SUMMARY -->
-High-impact unresolved notices:
-
-- **NT-001** [REVIEW_REQUIRED/HEALTHY]: A real P5 cross-validation run completed TRAIN2 but failed before EVAL2 on CuEq architecture authentication. Candidate diagnosis: replay-head element table (H1), converter device type (H2), and a portable projection that rebuilt its own e3nn shell instead of transferring state into the canonical one; all three are repaired on the candidate branch with the fail-closed guards unchanged. Remains REVIEW_REQUIRED because no independent Protocol 6.3 review has accepted the repair, so FF-001 recurrence membership and counts are not updated.
+High-impact unresolved notices: none. NT-001 is retired (see Current notices).
 
 | ID | Kind | Temperature | Maturity/state | Binding | Guidance | Current evidence | Bounded lesson |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -56,7 +54,7 @@ semantic_identity:
   applicability_dimensions: MACE 0.3.16, target-size P3/P5, multihead/foundation models, avg_num_neighbors, CuEq/OEq realization, architecture digests
 aggregation_scope: mdstats MACE training/evaluation paths that independently reconstruct a model before authenticated checkpoint state is loaded
 coverage_state: PARTIAL
-coverage_basis: Reviewed the archived P3 realized-architecture repair/evidence and the later P5 phase-separated CuEq architecture analysis through accepted baseline b65fa3b; broader MACE history is not claimed exhaustive.
+coverage_basis: Reviewed the archived P3 realized-architecture repair/evidence and the later P5 phase-separated CuEq architecture analysis through accepted baseline b65fa3b, plus the P5 TRAIN2/EVAL2 CuEq architecture recurrence repair lineage closed PASS and integrated at 4eabe2ae; that episode is not counted as a recurrence occurrence because the accepted-repair chronology required for recurrence membership was not established (see NT-001). Broader MACE history is not claimed exhaustive.
 applicability:
   - TRAIN2 EVAL2 architecture digest mismatch
   - independent MACE reconstruction
@@ -746,26 +744,27 @@ applications:
 
 ## Current notices
 
-### NT-001 — Active P5 TRAIN2/EVAL2 CuEq architecture-authentication recurrence investigation
+### NT-001 — P5 TRAIN2/EVAL2 CuEq architecture-authentication recurrence investigation (retired)
 
 ```yaml pem-notice
 id: NT-001
-state: REVIEW_REQUIRED
-summary: A real P5 cross-validation run completed TRAIN2 but failed before EVAL2 on CuEq architecture authentication. Candidate diagnosis: replay-head element table (H1), converter device type (H2), and a portable projection that rebuilt its own e3nn shell instead of transferring state into the canonical one; all three are repaired on the candidate branch with the fail-closed guards unchanged. Remains REVIEW_REQUIRED because no independent Protocol 6.3 review has accepted the repair, so FF-001 recurrence membership and counts are not updated.
+state: RETIRED
+summary: A real P5 cross-validation run completed TRAIN2 but failed before EVAL2 on CuEq architecture authentication. The repair (replay-head element table, converter device type, and dependency-native state transfer into the canonical portable e3nn shell, with fail-closed guards unchanged) was closed PASS by independent Protocol 6.3 review and integrated into accepted main at 4eabe2ae. Retired on that accepted-base change as the closure directed; no FF-001 recurrence occurrence is added, because the strict accepted-repair chronology for recurrence membership was not established.
 normative_status: NON_AUTHORITATIVE
 owner: NONE
 applicability:
   - P5 cross-validate
   - TRAIN2 completed EVAL2 authentication failed
   - CuEq architecture digest mismatch
-  - active recurrence repair workplan
 binding_health: HEALTHY
 evidence:
-  - "hjin98/mdstats@4a4ea51d45ea3082fa1ccb733192c71a10e3cac9:workplans/active/MLFF_P5_TRAIN2_EVAL2_CUEQ_ARCHITECTURE_RECURRENCE_REPAIR_WORKPLAN.md"
-  - "hjin98/mdstats@e2050d0cabac72c2505407fc9bbfc357803072ea:workplans/active/MLFF_P5_TRAIN2_EVAL2_CUEQ_ARCHITECTURE_RECURRENCE_INDEPENDENT_REVIEW_REOPEN.md"
+  - "hjin98/mdstats@4eabe2ae9783c7ff92f3a1093c37502a01380812:workplans/archive/MLFF_P5_TRAIN2_EVAL2_CUEQ_ARCHITECTURE_RECURRENCE_REPAIR_WORKPLAN.md"
+  - "hjin98/mdstats@4eabe2ae9783c7ff92f3a1093c37502a01380812:workplans/archive/MLFF_P5_TRAIN2_EVAL2_CUEQ_ARCHITECTURE_RECURRENCE_INDEPENDENT_REVIEW_REOPEN.md"
+  - "hjin98/mdstats@4eabe2ae9783c7ff92f3a1093c37502a01380812:workplans/archive/MLFF_P5_TRAIN2_EVAL2_CUEQ_ARCHITECTURE_RECURRENCE_FINAL_REVIEW_CLOSURE.md"
 review_trigger:
   type: accepted_base_change
-  basis: b65fa3b02807815d8eca758bc04fb70d514d1f45
+  basis: 4eabe2ae9783c7ff92f3a1093c37502a01380812
+  resolution: RETIRED
 ```
 
 ## Coverage and maintenance note
