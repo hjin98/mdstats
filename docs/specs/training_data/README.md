@@ -16,7 +16,7 @@ The cross-cutting architecture is defined by the canonical chapters under `docs/
 - `mlff_data2a_manifest_inference_gate_spec.md` — explicit source-manifest inference/validation behavior where applicable.
 - `mlff_data3_frame_conditions_spec.md` — frame conditions, reference/strain/stress context and eligibility-facing condition records.
 - `mlff_data4_raw_features_events_spec.md` — partition-independent raw features and protected-event evidence.
-- `mlff_data5_partition_roles_spec.md` — statistical roles, independence, purge, fold/final training-domain construction.
+- `mlff_data5_partition_roles_spec.md` — statistical blocks, outer evidence roles, independence, purge, blinding/leakage semantics, plus the legacy/general DATA5 record family. Its V7 clarification is normative: DATA5 label-domain/preselection `CrossValidationPlan` records are **not** current target-size or P5 CV authority; current target-size uses the compatibility-neutral `NeutralStatisticalBase` with no pre-target CV.
 - `mlff_data6_selection_descriptors_spec.md` — current selection-descriptor and foundation-prediction evidence.
 
 ## Target-size and selected-data authority
@@ -27,13 +27,25 @@ reducer is an *optional automatic diagnostic* over that ladder: it recommends a
 size. The operator owns the provisional choice, and `cross-validate` admission
 is the one boundary that freezes the ordered collection of selected sizes $\{N_i\}$,
 their exact memberships $T_{N_i} = \pi_{\mathrm{train}}[:N_i]$, and their per-size
-training horizons. Retired multi-view, migration, generated-rescue, and pre-target
-per-domain authorities are historical/reject-only and do not create a current
-specification.
+training horizons. Retired multi-view, migration, generated-rescue, label-domain
+per-target-size, and pre-target CV authorities are historical/reject-only and do
+not create a current specification.
+
+The current construction chain deliberately separates two fitted stages:
+
+```text
+authorized pre-order selection evidence
+  -> P_train/M3 split and pi_train/pi_eval
+  -> TargetSizeCommonPreparation over exact P_train
+```
+
+Pre-order descriptor/difficulty evidence may feed the one canonical order. The
+later P3 common training preparation (including current common E0/weights/model
+normalization) is a consumer of P1/P2 authority and is not an input to `pi_train`.
 
 - `mlff_data_stage_plan_spec.md` — cross-cutting evidence-role, fitted-partition, target-size, protocol, currentness, and downstream-boundary invariants.
-- `mlff_data5_partition_roles_spec.md` — source/evidence roles and protected relations used by the neutral substrate.
-- `mlff_data6_selection_descriptors_spec.md` — authorized descriptor/foundation evidence that feeds common preparation without owning membership.
+- `mlff_data5_partition_roles_spec.md` — statistical-role/protected-relation foundations and the current neutral-substrate clarification.
+- `mlff_data6_selection_descriptors_spec.md` — authorized descriptor/foundation evidence that may feed canonical ordering without owning membership.
 
 ## Monitoring, replay, training, checkpointing, and evaluation
 
@@ -53,9 +65,10 @@ The CLI's current implementation ends at selected-only method validation and
 fresh final production. Deployment parity, physical validation, uncertainty
 calibration, and locked testing remain separate downstream product contracts;
 they may consume a frozen final publication but do not feed back into target
-size or method authority.
+size, method authority, checkpoint selection, or final-product membership.
 
 - `mlff_data9a5_deployment_artifact_spec.md` — downstream model-artifact boundary; it does not add a current campaign lifecycle stage.
+- `mlff_p7_post_production_qualification_spec.md` — current downstream qualification/locked-release behavior; current release qualification is single-size only.
 
 Migration-only specifications are non-current and intentionally omitted.
 
@@ -94,7 +107,7 @@ Backend qualification reports, hotfix notes, parity diagnostics, and obsolete mi
 
 ## Authority and compatibility rules
 
-1. Architecture owns cross-subsystem scientific/statistical structure.
+1. Architecture owns cross-subsystem scientific/statistical structure until the proposed D1/D2 reconstruction is formally accepted and the architecture is losslessly narrowed to D3.
 2. This index identifies narrow current specification owners.
 3. A narrow specification may strengthen its local current contract but cannot contradict the architecture.
 4. A workplan, audit, benchmark, release note, generated PDF, or historical document cannot override current architecture/specifications.

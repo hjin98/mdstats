@@ -5,8 +5,8 @@ Use this index to locate current authority before consulting historical material
 | Need | Canonical location |
 |---|---|
 | MLFF current normative architecture | `arch_manuals/mlff_training_data_architecture.{md,pdf}` |
-| MLFF candidate reconstructed scientific formulation (D1; pending review) | `methods/mlff_scientific_method.md` |
-| MLFF candidate reconstructed numerical algorithmic method (D2; pending review) | `methods/mlff_numerical_algorithmic_method.md` |
+| MLFF candidate reconstructed scientific formulation (D1; reviewed, pending human acceptance) | `methods/mlff_scientific_method.md` |
+| MLFF candidate reconstructed numerical algorithmic method (D2; reviewed, pending human acceptance) | `methods/mlff_numerical_algorithmic_method.md` |
 | MLFF chapter-level current architecture context | `arch_manuals/mlff_training_data/` |
 | MLFF machine-readable dependency architecture | `arch_manuals/mlff_training_data_dependency_graph.json` |
 | Training-data current behavior/specifications | `specs/training_data/` |
@@ -17,6 +17,7 @@ Use this index to locate current authority before consulting historical material
 | Downstream final-GPU workstation handoff | `guides/mlff_final_gpu1_workstation_runbook.{md,pdf}` (release-pinned; separate from P6 campaign lifecycle) |
 | MLFF architecture/release lineage | `history/mlff/LINEAGE.md` |
 | MLFF D1/D2 reconstruction provenance | `history/mlff/MLFF_D1_D2_RECONSTRUCTION_EVIDENCE.md` |
+| MLFF D1/D2 lossless reconstruction review | `history/mlff/MLFF_D1_D2_RECONSTRUCTION_REVIEW_2026-09-13.md` |
 | Architecture revision notes | `history/mlff/architecture_revisions/INDEX.md` |
 | Release/patch notes | `history/mlff/release_notes/INDEX.md` |
 | Selected historical MLFF snapshots | `history/mlff/manual_snapshots/` |
@@ -26,6 +27,6 @@ Use this index to locate current authority before consulting historical material
 
 ## Authority rule
 
-The MLFF reconstruction branch proposes an explicit D1 -> D2 -> D3 split: D1 scientific formulation, D2 numerical algorithm design, and D3 software architecture/integration, with current specifications retaining exact accepted behavior, schemas, constants, persistence, and runtime contracts. The candidate D1/D2 papers do not become normative until human review accepts that promotion and the current architecture is correspondingly refactored without semantic loss.
+The MLFF reconstruction branch proposes an explicit D1 -> D2 -> D3 split: D1 scientific formulation, D2 numerical algorithm design, and D3 software architecture/integration, with current specifications retaining exact accepted behavior, schemas, constants, persistence, and runtime contracts. The candidate D1/D2 papers have completed an independent lossless reconstruction review but do not become normative until human review accepts that promotion and the current architecture is correspondingly refactored without semantic loss.
 
 Until that acceptance, the current architecture and specifications remain controlling. Workplans describe proposed transitions and developer implementation gates. Files under `history/` explain completed lineage only, while audits/benchmarks/release artifacts provide evidence. Historical or workplan text does not override current normative documentation.

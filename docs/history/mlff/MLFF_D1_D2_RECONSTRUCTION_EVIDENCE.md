@@ -2,7 +2,8 @@
 
 **Status:** non-normative reconstruction provenance  
 **Reconstructed current head:** `9fd82b0ed40990d56716a393aa3f7db0a2ff44d0`  
-**Date:** 2026-09-13
+**Date:** 2026-09-13  
+**Independent reconstruction review:** `MLFF_D1_D2_RECONSTRUCTION_REVIEW_2026-09-13.md`
 
 This note records how the missing MLFF D1 scientific-method and D2 numerical-algorithm documents were reconstructed. It is historical/provenance evidence, not a third method authority.
 
@@ -12,103 +13,123 @@ The reconstruction followed current authority first, using historical material o
 
 Evidence was classified as:
 
-1. **current product authority/evidence** — current architecture, specifications, current-generation code owners, tests, and accepted current protocol identities;
-2. **accepted transition evidence** — archived workplans and commits that explain why a current invariant exists or how an implementation defect was repaired without changing the frozen method; and
-3. **retired design history** — useful chronology that is explicitly excluded from the reconstructed current method.
+1. **current product authority/evidence** — current architecture, current indexed specifications, current-generation code owners, tests, and authenticated protocol identities;
+2. **accepted transition evidence** — archived workplans and commits that explain why a current invariant exists or how an implementation defect was repaired without changing that invariant; and
+3. **retired historical design** — superseded selector, migration, compatibility-domain, or implementation machinery that must not be restored as current science.
 
-## Principal current sources
+Where two current documentation files disagreed, the conflict was not silently hidden. The reconstruction review identified the conflict, compared current code plus accepted transition evidence, and proposed a documentation reconciliation on the review branch while keeping the D1/D2 papers non-normative pending human acceptance.
 
-### Architecture
+## Current source set
 
-- `docs/arch_manuals/mlff_training_data/00_front_matter.md`
-- `10_foundations.md`
-- `20_data_contracts.md`
-- `30_statistical_design.md`
-- `40_training_evaluation.md`
-- `50_target_size_selection.md`
-- `80_ownership_and_decisions.md`
-- `90_references.md`
+The reconstruction reviewed the current MLFF architecture chapters:
 
-These chapters predate the present D1/D2/D3 authority split and therefore contain mixed scientific, numerical, and architectural material. The new method papers factor the first two categories into explicit D1/D2 ownership while the architecture remains responsible for integration and dependency structure.
+- `docs/arch_manuals/mlff_training_data/10_foundations.md`;
+- `20_data_contracts.md`;
+- `30_statistical_design.md`;
+- `40_training_evaluation.md`;
+- `50_target_size_selection.md`;
+- `60_execution_performance.md`;
+- `80_ownership_and_decisions.md`; and
+- `90_references.md`.
 
-### Current specifications
+It also reviewed the current specification index and the relevant current narrow specifications for:
 
-Important current contracts include the training-data cross-cutting system contract, partition/evidence-role specifications, MACE-artifact/protocol specifications, post-selection/qualification specifications, and documentation-governance material under `docs/specs/training_data/` and `docs/specs/documentation/`.
+- source/label identity;
+- frame conditions, eligibility, reference cells, strain, and stress;
+- shared correlated-sampling primitives;
+- raw feature/event evidence;
+- DATA5/neutral statistical roles;
+- selection descriptors/fitted evidence;
+- MACE/replay/checkpoint behavior;
+- campaign/post-selection execution; and
+- post-production qualification.
 
-### Current executable owners used as conformance evidence
+Representative executable owners included:
 
-- `mdstats/training_data/target_size_experiment.py`
-  - current compatibility-neutral target-size population;
-  - protected-relation split construction;
-  - exact `P_train/M3` allocation;
-  - one deterministic `pi_train` and `pi_eval`;
-  - exact-prefix membership and hard-support qualification;
-  - pure target-size reducer and deterministic history replay.
-- `mdstats/training_data/target_size_execution/common.py`
-  - one seed-neutral, `N`-neutral common fitted preparation;
-  - common atomic-reference fitting and exact candidate projection;
-  - target-only EVAL2 metric policy.
-- `mdstats/training_data/target_size_execution/schedule.py` and sibling execution owners
-  - continuous fidelity trajectories and exact boundary execution.
-- `mdstats/training_data/reference_fit.py`
-  - from-scratch and foundation-residual atomic-reference fitting;
-  - rank/singular-value/null-space diagnostics.
-- `mdstats/training_data/objectives.py`
-  - global energy/force/stress objective coefficients;
-  - per-configuration weights;
-  - local property availability masks as distinct semantic layers.
-- `mdstats/training_data/mace_compatibility.py`
-  - pinned MACE execution identity;
-  - source qualification of dependency behavior;
-  - resolved loss/optimizer/exposure and target-batch semantics.
-- current post-selection execution/protocol owners
-  - fresh fold lineages, checkpoint-monitor separation, held-out evaluation, and fresh final production.
+- `mdstats/training_data/neutral_substrate/partition.py`;
+- `neutral_substrate/split_exclusion.py`;
+- `target_size_experiment.py`;
+- `target_size_execution/common.py` and its execution/reducer siblings;
+- `reference_fit.py`;
+- `objectives.py`;
+- `mace_compatibility.py`;
+- current post-selection/P5 execution owners; and
+- current downstream qualification owners where needed to bound the claim.
 
 ## Accepted transition evidence retained
 
-The following historical transitions materially explain current D1/D2 semantics and were used as evidence without being treated as current product authority:
+Historical/accepted evidence was used to reconstruct present meaning, especially:
 
-- V7 target-size reset/simplification workplans and commits, especially the transition to one compatibility-neutral target-size population, one training order, one nested evaluation ladder, and no pre-target-size CV authority;
-- P2 target-size statistical-authority implementation and its split-exclusion/hard-support correction;
-- P3 paired-screen implementation establishing exact continuous `(N, seed)` trajectories and pure reducer ownership;
-- target-size optimizer-normalization/practical-ceiling workplans establishing
-  `U_ref=ceil(N_ref/B)`, `U_N=ceil(N/B)`, `s_N=U_ref/U_N`, `LR_N=LR_ref*s_N`, and `beta_N=beta_ref**s_N`;
-- MACE execution-semantics alignment, which repaired dependency realization while explicitly preserving the frozen scientific method;
-- provisional/multi-size target-selection work establishing that the automatic screen recommends while the operator owns the provisional design; and
-- post-selection currentness/authorization work preserving selected-only CV and fresh final production.
+- the V7 target-size reset to one compatibility-neutral statistical substrate;
+- P1 neutral source/frame/statistical authority;
+- P2 exact protected-relation split, one `pi_train`/`pi_eval`, hard-support qualification, and pure reducer;
+- P3 one common candidate-training preparation and paired-screen execution;
+- optimizer-progress normalization and practical-ceiling semantics;
+- MACE execution-semantics repairs that restored the already-declared weighted-loss/exposure/batch method;
+- the operator-owned provisional/multi-size freeze boundary; and
+- P5 selected-only post-selection CV plus fresh final production.
 
-Representative commits include `832a4e1`, `ea94347`, `bad25874`, `bd1b3ae`, `63aab70`, `d9f7282`, `1bd10f1`, `e5c55b5`, `9af7d70`, `fa05c800`, `f92e6a1`, `f4a0e77`, and later integration repairs that preserved those invariants.
+Representative accepted commits/workplans include the V7 design/implementation lineage around `832a4e1`, `ea94347`, `bad25874`, `bd1b3ae`, `63aab70`, `d9f7282`, `1bd10f1`, `e5c55b5`, `9af7d70`, `fa05c800`, `f92e6a1`, and `f4a0e77`, together with their later conformance repairs where current main includes them.
 
-## Explicitly excluded retired designs
+## Precise label-domain reconciliation
 
-The following historical material was reviewed for provenance but is **not** part of the reconstructed current method:
+The reconstruction initially risked describing all label-domain material as stale. The independent review corrected that overstatement.
 
-- the per-domain/multi-view target-data selector generation (`FEAS1`, `MVIDX1`, `MVSEL1`, repair/rescue machinery, and associated target-data role/domain freezes);
-- historical target-size migration/read-forward schemes;
-- historical pre-target-size cross-validation authority;
-- obsolete fixed-fidelity selector generations superseded by the current three-boundary continuous funnel; and
-- implementation accidents subsequently repaired at the MACE boundary, including forced `UniversalLoss`, hidden target duplication, optimizer override, and target-batch truncation.
+**Still current scientific authority:**
 
-A historical item is not revived simply because it still appears in a snapshot, release patch, stale specification passage, or compatibility reader.
+- source theory/electronic-structure identity;
+- energy-reference identity;
+- derivative/stress convention;
+- numerical-quality/profile provenance; and
+- the rule that target training evidence must be label-compatible.
 
-## Documentation inconsistency found during reconstruction
+**Retired from the current target-size graph:**
 
-The review found one important residual documentation contradiction.
+- `label_domain_id` as a target-size partition axis;
+- per-label-domain target-size ladders/selectors;
+- pre-target-size DATA5/MLCV authority feeding current target-size selection; and
+- label-domain/CV descendants as parents of current P2/P3/P5 state.
 
-Current V7-era architecture and executable target-size owners use a compatibility-neutral pre-target substrate and explicitly reject retired `label_domain_id`/per-domain target-size ancestry. Some still-current-located cross-cutting and DATA5-era specification prose retains the older label-domain compatibility/partition framing.
+The current `neutral_substrate/partition.py` states its scope directly: a neutral correlation/statistical substrate “without compatibility domains or CV.” Its condition key omits `label_domain_id`, and current P5 structural evidence excludes DATA5/label-domain authority from the selected-only post-selection path.
 
-The reconstructed D1/D2 papers follow the current architecture, accepted V7 transition, and executable owners:
+The still-indexed DATA5 specification retained older/general `PartitionConditionKey` and `CrossValidationPlan` descriptions without clearly stating this V7 cutover. The reconstruction review therefore clarifies that specification on the review branch rather than deleting the still-exposed older/general public record documentation.
 
-- physical/numerical label compatibility remains a source/label-admission concern;
-- canonical numerical label identity remains distinct from provenance; but
-- the current target-size experiment does not create separate target-size/CV authorities along a historical compatibility-domain axis.
+## Pre-order evidence versus P3 common preparation
 
-The stale specification wording should be reconciled in a dedicated documentation repair rather than copied into D1/D2 or silently interpreted as current target-size science.
+Another current documentation drift was discovered during review. One Part III paragraph described the “current common preparation” as producing inputs to `pi_train`, while current P2/P3 code and Parts V/VI order the graph as:
 
-## External-method references recovered
+```text
+pre-order selection evidence
+  -> P_train/M3 and pi_train/pi_eval
+  -> TargetSizeCommonPreparation over exact P_train
+```
 
-The method papers retain the external sources already used by current MLFF documentation for correlated-data analysis, dependent-data cross-validation, structured cross-validation, MLIP validation, and MACE. The papers intentionally avoid attributing mdstats-specific target-size funnel, optimizer normalization, provenance, or failure semantics to those references.
+The reviewed documentation now distinguishes:
 
-## Human-review boundary
+- candidate-independent fitted descriptor/difficulty/selection evidence that may contribute to P2 ordering; and
+- P3 common candidate-training state (common E0, weights/masks, common MACE/model normalization, method inputs) that is fitted after P2 authority and projected without refitting onto each `T_N`.
 
-The new D1 and D2 papers are marked reconstructed/proposed for human review. Consequential scientific or numerical statements should be adjudicated as method authority before the architecture is edited to remove any remaining detailed duplicate ownership. The present branch establishes the authority split and preserves the source evidence required for that review.
+This correction removes a circular dependency without changing executable behavior.
+
+## Retired material deliberately excluded
+
+The reconstruction does **not** promote the following historical designs:
+
+- FEAS1/MVIDX1/MVSEL1 multi-view target-data selection;
+- per-domain target-size authorities and competing candidate orders;
+- target-size rescue/repair/migration graphs retired by V7;
+- old preselection DATA5/MLCV target-size/CV coupling;
+- superseded fixed-fidelity or blocking-ceiling reducer meanings; or
+- dependency implementation accidents such as forced `UniversalLoss`, hidden target duplication, LR/EMA override, or dropped final target batches.
+
+Those materials remain useful history. They are not current D1/D2 method authority.
+
+## Reconstruction completeness review
+
+The first reconstruction draft was strongest around target-size selection and post-selection validation but not yet information-complete for the whole MLFF branch. The independent review restored current source/condition/strain/stress/eligibility semantics, exact sampling/blocking, fitted-domain blinding, replay modes, constrained checkpoint selection, final-publication membership, downstream qualification boundaries, and additional external background references.
+
+The full preservation map and finding-by-finding closure are recorded in `MLFF_D1_D2_RECONSTRUCTION_REVIEW_2026-09-13.md`.
+
+## Authority status
+
+The revised D1/D2 papers are **reviewed reconstruction candidates**. The current architecture/specifications remain normative until human acceptance promotes the upstream D1/D2 documents and a subsequent lossless D3 narrowing pass removes redundant method ownership from architecture without deleting any accepted semantics.

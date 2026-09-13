@@ -19,7 +19,7 @@ This reconstruction branch proposes a clearer future authority split:
 
 Until that acceptance, the current architecture and specifications remain controlling. The candidate papers are reconstruction artifacts and cannot override a conflicting current normative contract merely by being present on this branch.
 
-The D1/D2 documents were reconstructed from current and accepted historical evidence because the pre-SSDP architecture accumulated scientific and numerical material before these layers were formally separated. Reconstruction provenance and explicitly retired designs are recorded in `docs/history/mlff/MLFF_D1_D2_RECONSTRUCTION_EVIDENCE.md`.
+The D1/D2 documents were reconstructed from current and accepted historical evidence because the pre-SSDP architecture accumulated scientific and numerical material before these layers were formally separated. Reconstruction provenance and the independent review/preservation map are recorded under `docs/history/mlff/`.
 
 This manual is intentionally present-tense and single-generation. A reader does not need release chronology, migration history, or obsolete stage semantics to determine current behavior.
 
@@ -38,24 +38,31 @@ Expensive exact numerical work is computed once per semantic identity and reused
 ## Current workflow at a glance
 
 ```text
-source evidence and labels
-  -> eligibility / physical conditions
-  -> raw feature and event evidence
-  -> evidence-role partitioning
-  -> neutral statistical substrate and protected relations
-  -> fitted descriptors, metrics, E0/objective/weight inputs
+source evidence and compatible label authority
+  -> eligibility / physical conditions / reference-cell and strain-stress context
+  -> raw feature and full-resolution event evidence
+  -> neutral statistical substrate, outer evidence roles, and protected relations
+  -> authorized pre-order fitted selection evidence
   -> one P_train / M3 target-size development split
   -> one canonical training order pi_train and evaluation ladder M1 subset M2 subset M3
-  -> one common deterministic target-size preparation
+  -> one common deterministic target-size training preparation over exact P_train
+     (common E0, objective/weights/masks, foundation/head and common model normalization)
   -> optional paired optimizer-seed automatic diagnostic over candidate sizes
-     (one target-size reducer -> a *recommended* size)
+     (one target-size reducer -> a *recommended* size or typed no-recommendation)
   -> operator-owned provisional design (ordered collection of (N, CV horizon, production horizon))
   -> cross-validate admission
   -> frozen design: every selected size N_selected, its exact T_selected = pi_train[:N_selected], and role horizons
   -> post-selection cross-validation on the frozen collection
   -> fresh final production on the selected dataset(s)
   -> currentness-fenced final-production publication
+  -> separately owned downstream qualification/locked release where supported
 ```
+
+The distinction between **pre-order fitted selection evidence** and the later
+`TargetSizeCommonPreparation` is normative for the current architecture. The
+former may help determine the one `pi_train`; the latter is a P3 consumer of
+already accepted `P_train/pi_train` authority and cannot feed backward into the
+order it follows.
 
 The current graph has exactly one target-size architecture. The retired per-domain multi-view selection generation is not an alternate current path: it is neither migrated nor semantically read forward, and a workspace still holding its derived state is rejected with an actionable destructive reset/reprepare requirement before any candidate, checkpoint, or descendant is reused. Raw scientific inputs and independently valid low-level content caches remain reusable when their recipes do not depend on retired target-size semantics.
 
@@ -80,15 +87,15 @@ For targeted human or AI loading, use the smallest current source containing the
 
 | Query terms | Load first |
 |---|---|
-| reconstructed scientific aim, estimand, validity, uncertainty, correlated evidence | `docs/methods/mlff_scientific_method.md` plus the current architecture chapter that owns the corresponding behavior |
-| reconstructed target-size algorithm, E0 fitting, optimizer normalization, reducer, numerical failure | `docs/methods/mlff_numerical_algorithmic_method.md` plus the current owning specification/architecture chapter |
+| reconstructed scientific aim, estimand, label/strain/stress meaning, validity, uncertainty, correlated evidence | `docs/methods/mlff_scientific_method.md` plus the current architecture/specification that owns the corresponding behavior |
+| reconstructed numerical sampling, target-size algorithm, E0 fitting, optimizer normalization, reducer, numerical failure | `docs/methods/mlff_numerical_algorithmic_method.md` plus the current owning specification/architecture chapter |
 | source/label identity, eligibility, strain/stress, raw features/events | `20_data_contracts.md` |
-| evidence roles, leakage, CV, fitted metrics, E0, objective, weighting, exposure | `30_statistical_design.md` |
+| evidence roles, leakage, pre-order fitted selection evidence, common training preparation, objective, weighting, exposure | `30_statistical_design.md` |
 | replay, MACE, checkpoint, evaluation, deployment, calibration, active learning | `40_training_evaluation.md` |
 | target size, `pi_train`, `T_selected`, `M1/M2/M3`, `n1/n2/n3`, post-selection CV, final production | `50_target_size_selection.md` |
 | scheduler, sparse execution, out-of-core, memory, persistence, progress | `60_execution_performance.md` |
 | owner, dependency direction, unsupported generation, extension boundary | `80_ownership_and_decisions.md` |
-| reconstruction provenance / superseded design rationale | `docs/history/mlff/MLFF_D1_D2_RECONSTRUCTION_EVIDENCE.md` and `docs/history/mlff/` |
+| reconstruction provenance / preservation review / superseded design rationale | `docs/history/mlff/MLFF_D1_D2_RECONSTRUCTION_EVIDENCE.md`, `docs/history/mlff/MLFF_D1_D2_RECONSTRUCTION_REVIEW_2026-09-13.md`, and `docs/history/mlff/` |
 | proposed transition | `workplans/active/` |
 
 ## Stable terminology
@@ -100,6 +107,8 @@ For targeted human or AI loading, use the smallest current source containing the
 - **monitor size** — the cardinality of a monitoring/evaluation evidence set; never target-size authority.
 - **training order** — the one canonical deterministic ordering `pi_train` of the target-training pool whose prefixes define candidate target subsets.
 - **qualified size** — a candidate size admitted by the configured target-size policy for the current experiment definition.
+- **pre-order selection evidence** — authorized candidate-independent raw/fitted evidence consumed to construct the one canonical target-training order; it is not target membership authority itself.
+- **common target-size training preparation** — the P3 candidate-independent fitted training state over exact `P_train`, constructed after the P2 split/orders and projected without refitting onto each `T_N`.
 - **provisional design** — the ordered, unique-by-`N` collection of per-size entries `(N_provisional, its exact membership, selection source, CV horizon, production horizon)` the operator owns until admission. Empty is its canonical unselected state.
 - **selected size** — a target size `N_selected` in the ordered frozen design admitted at `cross-validate`, bound to its exact membership `T_selected = pi_train[:N_selected]` and its effective role horizons.
 - **authoritative evidence** — persisted information that defines or independently proves a scientific decision.

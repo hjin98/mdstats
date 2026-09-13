@@ -102,29 +102,51 @@ post-selection CV        -> method validation on the frozen design
 Held-out CV error, calibration evidence, and locked-test evidence therefore
 cannot select or alter the frozen target design, or tune the target-size policy.
 
-## Fitted preparation
+## Fitted preparation: two distinct stages
 
-The current common preparation is built once from the neutral substrate and
-the frozen foundation/training protocol. It may emit:
+The current architecture has two candidate-independent fitted stages that must
+not be collapsed into one circular “common preparation” concept.
+
+### Pre-order selection evidence
+
+Before P2 builds `pi_train`, authorized DATA6/DATA7-style evidence may provide:
 
 - descriptor coordinates and fitted feature metrics;
 - foundation predictions and training-domain residual/difficulty evidence;
-- atomic-reference/E0 fits;
-- objective, configuration-weight, and property-weight records;
-- condition, provenance, event, environment, and diversity inputs;
-- deterministic identities binding each product to its authorized inputs.
+- condition, provenance, event, environment, representative-density, and diversity evidence;
+- hard-obligation/applicability inputs; and
+- deterministic identities binding every fitted product to the domain that fitted it.
 
-These products are inputs to the one canonical training order. They are not a
-second selector. A fitted transform, metric, residual, or E0 correction must
-be bound to the evidence that fitted it and may not be inferred from a
-downstream held-out result.
+These products may contribute to the candidate-independent priority evidence
+consumed by the one canonical training-order owner. They are not a second
+selector. A fitted transform, metric, or residual must be bound to the evidence
+that fitted it and may not be inferred from a downstream held-out result.
 
-For post-selection CV, a fold-local transform or metric is valid only when the
-CV owner explicitly records the fold training partition, protected relations,
-and protocol identity. A fold-local product can change the fold's evaluation
-realization; it cannot change the frozen target collection or any member's exact
-membership. For each frozen size, final production uses the accepted method and its
-complete `T_N`.
+### Post-order common target-size training preparation
+
+After P2 has constructed the exact `P_train`/`M3` split and `pi_train`/`pi_eval`,
+P3 builds one `TargetSizeCommonPreparation` over exact `P_train`. This later
+training preparation is shared unchanged by every authorized candidate size and
+optimizer seed and may contain, as applicable:
+
+- the common target atomic-reference/E0 fit;
+- objective policy and mean-one normalized configuration weights;
+- per-frame property availability masks;
+- foundation checkpoint/head identity;
+- common MACE neighbor/model-construction normalization; and
+- the realized candidate architecture/training inputs that must be N-neutral.
+
+This `TargetSizeCommonPreparation` is **not** an input to `pi_train`; it is a
+consumer of already accepted P1/P2 authority. Candidate projection selects the
+exact `T_N` view of this fitted state and never refits or renormalizes it merely
+because `N` changed.
+
+For post-selection CV, a fold-local transform, E0 fit, or other fitted product
+is valid only when the P5 owner explicitly binds the fold training partition,
+protected relations, and protocol identity. A fold-local product can change the
+fold's evaluation realization; it cannot change the frozen target collection or
+any member's exact membership. For each frozen size, final production uses the
+accepted method and its complete `T_N`.
 
 ## Selection inputs are not a second selector
 
@@ -140,10 +162,11 @@ event/environment/condition evidence
 difficulty and correlation identities
 ```
 
-The target-size policy combines these inputs into the one deterministic
-`pi_train`. There is no competing quota/FPS plan whose prefixes can disagree
-with that order. A materialization or export record may describe a consumer
-view of a frozen `T_N`, but it is not an independent membership authority.
+The target-size policy combines the authorized ordering inputs into the one
+deterministic `pi_train`. There is no competing quota/FPS plan whose prefixes
+can disagree with that order. A materialization or export record may describe a
+consumer view of a frozen `T_N`, but it is not an independent membership
+authority.
 
 ## Objective, weighting, and exposure
 
@@ -201,8 +224,9 @@ The allowed dependency direction is:
 ```text
 raw source / label / feature / event evidence
     -> neutral statistical substrate and protected relations
+    -> pre-order selection evidence
     -> P_train/M3 split and canonical orders
-    -> common fitted preparation
+    -> common target-size training preparation
     -> optional target-size diagnostic screen and reducer (recommends only)
     -> operator-owned provisional design
     -> frozen design (selected sizes, memberships, role horizons) at cross-validate admission
