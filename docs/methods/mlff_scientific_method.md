@@ -64,13 +64,13 @@ $$
 and the integrated autocorrelation time is represented in stored-frame units as
 
 $$
-\tau_{\mathrm{int}}=\frac12+\sum_{k=1}^{k^\star}\rho(k).
+\tau_{\text{int}}=\frac12+\sum_{k=1}^{k^\star}\rho(k).
 $$
 
 The associated diagnostic effective sample count is
 
 $$
-N_{\mathrm{eff}}=\min\left(N,\frac{N}{2\tau_{\mathrm{int}}}\right).
+N_{\text{eff}}=\min\left(N,\frac{N}{2\tau_{\text{int}}}\right).
 $$
 
 This quantity measures serial redundancy under the chosen observable and truncation rule. It is **not** proof that every relevant slow variable has decorrelated, nor proof that separate temporal blocks are independent metastable-state realizations. mdstats therefore carries categorical independence evidence and limitation codes in addition to the numerical autocorrelation estimate.
@@ -125,7 +125,7 @@ Temperature, composition, strain, regime, phase, defect state, surface/interface
 ASE-style source geometry uses row-vector cells,
 
 $$
-\mathbf r_{\mathrm{row}}=\mathbf s_{\mathrm{row}}\mathbf H.
+\mathbf r_{\text{row}}=\mathbf s_{\text{row}}\mathbf H.
 $$
 
 For reference cell `H_0` and current cell `H_t`, the Cartesian column-vector deformation gradient is
@@ -244,13 +244,13 @@ The split preserves all inherited protected relations. Failure to construct the 
 One deterministic order
 
 $$
-\pi_{\mathrm{train}}=(x_1,x_2,\ldots,x_{|P_{train}|})
+\pi_{\text{train}}=(x_1,x_2,\ldots,x_{|P_{\text{train}}|})
 $$
 
 is constructed before candidate training. Candidate membership is
 
 $$
-T_N=\pi_{\mathrm{train}}[:N].
+T_N=\pi_{\text{train}}[:N].
 $$
 
 For `N_a<N_b`, the smaller candidate is therefore a prefix of the larger candidate. Increasing `N` only adds frames; it does not swap to a different selection solution.
@@ -284,12 +284,12 @@ The automatic stage therefore measures one configured short-horizon screening pr
 The primary automatic-screen response is target-force root-mean-square error (RMSE) on the exact target-side model-selection population,
 
 $$
-\mathrm{RMSE}_F=
+\operatorname{RMSE}_F=
 \sqrt{\frac{1}{K}\sum_{k=1}^{K}
-\left(F_k^{\mathrm{pred}}-F_k^{\mathrm{ref}}\right)^2},
+\left(F_k^{\text{pred}}-F_k^{\text{ref}}\right)^2},
 $$
 
-where `k` indexes the admitted Cartesian force components of the exact evaluation membership. The current screen stores the result in meV/angstrom.
+where `k` indexes the admitted Cartesian force components of the exact evaluation membership. The current screen stores the result in meV/Å.
 
 Energy and stress can remain part of the training objective and checkpoint admissibility, but they do not silently replace the frozen target-force ranking response.
 

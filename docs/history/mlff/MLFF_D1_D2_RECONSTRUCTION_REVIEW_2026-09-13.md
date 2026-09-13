@@ -110,7 +110,7 @@ The revised D2 records the current component-size/condition round-robin order an
 The revised D2 now states that
 
 $$
-LR_N U_N=LR_{ref}U_{ref}
+\text{LR}_N U_N=\text{LR}_{\text{ref}}U_{\text{ref}}
 $$
 
 and the analogous EMA relation are first-order progress normalizations. Minibatch stochasticity, Adam/AMSGrad moment history, finite learning-rate discretization, and candidate-dependent gradients remain residual differences. The method does not claim optimizer-path invariance across `N`.
@@ -130,6 +130,19 @@ The first D1 described downstream qualification generically but omitted the curr
 The first papers carried only the MACE/correlated-data/CV core references. The revised D1 adds the current foundation-model, data-generation, committee/UQ context already present in repository references; D2 adds Geyer's autocorrelation reference and keeps version-qualified MACE dependency references at the realization boundary.
 
 No new scientific claim was introduced solely because a citation was added.
+
+### R12 — math markup was semantically correct but not renderer-safe — CLOSED
+
+A second review pass exercised the reconstructed formulas against the repository's declared Pandoc math reader and Typst publication path. Two classes of representation defects were found:
+
+- the D2 EVAL2 unit formulas used LaTeX `\AA`, which the Pandoc-to-Typst conversion rejects as an unexpected control sequence; and
+- textual math annotations written with `\mathrm{...}` or bare multi-letter subscripts were converted as runs of upright/italic math letters rather than stable textual labels, making tags such as `train`, `ref`, `eff`, and `RMSE` render poorly or ambiguously.
+
+The method papers now use `\text{...}` for textual annotations and units, `\operatorname{RMSE}` for the named estimator, and the Unicode angstrom symbol `Å` inside text-mode unit labels. The EVAL2 numerical definition remains exactly the same eV/Å force-component RMSE with the exact `1000` conversion to meV/Å.
+
+This repair changes representation only. It does not change any scientific variable, estimator, membership, optimizer rule, threshold, or authority boundary. A complete D1/D2 formula conversion through `markdown+tex_math_single_backslash+tex_math_dollars` to Typst emits no math-conversion warning after the repair.
+
+The method papers are not registered as direct PDF publications in `docs/pdf_publications.json`; therefore this source-only method-paper repair has no generated PDF descendant to regenerate. The architecture and DATA5 canonical sources were not changed by this pass, so their previously synchronized generated publications remain unaffected.
 
 ## 3. Preservation map
 
@@ -153,7 +166,7 @@ No new scientific claim was introduced solely because a citation was added.
 | objective/configuration/property weights | D1 §7; D2 §8/9 | preserved |
 | optimizer-progress normalization | D1 §6; D2 §10 | preserved; non-equivalence limits restored |
 | continuous fidelity trajectories/restart | D1 §6; D2 §11 | preserved |
-| EVAL2 force RMSE | D1 §6; D2 §12 | preserved |
+| EVAL2 force RMSE | D1 §6; D2 §12 | preserved; renderer-safe notation verified |
 | reducer/practical equivalence/ceiling semantics | D1 §6; D2 §13 | preserved |
 | operator recommendation-vs-decision boundary | D1 §6 | preserved/expanded |
 | constrained checkpoint selection | D1 §7; D2 §15 | restored |
@@ -180,12 +193,13 @@ Historical documents remain useful provenance for why current invariants exist, 
 
 ## 5. Current-documentation repairs made by this review
 
-The review changes current documentation on the reconstruction branch only where multiple current sources were already inconsistent with the assembled current implementation/history:
+The review changes current documentation on the reconstruction branch only where multiple current sources were already inconsistent with the assembled current implementation/history or where the human-facing representation did not survive the supported renderer:
 
 1. Part III now distinguishes pre-order fitted selection evidence from later P3 common target-size training preparation.
 2. Architecture front matter reflects the same dependency order.
 3. DATA5 specification now distinguishes still-documented legacy/general record APIs from the V7 neutral target-size substrate and P5 post-selection CV authority.
 4. The training-data specification index records these boundaries explicitly.
+5. D1/D2 mathematical text annotations and EVAL2 angstrom units now use renderer-safe notation without changing method semantics.
 
 No executable code, scientific constant, candidate membership, model, or stored campaign artifact is changed by this documentation review.
 

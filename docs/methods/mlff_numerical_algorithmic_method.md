@@ -45,7 +45,7 @@ A numerically different quantization/tolerance policy changes identity behavior 
 For ASE row-vector cells,
 
 $$
-\mathbf r_{\mathrm{row}}=\mathbf s_{\mathrm{row}}\mathbf H.
+\mathbf r_{\text{row}}=\mathbf s_{\text{row}}\mathbf H.
 $$
 
 With reference cell `H_0` and current cell `H_t`, the current MLFF strain reconstruction uses
@@ -63,7 +63,7 @@ $$
 is computed by singular-value decomposition. Reflections, singular cells, or nonpositive stretch singular values are rejected. Derived strain measures include
 
 $$
-\boldsymbol\varepsilon_{\mathrm{lin}}=\frac12(\mathbf F+\mathbf F^T)-\mathbf I,
+\boldsymbol\varepsilon_{\text{lin}}=\frac12(\mathbf F+\mathbf F^T)-\mathbf I,
 $$
 
 $$
@@ -103,7 +103,7 @@ An unpaired final positive lag may be retained. The integrated time is bounded t
 The effective count is
 
 $$
-N_{\mathrm{eff}}=\min\left(N,\frac{N}{2\tau_{\mathrm{int}}}\right).
+N_{\text{eff}}=\min\left(N,\frac{N}{2\tau_{\text{int}}}\right).
 $$
 
 No autocorrelation is computed across a source gap, continuation reset, or excluded interval.
@@ -119,13 +119,13 @@ $$
 The correlation-derived block target is
 
 $$
-L_{\mathrm{corr}}=\max\left(1,\left\lceil m\tau_{\max}\right\rceil\right),
+L_{\text{corr}}=\max\left(1,\left\lceil m\tau_{\max}\right\rceil\right),
 $$
 
 and the resolved target is
 
 $$
-L=\max(L_{\min},L_{\mathrm{corr}}),
+L=\max(L_{\min},L_{\text{corr}}),
 $$
 
 unless an explicit accepted override is in force. A short override is recorded as an adequacy limitation rather than silently treated as decorrelated support.
@@ -238,13 +238,13 @@ This produces one exact permutation. The same deterministic rule is used for the
 The target candidate is
 
 $$
-T_N=\pi_{\mathrm{train}}[:N].
+T_N=\pi_{\text{train}}[:N].
 $$
 
 The evaluation rung is
 
 $$
-M_i=\pi_{\mathrm{eval}}[:m_i].
+M_i=\pi_{\text{eval}}[:m_i].
 $$
 
 Membership identity binds parent-order identity, requested cardinality, and ordered frame UIDs. A stored `N` without the exact order/prefix identity is insufficient authority.
@@ -261,8 +261,8 @@ For configured candidate size `N`, derive qualification from the exact prefix:
 
 $$
 Q(N)=
-\mathrm{prefix\ exists}
-\land\mathrm{labels\ usable}(T_N)
+\text{prefix exists}
+\land\text{labels usable}(T_N)
 \land\bigwedge_j c_j(T_N)\ge q_j.
 $$
 
@@ -282,7 +282,7 @@ For from-scratch fitting, the configured regularized least-squares problem is co
 
 $$
 \widehat e=\arg\min_e
-\left[\|Ce-y\|_2^2+\lambda\|e-e_{\mathrm{prior}}\|_2^2\right],
+\left[\|Ce-y\|_2^2+\lambda\|e-e_{\text{prior}}\|_2^2\right],
 $$
 
 with the prior term active only under the corresponding policy.
@@ -290,19 +290,19 @@ with the prior term active only under the corresponding policy.
 For foundation-model fine-tuning, the current production method fits the residual against the bound foundation prediction. With foundation predicted total energy `y_fnd` and foundation elemental references `e_fnd`,
 
 $$
-r=y-y_{\mathrm{fnd}},
+r=y-y_{\text{fnd}},
 $$
 
 $$
 \widehat{\delta e}=\arg\min_{\delta e}
 \left[\|C\delta e-r\|_2^2+
-\lambda\|\delta e-\delta e_{\mathrm{prior}}\|_2^2\right],
+\lambda\|\delta e-\delta e_{\text{prior}}\|_2^2\right],
 $$
 
 and
 
 $$
-e_{\mathrm{target}}=e_{\mathrm{fnd}}+\widehat{\delta e}.
+e_{\text{target}}=e_{\text{fnd}}+\widehat{\delta e}.
 $$
 
 The result binds element order by semantic atomic-number key, not serialized mapping iteration order.
@@ -350,33 +350,33 @@ target optimizer updates per nominal epoch when the final partial batch is retai
 For reference size `N_ref`, reference learning rate `LR_ref`, and reference EMA decay `beta_ref`, define
 
 $$
-U_{\mathrm{ref}}=\left\lceil\frac{N_{\mathrm{ref}}}{B}\right\rceil,
+U_{\text{ref}}=\left\lceil\frac{N_{\text{ref}}}{B}\right\rceil,
 \qquad
-s_N=\frac{U_{\mathrm{ref}}}{U_N}.
+s_N=\frac{U_{\text{ref}}}{U_N}.
 $$
 
 The target-size screen uses
 
 $$
-LR_N=LR_{\mathrm{ref}}s_N,
+\text{LR}_N=\text{LR}_{\text{ref}}s_N,
 $$
 
 and, when EMA is enabled,
 
 $$
-\beta_N=\beta_{\mathrm{ref}}^{s_N}.
+\beta_N=\beta_{\text{ref}}^{s_N}.
 $$
 
 This preserves the first-order per-epoch products
 
 $$
-LR_N U_N=LR_{\mathrm{ref}}U_{\mathrm{ref}},
+\text{LR}_N U_N=\text{LR}_{\text{ref}}U_{\text{ref}},
 $$
 
 and
 
 $$
-(\beta_N)^{U_N}=\beta_{\mathrm{ref}}^{U_{\mathrm{ref}}}.
+(\beta_N)^{U_N}=\beta_{\text{ref}}^{U_{\text{ref}}}.
 $$
 
 The normalized values are computed once from the full candidate geometry and remain unchanged through later fidelity rungs. Survivor count does not rescale them.
@@ -417,7 +417,7 @@ Recovery cannot change candidate membership, normalization, common preparation, 
 At boundary `j`, the exact checkpoint is evaluated on exact evaluation membership `M_j`. If `K` Cartesian force components are admitted,
 
 $$
-\mathrm{RMSE}_{F,\mathrm{eV}/\AA}=
+\operatorname{RMSE}_{F,\text{eV}/\text{Å}}=
 \sqrt{\frac{1}{K}\sum_{k=1}^{K}
 (\widehat F_k-F_k)^2},
 $$
@@ -425,8 +425,8 @@ $$
 and the target-size stored metric is
 
 $$
-\mathrm{RMSE}_{F,\mathrm{meV}/\AA}=
-1000\,\mathrm{RMSE}_{F,\mathrm{eV}/\AA}.
+\operatorname{RMSE}_{F,\text{meV}/\text{Å}}=
+1000\,\operatorname{RMSE}_{F,\text{eV}/\text{Å}}.
 $$
 
 Device batching may partition inference to bound memory. Batch width is execution-only only if exact membership/model state/prediction semantics are preserved and the aggregate metric agrees under the accepted floating-point equivalence contract.
