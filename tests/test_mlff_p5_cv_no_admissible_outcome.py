@@ -451,10 +451,12 @@ _GOOD_OFFSET = 1.0e-4
 #: Every checkpoint of a run at this per-component force error fails the
 #: mandatory target gate, so that fold has no admissible representative.
 _INADMISSIBLE_OFFSET = 0.05
-#: The stakeholder run had five required folds; the fixture's smallest frozen
-#: size has four independent split-exclusion components, so four is the most
-#: required folds its CV plan can lawfully hold.  Every one of them is required.
-_FOLD_COUNT = 4
+#: The stakeholder run had five required folds.  Five outer folds need at least
+#: five independent split-exclusion components per frozen size, which the
+#: fixture's size-8 selection (four components) cannot hold, so these suites
+#: extend only the fixture's size ladder and freeze sizes 16 and 32 instead.
+_FOLD_COUNT = 5
+_FIVE_FOLD_SIZES = (16, 32)
 
 
 class _PlannedOffsetHarness(fx.PostSelectionHarness):
@@ -573,8 +575,7 @@ def test_all_inadmissible_fold_is_a_completed_rejection_and_siblings_complete(
 ):
     """8.2 + 8.3 + O9: one early all-inadmissible fold among every required fold."""
 
-    config_text = fx.fixture_config_text().replace("fold_count = 2", f"fold_count = {_FOLD_COUNT}")
-    config, _workspace = fx.build_selected_campaign(tmp_path, config_text=config_text)
+    config = _five_fold_campaign(tmp_path, _FIVE_FOLD_SIZES[:1])
     capsys.readouterr()
     rejected_fold = 1
     harness = _PlannedOffsetHarness(
@@ -632,19 +633,22 @@ def test_outer_evaluation_failure_after_selection_stays_a_hard_failure(
     assert size.acceptance is None
 
 
-def _two_size_campaign(tmp_path: Path, *, fold_count: int) -> Path:
+def _five_fold_campaign(tmp_path: Path, sizes, *, acceptance_maximum: str = "0.5") -> Path:
+    """A prepared campaign with ``sizes`` frozen by explicit operator selection."""
+
     config_text = (
         fx.fixture_config_text()
-        .replace("acceptance_maximum = 0.5", "acceptance_maximum = 0.005")
-        .replace("fold_count = 2", f"fold_count = {fold_count}")
+        .replace("target_size_power_max = 4", "target_size_power_max = 5")
+        .replace("acceptance_maximum = 0.5", f"acceptance_maximum = {acceptance_maximum}")
+        .replace("fold_count = 2", f"fold_count = {_FOLD_COUNT}")
     )
     from unittest.mock import patch
 
     with patch.object(p4d, "_CONFIG", config_text):
         config, _workspace = p4d._fixture_campaign(tmp_path)
     assert p4d._run(config, "prepare") == 0
-    assert multi._select(config, str(multi.FIRST_SIZE), "--horizon", "2") == 0
-    assert multi._select(config, str(multi.SECOND_SIZE), "--horizon", "3") == 0
+    for horizon, size in enumerate(sizes, start=2):
+        assert multi._select(config, str(size), "--horizon", str(horizon)) == 0
     return config
 
 
@@ -672,7 +676,7 @@ def test_stakeholder_shaped_recovery_reuses_train2_and_completes_every_size(
 ):
     """8.5: all TRAIN2 complete, EVAL2 aborted at slot 0 by the old executable."""
 
-    config = _two_size_campaign(tmp_path, fold_count=_FOLD_COUNT)
+    config = _five_fold_campaign(tmp_path, _FIVE_FOLD_SIZES, acceptance_maximum="0.005")
     cfg, paths, store = fx.load_context(config)
     try:
         contexts = build_post_selection_contexts(cfg, paths, store, admit=True)
@@ -733,6 +737,197 @@ def test_stakeholder_shaped_recovery_reuses_train2_and_completes_every_size(
     with pytest.raises(PostSelectionError, match="not admitted"):
         fx.run_train_production(config, production)
     assert production.runs == []
+
+
+# --- restart reuse re-authenticates the candidate evidence a verdict binds ---
+
+
+def _completed_rejected_campaign(tmp_path: Path):
+    """Two required folds persisted: fold 0 no-admissible, fold 1 selected."""
+
+    config, _workspace = fx.build_selected_campaign(tmp_path)
+    harness = _PlannedOffsetHarness(
+        lambda plan: _INADMISSIBLE_OFFSET if plan.fold_index == 0 else _GOOD_OFFSET
+    )
+    with pytest.raises(PostSelectionCvRejectedError):
+        fx.run_cross_validate(config, harness)
+    (size,) = _fold_verdicts(config)
+    return config, harness, size
+
+
+def _object_path(config: Path, content_digest: str) -> Path:
+    cfg, paths, store = fx.load_context(config)
+    try:
+        (context,) = build_post_selection_contexts(cfg, paths, store)
+        return context.evidence_store.object_path(content_digest)
+    finally:
+        store.close()
+
+
+def _rewrite_verdict(config: Path, run_identity: str, verdict: CvFoldAcceptance) -> None:
+    cfg, paths, store = fx.load_context(config)
+    try:
+        (context,) = build_post_selection_contexts(cfg, paths, store)
+        path = context.run_root(run_identity) / FOLD_ACCEPTANCE_FILENAME
+    finally:
+        store.close()
+    path.write_text(json.dumps(verdict.to_dict(), sort_keys=True), encoding="utf-8")
+
+
+def _corrupt_object(path: Path) -> None:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["full_evaluation_rank"] = int(payload.get("full_evaluation_rank") or 0) + 7
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def _tamper_candidate_admissible(config: Path, run_identity: str, verdict) -> None:
+    """Swap a bound candidate for an admissible one and re-bind the verdict to it."""
+
+    import dataclasses
+
+    from mdstats.training_data.eval2 import Eval2CheckpointRecord
+
+    digests = list(verdict.candidate_record_digests)
+    assert len(digests) >= 2, "the reason union must survive the swap"
+    path = _object_path(config, digests[0])
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.update(admissible=True, rejection_reasons=[], content_digest=None)
+    forged = Eval2CheckpointRecord.from_dict(payload)
+    forged_path = _object_path(config, forged.content_digest)
+    forged_path.parent.mkdir(parents=True, exist_ok=True)
+    forged_path.write_text(json.dumps(forged.to_dict()), encoding="utf-8")
+    _rewrite_verdict(
+        config,
+        run_identity,
+        dataclasses.replace(
+            verdict, candidate_record_digests=(forged.content_digest, *digests[1:])
+        ),
+    )
+
+
+def _tamper_reason_union(config: Path, run_identity: str, verdict) -> None:
+    import dataclasses
+
+    _rewrite_verdict(
+        config,
+        run_identity,
+        dataclasses.replace(
+            verdict,
+            checkpoint_rejection_reasons=(
+                *verdict.checkpoint_rejection_reasons,
+                "replay_retention_ceiling_exceeded",
+            ),
+        ),
+    )
+
+
+_NOT_REPRODUCED = "not reproduced by the checkpoint candidate evidence"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "fold_index, tamper, match",
+    [
+        (0, lambda c, run, v: _object_path(c, v.candidate_record_digests[0]).unlink(), "missing"),
+        (0, lambda c, run, v: _corrupt_object(_object_path(c, v.candidate_record_digests[0])), "digest"),
+        (0, _tamper_candidate_admissible, _NOT_REPRODUCED),
+        (0, _tamper_reason_union, _NOT_REPRODUCED),
+        (
+            1,
+            lambda c, run, v: _object_path(c, v.representative_checkpoint_record_digest).unlink(),
+            "missing",
+        ),
+        (
+            1,
+            lambda c, run, v: _corrupt_object(
+                _object_path(c, v.representative_checkpoint_record_digest)
+            ),
+            "digest",
+        ),
+    ],
+    ids=[
+        "no-admissible-candidate-deleted",
+        "no-admissible-candidate-corrupt",
+        "no-admissible-candidate-forged-admissible",
+        "no-admissible-reason-union-tampered",
+        "selected-representative-deleted",
+        "selected-representative-corrupt",
+    ],
+)
+def test_restart_refuses_a_verdict_whose_candidate_evidence_no_longer_proves_it(
+    tmp_path: Path, monkeypatch, fold_index, tamper, match
+):
+    """R1: a persisted v2 verdict is reused only on authentic candidate evidence."""
+
+    config, harness, size = _completed_rejected_campaign(tmp_path)
+    run_identity, verdict = size.folds[fold_index]
+    expected = (
+        CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE
+        if fold_index == 0
+        else CV_FOLD_OUTCOME_REPRESENTATIVE_SELECTED
+    )
+    assert verdict.outcome == expected
+    tamper(config, run_identity, verdict)
+    trained, evaluated = list(harness.runs), list(harness.evaluations)
+    outer_calls = _count_outer_evaluations(monkeypatch)
+
+    with pytest.raises((PostSelectionError, ValueError), match=match) as excinfo:
+        fx.run_cross_validate(config, harness)
+    # A hard failure, never translated into (or hidden behind) a rejection.
+    assert not isinstance(excinfo.value, PostSelectionCvRejectedError)
+    assert harness.runs == trained and harness.evaluations == evaluated
+    assert outer_calls == {}
+
+
+@pytest.mark.slow
+def test_restart_reuses_authentic_negative_and_v1_verdicts_without_retraining(
+    tmp_path: Path, monkeypatch
+):
+    """R1: authentic v2 negative folds and v1 selected folds are reused as stored."""
+
+    config, harness, size = _completed_rejected_campaign(tmp_path)
+    (_negative_run, negative), (selected_run, selected) = size.folds[0], size.folds[1]
+    assert negative.outcome == CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE
+    # A pre-repair representative-bearing record for the same run plan: v1
+    # binds no candidate set, and none is guessed for it.
+    v1 = selected.to_dict()
+    for key in ("outcome", "candidate_record_digests", "checkpoint_rejection_reasons"):
+        v1.pop(key)
+    v1.update(schema=CV_FOLD_ACCEPTANCE_SCHEMA_V1, content_digest=None)
+    v1 = CvFoldAcceptance.from_dict(v1).to_dict()
+    cfg, paths, store = fx.load_context(config)
+    try:
+        (context,) = build_post_selection_contexts(cfg, paths, store)
+        selected_path = context.run_root(selected_run) / FOLD_ACCEPTANCE_FILENAME
+    finally:
+        store.close()
+    selected_path.write_text(json.dumps(v1, sort_keys=True), encoding="utf-8")
+    v1_bytes = selected_path.read_bytes()
+    trained, evaluated = list(harness.runs), list(harness.evaluations)
+    outer_calls = _count_outer_evaluations(monkeypatch)
+    real_reuse = runtime._completed_fold_acceptance
+    reused = []
+
+    def observed(context, run_plan):
+        result = real_reuse(context, run_plan)
+        reused.append(result)
+        return result
+
+    monkeypatch.setattr(runtime, "_completed_fold_acceptance", observed)
+
+    with pytest.raises(PostSelectionCvRejectedError):
+        fx.run_cross_validate(config, harness)
+    assert harness.runs == trained, "a completed fold was retrained"
+    assert harness.evaluations == evaluated and outer_calls == {}
+    assert [item.outcome for item in reused] == [
+        CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE,
+        CV_FOLD_OUTCOME_REPRESENTATIVE_SELECTED,
+    ]
+    assert reused[0] == negative
+    assert reused[1].serialization_schema == CV_FOLD_ACCEPTANCE_SCHEMA_V1
+    assert reused[1].candidate_record_digests == ()
+    assert reused[1].to_dict() == v1
+    assert selected_path.read_bytes() == v1_bytes
 
 
 @pytest.mark.slow

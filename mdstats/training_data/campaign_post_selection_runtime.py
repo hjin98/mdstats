@@ -54,6 +54,7 @@ from .neutral_substrate.split_exclusion import (
     frame_split_exclusion_component_membership,
 )
 from .post_selection_cv_acceptance import (
+    CV_FOLD_ACCEPTANCE_SCHEMA_V1,
     CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE,
     CvCampaignAcceptance,
     CvFoldAcceptance,
@@ -2942,6 +2943,14 @@ def _completed_fold_acceptance(
     starting over. Reuse is still conditional: the stored acceptance must belong
     to this exact run plan and must have been judged under the current
     acceptance predicate, or it is not evidence about the campaign being run now.
+
+    A current (v2) verdict also binds the checkpoint candidates its outcome was
+    decided from.  Those records are re-read through the authenticated evidence
+    store - a missing or corrupt one fails there - and must still reproduce the
+    verdict's candidate classification: the persisted reason union, no
+    admissible candidate behind a no-admissible verdict, and an admissible
+    representative with the recorded identity behind a selected one.  v1
+    verdicts bind no candidate set, so there is nothing further to re-check.
     """
 
     path = context.run_root(run_plan.run_identity) / FOLD_ACCEPTANCE_FILENAME
@@ -2962,6 +2971,44 @@ def _completed_fold_acceptance(
             f"{run_plan.run_identity[:12]}... does not belong to the current plan or "
             "acceptance predicate. Post-selection evidence is never reinterpreted "
             "under a changed policy."
+        )
+    if acceptance.serialization_schema == CV_FOLD_ACCEPTANCE_SCHEMA_V1:
+        return acceptance
+
+    from .eval2 import Eval2CheckpointRecord
+
+    candidates = [
+        context.evidence_store.get(item, Eval2CheckpointRecord.from_dict)
+        for item in acceptance.candidate_record_digests
+    ]
+    # The constructor already guarantees a selected representative's digest is
+    # one of the bound candidates, so it resolves exactly when one was selected.
+    representative = next(
+        (
+            item
+            for item in candidates
+            if item.content_digest == acceptance.representative_checkpoint_record_digest
+        ),
+        None,
+    )
+    reasons = tuple(sorted({r for item in candidates for r in item.rejection_reasons}))
+    if (
+        reasons != acceptance.checkpoint_rejection_reasons
+        or (representative is None and any(item.admissible for item in candidates))
+        or (
+            representative is not None
+            and (
+                not representative.admissible
+                or representative.stable_candidate_identity
+                != acceptance.representative_candidate_identity
+            )
+        )
+    ):
+        raise PostSelectionError(
+            f"Stored fold verdict for cross-validation run "
+            f"{run_plan.run_identity[:12]}... is not reproduced by the checkpoint "
+            "candidate evidence it binds. A fold verdict is never reused on "
+            "evidence that no longer proves it; rerun the affected work."
         )
     return acceptance
 
