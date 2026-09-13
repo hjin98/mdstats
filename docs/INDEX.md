@@ -18,6 +18,7 @@ Use this index to locate current authority before consulting historical material
 | MLFF architecture/release lineage | `history/mlff/LINEAGE.md` |
 | MLFF D1/D2 reconstruction provenance | `history/mlff/MLFF_D1_D2_RECONSTRUCTION_EVIDENCE.md` |
 | MLFF D1/D2 lossless reconstruction review | `history/mlff/MLFF_D1_D2_RECONSTRUCTION_REVIEW_2026-09-13.md` |
+| MLFF lower-layer conformance challenges discovered during reconstruction | `history/mlff/MLFF_D1_D2_RECONSTRUCTION_IMPLEMENTATION_CHALLENGES_2026-09-13.md` |
 | Architecture revision notes | `history/mlff/architecture_revisions/INDEX.md` |
 | Release/patch notes | `history/mlff/release_notes/INDEX.md` |
 | Selected historical MLFF snapshots | `history/mlff/manual_snapshots/` |
