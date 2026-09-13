@@ -1,27 +1,27 @@
 # MLFF architecture canonical chapter sources
 
-The numbered Markdown files in this directory are the **canonical editable sources** for the current D3 MLFF architecture. The assembled `../mlff_training_data_architecture.md` and its PDF are derived publication products and must be regenerated from these chapters rather than edited independently.
+The numbered Markdown files in this directory are the **canonical editable sources** for the current MLFF architecture. The assembled `../mlff_training_data_architecture.md` and its PDF are derived publication products and must be regenerated from these chapters rather than edited independently.
 
-Scientific and numerical method authority has been factored into:
+This reconstruction branch adds candidate upstream method documents:
 
-- `docs/methods/mlff_scientific_method.md` — D1 scientific formulation;
-- `docs/methods/mlff_numerical_algorithmic_method.md` — D2 numerical algorithm design.
+- `docs/methods/mlff_scientific_method.md` — reconstructed D1 scientific formulation;
+- `docs/methods/mlff_numerical_algorithmic_method.md` — reconstructed D2 numerical algorithm design.
 
-These architecture chapters may retain concise summaries of D1/D2 consequences where needed to explain integration, but they do not independently redefine the upstream method.
+They are pending human review and do not yet supersede this current normative architecture. If accepted, the architecture chapters should be reconciled losslessly and narrowed to D3 integration summaries; concise restatement of accepted D1/D2 consequences may remain where necessary for local comprehension, but must not form a second independently tunable authority.
 
 The architecture is present-tense and single-generation. Historical selector/repair/migration designs belong under `docs/history/mlff/`; proposed implementation transitions belong under `workplans/`.
 
 | Order | Chapter | Purpose |
 |---:|---|---|
-| 00 | `00_front_matter.md` | Purpose, D1/D2/D3 authority boundary, workflow map, terminology, retrieval index |
-| 01 | `10_foundations.md` | Part I - architectural foundations and scientific consequences |
-| 02 | `20_data_contracts.md` | Part II - data and evidence contracts |
-| 03 | `30_statistical_design.md` | Part III - statistical-role and fitted-preparation architecture |
-| 04 | `40_training_evaluation.md` | Part IV - training, evaluation, and deployment architecture |
-| 05 | `50_target_size_selection.md` | Part V - target-size ownership and post-selection validation architecture |
-| 06 | `60_execution_performance.md` | Part VI - bounded execution, restart, and performance architecture |
-| 07 | `80_ownership_and_decisions.md` | Part VII - ownership and extension boundaries |
-| 08 | `90_references.md` | Architecture references |
+| 00 | `00_front_matter.md` | Purpose, proposed D1/D2/D3 authority boundary, workflow map, terminology, retrieval index |
+| 01 | `10_foundations.md` | Part I - Foundations |
+| 02 | `20_data_contracts.md` | Part II - Data and evidence contracts |
+| 03 | `30_statistical_design.md` | Part III - Statistical design and fitted preparation |
+| 04 | `40_training_evaluation.md` | Part IV - Training, evaluation, and deployment |
+| 05 | `50_target_size_selection.md` | Part V - Target-size selection and post-selection validation |
+| 06 | `60_execution_performance.md` | Part VI - Bounded execution, restart, and performance architecture |
+| 07 | `80_ownership_and_decisions.md` | Part VII - Ownership and extension boundaries |
+| 08 | `90_references.md` | References |
 
 `70_status_and_gates.md` is not a current architecture chapter and must not be recreated as a task/status surface. Release/gate chronology is non-normative.
 

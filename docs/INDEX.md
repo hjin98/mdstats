@@ -4,9 +4,9 @@ Use this index to locate current authority before consulting historical material
 
 | Need | Canonical location |
 |---|---|
-| MLFF scientific formulation (D1) | `methods/mlff_scientific_method.md` |
-| MLFF numerical algorithmic method (D2) | `methods/mlff_numerical_algorithmic_method.md` |
-| MLFF training-data/fine-tuning architecture (D3) | `arch_manuals/mlff_training_data_architecture.{md,pdf}` |
+| MLFF current normative architecture | `arch_manuals/mlff_training_data_architecture.{md,pdf}` |
+| MLFF candidate reconstructed scientific formulation (D1; pending review) | `methods/mlff_scientific_method.md` |
+| MLFF candidate reconstructed numerical algorithmic method (D2; pending review) | `methods/mlff_numerical_algorithmic_method.md` |
 | MLFF chapter-level current architecture context | `arch_manuals/mlff_training_data/` |
 | MLFF machine-readable dependency architecture | `arch_manuals/mlff_training_data_dependency_graph.json` |
 | Training-data current behavior/specifications | `specs/training_data/` |
@@ -26,6 +26,6 @@ Use this index to locate current authority before consulting historical material
 
 ## Authority rule
 
-For the MLFF branch, D1 method documents own scientific formulation, D2 method documents own numerical algorithm design, D3 architecture owns software structure/dependency/ownership consequences, and current specifications own exact accepted behavior, schemas, constants, persistence, and runtime contracts. A lower layer must preserve accepted upstream meaning rather than silently redefining it.
+The MLFF reconstruction branch proposes an explicit D1 -> D2 -> D3 split: D1 scientific formulation, D2 numerical algorithm design, and D3 software architecture/integration, with current specifications retaining exact accepted behavior, schemas, constants, persistence, and runtime contracts. The candidate D1/D2 papers do not become normative until human review accepts that promotion and the current architecture is correspondingly refactored without semantic loss.
 
-Workplans describe proposed transitions and developer implementation gates. Files under `history/` explain completed lineage only, while audits/benchmarks/release artifacts provide evidence. Historical or workplan text does not override current D1-D3 authority or current specifications.
+Until that acceptance, the current architecture and specifications remain controlling. Workplans describe proposed transitions and developer implementation gates. Files under `history/` explain completed lineage only, while audits/benchmarks/release artifacts provide evidence. Historical or workplan text does not override current normative documentation.
