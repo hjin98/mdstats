@@ -143,7 +143,9 @@ def _foundation_inspection(path: Path) -> MaceFoundationInspection:
     )
 
 
-def _write_tiny_mace_foundation(path: Path) -> None:
+def _write_tiny_mace_foundation(
+    path: Path, *, atomic_numbers: tuple[int, ...] = (3, 8)
+) -> None:
     """Write a small real MACE model accepted by the MPA-0 foundation owner."""
 
     import torch
@@ -152,7 +154,7 @@ def _write_tiny_mace_foundation(path: Path) -> None:
 
     model = _tiny_mace(
         interaction_cls_name="RealAgnosticDensityResidualInteractionBlock",
-        atomic_numbers=(3, 8),
+        atomic_numbers=atomic_numbers,
         heads=["default"],
         seed=7,
         dtype=torch.float64,

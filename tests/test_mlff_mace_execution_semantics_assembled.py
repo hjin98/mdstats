@@ -51,6 +51,7 @@ from mdstats.training_data.mace_compatibility import (
 from mdstats.training_data.model_features import (
     build_mace_model_from_configuration,
     mace_model_execution_architecture_digest,
+    realize_mace_training_model,
 )
 from mdstats.training_data.train2_runtime import (
     load_train2_runtime_boundary_summary,
@@ -128,29 +129,33 @@ def _two_condition_data4_bundle(
     return manifest, sources, frames, data4
 
 
-def _write_single_source_replay_file(path: Path, indices: list[int]) -> None:
+def _write_single_source_replay_file(
+    path: Path, indices: list[int], *, symbols: str = "LiO"
+) -> None:
     """Write a true-label replay source with only its existing geometry identity."""
 
     from ase import Atoms
     from ase.io import write
+    from ase.symbols import string2symbols
 
     frames = []
     for index in indices:
         atoms = Atoms(
-            "LiO",
+            symbols,
             positions=(
                 (0.8 + 0.35 * index, 0.8, 0.8),
                 (4.5, 4.5, 4.5),
-            ),
+                (2.6, 7.1, 1.4),
+            )[: len(string2symbols(symbols))],
             cell=np.eye(3) * 10.0,
             pbc=True,
         )
         atoms.info["REF_energy"] = -10.0 + 0.01 * index
         atoms.info["replay_geometry_identity"] = canonical_replay_geometry_identity(atoms)
-        atoms.arrays["REF_forces"] = np.asarray(
-            [[0.1 + 0.001 * index, 0.0, 0.0], [-0.1 - 0.001 * index, 0.0, 0.0]],
-            dtype=np.float64,
-        )
+        forces = np.zeros((len(atoms), 3), dtype=np.float64)
+        forces[0, 0] = 0.1 + 0.001 * index
+        forces[1, 0] = -0.1 - 0.001 * index
+        atoms.arrays["REF_forces"] = forces
         frames.append(atoms)
     path.parent.mkdir(parents=True, exist_ok=True)
     write(path, frames, format="extxyz")
@@ -903,3 +908,208 @@ legacy_normalized = true
         ) == replay_lineage_digest
     finally:
         store.close()
+
+
+@pytest.mark.parametrize("training_backend", ["e3nn", "cueq"])
+def test_p5_real_cross_validate_resumes_eval2_for_replay_only_elements(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, training_backend: str
+) -> None:
+    """Assembled ``cross-validate`` over a replay corpus with elements the target lacks.
+
+    Pinned MACE builds its element table from the target and replay data, so
+    the real TRAIN2 model carries hydrogen that no target frame contains.  The
+    real CLI launches the qualified wrapper, EVAL2 independently reconstructs
+    and authenticates every run, an interruption at the first EVAL2 consumer
+    leaves durable TRAIN2 state, and a second invocation completes EVAL2
+    without launching TRAIN2 again.  Every resumed EVAL2 chunk runs the real
+    authenticated provider forward; only the downstream statistics keep the
+    bounded harness values, since the tiny model's scientific admissibility is
+    not the claim.
+
+    With ``training_backend="cueq"`` TRAIN2 is the phase-separated transient
+    CuEq realization on CUDA, so EVAL2 must authenticate that realization and
+    project its state back into the canonical portable e3nn provider.
+    """
+
+    import sys
+
+    import mdstats as mdstats_package
+    from tests import test_mlff_target_size_p4d_runtime_cutover as p4d
+
+    root = tmp_path / "inputs"
+    foundation = root / "foundation.model"
+    replay_source = root / "replay-source.extxyz"
+    foundation.parent.mkdir(parents=True, exist_ok=True)
+    _write_tiny_mace_foundation(foundation, atomic_numbers=(1, 3, 8))
+    _write_single_source_replay_file(replay_source, list(range(12)), symbols="LiOH")
+
+    config_text = fixture_config_text()
+    config_text = config_text.replace(
+        'training_root = "{training_root}"',
+        "\n".join(
+            (
+                'training_root = "{training_root}"',
+                f'foundation_model = "{foundation}"',
+                f'replay_set = "{replay_source}"',
+            )
+        ),
+    )
+    config_text = config_text.replace(
+        "seeds = [1, 2]", "seeds = [1, 2]\nmode = \"multihead_replay\"", 1
+    )
+    config_text = config_text.replace("partition_seed = 7", "partition_seed = 2", 1)
+    config_text += """
+
+[replay]
+label_mode = "true_dft"
+split_ratio = "5:1"
+split_seed = 42
+allow_small_corpus = true
+minimum_train_configurations = 1
+minimum_monitor_configurations = 1
+require_target_elements = false
+
+[foundation]
+family = "mace_mpa_0"
+head = "default"
+legacy_normalized = true
+"""
+    if training_backend == "cueq":
+        torch = pytest.importorskip("torch")
+        pytest.importorskip("cuequivariance_torch")
+        if not torch.cuda.is_available():
+            pytest.skip("The phase-separated CuEq TRAIN2 realization is CUDA-specific.")
+        config_text = config_text.replace('device = "cpu"', 'device = "cuda"', 1)
+        config_text += """
+
+[acceleration]
+backend = "e3nn"
+training_backend = "cueq"
+only_cueq = false
+require_available = true
+"""
+        fixture_campaign = p4d._fixture_campaign
+
+        def campaign_with_qualified_cueq_training(*args, **kwargs):
+            # Doctor-frozen TRAIN2 runtime qualification, seeded exactly as the
+            # base fixture seeds the source realization.
+            config, workspace = fixture_campaign(*args, **kwargs)
+            _cfg, paths = cli._load_config(config)
+            store = cli.CampaignStore(paths.state_db)
+            try:
+                store.put_record(
+                    "training_acceleration_realization",
+                    mdstats.TrainingAccelerationRealizationRecord(
+                        requested_backend="cueq",
+                        training_kernel_mode="cueq_pure",
+                        device="cuda",
+                        dtype="float32",
+                        training_checkpoint_reference=str(foundation),
+                        training_checkpoint_sha256=cli._sha256(foundation),
+                        selected_head_qualification_digest="b" * 64,
+                        mace_version="0.3.16",
+                        cueq_versions=(("cuequivariance", "fixture"),),
+                        training_parity_record_digest="c" * 64,
+                        qualified=True,
+                    ),
+                )
+            finally:
+                store.close()
+            return config, workspace
+
+        monkeypatch.setattr(p4d, "_fixture_campaign", campaign_with_qualified_cueq_training)
+    config, _workspace = build_selected_campaign(
+        tmp_path / "campaign",
+        config_text=config_text,
+        data4_bundle=_two_condition_data4_bundle,
+    )
+
+    launches = tmp_path / "train2-launches.txt"
+    wrapper = tmp_path / "mdstats-mace-train"
+    source_root = Path(mdstats_package.__file__).resolve().parents[1]
+    wrapper.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        f"sys.path.insert(0, {str(source_root)!r})\n"
+        f"open({str(launches)!r}, 'a').write('launch\\n')\n"
+        "from mdstats.training_data.critical_precision_cli import train_main\n"
+        "raise SystemExit(train_main())\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setattr(
+        cli, "_ensure_local_wrappers", lambda _paths: {"mdstats-mace-train": wrapper}
+    )
+
+    class _InterruptAtEval2(PostSelectionHarness):
+        def evaluate(self, provider, atoms_list):
+            raise RuntimeError("simulated interruption at the first EVAL2 consumer")
+
+    with pytest.raises(RuntimeError, match="simulated interruption"):
+        p4d._run(
+            config,
+            "cross-validate",
+            _external_inference_evaluator=_InterruptAtEval2().evaluate,
+        )
+    trained = launches.read_text(encoding="utf-8").splitlines()
+    assert trained, "TRAIN2 must have run before the EVAL2 interruption"
+
+    cfg, paths, store = load_context(config)
+    try:
+        context = build_post_selection_context(
+            cfg, paths, store, inference_evaluator=PostSelectionHarness().evaluate
+        )
+        from mdstats.training_data.post_selection_store import post_selection_root
+
+        runs = post_selection_root(paths, context.selected.binding.campaign_generation) / "runs"
+        run_roots = [path for path in runs.iterdir() if path.is_dir()]
+        assert run_roots
+        for run_root in run_roots:
+            summary = load_train2_runtime_summary(run_root / "checkpoints")
+            config_payload = json.loads(
+                (
+                    run_root / "materialization" / "post_selection_mace_config.yaml"
+                ).read_text(encoding="utf-8")
+            )
+            assert 1 not in config_payload["atomic_numbers"]
+            model = build_mace_model_from_configuration(
+                config_payload, foundation_model_path=foundation
+            )
+            assert 1 in [int(z) for z in model.atomic_numbers]
+            if training_backend == "cueq":
+                assert config_payload["enable_cueq"] is True
+                assert config_payload["only_cueq"] is False
+                assert config_payload["device"] == "cuda"
+                model, realization = realize_mace_training_model(model, config_payload)
+                assert realization == "cueq"
+            assert (
+                mace_model_execution_architecture_digest(model)
+                == summary.model_architecture_digest
+            )
+    finally:
+        store.close()
+
+    class _RealProviderForward(PostSelectionHarness):
+        def evaluate(self, provider, atoms_list):
+            real = provider.predict_batch(atoms_list)
+            assert len(real) == len(atoms_list)
+            assert all(
+                np.isfinite(prediction.energy_ev)
+                and np.isfinite(prediction.forces_ev_per_angstrom).all()
+                for prediction in real
+            )
+            return super().evaluate(provider, atoms_list)
+
+    resumed = _RealProviderForward()
+    assert (
+        p4d._run(
+            config,
+            "cross-validate",
+            _external_inference_evaluator=resumed.evaluate,
+        )
+        == 0
+    )
+    assert resumed.evaluations, "EVAL2 must consume the authenticated providers"
+    assert launches.read_text(encoding="utf-8").splitlines() == trained, (
+        "completed TRAIN2 runs were retrained instead of resumed at EVAL2"
+    )
