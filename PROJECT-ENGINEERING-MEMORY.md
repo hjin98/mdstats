@@ -78,7 +78,7 @@ occurrences:
       - independent EVAL2 reconstruction
       - MACE head/default construction
       - model-affecting normalization and calibration buffers
-    observation: A bounded real pinned-MACE construction census found four concrete pre-repair differences between the model MACE realized and mdstats' independent reconstruction: head identity, avg_num_neighbors, scale/shift shape, and atomic-energy shape.
+    observation: "A bounded real pinned-MACE construction census found four concrete pre-repair differences between the model MACE realized and mdstats' independent reconstruction: head identity, avg_num_neighbors, scale/shift shape, and atomic-energy shape."
     cause_claim: Model-affecting construction semantics were represented in more than one path, allowing the independent reconstruction to diverge from the model that actually owned training state.
     cause_evidence:
       - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/mlff-target-size-v7-packages/P3_TRAIN2_EVAL2_REALIZED_MACE_ARCHITECTURE_IMPLEMENTATION_EVIDENCE.md"
