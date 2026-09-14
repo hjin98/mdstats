@@ -225,7 +225,7 @@ The baseline target-order method uses only candidate-independent evidence whose 
 - universal strain coordinates where they are scientifically defined; and
 - material-neutral, element-resolved frame summaries of the accepted universal local-structure feature contract.
 
-These inputs define one target-order metric and one order owner. Mass density, material/profile-specific pair-rule coordinates, profile-declared atom groups or site classes, material-specific event descriptors, foundation-model predictions/descriptors, and label-derived residual/difficulty are not baseline membership coordinates.
+These inputs define one target-order metric policy/schema and one order owner; D2 realizes that policy as separate fitted `d_U` and `d_P` metric instances on their authorized domains. Mass density, material/profile-specific pair-rule coordinates, profile-declared atom groups or site classes, material-specific event descriptors, foundation-model predictions/descriptors, and label-derived residual/difficulty are not baseline membership coordinates.
 
 Fitted target-order transforms obey their authorized domain: pre-split redundancy evidence is fitted only on exact `U_size`; post-split training-order evidence is refitted only on exact `P_train`. `M3` labels and candidate outcomes fit neither metric. Candidate-independent evidence does not create a second selector or per-candidate order.
 

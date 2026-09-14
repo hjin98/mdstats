@@ -27,7 +27,7 @@ The core current D2 invariants are:
 - pre-order target membership is constructed from one explicit material-neutral structural-support method; an empty priority vector or lexical UID order is not a valid baseline target-order method;
 - exact `U_size -> P_train + M3` splitting preserves protected components, exact reserve cardinality, at least one retained training frame per eligible neutral condition, and globally minimum exact condition depletion before retained-set structural redundancy;
 - `d_U` and `d_P` are distinct fitted target-order metrics with fixed source-coordinate schema and exact fit-domain identity;
-- one medoid-anchored, condition-local exact farthest-point sampling (FPS) construction plus exact proportional condition scheduling owns `pi_train`; every target candidate is the exact prefix `T_N=pi_train[:N]`;
+- one median-nearest-representative-anchored, condition-local exact farthest-point sampling (FPS) construction plus exact proportional condition scheduling owns `pi_train`; every target candidate is the exact prefix `T_N=pi_train[:N]`;
 - exact full `M3` target-force EVAL2 is the sole automatic model-selection population at every configured fidelity boundary;
 - `pi_eval`, `M1`, and `M2` are diagnostic probability-sampling evidence only and have no ranking, elimination, qualification, tie-break, recommendation, horizon-selection, or freeze authority;
 - target-size fitted training state is common across sizes/seeds and candidate projection never refits or renormalizes it;
@@ -175,7 +175,7 @@ Mass density, material/profile pair-rule coordinates, declared/profile atom grou
 Two fitted target-order metrics are authorized:
 
 - `d_U`, fitted on exact `U_size`, is used only for pre-split retained-set structural redundancy;
-- `d_P`, refitted after the split on exact `P_train`, is used for condition medoids, condition-local FPS, and training-prefix coverage diagnostics.
+- `d_P`, refitted after the split on exact `P_train`, is used for condition median-nearest representatives, condition-local FPS, and training-prefix coverage diagnostics.
 
 `M3` labels and candidate outcomes fit neither metric. Pre-order target-order evidence is preparation-owned scientific state and is published once with the immutable prepared generation; downstream commands consume that state rather than reconstructing it from live inputs.
 
@@ -208,17 +208,19 @@ Project the accepted P1 protected-relation authority onto `U_size` and compute t
 
 Every eligible neutral condition represented in `U_size` is training-critical for the baseline target-size experiment: a valid split must retain at least one `P_train` frame from every such condition.
 
-### 5.2 Scientific occurrence key and exact encoding
+### 5.2 Scientific occurrence key, component tie key, and exact encoding
 
-Target-order tie and identity semantics use the scientific occurrence key
+Target-order tie and identity semantics use a **scientific occurrence key** that distinguishes declared source occurrences even when their source content and geometry are identical:
 
 ```text
-schema = "mdstats.target-order-scientific-occurrence-key.v3"
+schema = "mdstats.target-order-scientific-occurrence-key.v4"
 condition_id
-source_identity_signature
+source_occurrence_signature
 source_frame_index
 geometry_fingerprint
 ```
+
+`source_occurrence_signature` is the accepted upstream occurrence identity that binds the declared run occurrence, including its run/source-locator context and source-content identity. `source_identity_signature` alone is insufficient because two declared occurrences may intentionally share identical source content.
 
 Canonical encoding is:
 
@@ -226,9 +228,19 @@ Canonical encoding is:
 - `source_frame_index`: unsigned 64-bit big-endian with `0 <= source_frame_index <= 2^64-1`;
 - concatenate fields in the stated order after the schema field and SHA-256 the resulting bytes.
 
-Out-of-range frame index is an identity failure, not an alternate encoding. Call the resulting digest `kappa`.
+Out-of-range frame index is an identity failure, not an alternate encoding. Call the resulting digest `kappa`. The accepted occurrence authority must not contain two exact `U_size` frames with the same `(source_occurrence_signature, source_frame_index)` pair; therefore every exact `U_size` frame must have a unique `kappa`. A duplicate `kappa` is a fail-closed target-order identity error rather than a tie to be resolved by traversal order or lexical `frame_uid` spelling.
 
-A protected-component key is SHA-256 over the same length-prefixed encoding of canonical P1 protected-relation identity followed by member `kappa` values sorted lexicographically. Lexical `frame_uid` spelling is not a numerical score or target-order tie-break.
+Numerical component ordering uses a separate **component tie key**, not the serialized P1 relation/component digest:
+
+```text
+schema = "mdstats.target-order-component-tie-key.v1"
+member_count
+member_kappa_1 ... member_kappa_member_count
+```
+
+Sort member `kappa` values lexicographically. Encode the schema and each `kappa` with the same length-prefixed UTF-8 rule above; encode `member_count` as unsigned 64-bit big-endian between the schema and member list; SHA-256 the concatenation. This definition applies equally to singleton and multi-frame components. Because exact `U_size` `kappa` values are unique and projected components are disjoint, `component_key` is unique within the split population.
+
+The accepted P1 split-exclusion authority identity, projected component membership, and ancestry/currentness evidence remain separately bound to the split-method identity so stale or semantically changed P1 relations are rejected. They do **not** participate in numerical component tie ordering. This separation preserves P1 ownership/currentness while preventing non-semantic `frame_uid` serialization or relation-path spelling from changing a target-order tie.
 
 ### 5.3 Material-neutral feature substrate
 
@@ -251,17 +263,19 @@ engineering_shear_zx
 
 Cell volume/length/angle are the `cell_geometry` family. Hydrostatic/deviatoric/shear values are the `strain` family. `mass_density_g_cm3` is excluded. Energy, forces, pressure/stress, instantaneous-temperature labels, force statistics, and material/profile `RawFeaturePolicy.pair_rules` are forbidden membership coordinates.
 
-The local-structure source is bound to the accepted numerical contract rather than to feature-name coincidence:
+The local-structure source is bound to the analysis-owned numerical contract rather than to feature-name coincidence:
 
 ```text
 analysis_owner = mdstats.analysis.local_structure
 LOCAL_STRUCTURE_POLICY_SCHEMA = mdstats.local-structure-feature-policy.v1
 LOCAL_STRUCTURE_RESULT_SCHEMA = mdstats.local-structure-feature-result.v1
 LOCAL_STRUCTURE_POLICY_VERSION = mdstats.analysis.local-structure.2026-07.v1
-accepted specification = hjin98/mdstats@e8d04144f55c72d799ffcd3fe40c75e47078a66d:
-  docs/specs/analysis/local_structure_features_spec.md
-accepted specification blob = cc5be8d4f31d9168e09f2baa07711d5c37cf9b62
+numerical specification path = docs/specs/analysis/local_structure_features_spec.md
+Gate-A reconciled specification blob = ee7ecb7deb0412bdec5ca24b81d539e2d8ee6569
+2026-09-13 baseline specification blob = cc5be8d4f31d9168e09f2baa07711d5c37cf9b62
 ```
+
+The reconciled specification makes the already implemented switch, weighted-distance, species-entropy, radial, density, Legendre, bond-orientational, missing-mask, feature-order, and binary64/backend semantics explicit without changing the underlying feature-value method. A semantic change to that analysis-owned contract changes target-order metric identity and reopens D2.
 
 The frozen feature-value policy is:
 
@@ -278,7 +292,7 @@ coincident_tolerance_angstrom = 1e-8
 fallback_covalent_radius_angstrom = 1.0
 ```
 
-`maximum_dense_pair_work` is a resource guard, not a feature-value parameter. A semantic change to the bound local-structure contract changes target-order metric identity and reopens D2.
+`maximum_dense_pair_work` is a resource guard, not a feature-value parameter.
 
 Target-order aggregation uses a dedicated neutral view:
 
@@ -375,18 +389,63 @@ Constant numerical coordinates, all-missing coordinates, constant missingness in
 
 Persist for every source coordinate: fit-domain identity, observation count, state, active/inactive flag, median when defined, scale when defined, and missing-indicator state.
 
-### 5.6 Equal-family normalization and scalar distance
+### 5.6 Equal-family normalization and canonical scalar distance order
 
 Every active semantic family `f` is divided by `sqrt(d_f)`, where `d_f` counts only active numerical coordinates and varying missingness indicators. Equal active-family mass is the explicit no-prior baseline and remains subject to Gate-A real-feature sensitivity/ablation evidence before promotion.
 
-The final metric is scalar binary64 Euclidean distance over canonical `(family_id, semantic_coordinate_name, coordinate_kind)` order. There is no PCA, whitening, learned weighting, random projection, foundation descriptor, or profile-specific membership block.
+The final metric is scalar binary64 Euclidean distance. Its source-coordinate order is a D2 numerical invariant because squared-distance accumulation is left-to-right binary64 and exact score equality controls ties.
 
-Squared distances use scalar multiply followed by left-to-right binary64 addition in canonical coordinate order. Fused contraction is not reference semantics. Exact binary64 score equality is the only numerical-score tie; ties use `kappa` or protected-component key as specified. An optimized path must reproduce the same discrete decision or fall back to canonical scalar comparison.
+Each transformed coordinate has the canonical semantic order key
+
+```text
+(family_rank, scope_rank, atomic_number, feature_rank, statistic_rank, coordinate_kind_rank)
+```
+
+compared lexicographically as integers. The ranks are:
+
+```text
+family_rank:
+  0 cell_geometry
+  1 strain
+  2 pair_distance
+  3 coordination
+  4 connectivity
+  5 chemical_environment
+  6 local_density
+  7 radial_environment
+  8 angular_environment
+  9 orientational_order
+
+scope_rank:
+  0 global frame coordinate
+  1 element-resolved aggregate
+
+statistic_rank for element aggregates:
+  0 mean
+  1 std
+  2 min
+  3 max
+  4 q10
+  5 q50
+  6 q90
+
+coordinate_kind_rank:
+  0 transformed numerical coordinate
+  1 missingness indicator
+```
+
+For global frame coordinates, set `atomic_number=0` and `statistic_rank=0`. Their `feature_rank` follows the exact order in Section 5.3: cell volume, lengths `a/b/c`, angles `alpha/beta/gamma`; then hydrostatic strain, deviatoric-strain norm, and engineering shear `xy/yz/zx` within the separate `strain` family.
+
+For element-resolved local coordinates, `atomic_number` is the integer atomic number in ascending order. `feature_rank` is family-local in the Section-5.3 feature order: nearest/weighted-mean/weighted-std for `pair_distance`; smooth coordination; hard-neighbor-count then weighted-degree for `connectivity`; species entropy; local density; radial centers in increasing configured center order; angular Legendre orders in increasing order; and orientational orders in increasing order. `statistic_rank` then orders the seven aggregate statistics above. If both the numerical coordinate and a varying missingness indicator are active, the numerical coordinate precedes its indicator by `coordinate_kind_rank`.
+
+Inactive coordinates are omitted before distance evaluation and do not create gaps with semantic effect. Serialization strings, mapping iteration order, provider column order, and lexical `frame_uid` order do not define this semantic order.
+
+For two transformed frames, squared distance uses scalar multiply followed by left-to-right binary64 addition in the canonical order above. Fused contraction is not reference semantics. Exact binary64 score equality is the only numerical-score tie; ties use `kappa` or `component_key` as specified. There is no PCA, whitening, learned weighting, random projection, foundation descriptor, or profile-specific membership block. An optimized path must reproduce the same discrete decision or fall back to canonical scalar comparison.
 
 ### 5.7 Two fit domains
 
 - `d_U`: fit on exact `U_size` and used only by pre-split retained-set redundancy;
-- `d_P`: refit after the split on exact `P_train` and used for condition medoids, condition-local FPS, and training-prefix coverage diagnostics.
+- `d_P`: refit after the split on exact `P_train` and used for condition median-nearest representatives, condition-local FPS, and training-prefix coverage diagnostics.
 
 The source coordinate schema is fixed by `U_size`; active-coordinate states, medians, and scales are fitted independently in the two domains. `M3` labels and candidate outcomes fit neither metric.
 
@@ -488,15 +547,15 @@ Choose the lexicographically smallest `(H_max, H_mean, component_key)`, add that
 
 Because every chosen component is completion-admissible against `J*`, the procedure never knowingly leaves the globally minimum condition-depletion feasible set. Structural redundancy is a deterministic secondary criterion, not a claim of globally minimum final covering radius.
 
-### 6.4 Condition medoids and exact condition-local FPS
+### 6.4 Condition median-nearest representatives and exact condition-local FPS
 
 Fit `d_P` on final exact `P_train`.
 
 For every nonempty `P_train` condition:
 
 1. compute the coordinate-wise type-7 median vector in fitted `d_P` coordinates;
-2. choose the frame minimizing canonical squared distance to that vector; exact ties use `kappa`;
-3. initialize that condition's exact FPS order with the medoid;
+2. choose the observed frame minimizing canonical squared distance to that vector; exact ties use `kappa`; this frame is the **median-nearest representative** (called the condition medoid in earlier Gate-A drafts, but it is not defined by minimum total pairwise distance);
+3. initialize that condition's exact FPS order with the median-nearest representative;
 4. repeatedly select the remaining frame maximizing canonical nearest-selected squared distance; exact ties use `kappa`.
 
 FPS is required only through `K=max(configured candidate_sizes)` for candidate membership. An optional persisted tail beyond `K` is not allowed to alter any configured candidate.
@@ -505,7 +564,7 @@ FPS is required only through `K=max(configured candidate_sizes)` for candidate m
 
 Let `N_c` be the final `P_train` count for condition `c`, let `N=|P_train|`, and let `s_c(k)` be the number emitted from condition `c` after `k` global ranks.
 
-Anchor phase emits one medoid per condition ordered by decreasing `N_c`, then canonical condition ID. Therefore configured `N_min` must be at least the number of represented `P_train` conditions.
+Anchor phase emits one median-nearest representative per condition ordered by decreasing `N_c`, then canonical condition ID. Therefore configured `N_min` must be at least the number of represented `P_train` conditions.
 
 After anchors, choose the nonexhausted condition maximizing the exact integer deficit
 
@@ -545,7 +604,7 @@ The current structural policy retains three configured evaluation cardinalities
 
 and requires all three to be positive powers of two. Their decision roles change under Gate A: `m3 = |M3|` is the exact automatic model-selection population, while `m1` and `m2` are diagnostic prefix cardinalities only.
 
-Diagnostic evaluation sampling uses one persisted Fisher-Yates permutation over distinct exact `M3` occurrences. Start from occurrences sorted by `kappa`. For `i=|M3|-1 ... 1`:
+Diagnostic evaluation sampling uses one persisted Fisher-Yates permutation over distinct exact `M3` occurrences. Start from occurrences sorted by unique `kappa`. For `i=|M3|-1 ... 1`:
 
 1. `b=ceil(log2(i+1))`;
 2. draw `b` independent unbiased random bits independently of scientific/candidate data;
@@ -958,11 +1017,15 @@ The D2 method should be falsified through independent invariants rather than onl
 - compare `J*` and completion-admissibility against exhaustive subset enumeration on bounded fixtures, including infeasible and multiple-optimum cases;
 - include a mutual-redundancy counterexample proving retained-set rescoring prevents stale reciprocal redundancy from removing both components;
 - verify scientific occurrence-key byte encoding and `source_frame_index` bounds;
-- verify provider-contract/coordinate-family lineage against the immutable accepted local-structure specification identity;
+- construct two declared source occurrences with identical source-content identity, frame index, condition, and geometry but different `source_occurrence_signature`; require distinct `kappa` values and traversal-order-invariant downstream ties;
+- verify exact `U_size` `kappa` uniqueness and fail closed on a duplicate;
+- verify `component_key` from sorted member `kappa` only, including singleton and multi-frame components, while changing only P1/UID serialization leaves the tie key unchanged when semantic member occurrences are unchanged;
+- verify provider-contract/coordinate-family lineage against the exact reconciled local-structure specification blob and direct scalar formulas for switch, weighted distance, species entropy, radial, density, Legendre, orientational, and missing-mask behavior;
 - verify all-missing, constant, partial-missing, rare-outlier, and finite-small-variation transform cases;
+- verify the canonical semantic coordinate-order key, including family/element/feature/statistic/kind order, and prove serialized feature-column permutation cannot change canonical scalar accumulation or downstream discrete decisions;
 - perform representative real-feature equal-family sensitivity/ablation and precision-sensitivity challenge evidence before promotion;
-- verify input-enumeration, non-semantic UID relabeling, and feature-column permutation metamorphics where their invariance preconditions hold;
-- prove each condition medoid and condition-local FPS order against an independently simple scalar reference on bounded fixtures;
+- verify input-enumeration and non-semantic UID relabeling metamorphics where their invariance preconditions hold;
+- prove each condition median-nearest representative and condition-local FPS order against an independently simple scalar reference on bounded fixtures;
 - verify proportional condition scheduling using exact integer-deficit reference cases;
 - prove `pi_train` is a complete parent permutation and every configured `T_N` is its exact prefix;
 - independently rescore full `P_train` coverage and require nonincreasing `R_max` over nested prefixes;
@@ -991,12 +1054,12 @@ A numerical reproduction requires, as applicable, the exact:
 
 - source/frame numerical conventions and eligibility policies;
 - correlated-sampling/block policy and protected-relation authority;
-- exact `U_size` and scientific occurrence-key/component-key semantics;
-- bound local-structure numerical-contract identity and neutral aggregation policy;
-- source-coordinate schema plus fitted `d_U`/`d_P` states, medians, scales, and family dimensions;
+- exact `U_size`, scientific occurrence-key v4 semantics, `kappa` uniqueness, component tie-key semantics, and separately bound P1 split-exclusion ancestry/currentness identity;
+- bound local-structure numerical-contract identity, exact reconciled specification blob, and neutral aggregation policy;
+- source-coordinate schema plus canonical semantic coordinate-order key, fitted `d_U`/`d_P` states, medians, scales, and family dimensions;
 - hard split policy, exact `J*`, retained-set removal trace, and final `P_train/M3` memberships;
 - canonical scalar distance/reduction/tie semantics;
-- `K`, condition medoids, condition-local FPS state sufficient to reconstruct configured prefixes, proportional scheduler, and exact `pi_train` identity;
+- `K`, condition median-nearest representatives, condition-local FPS state sufficient to reconstruct configured prefixes, proportional scheduler, and exact `pi_train` identity;
 - every configured `T_N` prefix and hard-support policy;
 - exact `M3` decision membership and full-`M3`-at-every-boundary policy;
 - diagnostic randomization method/realization plus `m1/m2`, `pi_eval/M1/M2` identities separately from reducer evidence;
@@ -1019,13 +1082,14 @@ D3 must preserve at minimum:
 
 1. one preparation-owned target-order provider publishing exact metric/split/order state once;
 2. no empty-evidence/UID-order fallback when the accepted target-order method is required;
-3. exact protected split membership and enough identity to reject stale descendants;
-4. exact reference-result semantics for `J*`, completion admissibility, retained-set scoring, medoids, FPS, and proportional scheduling even if implementation algorithms differ;
-5. one immutable `pi_train` and exact `T_N` prefixes;
-6. exact full `M3` evaluation at every automatic fidelity boundary;
-7. diagnostic `pi_eval/M1/M2` state separated from reducer/model-selection identity;
-8. fail-closed currentness and restart semantics for persisted target-order evidence; and
-9. bounded CPU/RAM execution without a persistent dense frame-pair matrix or silent numerical approximation.
+3. unique scientific occurrence keys and semantic component tie keys separated from P1 ancestry/currentness identity;
+4. exact protected split membership and enough identity to reject stale descendants;
+5. exact reference-result semantics for `J*`, completion admissibility, retained-set scoring, median-nearest representatives, FPS, and proportional scheduling even if implementation algorithms differ;
+6. one immutable `pi_train` and exact `T_N` prefixes;
+7. exact full `M3` evaluation at every automatic fidelity boundary;
+8. diagnostic `pi_eval/M1/M2` state separated from reducer/model-selection identity;
+9. fail-closed currentness and restart semantics for persisted target-order evidence; and
+10. bounded CPU/RAM execution without a persistent dense frame-pair matrix or silent numerical approximation.
 
 No module layout, cache format, process topology, solver library, or accelerator mechanism is promoted by this D2 method unless its identity is required to preserve the numerical semantics above.
 
