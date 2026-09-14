@@ -1,7 +1,7 @@
 ---
 title: "mdstats MLFF Numerical Algorithmic Method — post-selection foundation-adaptation revision candidate"
 artifact_level: "D2 numerical algorithm design"
-status: "candidate D2 authority on fix/mlff-post-selection-method-restoration; constrained by candidate D1; review blockers repaired 2026-09-14; independent D1/D2 re-review required before integration"
+status: "candidate D2 authority on fix/mlff-post-selection-method-restoration; constrained by candidate D1; review blockers and exposure-order blocker repaired 2026-09-14; independent D2 re-review required before integration"
 baseline_accepted_date: "2026-09-13"
 candidate_revision_date: "2026-09-14"
 candidate_against_commit: "421e23aaed0a13443e984327bc903fc4cf4bc82e"
@@ -26,7 +26,7 @@ This candidate preserves the accepted P1/P2/P3 target-size algorithm and revises
 
 P3 target-size screening retains its accepted weighted objective, complete-batch update geometry, optimizer-progress normalization, candidate/evaluation orders, deterministic exact `M3` membership rule, qualification and reducer sufficiency rules, and restart semantics. Post-selection training from scratch also retains its accepted weighted energy+forces+stress objective, configuration-weight semantics, and local property masks; it is not changed merely because foundation-model P5 is restored to a different robust objective.
 
-The branch document is a candidate replacement D2 authority. It does not become integrated current authority until the candidate D1/D2 pair receives independent re-review and integration acceptance. D3/D4 work must not proceed as though the new method were accepted before that gate closes.
+The branch document is a candidate replacement D2 authority. It does not become integrated current authority until the candidate D1/D2 pair receives the required independent review and integration acceptance. The repaired D1 has passed the latest authority review; this D2 revision still requires independent D2 re-review. D3/D4 work must not proceed as though the new method were accepted before that gate closes.
 
 ## 2. Canonical source numerical conventions
 
@@ -528,15 +528,17 @@ for every other successful terminal finalist, `N_max` is materially superior, is
 
 ## 14. Foundation-model P5 sample exposure
 
-### 14.1 Combined dataset
+### 14.1 Combined dataset and pre-shuffle corpus order
 
-For multi-head replay, let target training dataset contain `N_t` configurations and replay training dataset contain `N_r`. Current P5 exposure is the unweighted concatenated dataset
+For multi-head replay, let target training dataset contain `N_t` configurations and replay/pretraining-head dataset contain `N_r`. In the pinned current two-head MACE realization, `pt_head` is ordered first and the combined dataset is constructed in head order. With `D_r` denoting the authenticated replay/pretraining-head corpus and `D_t` the authenticated target corpus, current P5 therefore uses
 
 $$
-D_{\mathrm{train}}=D_t\Vert D_r
+D_{\mathrm{train}}=D_r\Vert D_t.
 $$
 
-with no target/replay balancing sampler and no intentional duplication. The authenticated training seed governs stochastic shuffle/order.
+This pre-shuffle corpus/index layout is numerically material under fixed-seed stochastic training. The loader shuffles integer indices of the combined dataset; swapping the two corpus blocks while keeping the same seed changes the mapping from shuffled indices to examples, and therefore can change minibatch composition, gradient order, and the optimizer trajectory. Replay-first/target-second is not asserted as a universally preferable ordering; it is the current accepted exposure semantics inherited from the pinned native realization. D3/D4 must not add a target-first reorder wrapper merely to reproduce superseded prose.
+
+There is no target/replay balancing sampler and no intentional duplication. The authenticated training seed governs stochastic shuffle/order over this ordered combined index space.
 
 The dependency's ratio-driven target-duplication behavior is disabled. Any realized duplication factor other than one is method nonconformance.
 
@@ -550,7 +552,7 @@ $$
 
 optimizer updates and consumes exactly `UB` examples from that epoch's shuffled permutation. If `(N_t+N_r)\bmod B\ne0`, the final remainder of the shuffled permutation is omitted for that epoch.
 
-Authenticated membership therefore does not imply that every P5 configuration is observed in every epoch. Runtime evidence must distinguish corpus membership from realized exposure and record target/replay counts, combined count, batch size, `drop_last`, seed/shuffle/sampler policy, and batches per epoch.
+Authenticated membership therefore does not imply that every P5 configuration is observed in every epoch. Runtime evidence must distinguish corpus membership from realized exposure and record target/replay counts, combined count, the ordered pre-shuffle head/corpus layout, batch size, `drop_last`, seed/shuffle/sampler policy, and batches per epoch.
 
 For `naive_fine_tuning`, `N_r=0`: the same robust objective and target-only shuffled loader semantics apply, with
 
@@ -737,7 +739,8 @@ The current qualified execution dependency is `mace-torch==0.3.16`. Dependency n
 - native `UniversalLoss` uses per-atom energy Huber, conditional force Huber, full `3x3` stress Huber, configured global E/F/S coefficients, and local property masks, and does not consume the general configuration scalar `ref.weight`;
 - the single numeric `huber_delta` is applied separately to energy, force, and stress numeric residuals in their canonical property units;
 - multi-head fine-tuning can overwrite requested learning-rate/EMA semantics unless the qualified control preserves them;
-- a target/replay ratio heuristic can duplicate target data unless its threshold is disabled; and
+- a target/replay ratio heuristic can duplicate target data unless its threshold is disabled;
+- current two-head multi-head fine-tuning orders `pt_head` first and concatenates datasets in that head order, so the replay/pretraining corpus precedes the target corpus in the combined index space before seeded shuffle; and
 - ordinary combined single-process training uses a shuffled concatenated dataset and drops the last partial batch for non-LBFGS optimization.
 
 Under this restoration the native forced `UniversalLoss` is **desired** for `multihead_replay`, not something mdstats should rewrite to weighted stress. `naive_fine_tuning`, which does not activate native multi-head routing, must nevertheless execute the same D2 robust functional explicitly. P3 and post-selection scratch retain their separately accepted weighted objectives.
@@ -756,7 +759,7 @@ Rank/null-space evidence describes identifiability, not merely solver accuracy. 
 
 ### 21.3 Stochasticity
 
-Optimizer seeds are explicit replicates. P5 shuffle order under a fixed seed is part of realized stochastic exposure. P3 pairing controls one source of comparative variation but does not remove minibatch, finite-horizon, or model-training uncertainty. Reproducibility requires preservation of accepted seed/method lineage and numerical compatibility, not unsupported bitwise identity across arbitrary hardware/library regimes.
+Optimizer seeds are explicit replicates. P5 shuffle order under a fixed seed is part of realized stochastic exposure, including the mapping from combined-dataset indices to replay/target examples before the permutation is drawn. P3 pairing controls one source of comparative variation but does not remove minibatch, finite-horizon, or model-training uncertainty. Reproducibility requires preservation of accepted seed/method lineage and numerical compatibility, not unsupported bitwise identity across arbitrary hardware/library regimes.
 
 ### 21.4 Precision and backend
 
@@ -842,11 +845,13 @@ Independent D2 re-review should attempt at least the following counterexamples/o
 
 ### 23.6 Exposure/currentness
 
-- verify multi-head training concatenates exact authenticated target/replay corpora with no balancing scalar and duplication factor one;
+- verify multi-head training concatenates the exact authenticated replay/pretraining corpus **first** and target corpus **second** in the pre-shuffle combined index space, matching native `pt_head`-first head order;
+- with the same fixed seed and memberships, demonstrate that swapping those corpus blocks changes the example mapping of the shuffled index permutation and is therefore non-equivalent unless separately qualified;
+- verify there is no balancing scalar and realized duplication factor is one;
 - verify single-process combined `drop_last=true` batch/update geometry and distinguish membership from realized per-epoch exposure;
 - verify authenticated learning-rate/EMA values survive dependency routing;
 - verify true-versus-pseudo replay label changes leave replay geometry split unchanged; and
-- prove old weighted-stress/fold-local-monitor continuation state cannot authenticate as the restored method.
+- prove old weighted-stress/fold-local-monitor/target-first-order continuation state cannot authenticate as the restored method.
 
 A failure of these oracles is D2 or lower-layer nonconformance. If repair requires changing the scientific objective, monitor role, estimator, normalization, exposure, composition-level E0 identifiability rule, or validation interpretation, reopen D1/D2 rather than compensating in D3/D4.
 
@@ -858,25 +863,25 @@ After this candidate passes independent re-review and becomes accepted, D3 must 
 2. separate P3/post-selection-scratch versus foundation-P5 objective/exposure owners;
 3. exact foundation-P5 robust-loss identity: property-specific dimensional thresholds corresponding to configured numeric `huber_delta=0.01`, global `1:10:1`, nine-entry stress reduction, binary masks, and no P5 configuration/head scalar;
 4. selected-head foundation-residual E0 fitting plus composition-level null-space transfer validation for every governed target composition, with accepted anchors identity-bound and no monitor/held-out leakage;
-5. exact target/replay corpus lineage, no implicit target duplication, authenticated optimizer/EMA semantics, and current single-process exposure unless a distributed-equivalence qualification is accepted;
+5. exact target/replay corpus lineage, native two-head replay/`pt_head`-first then target-second pre-shuffle index layout, no implicit target duplication, authenticated optimizer/EMA semantics, and current single-process exposure unless a distributed-equivalence qualification is accepted;
 6. one current target-monitor owner over neutral protected `OUTER_MONITOR`, exact deterministic 256 membership, exact SHA-256 sampling semantics, and no current DATA5/label-domain monitor parent;
 7. P5 CV schema whose fold membership excludes checkpoint monitor, preserves the deterministic outer/purge allocation above, and defaults to three folds with `K>=2` override;
 8. one common target checkpoint membership shared by CV and final production, with P3 `M3` excluded from checkpoint control;
 9. independent true-reference replay-monitor/retention evidence and preserved score/admissibility semantics;
-10. method/currentness generations that make superseded weighted-stress/fold-local/head-scalar artifacts stale while preserving independent P1/P2/P3 and frozen membership evidence; and
-11. runtime evidence sufficient to reconstruct actual loss, dimensional thresholds, E0 fit/null-space transfer result, monitor, exposure, seed, precision/backend, and fold/final lineage.
+10. method/currentness generations that make superseded weighted-stress/fold-local/head-scalar/target-first artifacts stale while preserving independent P1/P2/P3 and frozen membership evidence; and
+11. runtime evidence sufficient to reconstruct actual loss, dimensional thresholds, E0 fit/null-space transfer result, monitor, ordered combined-corpus layout, realized exposure, seed, precision/backend, and fold/final lineage.
 
 D3 remains free to choose the simplest architecture that satisfies these constraints. Existing machinery should be rewired, reduced, or retired rather than wrapped by a second competing method owner.
 
 ## 25. Reproducibility contract
 
-A numerical reproduction binds, as applicable, exact source/frame conventions; correlated-sampling/block/event-merge and protected-relation authority; pre-order evidence; `U_size`, deterministic `P_train/M3` split including predecessor/tie semantics, split/order/prefix identities; P3 common preparation/objective/optimizer-normalization and its first-order interpretation; P3 candidate admission, seed/fidelity/evaluation/reducer sufficiency/history; frozen selected memberships and horizons; selected foundation checkpoint/head; foundation-P5 robust-loss parameters and dimensional thresholds; target/replay memberships and combined exposure semantics; foundation-residual E0 fit, accepted anchors, rank/null-space evidence, required composition set, and composition-transfer identifiability result; common target-monitor neutral parent, SHA-256 quota/systematic policy, seed, strata, and exact 256 membership; CV component-order, outer-fold, purge, seed, and exact memberships; replay training/true-monitor lineage; and fresh final-production/publication identity.
+A numerical reproduction binds, as applicable, exact source/frame conventions; correlated-sampling/block/event-merge and protected-relation authority; pre-order evidence; `U_size`, deterministic `P_train/M3` split including predecessor/tie semantics, split/order/prefix identities; P3 common preparation/objective/optimizer-normalization and its first-order interpretation; P3 candidate admission, seed/fidelity/evaluation/reducer sufficiency/history; frozen selected memberships and horizons; selected foundation checkpoint/head; foundation-P5 robust-loss parameters and dimensional thresholds; target/replay memberships, ordered pre-shuffle combined-corpus/head index layout, and realized exposure semantics; foundation-residual E0 fit, accepted anchors, rank/null-space evidence, required composition set, and composition-transfer identifiability result; common target-monitor neutral parent, SHA-256 quota/systematic policy, seed, strata, and exact 256 membership; CV component-order, outer-fold, purge, seed, and exact memberships; replay training/true-monitor lineage; and fresh final-production/publication identity.
 
 Runtime caches and scratch state need not be preserved when exactly reconstructible and non-authoritative.
 
 ## 26. Revision provenance and realization evidence
 
-The 2026-09-13 accepted D2 baseline remains the source of all unaffected P1/P2/P3 semantics. The first independent review of this candidate found that the initial rewrite had accidentally compressed out several still-current baseline invariants and had conflated elemental-coefficient identifiability with composition-energy identifiability. This revision restores the baseline invariants explicitly and narrows the new E0 feasibility rule to the scientifically consumed composition-weighted corrections. It also makes the shared numeric Huber parameter dimensionally explicit per property channel. These are review repairs; they do not broaden the intended P5 restoration.
+The 2026-09-13 accepted D2 baseline remains the source of all unaffected P1/P2/P3 semantics. The first independent review of this candidate found that the initial rewrite had accidentally compressed out several still-current baseline invariants and had conflated elemental-coefficient identifiability with composition-energy identifiability. That review repair restored the baseline invariants explicitly, narrowed the new E0 feasibility rule to the scientifically consumed composition-weighted corrections, and made the shared numeric Huber parameter dimensionally explicit per property channel. A subsequent re-review found one remaining D2 reproducibility defect: the candidate had written the combined multi-head corpus as target-first/replay-second even though pinned MACE orders `pt_head` first and shuffles the resulting replay-first/target-second combined index space. This revision corrects that ordering, binds it to exposure identity/oracles, and does not change D1 or broaden the intended P5 restoration.
 
 Reference realization evidence:
 
@@ -887,6 +892,6 @@ Reference realization evidence:
 5. D. R. Roberts, V. Bahn, S. Ciuti, et al., “Cross-Validation Strategies for Data with Temporal, Spatial, Hierarchical, or Phylogenetic Structure,” *Ecography* **40**, 913–929 (2017). DOI: 10.1111/ecog.02881.
 6. J. D. Morrow, J. L. A. Gardner, and V. L. Deringer, “How to Validate Machine-Learned Interatomic Potentials,” *Journal of Chemical Physics* **158**, 121501 (2023). DOI: 10.1063/5.0139611.
 7. ACEsuit `mace-torch==0.3.16`, `mace.modules.loss.UniversalLoss` and `conditional_huber_forces`, used as current reference realization evidence for the candidate robust functional.
-8. ACEsuit `mace-torch==0.3.16`, `mace.cli.run_train`, used as current reference realization evidence for multi-head loss routing, target-duplication heuristic, selected dataset construction, loader geometry, and head-local atomic-energy behavior.
+8. ACEsuit `mace-torch==0.3.16`, `mace.cli.run_train`, used as current reference realization evidence for multi-head loss routing, target-duplication heuristic, selected dataset/head ordering, loader geometry, and head-local atomic-energy behavior.
 
 Exact current schema names, source-probe markers, package paths, persistence formats, and wrapper patch mechanics remain D3/D4 concerns except where changing them changes the numerical method above.
