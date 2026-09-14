@@ -2,12 +2,14 @@
 
 Active workplans are temporary engineering coordination contracts. They do not define current mdstats product behavior by repository presence alone; current behavior remains owned by accepted D1-D4 authority and conforming implementation.
 
-## Current MLFF methodology and conformance work
+## Current MLFF reconstruction state
 
-- `MLFF_FPS_COVERAGE_METHOD_RECONCILIATION_AND_ORDERING_CONFORMANCE_WORKPLAN.md` — active SSDP 6.3 D1->D4 reconciliation. It records a **SERIOUS CHALLENGE** to the promoted target-order methodology: the current production preparation path supplies no training/evaluation priority evidence, so ordinary `pi_train`/`pi_eval` construction collapses to condition-balanced UID ordering instead of the intended recovered coverage/diversity method. D1/D2 amendments remain proposed pending independent falsification and explicit human ratification; downstream D3/D4 implementation repair follows accepted upstream reconciliation. The plan preserves the V7 single-order/exact-prefix simplification and explicitly forbids resurrecting retired FEAS/MVIDX/MVSEL/REPAIR/MVQUAL authority topology.
+The MLFF D1/D2 reconstruction accepted on 2026-09-13 remains current authority. The later FPS/coverage Gate-A Revision-2 through Revision-5 replacement-method effort has been **withdrawn from promotion**: it exceeded the reconstruction task and introduced unproven target-order semantics, including a combinatorial `J*`/completion-admissibility split solver in place of the demonstrated exact pseudo-polynomial split.
 
-The previously active P5 CV no-admissible-checkpoint outcome repair lineage has passed independent SSDP 6.3 re-review and is archived under `workplans/archive/`, including its parent workplan, implementation Review reopen, implementation evidence, and final Review closure. That closure accepts the repaired canonical CV outcome/recovery flow without changing target/replay thresholds, replay semantics, target-only ranking, fold/seed/horizon policy, final-production success evidence, or GPU scheduling architecture.
+The canonical D1/D2 method papers on `design/mlff-fps-coverage-method-reconciliation` have therefore been restored byte-for-byte to the accepted reconstruction. `workplans/active/mlff-fps-coverage-method-reconciliation/GATE_A_SCOPE_RECOVERY.md` is the current disposition record; the older Gate-A candidate/review files are historical proposal evidence only.
 
-Completed, superseded, and retired MLFF workplans belong under `workplans/archive/`. Current product behavior is governed by accepted authority and conforming implementation, not by historical workplan presence.
+One genuine concern remains isolated rather than used to justify wholesale redesign: the ordinary preparation path can provide no target-order priority evidence, allowing the accepted condition-balanced order to fall through to UID tie order. Any later repair must be narrow, reuse an existing proven selection/coverage owner where possible, and preserve the demonstrated split/evaluation/target-size machinery unless concrete failing evidence requires otherwise.
 
-Production-scale GPU/CuEq/LAMMPS/MLIAP qualification remains owned by the applicable current release/qualification contract. For the active FPS/coverage methodology reconciliation, bounded functional/reference/resource qualification is required while consolidated long GPU qualification remains deferred to the established final-release phase unless the accepted method unexpectedly introduces GPU-dependent numerical semantics.
+Representative production qualification is not a prerequisite for finishing the reconstructed method papers. If later execution or qualification exposes a concrete methodological failure, open a separate bounded repair against that evidence.
+
+Production-scale GPU/CuEq/LAMMPS/MLIAP qualification remains deferred to the established final-release phase.
