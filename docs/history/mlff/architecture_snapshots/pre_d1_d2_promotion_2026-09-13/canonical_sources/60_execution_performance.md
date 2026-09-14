@@ -1,0 +1,593 @@
+# Part VI - Bounded execution, restart, and performance architecture
+
+## Purpose and authority
+
+Execution optimization is acceptable only when it preserves the scientific and
+statistical authorities in Parts I-V and improves measured throughput, memory,
+storage, or restart cost. Utilization is diagnostic; authenticated records,
+deterministic decisions, and exact scientific digests decide correctness.
+
+Worker count, queue depth, query-block size, cache location, file-backing
+threshold, storage path, and similar execution choices do not enter scientific
+identity unless a current specification explicitly makes them part of the
+algorithm.
+
+The central rule is:
+
+> change how exact work is scheduled or represented, not what evidence is
+> consumed or what authoritative decision is produced.
+
+## Work/span and single-level parallelism
+
+For serial work (T_1), critical path (T_\infty), and (P) admitted CPU
+lanes,
+
+$$
+T_P\ge\max\!\left(\frac{T_1}{P},T_\infty\right).
+$$
+
+Independent work is exposed at the highest useful level. Nested numerical
+parallelism is suppressed while outer work fills the resource budget:
+
+$$
+P_{\mathrm{outer}}P_{\mathrm{native}}\le P_{\mathrm{budget}}.
+$$
+
+The resource scope controls cKDTree, BLAS, OpenMP, PyTorch, and other native
+threads. A process or worker does not independently oversubscribe the host.
+The implementation may use exact kernels such as `query_ball_point`,
+`numpy.bincount`, bounded indexed reductions, or `threadpoolctl`; these are
+execution realizations and do not change evidence roles or canonical order.
+
+## Preparation and execution boundaries
+
+The source/frame and numerical-label authorities are built once and validated
+through their current owners. The neutral statistical substrate supplies the
+one `P_train`/`M3` split and the two canonical orders. The current P3 common
+preparation is then computed once and shared by all authorized candidate
+sizes and optimizer seeds.
+
+```text
+source/frame/label authorities
+  -> neutral statistical substrate and protected relations
+  -> one P_train/M3 split and pi_train/pi_eval
+  -> one common target-size preparation
+  -> optional paired-seed diagnostic (recommendation or typed no-recommendation)
+  -> operator-owned provisional ordered collection
+  -> cross-validate atomic collection freeze
+  -> per-frozen-size CV and fresh final production
+```
+
+The common preparation is a single authenticated authority, not one independent
+copy per candidate or fold. A post-selection CV fold may create a fold-local
+fitted view from its own training partition when its owner requires it, but it
+cannot create a target-size ladder or alter the frozen collection or that
+size's exact membership `T_N`.
+
+Foundation-model providers and large accelerator references are released as
+soon as their final preparation consumer completes. Derived file
+materialization and target-size candidate views run on CPU/I/O resources unless
+their current owner explicitly admits an accelerator task. Heavy caches are
+restored lazily only when a validated artifact is needed.
+
+## Candidate execution and continuation
+
+The target-size screen executes only the cells authorized by the reducer's
+funnel:
+
+```text
+qualified candidates
+  -> coarse n1/M1
+  -> at most four short n2/M2 continuations
+  -> two final n3/M3 continuations
+  -> one recommended size or typed no-recommendation outcome
+```
+
+Each `(candidate size, optimizer seed)` cell runs through the accepted TRAIN2
+runtime and current EVAL2 owner. A bounded numerical fake may sit below the
+accepted MACE seam in tests; configuration resolution, target authorities,
+materialization, checkpoint/provider authentication, persistence, and reducer
+publication remain production code.
+
+At a fidelity boundary, continuation restores model, optimizer, EMA, LR, and
+Python/NumPy/Torch CPU/CUDA RNG state. It does not restart from the foundation
+or substitute an earlier checkpoint. Atomic content-addressed publication
+means an interrupted boundary either has a complete authenticated endpoint or
+has no current endpoint. The execution head is reconciled before new work is
+scheduled, and compare-and-set adoption prevents two workers from becoming
+current simultaneously.
+
+A boundary interrupted part-way through its matrix keeps its published cells
+and leaves the reducer at its pre-boundary state, so the whole boundary is
+still *active* on the next invocation. Active is not the same claim as
+unexecuted. Before scheduling, the runtime authenticates the durable per-cell
+progress of the active boundary through the same completion-record replay owner
+that publication and reconciliation use, reuses the cells that pass, and sends
+only the genuinely missing cells to TRAIN2 and EVAL2. Recovered and newly
+executed cells are assembled in exact P2 size-major/seed-minor order, so one
+complete matrix still produces exactly one reducer transition. Progress that
+does not authenticate - foreign screen window, a cell outside the active matrix,
+or a missing or tampered scientific parent - is contradictory durable evidence
+and fails closed before any new work starts; absence of progress for an active
+cell is simply work that remains.
+
+Eliminated candidates receive no later ordinary-production authorization.
+Exhaustive full-fidelity training of every configured size is a separate
+algorithm/decision-preservation qualification, not a default campaign artifact
+generator.
+
+## Deterministic resource-bounded work queue
+
+CPU-heavy independent tasks use a shared queue with explicit CPU, memory, and
+I/O ownership. Its responsibilities are to:
+
+- bound executing, ready, in-flight, and buffered work;
+- reserve persistent memory before admitting temporaries;
+- propagate deterministic task identities and exceptions;
+- permit arbitrary completion order where scientific order is irrelevant;
+- restore canonical reduction and commit order where FP64 arithmetic or record
+  order is authoritative;
+- expose progress and resource telemetry without placing telemetry in scientific
+  identity.
+
+Submission may run ahead to hide hand-off latency, but simultaneous execution
+remains within the declared resource scope. On NUMA systems, node-local queues,
+affinity, local stealing, and bounded cross-node stealing are valid execution
+extensions after measurement; they cannot change canonical membership or
+reduction order.
+
+## Staged evaluation and provider lifetime
+
+Current staged evaluation uses bounded CPU preparation, one admitted accelerator
+owner when applicable, and bounded CPU finalization. The parent execution owner
+enumerates the authenticated endpoints, workers perform only their assigned
+preparation/inference/finalization, and the parent validates run, checkpoint,
+selected-binding, prediction, and metric identities before durable publication.
+Fresh and cache-backed endpoints converge through the same parent validation.
+
+Provider scopes are explicit and non-overlapping:
+
+```text
+candidate provider acquire -> candidate inference/replay consumers
+  -> candidate close in exception-safe cleanup
+  -> foundation or next provider acquire only after closure
+  -> foundation close in exception-safe cleanup
+```
+
+Post-selection CV and final-production providers are likewise closed at their
+owner boundary, including failure paths. A replay cache stores scalar/content
+evidence, not a live provider. Garbage-collection timing or allocator cleanup
+does not replace provider retirement.
+
+A worker-private provider shell may be reused only when checkpoint bytes,
+model class, state keys/shapes/dtype, weight-independent runtime architecture,
+geometry workload, device, and backend policy all authenticate as compatible.
+Weight-dependent calculator state is invalidated on replacement. Corruption or
+authority mismatch is fatal rather than a fallback to an unqualified shell.
+
+## One authority per semantic input
+
+The bounded execution representation is:
+
+```text
+one canonical frame/feature authority
+one neutral statistical substrate
+one P_train/M3 split and pi_train/pi_eval
+one common preparation
+prefix views for candidate rungs
+training and CV artifacts only for authorized work
+```
+
+Memory/storage must not scale as one product-sized descriptor, graph, or
+membership copy per target-size rung. Descriptor shards, fixed-file views,
+replay indexes, and frame caches are reconstructible only when their content
+and recipe identities authenticate. A cache hit is never a substitute for the
+selected binding or another scientific authority.
+
+## Memory, storage, and scratch admission
+
+Long stages account for
+
+$$
+M_{\mathrm{stage}}=
+M_{\mathrm{persistent}}+M_{\mathrm{inflight}}+M_{\mathrm{buffered}}+
+M_{\mathrm{sparse}}+M_{\mathrm{result}}+M_{\mathrm{scratch}}.
+$$
+
+New work is admitted only when CPU, RAM, accelerator, disk, and scratch
+reservations fit the stage plan. The live ledger is authoritative: a
+prospective target-size or evaluation reservation replaces only the exact
+modeled reservation it supersedes and preserves all other live owners. When
+retained growth is not bounded, sequencing is conservative rather than relying
+on an optimistic projection.
+
+Large reconstructible arrays may use mmap/file-backed persistence. Atomic
+publish-or-validate-winner rules protect concurrent fixed-file and materialized
+cache creation. Stale, corrupt, or mismatched caches are rebuilt; they are not
+silently accepted as evidence.
+
+Persistent campaign state uses a compact SQLite store, append-only event
+history where needed, content-addressed files for large payloads, and
+completion records written only after required artifacts are durable. A restart
+distinguishes complete, incomplete, stale, corrupt, and superseded state and
+re-authenticates currentness before reuse. Cleanup removes only known
+campaign-owned reconstructible state and preserves external inputs, selected
+scientific records, restart checkpoints, and diagnostics needed for recovery.
+
+## Storage and I/O management
+
+Storage is a first-class resource plane and never a second scientific
+authority. `mdstats.training_data.storage` turns each accepted current owner
+into a uniform *owner view* and composes those views into one cross-owner
+inventory. Semantics come from the owning API; pathnames, report labels, stage
+names, process ids, and file ages carry no authority at all.
+
+**Authority is invocation-local.** `--apply` on the invocation being run is the
+only thing that authorizes a mutation, and the subcommand being run is the only
+thing that selects the action; an `apply` or `action` key under `[storage]` is
+rejected rather than obeyed, and no environment variable is consulted. The
+complement is that every non-apply path is genuinely observational: it creates
+no workspace, no state database, no generation root, no control plane, no
+acceleration receipt, and no report artifact.
+
+Observation is an invocation-scoped capability carried by a context variable,
+not a flag on the first store a command opens. It reaches nested owner helpers
+and the worker threads the storage fan-out spawns, so no helper can escape it by
+calling an ordinary default-creating constructor; and it is enforced as well as
+declared, because an observational campaign-state open is a read-only SQLite
+connection whose write paths refuse before committing. Nothing process-global is
+toggled to achieve it, so a concurrent consequential operation keeps its own
+writable store and receipt behavior.
+
+Every consequential mutation follows one path:
+
+```text
+real P1-P7 owners -> owner views -> cross-owner inventory snapshot
+ -> resolved storage policy -> immutable owner-bound plan
+ -> owner publication barrier + revalidation -> executor -> durable audit
+```
+
+**Retention is a transitive closure, not a per-owner question.** The current P7
+publication is a read-only descendant of the accepted P5 publication and
+re-authenticates the exact P5 checkpoint bytes at their canonical hot paths, so
+those bytes stay pinned after the P7 attempt retention reference is released.
+P4's current terminal authority pins the P3 evidence its canonical loader needs.
+A truthful `waiting_for_reference` pins the whole predecessor lineage. Protection
+is monotone: no owner's cache or history classification overrides another current
+owner's requirement, and the closure is rebuilt from live owner records rather
+than persisted as a second registry.
+
+**Mutation is race-safe, not merely recent.** P5 and P7 both publish an
+immutable object and then the pointer that makes it current, so there is a real
+window in which the object exists and nothing references it. Each owner exposes
+a per-generation publication barrier that the publisher holds across both steps
+and that any storage mutation acquires across revalidation and mutation. The
+storage-operation lease serializes storage against storage only, and is never
+mistaken for serialization against the owners.
+
+**Completion is proved by a retained anchor.** When a post-selection run reaches
+its terminal record, P5 freezes its completion proof as two create-once records:
+an immutable topology manifest naming every node the run produced, published
+first, and a compact self-authenticating anchor binding that manifest's identity,
+published last as the commit point. The split is what lets normal reporting
+validate completion in O(1) while exact closed-subtree certification still pays
+for the full topology. The topology is typed and covers directories as well as files, so neither an
+unexpected empty directory nor a same-name file/directory substitution can pass
+as the node the owner certified, and no symlink or special object becomes owned
+by appearing at a familiar name. Every observation on that path is no-follow, and
+the owner's own authority records are opened with `O_NOFOLLOW` and confirmed
+regular by `fstat` on the opened descriptor rather than by a separate `lstat` a
+rename could invalidate.
+From then on the anchor - not the presence of the terminal evidence file - is
+what certifies the run. The
+distinction matters because the terminal evidence is an ordinary archive member:
+an interrupted cold reclamation may already have moved it, and a certification
+that needed it would leave that reclamation unable to finish. Both records are owner
+infrastructure, never part of the reclaimable member set. Republication verifies
+and reuses the existing proof rather than deriving a new one from a tree storage
+has legitimately depleted, and a tampered, copied, or self-inconsistent proof
+makes the run non-certifiable instead of appearing to own more.
+
+**A released P7 attempt proves its own scratch.** Releasing an attempt publishes
+a versioned typed topology proof bound to the exact released state, written
+before that state so the state stays the commit point; an aborted attempt that
+legally reopens as active invalidates its release proof for free, because the
+state it bound is no longer current. Every top-level node must be one the proof
+recorded, of the recorded kind, before storage exposes it as reclaimable. An
+attempt state that cannot be authenticated is not skipped: its references can pin
+exact P5 checkpoints, so it becomes an owner-graph integrity failure that blocks
+consequential planning until repaired, and the retention fence independently
+denies destructive authorization for every campaign-managed path while the
+ambiguity lasts - the lost references routinely name artifacts outside the P7
+tree, so protecting only that tree would leave the unknown asset authorizable.
+
+Authentication is strict, root-bound, and performed by one authority every
+storage-facing consumer reads. An attempt counts as authenticated only when the
+enumeration reached it without traversing a substituted namespace component -
+no-follow at the generation root, the `attempts` container, and the attempt root,
+not merely at the state file - and when its persisted digest recomputes, its
+recorded identity matches the directory, and that identity is the canonical
+identity derived from the qualification binding the state names. Enumeration is
+by actual attempt directory, so an attempt with no state at all is visible rather
+than absent.
+
+**Containment is not ownership.** A directory owner view declares one of two
+coverage semantics. A *closed subtree* is one whose real owner certifies, from
+its own authenticated record or exclusive-writer contract, that every traversable
+descendant belongs to that artifact; a *container* is owner-known but its
+descendants need individual views, and anything unknown beneath it stays
+ambiguous and retained. Only a freshly revalidated closed subtree may be recursed
+into destructively. P5 records a run-member manifest when a run reaches its
+terminal record, because the run directory is delegated to the configured
+trainer; P7 records an attempt-member manifest at the moment an attempt becomes
+terminal; the campaign store's externalized record area is closed by
+exclusive-writer contract. A superseded target-size execution root records no
+such membership and is therefore honestly a container. A nested mount below an
+authorized root is a further ownership boundary and is never traversed.
+
+**Archive is representation, not resolution.** Hot bytes are replaceable only
+for owner-declared historical bulk with no current or restartable hot
+dependency; no P1-P7 loader is given an implicit cold-read fallback. Archive
+A reclaim or restore additionally binds the exact retained representation it
+intends to consume and re-authenticates that catalog entry, manifest, and blob
+*inside* the protected consequential window, before removing a hot member or
+installing a restored one; every supported writer of retained archive control
+state takes the same storage-operation lease, which is what makes that check
+race-closed. A restore also binds the `(device, inode, type)` of every existing
+parent it installs through, so a same-path directory swap refuses rather than
+redirecting the installation. Archive verification and restore bound member
+paths, member types, member count, total expansion, per-member size while
+streaming, and decompression amplification before writing anything, and a manifest carries an identity-owned relative
+locator resolved only inside the storage-owned archive root. A requested root may
+narrow a selection into an eligible artifact but never widen it to an ancestor,
+an archive identity binds its representation (codec, level, serialization) and
+not only its logical content, and a restore is an exact owner-bound plan that
+never metadata-mutates a container that already existed. Terminal catalog and
+restore receipts are published only downstream of flush, atomic publish,
+directory-entry persistence, and authentication of the published bytes.
+
+**Audit publication and retention are one serialized lifecycle.** Both happen
+under the storage-operation lease, so bounded retention cannot rewrite away a
+record another operation just published and reported as durable. The stored
+record states its own successful publication; retention refuses to rewrite over a
+damaged stream; and a retention failure is surfaced separately without
+unpublishing anything or touching the mutation.
+
+**Deduplication is direct inode sharing under an owner contract.** Byte-identical
+members share one inode among themselves. The pre-rename alias is staged in
+storage's own operation-scoped staging area rather than inside the owner's run,
+so a hard crash leaves storage-owned residue with a recovery lifecycle instead of
+an unrecorded descendant that would block future certification; abandonment is
+established by the storage-operation lease and the journals, never by a process
+id or an age. There is deliberately no persistent content-addressed store, which would be a second durable copy of campaign bytes
+with its own retention lifecycle. Exact byte equality is necessary but never
+sufficient: file type and owner-required metadata must match, the canonical
+member's link count must be fully accounted for inside the group, the family must
+have no accepted in-place writer, and cross-device or unsupported filesystems
+retain duplicate bytes without a correctness failure.
+
+**Reporting is bounded and complete.** The normal report costs one `lstat` per
+declared owner artifact and never walks a subtree, so directory aggregates are
+labelled unknown rather than guessed and `--deep` is the explicit opt-in to exact
+recursive physical accounting. The census is complete: an unrecognized workspace
+tree is reported as ambiguous and retained rather than omitted or pooled.
+
+**Campaign-state maintenance is two planned actions.** Bounding diagnostic
+events and rewriting the state database are separate authorities. Excess events
+authorize pruning only, executed at exactly the resolved bound with no hidden
+floor - a small transaction that takes the write lock up front and so serializes
+against any other campaign writer. A rewrite is planned only when a fresh
+measurement already satisfies the configured reclaimable threshold, and
+re-establishes that threshold and its temporary-space admission inside a
+cross-process exclusion that every campaign-state writer participates in -
+writable construction included, since schema bootstrap is a real write - and that
+it holds through the rewrite. The gate is one per database shared by every store
+instance in the process, its reentrancy belongs to the acquiring thread rather
+than to an object, and its advisory lock file is campaign-store infrastructure no
+storage action targets; a second process consuming the free pages
+while maintenance waits therefore refuses the rewrite instead of performing an
+unjustified one. Free pages that pruning created do not widen the prune into a
+rewrite; that belongs to the next fresh plan. A refused or empty cleanup can
+never carry either along, and results distinguish `events_pruned` from
+`vacuum_performed`.
+
+Storage owns durable state of its own - an identity-keyed archive catalog,
+manifests and blobs, restore journals, a bounded execution audit, and
+operation-serialization state - under an explicit control-plane root. Terminal
+restore journals are retained to a bound while a nonterminal one is recovery
+authority, and catalog fields that establish what a representation *is* are
+create-once. None of it carries a currentness decision, and none of it can be
+reclaimed while a retained cold representation still needs it.
+
+## GPU/VRAM and host admission
+
+GPU jobs are admitted against explicit device availability, free memory, and
+configured budget evidence. A one-job calibration establishes whether the
+applicable serial workload is viable; it does not by itself authorize parallel
+expansion. Soft utilization and fractional-VRAM envelopes regulate additional
+jobs both upward and downward, while independent hard conditions protect against
+OOM. Missing telemetry at
+calibration startup selects conservative serial execution when the device is
+otherwise usable; it does not create parallel evidence.
+
+Training admission additionally recognizes infeasibility. CUDA training starts
+with one job only when one job is currently resource-admissible; zero safe
+admission is a valid execution state rather than a floor to be rounded up.
+Current aggregate occupancy counts regardless of which process owns it, a
+configured minimum concurrency is subordinate to current feasibility, and a
+positive configured job count is a maximum cap rather than launch permission.
+Pending training work with an idle queue and no feasible slot resolves to an
+explicit resource failure, not a launch or a wait. Device availability and
+memory observability are separate facts, and absent a trustworthy current memory
+observation automatic training admission is blocked. Memory safety is evaluated
+on every trustworthy sample independently of optimizer/epoch calibration
+readiness, which remains the prerequisite only for estimating scalable demand.
+A training slot owns training lifetime alone; post-training evaluation must not
+inherit a training slot. The evaluation/inference controller keeps its own
+accepted serial-floor calibration contract, which these training rules do not
+replace.
+
+For training, the configured `training_gpu_memory_fraction` is the admission
+ceiling *and* the live aggregate **soft** admission/backoff boundary. It is a
+control boundary, not a scientific or execution verdict: crossing it is never by
+itself terminal memory infeasibility. One trustworthy observation at or above
+that envelope immediately blocks any further admission or promotion at every
+active-job count. That single observation is only a candidate: it may be
+rechecked once so an allocator fluctuation does not stop a run.
+
+Training admission is therefore symmetric. The controller admits upward one job
+at a time on sustained true-epoch evidence, and it backs off downward one job at
+a time on sustained aggregate pressure. If the next normal control observation
+is still at or above the envelope while more than one owned training job is
+active, that persistence proves *the current concurrency* is unsafe, not that
+the workload is infeasible. The scheduler retracts exactly one prior admission:
+the most recently admitted currently active owned job is demoted
+(reverse-most-recent-promotion), which reuses the existing admission ordering
+rather than any victim-selection subsystem. Unaffected active jobs keep running.
+Backoff proceeds one level at a time - `3 -> 2`, then `2 -> 1` only on fresh
+persistent evidence at two - so every transition has its own observable causal
+evidence.
+
+A demoted job's cooperative stop is per job. The scheduler hands every admitted
+job its own stop handle; backoff sets exactly one of them, and a terminal abort
+sets every one of them, which is what whole-wave cancellation means. A future
+cancellation request is not teardown: the scheduler blocks until the demoted
+worker has actually returned, so the child process has exited and the run's own
+finalization has run, and only then does it re-observe device occupancy and make
+the next scheduling decision. No replacement admission, requeue, or restart may
+be ordered before that boundary.
+
+How long that teardown may legitimately take is owned by the process owner, and
+the scheduler imposes no deadline of its own on the demoted future. That future
+is the whole run: when the stop is requested it may still be in run-owned
+preparation, recovery classification, or materialization and may never have
+reached the trainer, so no subprocess-termination clock describes it and elapsed
+time there is not evidence about owned teardown. Child termination is instead
+bounded where the child is owned: the process owner escalates SIGINT, one
+termination grace, SIGTERM, one termination grace, then an unconditional
+SIGKILL and reap, so a stopped child always terminates inside its owner and
+whatever verdict that produces reaches the scheduler as the future's own
+outcome. Optimizer-activity freshness
+(`parallel_training_epoch_activity_timeout_seconds`) remains purely a child
+progress-liveness bound and has no authority over process teardown, so changing
+it cannot change resource-safety semantics, and no operator-facing teardown knob
+exists at all.
+
+The same per-job stop handle is also read at run-phase boundaries that precede
+the trainer, so a slot demoted while still preparing or materializing stops
+spending effort it will not use instead of launching MACE. That is the one
+cancellation mechanism, not a second one: those boundaries sit before any
+partial fold evidence exists, they leave the run root under the existing
+materialization/checkpoint authority, and they produce the same explicit
+cancellation outcome the trainer produces, so the scheduler classifies them as
+an ordinary retractable demotion.
+
+A resource demotion is not a scientific run failure, but only the execution
+owner may say that a demotion is what happened. The trainer reports an explicit
+cancellation outcome when - and only when - it observed the requested stop and
+terminated its child through the normal termination/finalization path; a
+supervisor's intent to stop a job is never evidence about why that job raised.
+On that explicit outcome the demoted task returns to the pending/restartable
+queue with its frozen slot identity, is not counted as a failed job, publishes
+no partial fold, and resumes later through the existing checkpoint/continuation
+authority rather than any retry identity or second checkpoint convention.
+Completed folds stay completed, and the planned folds still complete exactly
+once. Any other exception from a job selected for demotion - a backend fault, a
+nonzero MACE exit, a CUDA allocation failure, an interrupt, or a programmer
+error that races the stop request - keeps its own authority, is counted as a
+failed job, and ends the invocation through the terminal path instead of being
+requeued.
+
+A concurrency level that live telemetry has disproven lowers a scheduler-owned
+effective ceiling to one level below it for the rest of the current
+post-selection execution, and that ceiling is monotone downward: the same
+execution cannot oscillate back into a level it already falsified. The ceiling
+is runtime control state only - not campaign configuration, not durable
+scientific evidence, and not a persisted hardware profile. The per-job VRAM
+estimate is advisory admission input; live aggregate telemetry is authoritative
+for runtime adaptation, so an estimate the device later disproves is a reason to
+adapt concurrency rather than to fail.
+
+Terminal memory infeasibility sits outside this adaptation loop. It may be
+declared only when no lower owned concurrency state remains capable of resolving
+the problem - that is, after convergence to the minimum executable concurrency -
+or when an independent authoritative hard condition applies: a backend/device
+allocation failure, a failure of owned teardown/reclamation to re-establish a
+safe owned execution state, or another established hard-failure invariant such
+as sustained loss of live memory observability. Raising the configured envelope
+is not a repair for concurrency pressure. GPU-utilization saturation stays soft
+in the same way: while memory itself remains inside the envelope, saturation
+lowers the replacement target and never stops running work.
+
+Live memory observability is a precondition for continuing to own accelerator
+work, not merely for promoting it. While training is active, a missing current
+memory observation admits and promotes nothing. One isolated missing observation
+is tolerated only when the immediately preceding trustworthy observation was
+safe; a second consecutive control observation without a trustworthy sample, or
+a lost observation immediately after an unsafe one - where recovery can no
+longer be established - is a terminal resource-observability failure for the
+current training wave. A later invocation retries normally once observability is
+restored. This is expressed in the existing control loop; no second telemetry
+thread, monitor daemon, or persisted observability state is introduced, and the
+bounded transient tolerance is controller-local rather than operator
+configuration.
+
+Any exception escaping the training scheduling wave ends the invocation. It
+stops new admission, signals every owned child's stop handle, reaps every owned active child
+through the existing supervision path, and is re-raised before any post-training
+evaluation begins - including for previously completed sibling slots. A device
+whose training state is unknown or already unsafe must not receive fresh
+accelerator work in the same invocation. Progress is not lost: authenticated
+training summaries and their materializations remain durable restartable state,
+and the next healthy invocation resumes outstanding training/evaluation work
+through the ordinary continuation path. No out-of-memory stderr classifier,
+retry database, or alternate handoff record is involved.
+
+A transient architecture or classification realization is not training. A
+temporary accelerator model built to answer a recovery or currentness question
+is retired at its own ownership boundary, including on failure paths, so it
+cannot contribute residency to the baseline a later admission decision is
+measured against.
+
+An execution controller may lower concurrency after measured resource pressure,
+but it cannot change scientific batch/exposure semantics, precision policy,
+checkpoint evidence, or target/replay membership to fit memory. OOM recovery is
+valid only when the retry is protocol-equivalent and the changed parameter is
+non-semantic.
+
+## Replay indexing and bounded parsing
+
+The selected replay source remains external scientific authority. A
+reconstructible index may store source-byte identity, frame offsets/lengths,
+atom counts, and source-order geometry identity for sparse monitor access and
+bounded chunk parsing. Source mutation or index corruption causes safe
+reconstruction. Parser concurrency is added only when representative
+measurement shows benefit and exact replay bytes/identities remain unchanged.
+
+## Progress and observability
+
+Every long-running stage exposes scientific progress and executor state:
+
+1. completed/total work and percent where meaningful;
+2. elapsed time and ETA when estimable;
+3. throughput with an explicit stable unit;
+4. active, pending, or buffered work;
+5. resource pressure or the current hot item where relevant.
+
+Heartbeats are emitted during long periods without task completion. ETA is based
+on globally committed work. User-facing elapsed and known ETA use fixed
+`HH:MM:SS`; unavailable ETA is `--:--:--`. Presentation state never enters
+scientific digests.
+
+## Performance qualification boundary
+
+Performance changes are compared on representative work with equivalent
+scientific inputs and runtime conditions. Evidence records wall/CPU time,
+throughput, RSS/VRAM, scratch/storage, queue/backpressure, and output digests
+when material. A speedup obtained by changing precision, evidence population,
+ordering, or output is not a conforming optimization.
+
+Target-machine GPU and long real-production qualification remain separate from
+P6 functional closure. They require their own supported hardware, workload,
+backend, and acceptance evidence; the current campaign does not infer those
+results from CPU or bounded numerical tests.

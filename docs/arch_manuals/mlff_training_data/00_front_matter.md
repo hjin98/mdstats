@@ -1,112 +1,41 @@
 ---
-geometry: "margin=0.75in"
-architecture_revision: 109
-status: "current normative architecture"
-last_updated: "2026-09-07"
+title: "mdstats MLFF Training-Data Architecture"
+artifact_level: "D3 software architecture and integration"
+status: "current normative D3 architecture"
+accepted_date: "2026-09-13"
 ---
 
-# MLFF Training-Data and Fine-Tuning Architecture
+# mdstats MLFF Training-Data Architecture (D3)
 
-## Purpose and authority
+## Authority and scope
 
-This manual defines the accepted current scientific, statistical, execution, and evidence architecture for the mdstats MLFF workflow: source-certified atomistic data preparation, leakage-safe evidence roles, neutral statistical preparation, one optional automatic target-size diagnostic feeding an operator-owned target-size decision, MACE fine-tuning, selected-only method validation, fresh final production, and bounded campaign execution. Downstream deployment, physical, calibration, and locked-test capabilities remain separately owned product obligations.
+This manual is the current D3 software-architecture authority for the machine-learned force-field (MLFF) branch of mdstats. It was narrowed from the former mixed pre-SSDP architecture when the reconstructed D1 and D2 method papers were explicitly accepted on 2026-09-13.
 
-It is intentionally present-tense and single-generation. A reader does not need release chronology, migration history, or obsolete stage semantics to determine current behavior.
+Authority is layered and directional:
 
-The canonical editable architecture sources are the numbered chapters under `docs/arch_manuals/mlff_training_data/`. The assembled Markdown and PDF are generated publication products of those sources and must not be edited as independent authorities.
+1. **D1 scientific/mathematical authority:** [`../../methods/mlff_scientific_method.md`](../../methods/mlff_scientific_method.md).
+2. **D2 numerical/algorithmic authority:** [`../../methods/mlff_numerical_algorithmic_method.md`](../../methods/mlff_numerical_algorithmic_method.md).
+3. **D3 architecture/integration authority:** this manual.
+4. **D4 executable/source-specific authority:** [`../../specs/training_data/README.md`](../../specs/training_data/README.md) and the code owners it indexes.
 
-Detailed exact behavior is owned by current specifications under `docs/specs/training_data/`. Methods/theory material may explain rationale but does not override architecture or specifications. Proposed transitions live in `workplans/`; completed chronology lives under `docs/history/mlff/`; correctness/performance evidence lives in audits, release evidence, and benchmarks.
+D3 owns subsystem decomposition, dependency direction, lifecycle and orchestration, interface and artifact boundaries, persistence responsibilities, backend seams, and ownership routing. D3 does **not** redefine scientific observables, estimands, assumptions, numerical estimators, deterministic algorithms, error semantics, or stochastic semantics owned by D1/D2. Exact schema fields, constants, source encodings, dependency probes, and runtime representations remain D4 unless they alter D1/D2 semantics.
 
-## Architectural motive
+The retired mixed architecture is preserved byte-for-byte under `../../history/mlff/architecture_snapshots/pre_d1_d2_promotion_2026-09-13/` for provenance only.
 
-MLFF campaigns combine state with fundamentally different epistemic roles: physical source facts, eligibility decisions, evidence partitions, fitted transforms, subset-membership decisions, target-size decisions, optimization/checkpoint state, protocol-validation evidence, calibration evidence, locked tests, and deployment decisions. Conflating those roles creates leakage and ambiguous authority even when the numerical code is correct.
+## Architectural pipeline
 
-The architecture therefore uses immutable/content-addressed evidence, explicit statistical roles, one normative owner per scientific decision, and authenticated dependency direction. Execution realization is kept separate: cache layout, worker count, queue order, out-of-core storage, and scheduler policy may change without changing scientific membership, ordering, coverage, ranking, or evidence roles.
+The current MLFF data/training path is organized as:
 
-Expensive exact numerical work is computed once per semantic identity and reused wherever its inputs are unchanged. Exactness, deterministic authoritative decisions, bounded materialization, explicit resource ownership, and restartable authenticated state take precedence over nominal utilization.
+`source evidence -> source adapters -> canonical evidence plane -> sampling/evidence roles -> candidate-independent ML preparation -> P3 target-size screening -> P5 post-selection cross-validation -> fresh final production -> downstream qualification consumer`.
 
-## Current workflow at a glance
+The architecture separates evidence construction, target-size selection, method validation, production, and downstream qualification so that later evidence cannot acquire forbidden upstream control.
 
-```text
-source evidence and labels
-  -> eligibility / physical conditions
-  -> raw feature and event evidence
-  -> evidence-role partitioning
-  -> neutral statistical substrate and protected relations
-  -> fitted descriptors, metrics, E0/objective/weight inputs
-  -> one P_train / M3 target-size development split
-  -> one canonical training order pi_train and evaluation ladder M1 subset M2 subset M3
-  -> one common deterministic target-size preparation
-  -> optional paired optimizer-seed automatic diagnostic over candidate sizes
-     (one target-size reducer -> a *recommended* size)
-  -> operator-owned provisional design (ordered collection of (N, CV horizon, production horizon))
-  -> cross-validate admission
-  -> frozen design: every selected size N_selected, its exact T_selected = pi_train[:N_selected], and role horizons
-  -> post-selection cross-validation on the frozen collection
-  -> fresh final production on the selected dataset(s)
-  -> currentness-fenced final-production publication
-```
+## Package-level ownership
 
-The current graph has exactly one target-size architecture. The retired
-per-domain multi-view selection generation is not an alternate current path: it
-is neither migrated nor semantically read forward, and a workspace still holding
-its derived state is rejected with an actionable destructive reset/reprepare
-requirement before any candidate, checkpoint, or descendant is reused. Raw
-scientific inputs and independently valid low-level content caches remain
-reusable when their recipes do not depend on retired target-size semantics.
+- `mdstats.data`: canonical source/frame evidence and source-normalization surfaces.
+- `mdstats.sampling`: shared correlation/sampling primitives.
+- `mdstats.training_data`: MLFF evidence construction, selection, campaign state, persistence, and orchestration.
+- `mdstats.training`: training/checkpoint/evaluation execution surfaces.
+- `mdstats.cli`: operator-facing composition; it must not become an independent semantic owner.
 
-## Reading index
-
-| Need | Primary chapter |
-|---|---|
-| Scientific motivation, record/evidence model, and scope | Part I - Foundations |
-| Source identity, labels, strain/stress, eligibility, raw features/events | Part II - Data and evidence contracts |
-| Evidence roles, leakage-safe CV, fitted preparation, objective/weighting/exposure boundaries | Part III - Statistical design and fitted preparation |
-| Replay, MACE protocol, checkpointing, validation, deployment, calibration, active learning | Part IV - Training, evaluation, and deployment |
-| Target-size split/orders, the optional paired-seed diagnostic and its reducer, the provisional design and its freeze, post-selection CV, fresh final production | Part V - Target-size selection and post-selection validation |
-| Exact execution, bounded resource/materialization, cache/restart/storage/progress | Part VI - Performance and execution architecture |
-| Sole-owner matrix and accepted extension boundaries | Part VII - Ownership and extension boundaries |
-| External scientific/algorithmic sources | References |
-
-## Context retrieval index
-
-For targeted human or AI loading, use the smallest current source containing the needed concept:
-
-| Query terms | Load first |
-|---|---|
-| source/label identity, eligibility, strain/stress, raw features/events | `20_data_contracts.md` |
-| evidence roles, leakage, CV, fitted metrics, E0, objective, weighting, exposure | `30_statistical_design.md` |
-| replay, MACE, checkpoint, evaluation, deployment, calibration, active learning | `40_training_evaluation.md` |
-| target size, `pi_train`, `T_selected`, `M1/M2/M3`, `n1/n2/n3`, post-selection CV, final production | `50_target_size_selection.md` |
-| scheduler, sparse execution, out-of-core, memory, persistence, progress | `60_execution_performance.md` |
-| owner, dependency direction, unsupported generation, extension boundary | `80_ownership_and_decisions.md` |
-| scientific/algorithmic provenance | `90_references.md` |
-| superseded design rationale or release chronology | `docs/history/mlff/` |
-| proposed transition | `workplans/active/` |
-
-## Stable terminology
-
-- **training domain** — an authorized gradient-training evidence partition. The target-size design is an ordered frozen collection; for each frozen size, post-selection CV may derive fold-local partitions only inside its exact membership `T_N = pi_train[:N]`.
-- **target membership** — frame membership in a target-training subset; an exact prefix of the one canonical training order `pi_train`.
-- **target size** — the protocol-level scientific target-training cardinality the operator chooses, restricted to the configured qualified candidate set.
-- **recommended size** — the size the optional automatic diagnostic's reducer ranks best under its short-horizon protocol. It is evidence, never authority.
-- **monitor size** — the cardinality of a monitoring/evaluation evidence set; never target-size authority.
-- **training order** — the one canonical deterministic ordering `pi_train` of the target-training pool whose prefixes define candidate target subsets.
-- **qualified size** — a candidate size admitted by the configured target-size policy for the current experiment definition.
-- **provisional design** — the ordered, unique-by-`N` collection of per-size entries `(N_provisional, its exact membership, selection source, CV horizon, production horizon)` the operator owns until admission. Empty is its canonical unselected state.
-- **selected size** — a target size `N_selected` in the ordered frozen design admitted at `cross-validate`, bound to its exact membership `T_selected = pi_train[:N_selected]` and its effective role horizons.
-- **authoritative evidence** — persisted information that defines or independently proves a scientific decision.
-- **reconstructible execution cache** — discardable state derivable exactly from authoritative inputs.
-- **unsupported generation** — an old campaign/artifact generation that current architecture does not interpret or migrate; it requires re-preparation.
-
-## Normative vocabulary
-
-- **SHALL / MUST** — required for scientific, statistical, or execution correctness.
-- **SHOULD** — the default design unless measured evidence justifies another exact-equivalent realization.
-- **MAY** — optional realization that cannot weaken the scientific contract.
-
-When architecture explains a change-sensitive constant whose exact value is specification-owned, the owning specification remains the sole normative location for changing that value.
-
-## Retrieval and local-context rule
-
-Each major chapter states what its concepts own, consume, emit, and explicitly do not own. Equations and symbols are defined near first use. A chapter may repeat a dependency boundary for local comprehension, but repeated prose must not create a second independently tunable contract.
+The remaining chapters define only the architectural consequences of D1/D2 and route exact behavior to the owning D4 specification/code surface.
