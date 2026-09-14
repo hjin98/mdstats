@@ -38,6 +38,7 @@ from mdstats.training_data.post_selection_identity import (
     cv_training_budget_policy,
 )
 from mdstats.training_data.post_selection_execution import (
+    PostSelectionFittedPreparation,
     DATASET_ROLE_CHECKPOINT_MONITOR,
     authenticate_post_selection_provider,
     evaluate_post_selection_dataset,
@@ -63,6 +64,7 @@ from mdstats.training_data.target_size_execution.evaluation import (
 )
 from mdstats.training_data.replay import canonical_replay_geometry_identity
 from tests._mlff_post_selection_fixture import (
+    context_monitor_kwargs,
     PostSelectionHarness,
     build_selected_campaign,
     fixture_config_text,
@@ -82,19 +84,23 @@ def _two_condition_data4_bundle(
     *,
     regime: str | None = "production",
     elements: tuple[str, ...] = ("Li", "O"),
+    n_frames: int = 48,
     **_ignored,
 ):
     """Build the same real P1--P3 inputs with two temperature conditions."""
 
     for run_id, tebeg, position_offset in (
         ("run-a", 700, 0.0),
-        ("run-b", 900, 0.05),
+        # Offset past run-a's whole trajectory span so the two runs share no
+        # geometry: a cross-run duplicate is a genuine P1 relation, and the
+        # common target monitor must be relation-disjoint from T_selected.
+        ("run-b", 900, 0.4),
     ):
         neutral_fixtures._write(
             training_root,
             run_id,
             elements,
-            n_frames=48,
+            n_frames=n_frames,
             force_event_frame=8,
             tebeg=tebeg,
             position_offset=position_offset,
@@ -222,6 +228,10 @@ def test_p5_real_nonreplay_reconstructs_default_head_and_authenticates_eval2(
             context.cv_policy,
             projection=projection,
             replay_lineage_digest=None,
+            **context_monitor_kwargs(context),
+        )
+        common_monitor_uids = tuple(
+            context.common_target_monitor()[0].selected_identities
         )
         fold = cv_plan.fold(0)
         run_plan = build_cv_fold_run_plan(
@@ -235,7 +245,7 @@ def test_p5_real_nonreplay_reconstructs_default_head_and_authenticates_eval2(
             run_plan=run_plan,
             budget_policy=cv_training_budget_policy(context.method, context.cv_policy),
             training_frame_uids=fold.training_frame_uids,
-            monitor_frame_uids=fold.checkpoint_monitor_frame_uids,
+            monitor_frame_uids=common_monitor_uids,
             outer_evaluation_frame_uids=None,
         )
 
@@ -264,7 +274,7 @@ def test_p5_real_nonreplay_reconstructs_default_head_and_authenticates_eval2(
                 / materialization.mace_config_relative_path
             ).read_text(encoding="utf-8")
         )
-        assert config_payload["schema"] == "mdstats.post-selection-mace-config.v2"
+        assert config_payload["schema"] == "mdstats.post-selection-mace-config.v3"
         assert "heads" not in config_payload
         assert config_payload["E0s"]
         # The immutable configuration never carries the runtime locator; both
@@ -332,7 +342,7 @@ def test_p5_real_nonreplay_reconstructs_default_head_and_authenticates_eval2(
             root_directory=run_root / "materialization",
             provider=provider,
             block_ids=_component_block_ids(
-                context.selected, fold.checkpoint_monitor_frame_uids
+                context.selected, common_monitor_uids
             ),
             execution_batch_width=execution_batch_width(optimizer_policy),
             extxyz_policy=context.method_policies.extxyz,
@@ -465,6 +475,10 @@ legacy_normalized = true
             context.cv_policy,
             projection=projection,
             replay_lineage_digest=replay_lineage_digest,
+            **context_monitor_kwargs(context),
+        )
+        common_monitor_uids = tuple(
+            context.common_target_monitor()[0].selected_identities
         )
         fold = cv_plan.fold(0)
         run_plan = build_cv_fold_run_plan(
@@ -478,7 +492,7 @@ legacy_normalized = true
             run_plan=run_plan,
             budget_policy=cv_training_budget_policy(context.method, context.cv_policy),
             training_frame_uids=fold.training_frame_uids,
-            monitor_frame_uids=fold.checkpoint_monitor_frame_uids,
+            monitor_frame_uids=common_monitor_uids,
             outer_evaluation_frame_uids=fold.outer_evaluation_frame_uids,
         )
         assert _outer_metrics is not None
@@ -492,9 +506,24 @@ legacy_normalized = true
         )
         mace_evidence = summary.mace_execution_evidence
         assert mace_evidence is not None
-        assert mace_evidence["loss_class"] == (
-            "mace.modules.loss.WeightedEnergyForcesStressLoss"
+        # Foundation replay executes native UniversalLoss with the fixed D2
+        # parameters over MACE's replay-first combined corpus, single-process
+        # with drop_last; the P3 [objective] override above never reaches it.
+        assert mace_evidence["loss_class"] == "mace.modules.loss.UniversalLoss"
+        assert mace_evidence["training_mode"] == "multihead_replay"
+        assert (
+            mace_evidence["huber_delta"],
+            mace_evidence["energy_weight"],
+            mace_evidence["forces_weight"],
+            mace_evidence["stress_weight"],
+        ) == (0.01, 1.0, 10.0, 1.0)
+        assert mace_evidence["ordered_head_layout"] == ["pt_head", "target_head"]
+        assert mace_evidence["combined_drop_last"] is True
+        assert mace_evidence["distributed"] is False
+        assert mace_evidence["combined_updates_per_epoch"] == (
+            mace_evidence["combined_train_count"] // 4
         )
+        assert summary.updates_per_epoch == mace_evidence["combined_updates_per_epoch"]
         assert mace_evidence["multiheads_finetuning"] is True
         assert mace_evidence["force_mh_ft_lr"] is True
         assert mace_evidence["real_pt_data_ratio_threshold"] == 0.0
@@ -548,9 +577,24 @@ legacy_normalized = true
                 / materialization.mace_config_relative_path
             ).read_text(encoding="utf-8")
         )
-        assert config_payload["energy_weight"] == 2.0
-        assert config_payload["forces_weight"] == 7.0
-        assert config_payload["stress_weight"] == 3.0
+        assert config_payload["loss"] == "universal"
+        assert config_payload["huber_delta"] == 0.01
+        assert config_payload["energy_weight"] == 1.0
+        assert config_payload["forces_weight"] == 10.0
+        assert config_payload["stress_weight"] == 1.0
+        # Selected-head foundation-residual E0 with composition transfer over
+        # the exact common monitor and held-out consumers.
+        preparation = context.evidence_store.get(
+            evidence.preparation_digest, PostSelectionFittedPreparation.from_dict
+        )
+        assert preparation.training_mode == "multihead_replay"
+        assert preparation.fitted_weights_digest is None
+        assert preparation.foundation_head == context.method_policies.foundation_head
+        assert preparation.common_monitor_record_digest == (
+            context.common_target_monitor()[0].content_digest
+        )
+        assert preparation.composition_transfer.transferable
+        assert set(preparation.membership) == set(fold.training_frame_uids)
         assert config_payload["lr"] == pytest.approx(0.0123)
         assert config_payload["ema"] is True
         assert config_payload["ema_decay"] == pytest.approx(0.87)
@@ -696,17 +740,15 @@ legacy_normalized = true
             predictions = predict_all(context, qualification_provider, target_frames[:1])
             assert len(predictions) == 1
         assert evaluated_checkpoint_names[-1] == earliest_checkpoint.name
-        assert any(
-            float(frame.info["config_weight"]) != pytest.approx(1.0)
+        # General config_weight is neutral transport for foundation P5; the
+        # local property weights remain binary availability masks.
+        assert all(
+            float(frame.info["config_weight"]) == pytest.approx(1.0)
             for frame in target_frames
         )
-        assert all(float(frame.info["config_energy_weight"]) > 0.0 for frame in target_frames)
-        assert all(float(frame.info["config_forces_weight"]) > 0.0 for frame in target_frames)
-        assert all(float(frame.info["config_stress_weight"]) > 0.0 for frame in target_frames)
-        assert any(
-            float(frame.info["config_weight"]) != pytest.approx(1.0)
-            for frame in target_frames
-        )
+        assert all(float(frame.info["config_energy_weight"]) == 1.0 for frame in target_frames)
+        assert all(float(frame.info["config_forces_weight"]) == 1.0 for frame in target_frames)
+        assert all(float(frame.info["config_stress_weight"]) == 1.0 for frame in target_frames)
 
         # Feed that exact production-exported batch to MACE's own parser,
         # resolver, and native loss.  This companion oracle keeps the global
@@ -716,42 +758,22 @@ legacy_normalized = true
             executable, run_root / "materialization"
         )
         loss_fn = objective_real._loss_from_pinned_mace(parsed)
-        assert float(loss_fn.energy_weight) == pytest.approx(2.0)
-        assert float(loss_fn.forces_weight) == pytest.approx(7.0)
-        assert float(loss_fn.stress_weight) == pytest.approx(3.0)
+        assert type(loss_fn).__qualname__ == "UniversalLoss"
+        assert float(loss_fn.energy_weight) == pytest.approx(1.0)
+        assert float(loss_fn.forces_weight) == pytest.approx(10.0)
+        assert float(loss_fn.stress_weight) == pytest.approx(1.0)
         batch = objective_real._batch_from_exported_atoms(tuple(target_frames))
         prediction = {
             "energy": batch["energy"] + 0.3,
             "forces": batch["forces"] + 0.05,
             "stress": batch["stress"] + 0.02,
         }
+        from tests.test_mlff_mace_execution_semantics import _hand_universal_loss
+
         observed_loss = float(loss_fn(ref=batch, pred=prediction, ddp=False))
-        atoms_per_config = batch.ptr[1:] - batch.ptr[:-1]
-        expected_energy = objective_real.torch.mean(
-            batch.weight
-            * batch.energy_weight
-            * objective_real.torch.square(
-                (batch["energy"] - prediction["energy"]) / atoms_per_config
-            )
+        assert observed_loss == pytest.approx(
+            float(_hand_universal_loss(batch, prediction))
         )
-        repeated_weight = objective_real.torch.repeat_interleave(
-            batch.weight, atoms_per_config
-        ).unsqueeze(-1)
-        repeated_forces_weight = objective_real.torch.repeat_interleave(
-            batch.forces_weight, atoms_per_config
-        ).unsqueeze(-1)
-        expected_forces = objective_real.torch.mean(
-            repeated_weight
-            * repeated_forces_weight
-            * objective_real.torch.square(batch["forces"] - prediction["forces"])
-        )
-        expected_stress = objective_real.torch.mean(
-            batch.weight.view(-1, 1, 1)
-            * batch.stress_weight.view(-1, 1, 1)
-            * objective_real.torch.square(batch["stress"] - prediction["stress"])
-        )
-        expected_loss = 2.0 * expected_energy + 7.0 * expected_forces + 3.0 * expected_stress
-        assert observed_loss == pytest.approx(float(expected_loss))
         assert evidence.runtime_summary_digest == summary.content_digest
     finally:
         store.close()
@@ -858,6 +880,10 @@ legacy_normalized = true
             context.cv_policy,
             projection=projection,
             replay_lineage_digest=replay_lineage_digest,
+            **context_monitor_kwargs(context),
+        )
+        common_monitor_uids = tuple(
+            context.common_target_monitor()[0].selected_identities
         )
         fold = cv_plan.fold(0)
         run_plan = build_cv_fold_run_plan(
@@ -871,7 +897,7 @@ legacy_normalized = true
             run_plan=run_plan,
             budget_policy=cv_training_budget_policy(context.method, context.cv_policy),
             training_frame_uids=fold.training_frame_uids,
-            monitor_frame_uids=fold.checkpoint_monitor_frame_uids,
+            monitor_frame_uids=common_monitor_uids,
             outer_evaluation_frame_uids=None,
         )
 
@@ -900,7 +926,7 @@ legacy_normalized = true
                     context.method, context.cv_policy
                 ),
                 training_frame_uids=fold.training_frame_uids,
-                monitor_frame_uids=fold.checkpoint_monitor_frame_uids,
+                monitor_frame_uids=common_monitor_uids,
                 outer_evaluation_frame_uids=None,
             )
         )
@@ -1047,6 +1073,10 @@ require_available = true
 
     class _InterruptAtEval2(PostSelectionHarness):
         def evaluate(self, provider, atoms_list):
+            if atoms_list and "REF_forces" not in atoms_list[0].arrays:
+                # Selected-head residual inputs are pre-training preparation,
+                # not an EVAL2 consumer.
+                return super().evaluate(provider, atoms_list)
             raise RuntimeError("simulated interruption at the first EVAL2 consumer")
 
     with pytest.raises(RuntimeError, match="simulated interruption"):

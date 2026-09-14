@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests._mlff_post_selection_fixture import context_monitor_kwargs
+
 import ast
 
 from dataclasses import replace
@@ -262,6 +264,10 @@ def _write_valid_replay_file(path: Path, *, offset: float) -> None:
     write(path, [atoms], format="extxyz")
 
 
+def replace_mode(preparation, method):
+    return SimpleNamespace(**{**vars(preparation), "training_mode": method.training_mode})
+
+
 def test_r10a_exact_mode_matrix_and_executable_head_parity(tmp_path: Path, monkeypatch):
     foundation = tmp_path / "foundation.model"
     foundation.write_bytes(b"bounded-foundation")
@@ -303,7 +309,8 @@ def test_r10a_exact_mode_matrix_and_executable_head_parity(tmp_path: Path, monke
         run_identity="scratch",
         optimizer_seed=1,
         planned_epochs=3,
-        preparation=preparation,
+        preparation=replace_mode(preparation, scratch_method),
+        objective=scratch_policies.objective,
         optimizer_policy=optimizer,
         target_train=target_train,
         monitor=monitor,
@@ -311,6 +318,7 @@ def test_r10a_exact_mode_matrix_and_executable_head_parity(tmp_path: Path, monke
         method=scratch_method,
         mace_architecture=scratch_policies.mace_architecture,
     )
+    assert scratch_internal["loss"] == "stress" and "huber_delta" not in scratch_internal
     assert "multiheads_finetuning" not in scratch_internal
     assert "pt_train_file" not in scratch_internal
     assert "heads" not in scratch_internal
@@ -322,7 +330,8 @@ def test_r10a_exact_mode_matrix_and_executable_head_parity(tmp_path: Path, monke
         run_identity="naive",
         optimizer_seed=1,
         planned_epochs=3,
-        preparation=preparation,
+        preparation=replace_mode(preparation, naive_method),
+        objective=naive_policies.objective,
         optimizer_policy=optimizer,
         target_train=target_train,
         monitor=monitor,
@@ -331,6 +340,7 @@ def test_r10a_exact_mode_matrix_and_executable_head_parity(tmp_path: Path, monke
         mace_architecture=naive_policies.mace_architecture,
         foundation_head=naive_policies.foundation_head,
     )
+    assert naive_internal["loss"] == "universal" and naive_internal["huber_delta"] == 0.01
     assert "multiheads_finetuning" not in naive_internal
     assert "pt_train_file" not in naive_internal
     assert "heads" not in naive_internal
@@ -345,7 +355,8 @@ def test_r10a_exact_mode_matrix_and_executable_head_parity(tmp_path: Path, monke
         run_identity="multi",
         optimizer_seed=1,
         planned_epochs=3,
-        preparation=preparation,
+        preparation=replace_mode(preparation, multi_method),
+        objective=multi_policies.objective,
         optimizer_policy=optimizer,
         target_train=target_train,
         monitor=monitor,
@@ -920,6 +931,7 @@ require_target_elements = false
             ctx8.cv_policy,
             projection=build_selected_relation_projection(ctx8.selected),
             replay_lineage_digest=digest8,
+            **context_monitor_kwargs(ctx8),
         )
         plan16 = build_post_selection_cv_plan(
             ctx16.selected,
@@ -927,10 +939,20 @@ require_target_elements = false
             ctx16.cv_policy,
             projection=build_selected_relation_projection(ctx16.selected),
             replay_lineage_digest=digest16,
+            **context_monitor_kwargs(ctx16),
         )
 
         assert plan8.replay_lineage_digest == digest8
         assert plan16.replay_lineage_digest == digest16
+        # One campaign-common monitor record, independent of the selected size,
+        # separated from both governed target sets.
+        assert plan8.common_monitor_record_digest == plan16.common_monitor_record_digest
+        assert plan8.monitor_separation_digest == plan16.monitor_separation_digest
+        _record, separation = ctx8.common_target_monitor()
+        assert set(separation.governed_target_membership_digests) == {
+            ctx8.selected.selected_membership_digest,
+            ctx16.selected.selected_membership_digest,
+        }
 
         # Both selected entries retain their independent (N_selected, H_cv, H_prod) bindings
         assert plan8.binding.n_selected == 8

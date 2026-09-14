@@ -23,7 +23,7 @@ from .feature_metric import FeatureFitDomain, build_feature_fit_domains
 #: Re-exported for objective-side callers.  The canonical definition lives with
 #: the MACE compatibility contract that owns pinned-parser semantics; it is the
 #: executable realization of the global objective declared here.
-from .mace_compatibility import MACE_EXECUTABLE_LOSS_FAMILY
+from .mace_compatibility import MACE_WEIGHTED_LOSS_FAMILY
 
 TRAINING_OBJECTIVE_POLICY_SCHEMA = "mdstats.training-objective-policy.v2"
 CONFIGURATION_WEIGHT_POLICY_SCHEMA = "mdstats.configuration-weight-policy.v1"
@@ -114,6 +114,12 @@ class TrainingObjectivePolicy:
     @property
     def policy_digest(self) -> str: return digest(self._payload())
     def to_dict(self) -> dict[str, Any]: return {**self._payload(), "policy_digest": self.policy_digest}
+
+    @property
+    def loss_family(self) -> str:
+        """The native MACE family that realizes this weighted objective."""
+
+        return MACE_WEIGHTED_LOSS_FAMILY
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "TrainingObjectivePolicy":

@@ -27,12 +27,10 @@ from mdstats.training_data import _campaign_cli_core as cli
 from mdstats.training_data._campaign_cli_core import CampaignStore
 from mdstats.training_data._common import digest
 from mdstats.training_data.campaign_post_selection import (
-    PostSelectionError,
     load_current_selected_training_context,
 )
 from mdstats.training_data.campaign_post_selection_runtime import (
     build_post_selection_context,
-    resolve_current_cv_acceptance,
     resolve_current_cv_plan,
     resolve_current_final_production_plan,
 )
@@ -42,7 +40,6 @@ from mdstats.training_data.campaign_target_size_cutover import (
 from mdstats.training_data.campaign_target_size_state import (
     TargetSizeLifecycle,
     TargetSizeRegime,
-    load_target_size_campaign_revision,
 )
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -205,19 +202,18 @@ def test_p6_reopens_the_preserved_p5a6_workspace_through_real_owners(
         assert list(selected.selected_membership) == identity["selected_membership"]
         assert selected.binding.content_digest == identity["selected_binding_digest"]
 
-        # 4. The persisted P5 method / CV / final-production identities.
+        # 4. The persisted P5 method / CV / final-production identities are
+        #    pre-restoration history: the restored method is a different
+        #    identity, and the preserved plans never deserialize as current.
+        #    Independent P1-P4 selection evidence above stays current.
+        from mdstats.training_data._common import TrainingDataSerializationError
+
         context = build_post_selection_context(cfg, paths, store, trainer=None)
-        assert context.method.content_digest == identity["method_identity_digest"]
-        plan = resolve_current_cv_plan(context)
-        acceptance = resolve_current_cv_acceptance(context)
-        final_plan = resolve_current_final_production_plan(context)
-        assert plan is not None and acceptance is not None and final_plan is not None
-        assert plan.content_digest == identity["cv_plan_digest"]
-        assert acceptance.content_digest == identity["cv_acceptance_digest"]
-        assert acceptance.accepted
-        assert final_plan.content_digest == identity["final_plan_digest"]
-        assert final_plan.cv_authorization_digest == acceptance.content_digest
-        assert final_plan.binding.content_digest == selected.binding.content_digest
+        assert context.method.content_digest != identity["method_identity_digest"]
+        with pytest.raises(TrainingDataSerializationError, match="schema"):
+            resolve_current_cv_plan(context)
+        with pytest.raises(TrainingDataSerializationError, match="schema"):
+            resolve_current_final_production_plan(context)
     finally:
         store.close()
 
@@ -241,10 +237,8 @@ def test_p6_reopens_the_preserved_p5a6_workspace_through_real_owners(
             monkeypatch.undo()
         assert selected2.binding.content_digest == identity["selected_binding_digest"]
         context2 = build_post_selection_context(cfg2, paths2, store2, trainer=None)
-        assert (
-            resolve_current_final_production_plan(context2).content_digest
-            == identity["final_plan_digest"]
-        )
+        with pytest.raises(TrainingDataSerializationError, match="schema"):
+            resolve_current_final_production_plan(context2)
     finally:
         store2.close()
 
@@ -325,10 +319,11 @@ def test_corrupted_final_production_plan_m3_is_rejected_by_p2_oracle(
     store = CampaignStore(paths.state_db)
     try:
         context = build_post_selection_context(cfg, paths, store, trainer=None)
-        with pytest.raises(
-            PostSelectionError,
-            match="The stored final-production plan binds retired M3 development lineage",
-        ):
+        # Restored P5 has no M3 lineage at all: a pre-restoration final plan,
+        # corrupted or not, is historical and never resolves as current.
+        from mdstats.training_data._common import TrainingDataSerializationError
+
+        with pytest.raises(TrainingDataSerializationError, match="schema"):
             resolve_current_final_production_plan(context)
     finally:
         store.close()

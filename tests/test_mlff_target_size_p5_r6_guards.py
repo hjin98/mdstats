@@ -27,6 +27,7 @@ from pathlib import Path
 import pytest
 
 from tests._mlff_post_selection_fixture import (
+    context_monitor_kwargs,
     PostSelectionHarness,
     build_selected_campaign,
     fixture_config_text,
@@ -394,7 +395,8 @@ def test_guard_p5_cross_campaign_authorization_rejected(tmp_path: Path):
                 context.production_policy,
                 cv_plan=plan,
                 cv_acceptance=acceptance,
-            )
+            **context_monitor_kwargs(context),
+)
     finally:
         store.close()
 
@@ -436,6 +438,7 @@ def test_guard_p5_modified_selection_invalidates_authorization(tmp_path: Path):
                 context.production_policy,
                 cv_plan=plan,
                 cv_acceptance=acceptance,
-            )
+            **context_monitor_kwargs(context),
+)
     finally:
         store.close()

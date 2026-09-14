@@ -109,7 +109,9 @@ def captured(tmp_path_factory: pytest.TempPathFactory):
         "E0s": dict(_TARGET_E0S),
         **head_keys,
         "lr": 1.0e-3,
-        "loss": "stress",
+        "training_mode": "multihead_replay",
+        "loss": "universal",
+        "huber_delta": 0.01,
         "energy_weight": 1.0,
         "forces_weight": 10.0,
         "stress_weight": 1.0,
@@ -328,10 +330,14 @@ def _structures(*, with_hydrogen: bool):
 
 def _scratch_payload(payload):
     return {
+        **{
         key: value
         for key, value in payload.items()
         if key
         not in {
+            "training_mode",
+            "loss",
+            "huber_delta",
             "foundation_head",
             "multiheads_finetuning",
             "force_mh_ft_lr",
@@ -340,6 +346,9 @@ def _scratch_payload(payload):
             "pt_valid_file",
             "heads",
         }
+        },
+        "training_mode": "scratch",
+        "loss": "stress",
     }
 
 

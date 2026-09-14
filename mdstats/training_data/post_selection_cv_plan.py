@@ -47,13 +47,169 @@ from .post_selection_run_identity import (
 )
 
 SELECTED_RELATION_PROJECTION_SCHEMA = "mdstats.post-selection-relation-projection.v1"
-POST_SELECTION_CV_FOLD_SCHEMA = "mdstats.post-selection-cv-fold.v1"
-POST_SELECTION_CV_PLAN_SCHEMA = "mdstats.post-selection-cv-plan.v1"
+# v2 folds contain gradient training, held-out outer evaluation, and purge only;
+# v2 plans bind the exact common target-monitor record and its separation.
+POST_SELECTION_CV_FOLD_SCHEMA = "mdstats.post-selection-cv-fold.v2"
+POST_SELECTION_CV_PLAN_SCHEMA = "mdstats.post-selection-cv-plan.v2"
+COMMON_MONITOR_SEPARATION_SCHEMA = "mdstats.post-selection-common-monitor-separation.v1"
 POST_SELECTION_CV_FOLD_RUN_PLAN_SCHEMA = "mdstats.post-selection-cv-fold-run-plan.v1"
 
 
 class PostSelectionCvInfeasibleError(PostSelectionError):
     """The configured CV cannot be built on the selected data without leakage."""
+
+
+class CommonMonitorSeparationError(PostSelectionError):
+    """The common target monitor shares a protected relation with a target set."""
+
+
+@dataclass(frozen=True, slots=True)
+class CommonMonitorSeparationEvidence:
+    """P1 cross-role separation of ``M_mon`` from every governed ``T_N``.
+
+    Exact frame disjointness is necessary but not sufficient.  The complete P1
+    relation authority is closed over the monitor, every governed target set,
+    and every related frame outside both, so a chain through an intermediate
+    frame is still one component.  A collision fails; nothing is filtered,
+    replaced, or resampled.
+    """
+
+    common_monitor_record_digest: str
+    relation_authority_digest: str
+    frame_authority_digest: str
+    neutral_unit_catalog_digest: str
+    governed_target_membership_digests: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        for name in (
+            "common_monitor_record_digest",
+            "relation_authority_digest",
+            "frame_authority_digest",
+            "neutral_unit_catalog_digest",
+        ):
+            object.__setattr__(
+                self, name, validate_digest(getattr(self, name), name=name)
+            )
+        targets = tuple(
+            sorted(
+                {
+                    validate_digest(str(v), name="governed_target_membership_digest")
+                    for v in self.governed_target_membership_digests
+                }
+            )
+        )
+        if not targets:
+            raise TrainingDataInputError(
+                "Common-monitor separation requires at least one governed target set."
+            )
+        object.__setattr__(self, "governed_target_membership_digests", targets)
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": COMMON_MONITOR_SEPARATION_SCHEMA,
+            "common_monitor_record_digest": self.common_monitor_record_digest,
+            "relation_authority_digest": self.relation_authority_digest,
+            "frame_authority_digest": self.frame_authority_digest,
+            "neutral_unit_catalog_digest": self.neutral_unit_catalog_digest,
+            "governed_target_membership_digests": list(
+                self.governed_target_membership_digests
+            ),
+            "relation_closure": "complete_p1_split_exclusion_authority",
+            "protected_relation_collisions": 0,
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CommonMonitorSeparationEvidence":
+        if payload.get("schema") != COMMON_MONITOR_SEPARATION_SCHEMA:
+            raise TrainingDataSerializationError(
+                "Unsupported common-monitor separation schema."
+            )
+        result = cls(
+            common_monitor_record_digest=str(payload["common_monitor_record_digest"]),
+            relation_authority_digest=str(payload["relation_authority_digest"]),
+            frame_authority_digest=str(payload["frame_authority_digest"]),
+            neutral_unit_catalog_digest=str(payload["neutral_unit_catalog_digest"]),
+            governed_target_membership_digests=tuple(
+                str(v) for v in payload["governed_target_membership_digests"]
+            ),
+        )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError(
+                "Common-monitor separation digest mismatch."
+            )
+        return result
+
+
+def build_common_monitor_separation(
+    contexts: Sequence[CurrentSelectedTrainingContext], monitor_record: Any
+) -> CommonMonitorSeparationEvidence:
+    """Prove ``M_mon`` is relation-disjoint from every governed selected ``T_N``.
+
+    ``contexts`` are all frozen selected sizes of one campaign generation; they
+    share one P1 authority.  The check runs after exact monitor sampling and
+    before any CV/final plan can bind the monitor.
+    """
+
+    from .online_monitor import require_common_target_monitor_record
+
+    require_common_target_monitor_record(monitor_record)
+    if not contexts:
+        raise PostSelectionError(
+            "Common-monitor separation requires the frozen selected target sets."
+        )
+    authorities = contexts[0].authorities
+    split_exclusion = authorities.split_exclusion
+    for context in contexts:
+        if context.binding.split_exclusion_digest != split_exclusion.content_digest:
+            raise PostSelectionError(
+                "Frozen selected sizes do not share one P1 relation authority."
+            )
+    monitor = set(monitor_record.selected_identities)
+    targets: set[str] = set()
+    for context in contexts:
+        targets.update(context.selected_membership)
+    exact = sorted(monitor & targets)
+    if exact:
+        raise CommonMonitorSeparationError(
+            f"{len(exact)} common target-monitor frame(s) are members of a governed "
+            "target set; the monitor is not an independent checkpoint parent."
+        )
+    related = {uid for group in split_exclusion.groups for uid in group.frame_uids}
+    universe = sorted(monitor | targets | related)
+    components = project_split_exclusion_constraint_components(
+        universe,
+        split_exclusion,
+        frame_authority_digest=authorities.frame_authority.content_digest,
+        neutral_unit_catalog_digest=authorities.neutral_base.unit_catalog.content_digest,
+    )
+    collisions = [
+        component
+        for component in components
+        if monitor.intersection(component) and targets.intersection(component)
+    ]
+    if collisions:
+        raise CommonMonitorSeparationError(
+            f"{len(collisions)} P1 protected-relation component(s) join common "
+            "target-monitor frames to governed target frames. The monitor is not "
+            "filtered, replaced, or resampled: current P5 is infeasible until the "
+            "upstream authority changes."
+        )
+    return CommonMonitorSeparationEvidence(
+        common_monitor_record_digest=monitor_record.content_digest,
+        relation_authority_digest=split_exclusion.content_digest,
+        frame_authority_digest=authorities.frame_authority.content_digest,
+        neutral_unit_catalog_digest=authorities.neutral_base.unit_catalog.content_digest,
+        governed_target_membership_digests=tuple(
+            context.selected_membership_digest for context in contexts
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,19 +358,19 @@ def build_selected_relation_projection(
 class PostSelectionCvFold:
     """Exact selected-only role membership for one fold.
 
-    Accounting is complete by construction and re-checked here: training,
-    checkpoint monitor, outer evaluation, and purge partition the selected
+    Accounting is complete by construction and re-checked here: gradient
+    training, held-out outer evaluation, and purge partition the selected
     universe exactly.  A frame that simply disappeared would be a silent
-    reduction of the cross-validated population, so it is rejected.
+    reduction of the cross-validated population, so it is rejected.  The
+    checkpoint monitor is the campaign-common record outside every fold, never
+    a fold member.
     """
 
     fold_index: int
     training_frame_uids: tuple[str, ...]
-    checkpoint_monitor_frame_uids: tuple[str, ...]
     outer_evaluation_frame_uids: tuple[str, ...]
     purged_frame_uids: tuple[str, ...]
     training_component_ids: tuple[str, ...]
-    checkpoint_monitor_component_ids: tuple[str, ...]
     outer_evaluation_component_ids: tuple[str, ...]
     purged_component_ids: tuple[str, ...]
 
@@ -225,11 +381,9 @@ class PostSelectionCvFold:
         object.__setattr__(self, "fold_index", index)
         for name in (
             "training_frame_uids",
-            "checkpoint_monitor_frame_uids",
             "outer_evaluation_frame_uids",
             "purged_frame_uids",
             "training_component_ids",
-            "checkpoint_monitor_component_ids",
             "outer_evaluation_component_ids",
             "purged_component_ids",
         ):
@@ -239,17 +393,12 @@ class PostSelectionCvFold:
             object.__setattr__(self, name, values)
         if not self.training_frame_uids:
             raise TrainingDataInputError("A CV fold requires gradient-training frames.")
-        if not self.checkpoint_monitor_frame_uids:
-            raise TrainingDataInputError(
-                "A CV fold requires its own selected-only checkpoint monitor."
-            )
         if not self.outer_evaluation_frame_uids:
             raise TrainingDataInputError(
                 "A CV fold requires a held-out outer evaluation membership."
             )
         groups = (
             set(self.training_frame_uids),
-            set(self.checkpoint_monitor_frame_uids),
             set(self.outer_evaluation_frame_uids),
             set(self.purged_frame_uids),
         )
@@ -265,7 +414,6 @@ class PostSelectionCvFold:
         return tuple(
             sorted(
                 set(self.training_frame_uids)
-                | set(self.checkpoint_monitor_frame_uids)
                 | set(self.outer_evaluation_frame_uids)
                 | set(self.purged_frame_uids)
             )
@@ -276,13 +424,9 @@ class PostSelectionCvFold:
             "schema": POST_SELECTION_CV_FOLD_SCHEMA,
             "fold_index": self.fold_index,
             "training_frame_uids": list(self.training_frame_uids),
-            "checkpoint_monitor_frame_uids": list(self.checkpoint_monitor_frame_uids),
             "outer_evaluation_frame_uids": list(self.outer_evaluation_frame_uids),
             "purged_frame_uids": list(self.purged_frame_uids),
             "training_component_ids": list(self.training_component_ids),
-            "checkpoint_monitor_component_ids": list(
-                self.checkpoint_monitor_component_ids
-            ),
             "outer_evaluation_component_ids": list(self.outer_evaluation_component_ids),
             "purged_component_ids": list(self.purged_component_ids),
         }
@@ -303,18 +447,12 @@ class PostSelectionCvFold:
         result = cls(
             fold_index=int(payload["fold_index"]),
             training_frame_uids=tuple(str(v) for v in payload["training_frame_uids"]),
-            checkpoint_monitor_frame_uids=tuple(
-                str(v) for v in payload["checkpoint_monitor_frame_uids"]
-            ),
             outer_evaluation_frame_uids=tuple(
                 str(v) for v in payload["outer_evaluation_frame_uids"]
             ),
             purged_frame_uids=tuple(str(v) for v in payload["purged_frame_uids"]),
             training_component_ids=tuple(
                 str(v) for v in payload["training_component_ids"]
-            ),
-            checkpoint_monitor_component_ids=tuple(
-                str(v) for v in payload["checkpoint_monitor_component_ids"]
             ),
             outer_evaluation_component_ids=tuple(
                 str(v) for v in payload["outer_evaluation_component_ids"]
@@ -346,6 +484,8 @@ class PostSelectionCvPlan:
     fold_count: int
     folds: tuple[PostSelectionCvFold, ...]
     required_cv_seeds: tuple[int, ...]
+    common_monitor_record_digest: str
+    monitor_separation_digest: str
     replay_lineage_digest: str | None = None
 
     def __post_init__(self) -> None:
@@ -358,6 +498,8 @@ class PostSelectionCvPlan:
             "cv_policy_identity_digest",
             "relation_authority_digest",
             "projection_digest",
+            "common_monitor_record_digest",
+            "monitor_separation_digest",
         ):
             object.__setattr__(
                 self, name, validate_digest(getattr(self, name), name=name)
@@ -430,6 +572,8 @@ class PostSelectionCvPlan:
             "fold_count": self.fold_count,
             "folds": [item.to_dict() for item in self.folds],
             "required_cv_seeds": list(self.required_cv_seeds),
+            "common_monitor_record_digest": self.common_monitor_record_digest,
+            "monitor_separation_digest": self.monitor_separation_digest,
         }
         if self.replay_lineage_digest is not None:
             payload["replay_lineage_digest"] = self.replay_lineage_digest
@@ -459,6 +603,8 @@ class PostSelectionCvPlan:
                 PostSelectionCvFold.from_dict(item) for item in payload["folds"]
             ),
             required_cv_seeds=tuple(int(v) for v in payload["required_cv_seeds"]),
+            common_monitor_record_digest=str(payload["common_monitor_record_digest"]),
+            monitor_separation_digest=str(payload["monitor_separation_digest"]),
             replay_lineage_digest=(
                 None
                 if payload.get("replay_lineage_digest") is None
@@ -617,6 +763,8 @@ def build_post_selection_cv_plan(
     method: PostSelectionMethodIdentity,
     policy: CvValidationPolicyIdentity,
     *,
+    common_monitor: Any,
+    monitor_separation: CommonMonitorSeparationEvidence,
     projection: SelectedRelationProjection | None = None,
     replay_lineage_digest: str | None = None,
 ) -> PostSelectionCvPlan:
@@ -673,26 +821,15 @@ def build_post_selection_cv_plan(
                 tuple(remaining), min(policy.purge_components_between_roles, max(0, len(remaining) - 2))
             )
         )
-        candidates = tuple(sorted(set(remaining) - purge))
-        monitor = set(
-            _spaced_selection(
-                candidates, policy.checkpoint_monitor_components_per_fold
-            )
-        )
-        if len(monitor) != policy.checkpoint_monitor_components_per_fold:
-            raise PostSelectionCvInfeasibleError(
-                f"CV fold {fold_index} cannot reserve "
-                f"{policy.checkpoint_monitor_components_per_fold} checkpoint-monitor "
-                f"component(s) from {len(candidates)} available component(s) under "
-                "the inherited split-exclusion constraints."
-            )
-        training = set(candidates) - monitor
+        # No selected-only checkpoint monitor is reserved: every non-outer,
+        # non-purge component is gradient training.
+        training = set(remaining) - purge
         if not training:
             raise PostSelectionCvInfeasibleError(
                 f"CV fold {fold_index} has no gradient-training component left after "
-                "reserving its checkpoint monitor and purge components."
+                "its purge components."
             )
-        assigned = outer | monitor | training | purge
+        assigned = outer | training | purge
         if assigned != all_components:
             raise PostSelectionError(
                 f"CV fold {fold_index} accounting is incomplete: "
@@ -709,11 +846,9 @@ def build_post_selection_cv_plan(
             PostSelectionCvFold(
                 fold_index=fold_index,
                 training_frame_uids=frames(training),
-                checkpoint_monitor_frame_uids=frames(monitor),
                 outer_evaluation_frame_uids=frames(outer),
                 purged_frame_uids=frames(purge),
                 training_component_ids=tuple(sorted(training)),
-                checkpoint_monitor_component_ids=tuple(sorted(monitor)),
                 outer_evaluation_component_ids=tuple(sorted(outer)),
                 purged_component_ids=tuple(sorted(purge)),
             )
@@ -728,11 +863,15 @@ def build_post_selection_cv_plan(
         fold_count=fold_count,
         folds=tuple(folds),
         required_cv_seeds=policy.required_cv_seeds,
+        common_monitor_record_digest=common_monitor.content_digest,
+        monitor_separation_digest=monitor_separation.content_digest,
         replay_lineage_digest=replay_lineage_digest,
     )
     validate_post_selection_cv_plan(
         plan,
         context,
+        common_monitor=common_monitor,
+        monitor_separation=monitor_separation,
         projection=resolved_projection,
         replay_lineage_digest=replay_lineage_digest,
     )
@@ -743,6 +882,8 @@ def validate_post_selection_cv_plan(
     plan: PostSelectionCvPlan,
     context: CurrentSelectedTrainingContext,
     *,
+    common_monitor: Any,
+    monitor_separation: CommonMonitorSeparationEvidence,
     projection: SelectedRelationProjection | None = None,
     replay_lineage_digest: str | None = None,
 ) -> None:
@@ -755,6 +896,11 @@ def validate_post_selection_cv_plan(
     """
 
     context.require_binding(plan.binding)
+    require_common_monitor_lineage(
+        plan,
+        common_monitor=common_monitor,
+        monitor_separation=monitor_separation,
+    )
     if (
         replay_lineage_digest is not None
         and plan.replay_lineage_digest != replay_lineage_digest
@@ -813,6 +959,32 @@ def validate_post_selection_cv_plan(
         )
 
 
+def require_common_monitor_lineage(
+    plan: Any,
+    *,
+    common_monitor: Any,
+    monitor_separation: CommonMonitorSeparationEvidence,
+) -> None:
+    """Fail closed unless a CV/final plan binds the current common monitor."""
+
+    from .online_monitor import require_common_target_monitor_record
+
+    require_common_target_monitor_record(common_monitor)
+    if monitor_separation.common_monitor_record_digest != common_monitor.content_digest:
+        raise PostSelectionError(
+            "The common-monitor separation evidence belongs to a different monitor."
+        )
+    if (
+        plan.common_monitor_record_digest != common_monitor.content_digest
+        or plan.monitor_separation_digest != monitor_separation.content_digest
+    ):
+        raise PostSelectionError(
+            "The plan binds a different common target-monitor record or separation "
+            "evidence than current authority resolves; every sibling CV/final plan "
+            "must bind the same exact monitor."
+        )
+
+
 def build_cv_fold_run_plan(
     plan: PostSelectionCvPlan,
     *,
@@ -847,6 +1019,11 @@ def build_cv_fold_run_plan(
 
 
 __all__ = [
+    "COMMON_MONITOR_SEPARATION_SCHEMA",
+    "CommonMonitorSeparationError",
+    "CommonMonitorSeparationEvidence",
+    "build_common_monitor_separation",
+    "require_common_monitor_lineage",
     "POST_SELECTION_CV_FOLD_RUN_PLAN_SCHEMA",
     "POST_SELECTION_CV_FOLD_SCHEMA",
     "POST_SELECTION_CV_PLAN_SCHEMA",

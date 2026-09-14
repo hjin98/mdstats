@@ -1,6 +1,6 @@
 # MLFF_POST_SELECTION_UNIVERSAL_LOSS_MONITOR_AND_CV_METHOD_RESTORATION — restore post-selection fine-tuning semantics
 
-**Status:** active — G0/G1/G1A/G1B CLOSED/PASS; executable implementation not yet started  
+**Status:** active — G0/G1/G1A/G1B CLOSED/PASS; Stages A–D implemented in the working tree (uncommitted, 2026-09-14) with focused tests, real-MACE assembled tests, and stashed-baseline affected regression (223 test files: no new failures); G13 pilot/full CV, independent Review, and closeout remain open  
 **Current authority:** accepted D1/D2 in `docs/methods/mlff_scientific_method.md` and `docs/methods/mlff_numerical_algorithmic_method.md`; current D3 in `docs/arch_manuals/mlff_training_data_architecture.md` plus canonical chapters; current D4 restored-P5 handoff in `docs/specs/training_data/mlff_post_selection_p5_spec.md`  
 **Target branch/base:** `fix/mlff-post-selection-method-restoration` from `1b6b6f83918d31c4b27a0e60d7bc047ef58b6067`  
 **Protocol:** SSDP 6.3  

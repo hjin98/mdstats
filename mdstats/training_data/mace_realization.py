@@ -36,7 +36,7 @@ from .mace_runtime import (
 )
 from .mace_compatibility import (
     MACE_EXECUTION_SEMANTICS_VERSION,
-    MACE_EXECUTABLE_LOSS_FAMILY,
+    MACE_WEIGHTED_LOSS_FAMILY,
 )
 from .protocol import MaceJobArtifact, TrainingMode
 from .precision import MacePrecisionTransitionRecord, build_mace_precision_transition_record
@@ -479,7 +479,7 @@ class MaceConfigRealizationRecord:
     def parser_passed(self) -> bool:
         return (
             self.parser_result.passed
-            and self.parsed_loss == MACE_EXECUTABLE_LOSS_FAMILY
+            and self.parsed_loss == MACE_WEIGHTED_LOSS_FAMILY
             and self.parsed_default_dtype in {"float32", "float64"}
             and bool(self.parsed_head_names)
             and bool(self.parsed_atomic_numbers)

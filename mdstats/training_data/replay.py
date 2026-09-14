@@ -31,7 +31,10 @@ from .replay_index import (
 
 REPLAY_FILE_ARTIFACT_SCHEMA = "mdstats.replay-file-artifact.v4"
 REPLAY_FILE_ARTIFACT_V3_SCHEMA = "mdstats.replay-file-artifact.v3"
-REPLAY_PREPARATION_PLAN_SCHEMA = "mdstats.replay-preparation-plan.v4"
+# v5 plans carry no target/replay training-head scalar weights: those are
+# retired.  v4/v3/v1 payloads remain readable as history with their exact digest.
+REPLAY_PREPARATION_PLAN_SCHEMA = "mdstats.replay-preparation-plan.v5"
+REPLAY_PREPARATION_PLAN_V4_SCHEMA = "mdstats.replay-preparation-plan.v4"
 REPLAY_PREPARATION_PLAN_V3_SCHEMA = "mdstats.replay-preparation-plan.v3"
 REPLAY_RETENTION_POLICY_SCHEMA = "mdstats.replay-retention-policy.v1"
 
@@ -2082,8 +2085,8 @@ class ReplayPreparationPlan:
     filtering_type: str = "combinations"
     subselect: str = "fps"
     seed: int = 42
-    head_weight: float = 1.0
-    target_weight: float = 10.0
+    head_weight: float | None = None
+    target_weight: float | None = None
     selection_command: tuple[str, ...] = ()
     retention_policy: ReplayRetentionPolicy = ReplayRetentionPolicy()
 
@@ -2091,7 +2094,13 @@ class ReplayPreparationPlan:
         object.__setattr__(self, "mode", ReplayMode(self.mode))
         if self.seed < 0:
             raise TrainingDataInputError("Replay seed must be nonnegative.")
-        if self.head_weight <= 0.0 or self.target_weight <= 0.0:
+        if (self.head_weight is None) != (self.target_weight is None):
+            raise TrainingDataInputError(
+                "Historical replay head weights must be both present or both absent."
+            )
+        if self.head_weight is not None and (
+            self.head_weight <= 0.0 or self.target_weight <= 0.0
+        ):
             raise TrainingDataInputError("Replay and target head weights must be positive.")
         if self.mode is ReplayMode.NONE:
             if self.train_artifact is not None or self.monitor_artifact is not None:
@@ -2130,9 +2139,22 @@ class ReplayPreparationPlan:
     def ready_for_fixed_file_training(self) -> bool:
         return self.mode is ReplayMode.NONE or (self.train_artifact is not None and self.monitor_artifact is not None)
 
+    @property
+    def carries_retired_head_weights(self) -> bool:
+        return self.head_weight is not None
+
     def _payload(self) -> dict[str, Any]:
-        return {
-            "schema": (REPLAY_PREPARATION_PLAN_SCHEMA if any(a is not None and a.serialization_schema == REPLAY_FILE_ARTIFACT_SCHEMA for a in (self.train_artifact, self.monitor_artifact)) else REPLAY_PREPARATION_PLAN_V3_SCHEMA),
+        if not self.carries_retired_head_weights:
+            schema = REPLAY_PREPARATION_PLAN_SCHEMA
+        elif any(
+            a is not None and a.serialization_schema == REPLAY_FILE_ARTIFACT_SCHEMA
+            for a in (self.train_artifact, self.monitor_artifact)
+        ):
+            schema = REPLAY_PREPARATION_PLAN_V4_SCHEMA
+        else:
+            schema = REPLAY_PREPARATION_PLAN_V3_SCHEMA
+        payload = {
+            "schema": schema,
             "mode": self.mode.value,
             "train_artifact": None if self.train_artifact is None else self.train_artifact.to_dict(),
             "monitor_artifact": None if self.monitor_artifact is None else self.monitor_artifact.to_dict(),
@@ -2141,12 +2163,14 @@ class ReplayPreparationPlan:
             "filtering_type": self.filtering_type,
             "subselect": self.subselect,
             "seed": self.seed,
-            "head_weight": self.head_weight,
-            "target_weight": self.target_weight,
             "selection_command": list(self.selection_command),
             "retention_policy": self.retention_policy.to_dict(),
             "ready_for_fixed_file_training": self.ready_for_fixed_file_training,
         }
+        if self.carries_retired_head_weights:
+            payload["head_weight"] = self.head_weight
+            payload["target_weight"] = self.target_weight
+        return payload
 
     @property
     def content_digest(self) -> str:
@@ -2158,8 +2182,13 @@ class ReplayPreparationPlan:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ReplayPreparationPlan":
         schema = payload.get("schema")
-        if schema not in {REPLAY_PREPARATION_PLAN_SCHEMA, REPLAY_PREPARATION_PLAN_V3_SCHEMA, "mdstats.replay-preparation-plan.v1"}:
+        if schema not in {REPLAY_PREPARATION_PLAN_SCHEMA, REPLAY_PREPARATION_PLAN_V4_SCHEMA, REPLAY_PREPARATION_PLAN_V3_SCHEMA, "mdstats.replay-preparation-plan.v1"}:
             raise TrainingDataSerializationError("Unsupported replay-plan schema.")
+        historical = schema != REPLAY_PREPARATION_PLAN_SCHEMA
+        if historical != ("head_weight" in payload or "target_weight" in payload):
+            raise TrainingDataSerializationError(
+                "Replay-plan head weights are present only in historical schemas."
+            )
         result = cls(
             mode=ReplayMode(payload["mode"]),
             train_artifact=None if payload.get("train_artifact") is None else ReplayFileArtifact.from_dict(payload["train_artifact"]),
@@ -2169,12 +2198,12 @@ class ReplayPreparationPlan:
             filtering_type=str(payload["filtering_type"]),
             subselect=str(payload["subselect"]),
             seed=int(payload["seed"]),
-            head_weight=float(payload["head_weight"]),
-            target_weight=float(payload["target_weight"]),
+            head_weight=float(payload["head_weight"]) if historical else None,
+            target_weight=float(payload["target_weight"]) if historical else None,
             selection_command=tuple(str(v) for v in payload.get("selection_command", ())),
             retention_policy=ReplayRetentionPolicy.from_dict(payload["retention_policy"]),
         )
-        if schema in {REPLAY_PREPARATION_PLAN_SCHEMA, REPLAY_PREPARATION_PLAN_V3_SCHEMA} and payload.get("content_digest") not in (None, result.content_digest):
+        if schema in {REPLAY_PREPARATION_PLAN_SCHEMA, REPLAY_PREPARATION_PLAN_V4_SCHEMA, REPLAY_PREPARATION_PLAN_V3_SCHEMA} and payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("Replay-plan digest mismatch.")
         return result
 
@@ -2185,8 +2214,6 @@ def build_local_replay_plan(
     *,
     mode: ReplayMode = ReplayMode.PRESELECTED,
     seed: int = 42,
-    head_weight: float = 1.0,
-    target_weight: float = 10.0,
     retention_policy: ReplayRetentionPolicy | None = None,
     foundation_checkpoint_digest: str | None = None,
     foundation_label_generator_identity_digest: str | None = None,
@@ -2214,7 +2241,5 @@ def build_local_replay_plan(
             foundation_label_generator_identity_digest=foundation_label_generator_identity_digest,
         ),
         seed=seed,
-        head_weight=head_weight,
-        target_weight=target_weight,
         retention_policy=ReplayRetentionPolicy() if retention_policy is None else retention_policy,
     )

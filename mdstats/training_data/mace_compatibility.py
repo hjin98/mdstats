@@ -42,7 +42,7 @@ MACE_COMPATIBILITY_POLICY_VERSION = "mdstats.mlff-data8.mace-compatibility.2026-
 MACE_EXECUTION_SEMANTICS_VERSION = "mdstats.mace-execution-semantics.2026-09.v1"
 MACE_REPLAY_FORCE_MH_FT_LR = True
 MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD = 0.0
-MACE_EXECUTION_AUTHORITY_SCHEMA = "mdstats.mace-execution-authority.v1"
+MACE_EXECUTION_AUTHORITY_SCHEMA = "mdstats.mace-execution-authority.v2"
 MACE_EXECUTION_EVIDENCE_SCHEMA = "mdstats.mace-execution-evidence.v1"
 MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE = "MDSTATS_MACE_EXECUTION_AUTHORITY"
 # This discriminator routes the already-authenticated replay membership
@@ -819,10 +819,61 @@ def _normalize_mace_execution_authority(
         method_identity_digest = validate_digest(
             str(method_identity_digest), name="method_identity_digest"
         )
+    # The loss family is resolved by the authenticated training role/mode, never
+    # globally: P3 and P5 scratch keep the weighted family while foundation P5
+    # executes native UniversalLoss with its fixed parameters.
+    training_mode = payload.get("training_mode")
+    if role == "target_size":
+        if training_mode is not None:
+            raise TrainingDataInputError(
+                "Target-size execution authority cannot carry a post-selection training mode."
+            )
+    else:
+        training_mode = str(training_mode)
+        if training_mode not in POST_SELECTION_TRAINING_MODES:
+            raise TrainingDataInputError(
+                "Post-selection execution authority requires an explicit supported "
+                "training mode."
+            )
+    foundation = training_mode in FOUNDATION_ADAPTATION_TRAINING_MODES
     loss_family = str(payload.get("loss_family", ""))
-    if loss_family != MACE_EXECUTABLE_LOSS_FAMILY:
+    expected_family = (
+        MACE_FOUNDATION_LOSS_FAMILY if foundation else MACE_WEIGHTED_LOSS_FAMILY
+    )
+    if loss_family != expected_family:
         raise TrainingDataInputError(
-            "MACE execution authority must request the native weighted loss family."
+            f"MACE execution authority for {training_mode or role} must request the "
+            f"native {expected_family!r} loss family; received {loss_family!r}."
+        )
+    loss_parameters = {
+        name: payload.get(name)
+        for name in ("huber_delta", "energy_weight", "forces_weight", "stress_weight")
+    }
+    if foundation:
+        expected_parameters = {
+            "huber_delta": MACE_FOUNDATION_HUBER_DELTA,
+            "energy_weight": MACE_FOUNDATION_ENERGY_WEIGHT,
+            "forces_weight": MACE_FOUNDATION_FORCES_WEIGHT,
+            "stress_weight": MACE_FOUNDATION_STRESS_WEIGHT,
+        }
+        for name, expected in expected_parameters.items():
+            value = loss_parameters[name]
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or float(value) != expected
+            ):
+                raise TrainingDataInputError(
+                    f"Foundation-P5 execution authority requires {name}={expected}."
+                )
+            loss_parameters[name] = float(value)
+        if payload.get("distributed_allowed") is not False:
+            raise TrainingDataInputError(
+                "Foundation-P5 execution is qualified only for the single-process path."
+            )
+    elif any(value is not None for value in loss_parameters.values()):
+        raise TrainingDataInputError(
+            "Weighted-loss execution authority cannot carry foundation UniversalLoss parameters."
         )
     learning_rate = float(payload.get("learning_rate"))
     if not math.isfinite(learning_rate) or learning_rate <= 0.0:
@@ -845,6 +896,10 @@ def _normalize_mace_execution_authority(
     if not isinstance(multihead, bool):
         raise TrainingDataInputError(
             "MACE execution authority multihead flag is invalid."
+        )
+    if training_mode is not None and multihead != (training_mode == "multihead_replay"):
+        raise TrainingDataInputError(
+            "MACE execution authority multihead flag disagrees with its training mode."
         )
     force_mh_ft_lr = payload.get("force_mh_ft_lr")
     ratio_threshold = payload.get("real_pt_data_ratio_threshold")
@@ -949,7 +1004,9 @@ def _normalize_mace_execution_authority(
         "role": role,
         "config_digest": config_digest,
         "method_identity_digest": method_identity_digest,
+        "training_mode": training_mode,
         "loss_family": loss_family,
+        **loss_parameters,
         "learning_rate": learning_rate,
         "ema": ema,
         "ema_decay": ema_decay,
@@ -1087,10 +1144,78 @@ def record_mace_execution_evidence(
             )
     if resolved["loss_family"] != normalized["loss_family"]:
         raise TrainingDataInputError("Resolved MACE loss family differs from authority.")
-    if resolved["loss_class"] != "mace.modules.loss.WeightedEnergyForcesStressLoss":
+    foundation = normalized["training_mode"] in FOUNDATION_ADAPTATION_TRAINING_MODES
+    expected_loss_class = (
+        MACE_FOUNDATION_LOSS_CLASS if foundation else MACE_WEIGHTED_LOSS_CLASS
+    )
+    if resolved["loss_class"] != expected_loss_class:
         raise TrainingDataInputError(
-            "Resolved MACE loss class is not the native weighted stress loss."
+            f"Resolved MACE loss class {resolved['loss_class']!r} is not the native "
+            f"{expected_loss_class} required by the authenticated method."
         )
+    if normalized["role"] == "post_selection":
+        # Post-selection evidence additionally reconstructs the realized loss
+        # parameters and the combined-loader exposure geometry.  Target-size
+        # evidence keeps its existing shape so P3 continuations stay current.
+        for name in (
+            "training_mode",
+            "huber_delta",
+            "energy_weight",
+            "forces_weight",
+            "stress_weight",
+            "stage_two_enabled",
+            "ordered_head_layout",
+            "combined_drop_last",
+            "combined_updates_per_epoch",
+        ):
+            if name not in resolved:
+                raise TrainingDataInputError(
+                    f"Post-selection MACE execution evidence is missing {name}."
+                )
+        if resolved["training_mode"] != normalized["training_mode"]:
+            raise TrainingDataInputError(
+                "Resolved MACE training mode differs from authority."
+            )
+        if bool(resolved["stage_two_enabled"]):
+            raise TrainingDataInputError(
+                "Resolved MACE execution enabled a stage-two loss/optimizer phase."
+            )
+        expected_layout = (
+            [normalized["replay_head_name"], normalized["target_head_name"]]
+            if normalized["multiheads_finetuning"]
+            else [normalized["target_head_name"]]
+        )
+        if list(resolved["ordered_head_layout"]) != expected_layout:
+            raise TrainingDataInputError(
+                "Resolved MACE pre-shuffle corpus layout differs from the accepted "
+                f"{expected_layout} order."
+            )
+        if foundation:
+            for name in ("huber_delta", "energy_weight", "forces_weight", "stress_weight"):
+                if resolved[name] is None or float(resolved[name]) != normalized[name]:
+                    raise TrainingDataInputError(
+                        f"Resolved MACE UniversalLoss {name} differs from authority."
+                    )
+            if resolved["combined_drop_last"] is not True or resolved["distributed"] is not False:
+                raise TrainingDataInputError(
+                    "Resolved foundation-P5 loader is not the qualified single-process "
+                    "drop_last=True path."
+                )
+            expected_updates = (
+                int(normalized["target_train_count"] + normalized["replay_train_count"])
+                // int(normalized["batch_size"])
+            )
+            if int(resolved["combined_updates_per_epoch"]) != expected_updates:
+                raise TrainingDataInputError(
+                    "Resolved foundation-P5 batches per epoch differ from floor(N/B)."
+                )
+        elif any(
+            resolved[name] is not None
+            for name in ("huber_delta", "energy_weight", "forces_weight", "stress_weight")
+        ):
+            raise TrainingDataInputError(
+                "Weighted-loss MACE evidence carries UniversalLoss parameters."
+            )
     if not math.isclose(
         float(resolved["learning_rate"]),
         float(normalized["learning_rate"]),
@@ -1961,23 +2086,37 @@ MACE_ARCHITECTURE_EXTERNAL_KEYS = frozenset(
     }
 )
 
-#: The one executable MACE loss family for every current mdstats training path.
+#: The executable MACE loss family of the *weighted* methods: P3 target-size
+#: screening and post-selection ``scratch``.  It carries no foundation-P5
+#: authority.
 #:
-#: MACE's ``UniversalLoss`` cannot represent the declared mdstats weighting
-#: contract: its per-config property weights scale residuals *inside* a Huber
-#: evaluation, so they are not linearly equivalent to global objective
-#: coefficients, and it never consumes ``config_weight`` at all.  The weighted
-#: energy+force+stress loss does: its native reductions multiply by
-#: ``ref.weight`` and the local property weight linearly and apply the global
-#: coefficients once, outside.
-#:
-#: The family is method identity, not formatting: the optimization meaning of a
-#: checkpoint depends on it, so a checkpoint trained under a different family is
-#: not a prefix or equivalent of a corrected trajectory.  Model construction is
-#: unaffected -- pinned MACE derives ``compute_stress`` for both ``stress`` and
-#: ``universal`` and ``compute_virials`` for neither -- so reconstruction and
-#: EVAL2 semantics are preserved across the correction.
-MACE_EXECUTABLE_LOSS_FAMILY = "stress"
+#: Those methods declare positive per-configuration weights and global
+#: coefficients applied once outside linear property reductions, which is what
+#: the weighted energy+force+stress loss realizes.  The family is method
+#: identity, not formatting.  Model construction is unaffected by the family --
+#: pinned MACE derives ``compute_stress`` for both ``stress`` and ``universal``
+#: and ``compute_virials`` for neither -- so the canonical architecture record
+#: keeps this construction spelling for every mode.
+MACE_WEIGHTED_LOSS_FAMILY = "stress"
+
+#: Foundation-model P5 (``naive_fine_tuning`` and ``multihead_replay``) executes
+#: pinned MACE's native ``UniversalLoss`` with one numeric ``huber_delta`` whose
+#: accepted dimensional meanings are 0.01 eV/atom (energy), 0.01 eV/Angstrom
+#: (force base threshold of the conditional-Huber regimes), and 0.01
+#: eV/Angstrom^3 (all nine stored stress entries), joined by global E:F:S
+#: coefficients 1:10:1.  These values are fixed by the accepted numerical
+#: method; there is deliberately no configuration knob for any of them.
+MACE_FOUNDATION_LOSS_FAMILY = "universal"
+MACE_FOUNDATION_HUBER_DELTA = 0.01
+MACE_FOUNDATION_ENERGY_WEIGHT = 1.0
+MACE_FOUNDATION_FORCES_WEIGHT = 10.0
+MACE_FOUNDATION_STRESS_WEIGHT = 1.0
+MACE_FOUNDATION_LOSS_CLASS = "mace.modules.loss.UniversalLoss"
+MACE_WEIGHTED_LOSS_CLASS = "mace.modules.loss.WeightedEnergyForcesStressLoss"
+
+#: The post-selection training modes and the subset that adapts a foundation.
+POST_SELECTION_TRAINING_MODES = ("scratch", "naive_fine_tuning", "multihead_replay")
+FOUNDATION_ADAPTATION_TRAINING_MODES = ("naive_fine_tuning", "multihead_replay")
 
 
 #: Architecture fields whose canonical value is structured and whose pinned

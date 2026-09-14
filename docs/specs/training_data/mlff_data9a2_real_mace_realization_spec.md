@@ -50,6 +50,12 @@ element table and fails before training if the mapping is incomplete.
 
 ## 3. Fixed-file target/replay weight realization
 
+> **Retired.** Target/replay training-head scalar weights are no longer a
+> current method field and their fixed-file realization helpers were removed
+> by the post-selection method restoration
+> (`docs/history/mlff/post_selection_method_restoration_evolution.md`). The
+> text below is retained as DATA9A2 history only.
+
 DATA8 supplies already-selected fixed target and replay files. For this path,
 head exposure weights are realized in the extended-XYZ configuration weights:
 

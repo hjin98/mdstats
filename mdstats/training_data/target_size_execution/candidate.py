@@ -39,7 +39,7 @@ from .._common import (
 )
 from ..mace_export import MaceExtxyzPolicy
 from ..mace_compatibility import (
-    MACE_EXECUTABLE_LOSS_FAMILY,
+    MACE_WEIGHTED_LOSS_FAMILY,
     MACE_EXECUTION_SEMANTICS_VERSION,
 )
 from ..protocol import MaceOptimizerPolicy
@@ -70,7 +70,7 @@ TARGET_SIZE_MATERIALIZATION_SCHEMA = "mdstats.target-size.candidate-materializat
 TARGET_SIZE_MACE_CONFIG_SCHEMA = "mdstats.target-size.mace-config.v3"
 #: The executable MACE loss family for target-size screening; the shared owner
 #: in ``objectives`` explains why this family and not ``universal``.
-TARGET_SIZE_MACE_LOSS_FAMILY = MACE_EXECUTABLE_LOSS_FAMILY
+TARGET_SIZE_MACE_LOSS_FAMILY = MACE_WEIGHTED_LOSS_FAMILY
 
 
 def _positive_int(value: Any, *, name: str) -> int:

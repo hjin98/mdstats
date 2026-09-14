@@ -9,9 +9,10 @@ production run an honest realization of the validated method rather than a
 best-of selection over development runs.
 
 The plan binds exact inherited scientific lineage: the current selected data,
-the accepted CV authorization, and the frozen P2 ``M3`` reserve that serves as
-final development/model-selection evidence.  M3 lives here, in the plan, and not
-in the production policy: it is inherited P2/P4 evidence, not a knob.
+the accepted CV authorization, and the same exact campaign-common target
+checkpoint monitor (with its P1 separation evidence) that controlled every CV
+checkpoint.  P3 ``M3`` has no role here: it is target-size evidence, not a final
+checkpoint-control or seed-ranking parent.
 """
 
 from __future__ import annotations
@@ -34,7 +35,11 @@ from .post_selection_cv_acceptance import (
     CvCampaignAcceptance,
     require_cv_acceptance_for_method,
 )
-from .post_selection_cv_plan import PostSelectionCvPlan
+from .post_selection_cv_plan import (
+    CommonMonitorSeparationEvidence,
+    PostSelectionCvPlan,
+    require_common_monitor_lineage,
+)
 from .post_selection_identity import (
     FinalProductionPolicyIdentity,
     PostSelectionMethodIdentity,
@@ -44,7 +49,8 @@ from .post_selection_run_identity import (
     post_selection_run_identity,
 )
 
-FINAL_PRODUCTION_PLAN_SCHEMA = "mdstats.post-selection-final-production-plan.v1"
+# v2 removes the M3 fields and binds the common target monitor.
+FINAL_PRODUCTION_PLAN_SCHEMA = "mdstats.post-selection-final-production-plan.v2"
 FINAL_PRODUCTION_RUN_PLAN_SCHEMA = "mdstats.post-selection-final-production-run-plan.v1"
 
 
@@ -57,8 +63,8 @@ class FinalProductionPlan:
     final_production_policy_digest: str
     cv_plan_digest: str
     cv_authorization_digest: str
-    m3_evaluation_size: int
-    m3_membership_digest: str
+    common_monitor_record_digest: str
+    monitor_separation_digest: str
     target_membership_digest: str
     n_selected: int
     planned_epochs: int
@@ -75,7 +81,8 @@ class FinalProductionPlan:
             "final_production_policy_digest",
             "cv_plan_digest",
             "cv_authorization_digest",
-            "m3_membership_digest",
+            "common_monitor_record_digest",
+            "monitor_separation_digest",
             "target_membership_digest",
         ):
             object.__setattr__(
@@ -100,10 +107,6 @@ class FinalProductionPlan:
                 "Final production must use every selected frame, not a fold subset."
             )
         object.__setattr__(self, "n_selected", n_selected)
-        size = int(self.m3_evaluation_size)
-        if size <= 0:
-            raise TrainingDataInputError("m3_evaluation_size must be positive.")
-        object.__setattr__(self, "m3_evaluation_size", size)
         planned = int(self.planned_epochs)
         if planned <= 0:
             raise TrainingDataInputError("planned_epochs must be positive.")
@@ -123,8 +126,8 @@ class FinalProductionPlan:
             "final_production_policy_digest": self.final_production_policy_digest,
             "cv_plan_digest": self.cv_plan_digest,
             "cv_authorization_digest": self.cv_authorization_digest,
-            "m3_evaluation_size": self.m3_evaluation_size,
-            "m3_membership_digest": self.m3_membership_digest,
+            "common_monitor_record_digest": self.common_monitor_record_digest,
+            "monitor_separation_digest": self.monitor_separation_digest,
             "target_membership_digest": self.target_membership_digest,
             "n_selected": self.n_selected,
             "planned_epochs": self.planned_epochs,
@@ -155,8 +158,8 @@ class FinalProductionPlan:
             ),
             cv_plan_digest=str(payload["cv_plan_digest"]),
             cv_authorization_digest=str(payload["cv_authorization_digest"]),
-            m3_evaluation_size=int(payload["m3_evaluation_size"]),
-            m3_membership_digest=str(payload["m3_membership_digest"]),
+            common_monitor_record_digest=str(payload["common_monitor_record_digest"]),
+            monitor_separation_digest=str(payload["monitor_separation_digest"]),
             target_membership_digest=str(payload["target_membership_digest"]),
             n_selected=int(payload["n_selected"]),
             planned_epochs=int(payload["planned_epochs"]),
@@ -265,36 +268,6 @@ class FinalProductionRunPlan:
         return result
 
 
-def frozen_m3_development_evidence(
-    context: CurrentSelectedTrainingContext,
-) -> tuple[int, tuple[str, ...], str]:
-    """Return the frozen P2 ``M3`` reserve used for final model selection.
-
-    ``M3`` already participated in target-size development, so it is legitimate
-    development/model-selection evidence and explicitly *not* independent
-    validation.  It is inherited from the accepted P2 experiment definition, so
-    nothing here chooses or configures it.
-    """
-
-    definition = context.definition
-    sizes = tuple(int(v) for v in definition.policy.evaluation_sizes)
-    if not sizes:
-        raise PostSelectionError(
-            "The accepted P2 experiment definition exposes no evaluation ladder, so "
-            "no frozen M3 development evidence is available for final model "
-            "selection."
-        )
-    m3 = int(definition.policy.m3)
-    membership = tuple(definition.evaluation_membership(m3))
-    overlap = set(membership) & set(context.selected_membership)
-    if overlap:
-        raise PostSelectionError(
-            "The frozen M3 development reserve overlaps T_selected; final "
-            "model-selection evidence may not contain training frames."
-        )
-    return m3, membership, definition.evaluation_order.membership_digest(m3)
-
-
 def build_final_production_plan(
     context: CurrentSelectedTrainingContext,
     method: PostSelectionMethodIdentity,
@@ -302,6 +275,8 @@ def build_final_production_plan(
     *,
     cv_plan: PostSelectionCvPlan,
     cv_acceptance: CvCampaignAcceptance,
+    common_monitor: Any,
+    monitor_separation: CommonMonitorSeparationEvidence,
     replay_lineage_digest: str | None = None,
 ) -> FinalProductionPlan:
     """Authorize fresh full-``T_selected`` production under the accepted method.
@@ -327,15 +302,18 @@ def build_final_production_plan(
             "The accepted cross-validation plan bound a different replay lineage "
             "than current replay authority resolves."
         )
-    m3_size, _m3_membership, m3_digest = frozen_m3_development_evidence(context)
+    # Final checkpoint control uses the exact monitor CV used.
+    require_common_monitor_lineage(
+        cv_plan, common_monitor=common_monitor, monitor_separation=monitor_separation
+    )
     return FinalProductionPlan(
         binding=context.binding,
         method_identity_digest=method.content_digest,
         final_production_policy_digest=policy.content_digest,
         cv_plan_digest=cv_plan.content_digest,
         cv_authorization_digest=cv_acceptance.content_digest,
-        m3_evaluation_size=m3_size,
-        m3_membership_digest=m3_digest,
+        common_monitor_record_digest=common_monitor.content_digest,
+        monitor_separation_digest=monitor_separation.content_digest,
         target_membership_digest=context.selected_membership_digest,
         n_selected=context.n_selected,
         planned_epochs=policy.production_max_num_epochs,
@@ -349,14 +327,16 @@ def validate_final_production_plan(
     context: CurrentSelectedTrainingContext,
     *,
     method: PostSelectionMethodIdentity,
+    common_monitor: Any,
+    monitor_separation: CommonMonitorSeparationEvidence,
     policy: FinalProductionPolicyIdentity | None = None,
     replay_lineage_digest: str | None = None,
 ) -> None:
     """Re-authenticate a stored final plan against freshly resolved authority.
 
     Restart authenticates the full parent chain rather than trusting the stored
-    plan digest, so a changed selected generation, a changed M3 lineage, or a
-    changed method rejects the plan instead of silently continuing.
+    plan digest, so a changed selected generation, a changed common monitor, or
+    a changed method rejects the plan instead of silently continuing.
     """
 
     context.require_binding(plan.binding)
@@ -379,12 +359,9 @@ def validate_final_production_plan(
         raise PostSelectionError(
             "The stored final-production plan binds a different replay lineage."
         )
-    m3_size, _membership, m3_digest = frozen_m3_development_evidence(context)
-    if plan.m3_evaluation_size != m3_size or plan.m3_membership_digest != m3_digest:
-        raise PostSelectionError(
-            "The stored final-production plan binds retired M3 development lineage; "
-            "the current authenticated predecessor evidence is different."
-        )
+    require_common_monitor_lineage(
+        plan, common_monitor=common_monitor, monitor_separation=monitor_separation
+    )
     if plan.target_membership_digest != context.selected_membership_digest:
         raise PostSelectionError(
             "The stored final-production plan binds a different T_selected."
@@ -424,6 +401,5 @@ __all__ = [
     "FinalProductionRunPlan",
     "build_final_production_plan",
     "build_final_production_run_plan",
-    "frozen_m3_development_evidence",
     "validate_final_production_plan",
 ]

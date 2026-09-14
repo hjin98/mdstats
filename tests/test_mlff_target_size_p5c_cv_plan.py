@@ -18,6 +18,7 @@ import pytest
 from tests._mlff_post_selection_fixture import (
     build_selected_campaign,
     load_context,
+    monitor_kwargs,
 )
 
 from mdstats.training_data.campaign_post_selection import (
@@ -52,7 +53,17 @@ def _plan_environment(tmp_path: Path):
     context = load_current_selected_training_context(cfg, paths, store)
     method = resolve_post_selection_method_identity(cfg)
     policy = resolve_cv_validation_policy_identity(cfg)
+    # The exact common monitor is resolved once, before any authority is
+    # perturbed, exactly as every sibling plan binds it.
+    _MONITORS[id(context)] = monitor_kwargs(context)
     return config, cfg, paths, store, context, method, policy
+
+
+_MONITORS: dict[int, dict] = {}
+
+
+def _m(context) -> dict:
+    return _MONITORS[id(context)]
 
 
 def test_p5c_cv_universe_is_exactly_t_selected(tmp_path: Path):
@@ -60,14 +71,13 @@ def test_p5c_cv_universe_is_exactly_t_selected(tmp_path: Path):
     try:
         projection = build_selected_relation_projection(context)
         plan = build_post_selection_cv_plan(
-            context, method, policy, projection=projection
+            context, method, policy, projection=projection, **_m(context)
         )
         selected = set(context.selected_membership)
         for fold in plan.folds:
             assert set(fold.all_frame_uids) == selected
             groups = (
                 set(fold.training_frame_uids),
-                set(fold.checkpoint_monitor_frame_uids),
                 set(fold.outer_evaluation_frame_uids),
                 set(fold.purged_frame_uids),
             )
@@ -90,7 +100,7 @@ def test_p5c_every_eligible_component_is_held_out_exactly_once(tmp_path: Path):
     try:
         projection = build_selected_relation_projection(context)
         plan = build_post_selection_cv_plan(
-            context, method, policy, projection=projection
+            context, method, policy, projection=projection, **_m(context)
         )
         held_out = list(plan.held_out_component_ids)
         assert sorted(held_out) == sorted(projection.component_identities)
@@ -183,8 +193,8 @@ def test_p5c_a_relation_only_pair_stays_in_one_component(tmp_path: Path):
 def test_p5c_plan_construction_is_byte_deterministic(tmp_path: Path):
     _config, _cfg, _paths, store, context, method, policy = _plan_environment(tmp_path)
     try:
-        first = build_post_selection_cv_plan(context, method, policy)
-        second = build_post_selection_cv_plan(context, method, policy)
+        first = build_post_selection_cv_plan(context, method, policy, **_m(context))
+        second = build_post_selection_cv_plan(context, method, policy, **_m(context))
         assert first.content_digest == second.content_digest
         assert first.to_dict() == second.to_dict()
         assert (
@@ -206,7 +216,7 @@ def test_p5c_infeasible_fold_count_rejects_before_any_training(tmp_path: Path):
             }
         )
         with pytest.raises(PostSelectionCvInfeasibleError, match="cannot support K"):
-            build_post_selection_cv_plan(context, method, impossible)
+            build_post_selection_cv_plan(context, method, impossible, **_m(context))
     finally:
         store.close()
 
@@ -214,18 +224,16 @@ def test_p5c_infeasible_fold_count_rejects_before_any_training(tmp_path: Path):
 def test_p5c_an_omitted_selected_frame_rejects(tmp_path: Path):
     _config, _cfg, _paths, store, context, method, policy = _plan_environment(tmp_path)
     try:
-        plan = build_post_selection_cv_plan(context, method, policy)
+        plan = build_post_selection_cv_plan(context, method, policy, **_m(context))
         fold = next(
             item for item in plan.folds if len(item.outer_evaluation_frame_uids) > 1
         )
         trimmed = PostSelectionCvFold(
             fold_index=fold.fold_index,
             training_frame_uids=fold.training_frame_uids,
-            checkpoint_monitor_frame_uids=fold.checkpoint_monitor_frame_uids,
             outer_evaluation_frame_uids=fold.outer_evaluation_frame_uids[:-1],
             purged_frame_uids=fold.purged_frame_uids,
             training_component_ids=fold.training_component_ids,
-            checkpoint_monitor_component_ids=fold.checkpoint_monitor_component_ids,
             outer_evaluation_component_ids=fold.outer_evaluation_component_ids,
             purged_component_ids=fold.purged_component_ids,
         )
@@ -239,9 +247,11 @@ def test_p5c_an_omitted_selected_frame_rejects(tmp_path: Path):
             fold_count=plan.fold_count,
             folds=(trimmed,) + others,
             required_cv_seeds=plan.required_cv_seeds,
+            common_monitor_record_digest=plan.common_monitor_record_digest,
+            monitor_separation_digest=plan.monitor_separation_digest,
         )
         with pytest.raises(PostSelectionError, match="silently omitted"):
-            validate_post_selection_cv_plan(damaged, context)
+            validate_post_selection_cv_plan(damaged, context, **_m(context))
     finally:
         store.close()
 
@@ -249,18 +259,16 @@ def test_p5c_an_omitted_selected_frame_rejects(tmp_path: Path):
 def test_p5c_duplicate_outer_holdout_rejects(tmp_path: Path):
     _config, _cfg, _paths, store, context, method, policy = _plan_environment(tmp_path)
     try:
-        plan = build_post_selection_cv_plan(context, method, policy)
+        plan = build_post_selection_cv_plan(context, method, policy, **_m(context))
         first, second = plan.folds[0], plan.folds[1]
         # Fold 1 claims fold 0's outer components as well: one component would be
         # held out twice while another is never evaluated.
         duplicated = PostSelectionCvFold(
             fold_index=second.fold_index,
             training_frame_uids=second.training_frame_uids,
-            checkpoint_monitor_frame_uids=second.checkpoint_monitor_frame_uids,
             outer_evaluation_frame_uids=second.outer_evaluation_frame_uids,
             purged_frame_uids=second.purged_frame_uids,
             training_component_ids=second.training_component_ids,
-            checkpoint_monitor_component_ids=second.checkpoint_monitor_component_ids,
             outer_evaluation_component_ids=first.outer_evaluation_component_ids,
             purged_component_ids=second.purged_component_ids,
         )
@@ -274,6 +282,8 @@ def test_p5c_duplicate_outer_holdout_rejects(tmp_path: Path):
                 fold_count=plan.fold_count,
                 folds=(first, duplicated),
                 required_cv_seeds=plan.required_cv_seeds,
+                common_monitor_record_digest=plan.common_monitor_record_digest,
+                monitor_separation_digest=plan.monitor_separation_digest,
             )
     finally:
         store.close()
@@ -282,8 +292,8 @@ def test_p5c_duplicate_outer_holdout_rejects(tmp_path: Path):
 def test_p5c_a_changed_relation_authority_rejects_a_stale_plan(tmp_path: Path):
     _config, _cfg, _paths, store, context, method, policy = _plan_environment(tmp_path)
     try:
-        plan = build_post_selection_cv_plan(context, method, policy)
-        validate_post_selection_cv_plan(plan, context)
+        plan = build_post_selection_cv_plan(context, method, policy, **_m(context))
+        validate_post_selection_cv_plan(plan, context, **_m(context))
 
         authorities = context.authorities
         rebuilt = NeutralSplitExclusionEvidence(
@@ -304,7 +314,7 @@ def test_p5c_a_changed_relation_authority_rejects_a_stale_plan(tmp_path: Path):
             context.binding, "split_exclusion_digest", rebuilt.content_digest
         )
         with pytest.raises(PostSelectionError, match="retired P1 split-exclusion"):
-            validate_post_selection_cv_plan(plan, context)
+            validate_post_selection_cv_plan(plan, context, **_m(context))
     finally:
         store.close()
 
@@ -342,3 +352,53 @@ def test_p5c_no_local_relation_taxonomy_is_defined_by_post_selection():
         "project_split_exclusion_constraint_components",
         "split_exclusion_component_digest",
     }, imported
+
+
+def test_p5c_folds_reproduce_d2_outer_and_purge_and_return_remainder_to_training(
+    tmp_path: Path,
+):
+    """Independent D2 16.1-16.2 reconstruction; the common monitor is external."""
+
+    import hashlib
+
+    _config, _cfg, _paths, store, context, method, _policy = _plan_environment(tmp_path)
+    try:
+        policy = resolve_cv_validation_policy_identity(
+            {"post_selection": {"cv": {"fold_count": 2, "purge_components_between_roles": 1, "seeds": [11], "max_num_epochs": 2}}}
+        )
+        projection = build_selected_relation_projection(context)
+        plan = build_post_selection_cv_plan(
+            context, method, policy, projection=projection, **_m(context)
+        )
+        components = sorted(projection.component_identities)
+        salt = f"{policy.fold_construction_algorithm}|{context.selected_membership_digest}"
+        ordered = sorted(
+            components,
+            key=lambda c: (hashlib.sha256(f"{salt}|{policy.partition_seed}|{c}".encode()).hexdigest(), c),
+        )
+        monitor = set(_m(context)["common_monitor"].selected_identities)
+        for fold in plan.folds:
+            outer = {c for j, c in enumerate(ordered) if j % policy.fold_count == fold.fold_index}
+            remaining = sorted(set(components) - outer)
+            p = min(policy.purge_components_between_roles, max(0, len(remaining) - 2))
+            purge = set() if p == 0 else {remaining[len(remaining) // 2]} if p == 1 else None
+            assert set(fold.outer_evaluation_component_ids) == outer
+            assert set(fold.purged_component_ids) == purge
+            assert set(fold.training_component_ids) == set(remaining) - purge
+            assert not monitor & set(fold.all_frame_uids)
+        assert plan.common_monitor_record_digest == _m(context)["common_monitor"].content_digest
+    finally:
+        store.close()
+
+
+def test_p5c_a_plan_bound_to_a_different_monitor_record_rejects(tmp_path: Path):
+    from dataclasses import replace
+
+    _config, _cfg, _paths, store, context, method, policy = _plan_environment(tmp_path)
+    try:
+        plan = build_post_selection_cv_plan(context, method, policy, **_m(context))
+        foreign = replace(plan, common_monitor_record_digest="f" * 64)
+        with pytest.raises(PostSelectionError, match="same exact monitor"):
+            validate_post_selection_cv_plan(foreign, context, **_m(context))
+    finally:
+        store.close()

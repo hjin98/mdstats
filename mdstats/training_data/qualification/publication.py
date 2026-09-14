@@ -28,7 +28,7 @@ from ..campaign_post_selection import PostSelectionBinding
 from .errors import QualificationError, QualificationLineageError
 
 PUBLISHED_MEMBER_SCHEMA = "mdstats.qualification-published-member.v1"
-AUTHENTICATED_PUBLICATION_SCHEMA = "mdstats.qualification-authenticated-publication.v1"
+AUTHENTICATED_PUBLICATION_SCHEMA = "mdstats.qualification-authenticated-publication.v2"
 
 #: The committee policies whose exact member set the accepted predecessor owner
 #: can freeze from pre-qualification evidence alone.
@@ -138,7 +138,7 @@ class AuthenticatedFinalPublication:
     cv_authorization_digest: str
     committee_policy: str
     decision_policy_identity: str
-    m3_membership_digest: str
+    common_monitor_record_digest: str
     target_head_name: str
     members: tuple[PublishedProductionMember, ...]
 
@@ -155,7 +155,7 @@ class AuthenticatedFinalPublication:
             "final_production_policy_digest",
             "cv_plan_digest",
             "cv_authorization_digest",
-            "m3_membership_digest",
+            "common_monitor_record_digest",
         ):
             object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
         for name in ("committee_policy", "decision_policy_identity", "target_head_name"):
@@ -194,7 +194,7 @@ class AuthenticatedFinalPublication:
             "cv_authorization_digest": self.cv_authorization_digest,
             "committee_policy": self.committee_policy,
             "decision_policy_identity": self.decision_policy_identity,
-            "m3_membership_digest": self.m3_membership_digest,
+            "common_monitor_record_digest": self.common_monitor_record_digest,
             "target_head_name": self.target_head_name,
             "members": [member.to_dict() for member in self.members],
         }
@@ -311,7 +311,7 @@ def resolve_authenticated_final_publication(
         cv_authorization_digest=decision.cv_authorization_digest,
         committee_policy=decision.committee_policy,
         decision_policy_identity=decision.decision_policy_identity,
-        m3_membership_digest=decision.m3_membership_digest,
+        common_monitor_record_digest=decision.common_monitor_record_digest,
         target_head_name=decision.target_head_name,
         members=members,
     )

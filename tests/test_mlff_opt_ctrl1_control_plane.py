@@ -9,7 +9,6 @@ import pytest
 from mdstats.training_data import campaign_cli
 from mdstats.training_data import training_parallel
 import mdstats.training_data._common as common
-import mdstats.training_data.data8_bundle as data8_bundle
 
 
 class _TinyRecord:
@@ -140,45 +139,3 @@ def test_gpu_telemetry_prefers_nvml_and_falls_back_to_nvidia_smi(
     )
     assert training_parallel.query_gpu_telemetry("cuda") is fallback
     assert training_parallel.query_gpu_telemetry("cpu") is None
-
-
-
-
-def test_replay_weight_scaling_streams_extxyz_frames(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from ase import Atoms
-    from ase.io import iread as real_iread, read, write
-    import ase.io
-
-    source = tmp_path / "replay.extxyz"
-    target = tmp_path / "weighted.extxyz"
-    frames = []
-    for index in range(4):
-        atoms = Atoms("LiO", positions=[[0, 0, 0], [1.5, 0, 0]], cell=[8, 8, 8], pbc=True)
-        atoms.info["config_weight"] = float(index + 1)
-        frames.append(atoms)
-    write(source, frames, format="extxyz")
-
-    yielded = 0
-
-    def streaming_iread(*args, **kwargs):
-        nonlocal yielded
-        for atoms in real_iread(*args, **kwargs):
-            yielded += 1
-            yield atoms
-
-    monkeypatch.setattr(ase.io, "iread", streaming_iread)
-    original_writer = data8_bundle._write_extxyz_high_precision
-
-    def checking_writer(handle, images):
-        assert not isinstance(images, (list, tuple))
-        return original_writer(handle, images)
-
-    monkeypatch.setattr(data8_bundle, "_write_extxyz_high_precision", checking_writer)
-    data8_bundle._scale_extxyz_configuration_weights(source, target, scale=2.5)
-    observed = read(target, index=":", format="extxyz")
-    assert yielded == 4
-    assert [atoms.info["config_weight"] for atoms in observed] == pytest.approx(
-        [2.5, 5.0, 7.5, 10.0]
-    )

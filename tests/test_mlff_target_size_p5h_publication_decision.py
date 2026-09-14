@@ -19,6 +19,7 @@ import pytest
 
 import tests.test_mlff_target_size_p4d_runtime_cutover as p4d
 from tests._mlff_post_selection_fixture import (
+    context_monitor_kwargs,
     PostSelectionHarness,
     build_selected_campaign,
     fixture_config_text,
@@ -83,7 +84,7 @@ def test_p5h_all_qualified_publishes_every_admissible_required_seed(tmp_path: Pa
     assert decision.decision_policy_identity == FINAL_PUBLICATION_DECISION_POLICY_IDENTITY
     # The decision binds the whole upstream lineage it descends from.
     assert decision.target_head_name
-    assert decision.m3_membership_digest
+    assert decision.common_monitor_record_digest
     assert decision.cv_authorization_digest
 
 
@@ -115,7 +116,8 @@ def test_p5h_single_best_selects_the_canonical_best_seed(tmp_path: Path):
             context.production_policy,
             cv_plan=resolve_current_cv_plan(context),
             cv_acceptance=resolve_current_cv_acceptance(context),
-        )
+        **context_monitor_kwargs(context),
+)
         identities = {
             seed: build_final_production_run_plan(plan, optimizer_seed=seed).run_identity
             for seed in plan.required_final_seeds
@@ -233,37 +235,22 @@ def test_p5h_corrupt_representative_evidence_fails_closed(tmp_path: Path):
         store.close()
 
 
-def test_p5h_missing_representative_evidence_is_recovered_or_fails_closed(tmp_path: Path):
-    """A run root without durable records is re-evaluated, never synthesized."""
+def test_p5h_missing_representative_evidence_fails_closed(tmp_path: Path):
+    """A run root without durable records is not current; nothing is re-derived."""
 
     config, _workspace, _harness = _campaign(tmp_path, seeds="[5]")
     context, store = _context(config)
     try:
         completion = resolve_current_final_production_completion(context)
         evidence = completion.runs[0]
-        representative_path = context.evidence_store.object_path(
+        context.evidence_store.object_path(
             evidence.representative_record_digest
-        )
-        metric_path = context.evidence_store.object_path(
+        ).unlink()
+        context.evidence_store.object_path(
             evidence.monitor_metric_record_digest
-        )
-        representative_path.unlink()
-        metric_path.unlink()
-    finally:
-        store.close()
-
-    # Recovery goes through the real EVAL2/provider owner and must reproduce the
-    # exact digests the run evidence already bound.
-    harness = PostSelectionHarness()
-    cfg, paths, store = load_context(config)
-    try:
-        context = build_post_selection_context(
-            cfg, paths, store, inference_evaluator=harness.evaluate
-        )
-        completion = resolve_current_final_production_completion(context)
-        recovered = decide_final_production_publication(context, completion)
-        assert recovered.published_member_ids == ("seed-5",)
-        assert representative_path.is_file() and metric_path.is_file()
+        ).unlink()
+        with pytest.raises(PostSelectionError, match="not current evidence"):
+            decide_final_production_publication(context, completion)
     finally:
         store.close()
 

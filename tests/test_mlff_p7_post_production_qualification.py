@@ -1130,7 +1130,7 @@ def test_p7_publication_identity_composes_the_full_upstream_lineage(tmp_path: Pa
             "cv_plan_digest",
             "cv_authorization_digest",
             "committee_policy",
-            "m3_membership_digest",
+            "common_monitor_record_digest",
         ):
             assert payload[field], field
         # The qualification binding descends from the publication and its exact

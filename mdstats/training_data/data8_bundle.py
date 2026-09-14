@@ -31,7 +31,7 @@ from .train2_policy import (
 )
 from .reference_fit import AtomicReferenceFitMode
 from .mace_compatibility import (
-    MACE_EXECUTABLE_LOSS_FAMILY,
+    MACE_WEIGHTED_LOSS_FAMILY,
     MACE_REPLAY_FORCE_MH_FT_LR,
     MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
     MaceCheckpointControlPolicy,
@@ -44,7 +44,6 @@ from .mace_export import (
     MACE_EXTXYZ_POLICY_VERSION,
     MaceExtxyzArtifact,
     MaceExtxyzPolicy,
-    _write_extxyz_high_precision,
     write_mace_extxyz_artifact,
 )
 from .acceleration import MaceAccelerationKernelMode
@@ -59,7 +58,7 @@ from .protocol import (
     TrainingMode,
     TrainingProtocolIdentity,
 )
-from .replay import ReplayMode, ReplayPreparationPlan, ReplayFileArtifact, inspect_replay_extxyz
+from .replay import ReplayMode, ReplayPreparationPlan, ReplayFileArtifact
 from .online_monitor import (
     OnlineMonitorPolicy, OnlineMonitorRecord, build_target_online_monitor,
     build_replay_online_monitor, materialize_replay_online_monitor,
@@ -93,8 +92,6 @@ def _sha256_file(path: Path) -> str:
 DATA8_FIXED_FILE_CACHE_SCHEMA = "mdstats.perf-p2r-data8-fixed-file-cache.v1"
 DATA8_FIXED_FILE_RECIPE_SCHEMA = "mdstats.perf-p2r-data8-fixed-file-recipe.v1"
 DATA8_PARALLEL_MIN_TOTAL_BYTES = 32 * 1024**2
-DATA8_WEIGHTED_REPLAY_CACHE_SCHEMA = "mdstats.data8-weighted-replay-cache.v1"
-DATA8_WEIGHTED_REPLAY_RECIPE_SCHEMA = "mdstats.data8-weighted-replay-recipe.v1"
 DATA8_INPUT_SNAPSHOT_CACHE_SCHEMA = "mdstats.data8-input-snapshot-cache.v1"
 DATA8_MLCV_REPLAY_CACHE_SCHEMA = "mdstats.data8-mlcv-replay-cache.v1"
 DATA8_MLCV_REPLAY_RECIPE_SCHEMA = "mdstats.data8-mlcv-replay-recipe.v1"
@@ -989,39 +986,6 @@ def _python_literal(value: Any) -> str:
     return result
 
 
-def _scale_extxyz_configuration_weights(
-    source: Path,
-    target: Path,
-    *,
-    scale: float,
-) -> None:
-    """Copy an extxyz file while realizing a fixed-file head weight."""
-
-    if scale <= 0.0:
-        raise TrainingDataInputError("Replay configuration-weight scale must be positive.")
-    try:
-        from ase.io import iread
-    except ModuleNotFoundError as exc:  # pragma: no cover
-        raise TrainingDataInputError("ASE is required to stage weighted replay files.") from exc
-
-    def weighted_stream():
-        for atoms in iread(source, index=":", format="extxyz"):
-            base = float(atoms.info.get("config_weight", 1.0))
-            atoms.info["config_weight"] = base * float(scale)
-            yield atoms
-
-    temporary = target.with_suffix(target.suffix + ".tmp")
-    try:
-        with temporary.open("w", encoding="utf-8", newline="") as handle:
-            _write_extxyz_high_precision(handle, weighted_stream())
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, target)
-    except Exception:
-        temporary.unlink(missing_ok=True)
-        raise
-
-
 def _frames_for_units(data5_bundle: Any, unit_ids: Sequence[str]) -> tuple[str, ...]:
     return tuple(
         sorted(
@@ -1032,107 +996,6 @@ def _frames_for_units(data5_bundle: Any, unit_ids: Sequence[str]) -> tuple[str, 
             }
         )
     )
-
-
-def _weighted_replay_recipe(plan: ReplayPreparationPlan) -> dict[str, Any]:
-    if plan.train_artifact is None:
-        raise TrainingDataInputError("Weighted replay cache requires a training artifact.")
-    return {
-        "schema": DATA8_WEIGHTED_REPLAY_RECIPE_SCHEMA,
-        "extxyz_policy_version": MACE_EXTXYZ_POLICY_VERSION,
-        "source_artifact_digest": plan.train_artifact.content_digest,
-        "source_sha256": plan.train_artifact.sha256,
-        "head_weight_hex": float(plan.head_weight).hex(),
-    }
-
-
-def _load_weighted_replay_cache(
-    cache_directory: Path,
-    *,
-    recipe: Mapping[str, Any],
-    recipe_digest: str,
-) -> ReplayFileArtifact | None:
-    metadata_path = cache_directory / "cache.json"
-    artifact_path = cache_directory / "artifact.xyz"
-    if not metadata_path.is_file() or not artifact_path.is_file():
-        return None
-    try:
-        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
-        if (
-            payload.get("schema") != DATA8_WEIGHTED_REPLAY_CACHE_SCHEMA
-            or payload.get("recipe_digest") != recipe_digest
-            or payload.get("recipe") != dict(recipe)
-        ):
-            return None
-        artifact = ReplayFileArtifact.from_dict(payload["artifact"])
-        if artifact.path != "artifact.xyz":
-            return None
-        if _sha256_file(artifact_path) != artifact.sha256:
-            return None
-        return artifact
-    except Exception:
-        return None
-
-
-def _ensure_weighted_replay_cache(
-    plan: ReplayPreparationPlan,
-    cache_root: Path,
-) -> tuple[Path, ReplayFileArtifact]:
-    assert plan.train_artifact is not None
-    recipe = _weighted_replay_recipe(plan)
-    recipe_digest = digest(recipe)
-    cache_directory = cache_root / "weighted-replay" / recipe_digest[:2] / recipe_digest
-    cached = _load_weighted_replay_cache(
-        cache_directory, recipe=recipe, recipe_digest=recipe_digest
-    )
-    if cached is not None:
-        return cache_directory, cached
-    cache_directory.parent.mkdir(parents=True, exist_ok=True)
-    staging = cache_directory.parent / (
-        f".{recipe_digest}.tmp-{os.getpid()}-{uuid.uuid4().hex}"
-    )
-    shutil.rmtree(staging, ignore_errors=True)
-    staging.mkdir(parents=True, exist_ok=False)
-    try:
-        artifact_path = staging / "artifact.xyz"
-        _scale_extxyz_configuration_weights(
-            Path(plan.train_artifact.path),
-            artifact_path,
-            scale=plan.head_weight,
-        )
-        inspected = inspect_replay_extxyz(
-            artifact_path,
-            label_mode=plan.train_artifact.label_mode,
-            foundation_checkpoint_digest=plan.train_artifact.foundation_checkpoint_digest,
-            foundation_label_generator_identity_digest=plan.train_artifact.foundation_label_generator_identity_digest,
-        )
-        cached_artifact = replace(inspected, path="artifact.xyz")
-        metadata = {
-            "schema": DATA8_WEIGHTED_REPLAY_CACHE_SCHEMA,
-            "recipe": recipe,
-            "recipe_digest": recipe_digest,
-            "artifact": cached_artifact.to_dict(),
-        }
-        metadata_path = staging / "cache.json"
-        with metadata_path.open("w", encoding="utf-8") as handle:
-            json.dump(metadata, handle, indent=2, sort_keys=True)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        try:
-            os.rename(staging, cache_directory)
-        except OSError:
-            shutil.rmtree(staging, ignore_errors=True)
-        cached = _load_weighted_replay_cache(
-            cache_directory, recipe=recipe, recipe_digest=recipe_digest
-        )
-        if cached is None:
-            raise TrainingDataInputError(
-                "DATA8 weighted replay cache could not be validated after population."
-            )
-        return cache_directory, cached
-    finally:
-        shutil.rmtree(staging, ignore_errors=True)
 
 
 def _mlcv_replay_recipe(
@@ -1225,74 +1088,6 @@ def _ensure_mlcv_replay_cache(
         return cache_directory, cached[0], cached[1]
     finally:
         shutil.rmtree(staging, ignore_errors=True)
-
-
-def _copy_replay_plan(
-    plan: ReplayPreparationPlan,
-    root: Path,
-    *,
-    shared_cache_directory: str | Path | None = None,
-) -> ReplayPreparationPlan:
-    if plan.mode is ReplayMode.NONE:
-        return plan
-    if not plan.ready_for_fixed_file_training:
-        raise TrainingDataInputError(
-            "DATA8 fixed-file jobs require local replay train and monitor files. "
-            "Resolve MP_SHORTCUT to PRESELECTED before building jobs."
-        )
-    replay_dir = root / "shared" / "replay"
-    replay_dir.mkdir(parents=True, exist_ok=True)
-    train_target = replay_dir / "replay_train.xyz"
-    monitor_target = replay_dir / "replay_monitor.xyz"
-    if shared_cache_directory is None:
-        if _sha256_file(Path(plan.train_artifact.path)) != plan.train_artifact.sha256:
-            raise TrainingDataInputError("Replay training source digest mismatch before DATA8 staging.")
-        _scale_extxyz_configuration_weights(
-            Path(plan.train_artifact.path),
-            train_target,
-            scale=plan.head_weight,
-        )
-        train_artifact = inspect_replay_extxyz(
-            train_target,
-            label_mode=plan.train_artifact.label_mode,
-            foundation_checkpoint_digest=plan.train_artifact.foundation_checkpoint_digest,
-            foundation_label_generator_identity_digest=plan.train_artifact.foundation_label_generator_identity_digest,
-        )
-    else:
-        cache_root = Path(shared_cache_directory).resolve()
-        train_source = _ensure_owned_input_snapshot(
-            Path(plan.train_artifact.path),
-            expected_sha256=plan.train_artifact.sha256,
-            cache_root=cache_root,
-        )
-        cache_plan = replace(
-            plan, train_artifact=replace(plan.train_artifact, path=str(train_source))
-        )
-        cache_directory, cached_train = _ensure_weighted_replay_cache(
-            cache_plan, cache_root
-        )
-        _atomic_link_or_copy_file(cache_directory / "artifact.xyz", train_target)
-        train_artifact = replace(cached_train, path=str(train_target))
-    _stage_external_input(
-        Path(plan.monitor_artifact.path), monitor_target,
-        expected_sha256=plan.monitor_artifact.sha256,
-        shared_cache_directory=shared_cache_directory,
-    )
-    monitor_artifact = replace(plan.monitor_artifact, path=str(monitor_target))
-    return ReplayPreparationPlan(
-        mode=plan.mode,
-        train_artifact=train_artifact,
-        monitor_artifact=monitor_artifact,
-        source_replay_path=plan.source_replay_path,
-        requested_train_count=plan.requested_train_count,
-        filtering_type=plan.filtering_type,
-        subselect=plan.subselect,
-        seed=plan.seed,
-        head_weight=plan.head_weight,
-        target_weight=plan.target_weight,
-        selection_command=plan.selection_command,
-        retention_policy=plan.retention_policy,
-    )
 
 
 def _stage_foundation_checkpoint(
@@ -1453,7 +1248,7 @@ def _mace_config(
         "energy_weight": data7_bundle.training_weights.objective_policy.energy_weight,
         "forces_weight": data7_bundle.training_weights.objective_policy.forces_weight,
         "stress_weight": data7_bundle.training_weights.objective_policy.stress_weight,
-        "loss": MACE_EXECUTABLE_LOSS_FAMILY,
+        "loss": MACE_WEIGHTED_LOSS_FAMILY,
         "lr": optimizer.learning_rate,
         "force_mh_ft_lr": MACE_REPLAY_FORCE_MH_FT_LR,
         "batch_size": optimizer.batch_size,

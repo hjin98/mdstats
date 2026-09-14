@@ -407,12 +407,39 @@ required fold and optimizer seed must pass the target-only acceptance predicate.
 Cross-validation succeeds only if **every** selected size passes; a size that
 fails stays visibly failed and is never dropped from your design.
 
-Fold partitions are constructed inside the already frozen selected set. A fold
-may fit training-only transforms from its own training partition, freezes its
-representative on its authorized monitor, and evaluates the held-out partition
-only afterwards. Held-out fold results cannot change `N_selected`, membership,
-checkpoint policy, or the method definition. Replay remains a separate
-admissibility/retention concern and supplies no ranking credit.
+Fold partitions are constructed inside the already frozen selected set: each
+fold is gradient training, held-out outer evaluation, and purge only. The default
+is `fold_count = 3`; any explicit `K >= 2` is accepted. The retired
+`checkpoint_monitor_components_per_fold` field fails closed: checkpoint choice
+uses one campaign-common target monitor of exactly 256 label-usable frames drawn
+deterministically from the neutral `OUTER_MONITOR` role, outside every fold and
+shared by every selected size, fold, seed, and final-production run. It must be
+free of any P1 protected relation with every selected target set; fewer than 256
+usable parent frames or a relation collision makes post-selection infeasible
+rather than shrinking or resampling the monitor. A fold fits its training-only
+state from its own training partition, freezes its representative on that
+common monitor, and evaluates the held-out partition only afterwards. Held-out
+fold results cannot change `N_selected`, membership, checkpoint policy, or the
+method definition. Replay remains a separate admissibility/retention concern and
+supplies no ranking credit.
+
+For foundation fine-tuning (`naive_fine_tuning` and `multihead_replay`) the
+training objective is fixed: pinned MACE's native `UniversalLoss` with
+`huber_delta = 0.01` (0.01 eV/atom energy, 0.01 eV/Angstrom force base
+threshold, 0.01 eV/Angstrom^3 stress) and energy:forces:stress coefficients
+1:10:1. It does not read `[objective]` or `[weighting]`, which remain P3
+target-size and P5 scratch settings. There is no target/replay training-head
+weight: `[training].target_head_weight` and `replay_head_weight` are retired and
+fail closed (checkpoint/adaptive-stop score weights are unaffected). Atomic
+reference energies are the selected foundation head's elemental references plus
+corrections fitted on the fold's (or final run's) training labels against that
+same head's predictions; every training, common-monitor, and held-out
+composition must be orthogonal to the fit's unanchored null space, otherwise
+the run fails as infeasible. Foundation runs execute single-process with the
+native replay-first combined corpus and `drop_last`; a distributed launch fails
+closed. Split-file replay (`replay_train`/`replay_monitor`) requires an explicit
+`[replay].mode`; the single-source `replay_set` interface resolves an omitted
+`label_mode` to `true_dft`.
 
 A missing or failing fold is a methodological failure. It leaves selection
 evidence unchanged and does not authorize final production; it is not replaced
@@ -450,7 +477,9 @@ the configured `[post_selection.production].committee_policy`. Both policies are
 supported. `all_qualified_final_seeds` publishes every required seed whose
 already-frozen representative checkpoint is admissible; `single_best_final_seed`
 ranks those same already-frozen representatives with the accepted target-only
-EVAL2 ordering over the frozen M3 development evidence and publishes one. The
+EVAL2 ordering over their frozen metric records on the common target monitor and
+publishes one; it performs no new target evaluation, and target-size `M3` plays
+no role in final checkpoint control or publication. The
 decision is taken here, before any qualification evidence exists, and nothing
 downstream can change it.
 

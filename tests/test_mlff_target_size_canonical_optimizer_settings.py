@@ -166,18 +166,19 @@ def _internal_post_selection_config(cfg, policy, identity):
 
     artifact = SimpleNamespace(relative_path="train.extxyz", atomic_numbers=(3, 8))
     monitor = SimpleNamespace(relative_path="valid.extxyz", atomic_numbers=(3, 8))
+    policies = resolve_post_selection_method_policies(cfg)
     preparation = SimpleNamespace(
         fitted_atomic_references=SimpleNamespace(
             reference_energies_ev=((3, -1.0), (8, -2.0))
         ),
-        objective_policy=mdstats.TrainingObjectivePolicy(),
+        training_mode=identity.training_mode,
     )
-    policies = resolve_post_selection_method_policies(cfg)
     return _post_selection_mace_config(
         run_identity="ab" * 32,
         optimizer_seed=int(policy.seed),
         planned_epochs=int(policy.max_num_epochs),
         preparation=preparation,
+        objective=policies.objective,
         optimizer_policy=policy,
         target_train=artifact,
         monitor=monitor,
@@ -486,7 +487,7 @@ def test_c_target_size_horizon_comes_from_the_screen_schedule():
 
 def test_e_method_recipe_version_is_the_corrected_generation():
     identity = resolve_post_selection_method_identity(_config())
-    assert identity.method_recipe_version == "mdstats.post-selection-method.2026-09.v4"
+    assert identity.method_recipe_version == "mdstats.post-selection-method.2026-09.v5"
 
 
 def test_e_old_method_recipe_evidence_cannot_authorize_corrected_runs():

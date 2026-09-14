@@ -3152,17 +3152,13 @@ def _inspect_unified_replay_artifact(
     return artifact
 
 
-def _replay_head_weights(cfg: Mapping[str, Any]) -> tuple[float, float, Any]:
+def _replay_retention_policy(cfg: Mapping[str, Any]) -> Any:
     import mdstats
 
-    return (
-        float(_cfg(cfg, "training", "replay_head_weight", 1.0)),
-        float(_cfg(cfg, "training", "target_head_weight", 5.0)),
-        mdstats.ReplayRetentionPolicy(
-            maximum_degradation_fraction=float(
-                _cfg(cfg, "acceptance", "maximum_replay_degradation_fraction", 0.20)
-            )
-        ),
+    return mdstats.ReplayRetentionPolicy(
+        maximum_degradation_fraction=float(
+            _cfg(cfg, "acceptance", "maximum_replay_degradation_fraction", 0.20)
+        )
     )
 
 
@@ -3209,7 +3205,7 @@ def _single_source_replay_transport(
 
     import mdstats
 
-    replay_weight, target_weight, retention = _replay_head_weights(cfg)
+    retention = _replay_retention_policy(cfg)
     view_root = paths.internal / "replay-unified" / "views"
     source_path = Path(source.path).expanduser().resolve()
     records: dict[str, Any] = {}
@@ -3232,8 +3228,6 @@ def _single_source_replay_transport(
             monitor_artifact=monitor_artifact,
             source_replay_path=str(source_path),
             seed=single.split_seed,
-            head_weight=replay_weight,
-            target_weight=target_weight,
             retention_policy=retention,
         )
         true_resolution = mdstats.TrueLabelReplayResolution(
@@ -3291,8 +3285,6 @@ def _single_source_replay_transport(
             monitor_artifact=monitor_artifact,
             source_replay_path=str(source_path),
             seed=single.split_seed,
-            head_weight=replay_weight,
-            target_weight=target_weight,
             retention_policy=retention,
         )
         true_resolution = mdstats.TrueLabelReplayResolution(
@@ -4092,14 +4084,8 @@ def _build_replay_plan(
 
     import mdstats
 
-    target_weight = float(_cfg(cfg, "training", "target_head_weight", 5.0))
-    replay_weight = float(_cfg(cfg, "training", "replay_head_weight", 1.0))
     if not _requires_replay(cfg):
-        return mdstats.ReplayPreparationPlan(
-            mode=mdstats.ReplayMode.NONE,
-            head_weight=replay_weight,
-            target_weight=target_weight,
-        )
+        return mdstats.ReplayPreparationPlan(mode=mdstats.ReplayMode.NONE)
 
     if single_context is not None:
         return single_context["plan"]
@@ -4109,8 +4095,19 @@ def _build_replay_plan(
         assert context is not None
         return context["plan"]
 
+    raw_mode = _cfg(cfg, "replay", "mode", None)
+    if raw_mode in (None, ""):
+        # The historical omitted-mode default was foundation pseudo-labels.
+        # That omission is ambiguous for the current method, whose canonical
+        # replay default is TRUE_DFT, so the split-file route fails closed.
+        raise CampaignCliError(
+            "Split-file replay ([paths].replay_train/replay_monitor) requires an "
+            "explicit [replay].mode; an omitted mode has no unambiguous label "
+            "semantic. Prefer [paths].replay_set, whose omitted label_mode "
+            "resolves to true_dft."
+        )
     try:
-        mode = mdstats.ReplayMode(str(_cfg(cfg, "replay", "mode", "external_pseudolabel")))
+        mode = mdstats.ReplayMode(str(raw_mode))
     except ValueError as exc:
         allowed = ", ".join(
             v.value for v in (
@@ -4170,13 +4167,7 @@ def _build_replay_plan(
         monitor_path,
         mode=mode,
         seed=int(_cfg(cfg, "replay", "seed", 42)),
-        head_weight=replay_weight,
-        target_weight=target_weight,
-        retention_policy=mdstats.ReplayRetentionPolicy(
-            maximum_degradation_fraction=float(
-                _cfg(cfg, "acceptance", "maximum_replay_degradation_fraction", 0.20)
-            )
-        ),
+        retention_policy=_replay_retention_policy(cfg),
         foundation_checkpoint_digest=foundation_digest,
         foundation_label_generator_identity_digest=foundation_generator_digest,
     )
@@ -7279,8 +7270,6 @@ train2_adaptation_end_fraction = 0.80
 train2_initial_lr_multiplier = 0.10
 train2_refinement_start_lr_multiplier = 0.10
 train2_final_lr_multiplier = 0.01
-target_head_weight = 5.0
-replay_head_weight = 1.0
 
 # ADAPT-PREC1: model precision is binary and controls learned-model arithmetic only.
 # mdstats-owned scientific reductions/statistics and persistent MD bookkeeping remain FP64.
@@ -7304,7 +7293,8 @@ seeds = [1, 2]
 # the cross-validate command after the select-target-size command has frozen N
 # and T_selected. Its universe is exactly T_selected.
 # K >= 2 is required: there is no current zero-fold production bypass.
-fold_count = 5
+# The current default is K = 3.
+fold_count = 3
 partition_seed = 104729
 # Required CV seeds/variants. Every fold of every seed must pass.
 seeds = [0]
@@ -7312,9 +7302,9 @@ seeds = [0]
 # [training].max_num_epochs is the production horizon, and editing that must not
 # invalidate accepted cross-validation evidence.
 max_num_epochs = 30
-# One split-exclusion component per fold is reserved as that fold's own
-# checkpoint monitor; the held-out outer fold never controls checkpoint choice.
-checkpoint_monitor_components_per_fold = 1
+# Checkpoint choice uses one campaign-common exact 256-frame target monitor
+# drawn from the neutral OUTER_MONITOR role, outside every fold; the held-out
+# outer fold never controls checkpoint choice.
 purge_components_between_roles = 0
 # The target-only outer-fold acceptance predicate. Replay evidence gates
 # admissibility but contributes no acceptance or ranking credit.

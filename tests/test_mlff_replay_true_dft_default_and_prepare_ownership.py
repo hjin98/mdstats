@@ -1375,11 +1375,12 @@ def test_replay_routing_repair_bumps_no_scientific_or_schema_version():
         REPLAY_SPLIT_MANIFEST_SCHEMA,
     )
 
-    assert POST_SELECTION_METHOD_RECIPE_VERSION == "mdstats.post-selection-method.2026-09.v4"
+    assert POST_SELECTION_METHOD_RECIPE_VERSION == "mdstats.post-selection-method.2026-09.v5"
     assert REPLAY_INVALIDATION_VERSION == "REPLAY-UNIFY1E-v1"
     assert REPLAY_SINGLE_SOURCE_CONFIG_SCHEMA == "mdstats.replay-single-source-config.v1"
     assert REPLAY_SPLIT_MANIFEST_SCHEMA == "mdstats.replay-split-manifest.v1"
-    assert REPLAY_PREPARATION_PLAN_SCHEMA == "mdstats.replay-preparation-plan.v4"
+    # v5: retired training-head scalar weights left the replay plan.
+    assert REPLAY_PREPARATION_PLAN_SCHEMA == "mdstats.replay-preparation-plan.v5"
 
 
 # ---------------------------------------------------------------------------
