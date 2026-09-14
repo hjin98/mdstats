@@ -3,6 +3,7 @@ title: "mdstats MLFF Scientific Method"
 artifact_level: "D1 scientific formulation"
 status: "proposed Gate-A D1 candidate; accepted 2026-09-13 baseline remains current until independent review and human ratification"
 reconstructed_against_commit: "9fd82b0ed40990d56716a393aa3f7db0a2ff44d0"
+accepted_baseline_commit: "e8d04144f55c72d799ffcd3fe40c75e47078a66d"
 accepted_baseline_date: "2026-09-13"
 gate_a_workplan: "MLFF-FPS-COVERAGE-METHOD-RECONCILIATION-1"
 gate_a_revision: 5
@@ -13,18 +14,20 @@ candidate_materialized_date: "2026-09-14"
 
 ## 1. Purpose, scope, and authority status
 
-This paper states the scientific formulation of the machine-learned force-field (MLFF) branch of mdstats: the scientific question, observables, assumptions, evidence semantics, validity domain, uncertainty, and permitted claims. Numerical realization is delegated to `mlff_numerical_algorithmic_method.md`; software ownership, persistence, orchestration, and runtime architecture remain D3/D4 concerns.
+This paper reconstructs the scientific formulation of the machine-learned force-field (MLFF) branch of mdstats from the accepted current architecture, current specifications, current-generation code owners, and historical transition evidence that still explains present behavior.
 
-The method addresses six linked questions:
+It is deliberately human-facing. It states the scientific question, observables, assumptions, evidence semantics, validity domain, uncertainty, and permitted claims. The numerical realization is delegated to `mlff_numerical_algorithmic_method.md`; software ownership, persistence, orchestration, and runtime architecture remain D3/D4 concerns.
+
+The reconstruction concerns six linked questions:
 
 1. what atomistic source information and labels constitute scientifically compatible reference evidence;
 2. how physical conditions, strain/stress conventions, numerical quality, and eligibility are represented without erasing provenance or rare physics;
 3. how correlated trajectory evidence is assigned to development, model-control, held-out, calibration, and locked roles without fabricating independence;
-4. how one target-training-cardinality experiment is constructed so that changing target size does not silently change another scientific variable;
+4. how one target-training cardinality experiment is constructed so that changing target size does not silently change another scientific variable;
 5. how foundation-model fine-tuning, replay, checkpoint selection, post-selection cross-validation, and fresh final production are interpreted; and
 6. what conclusions the resulting evidence does and does not support, including the separate role of downstream physical/deployment qualification.
 
-**Authority status.** The 2026-09-13 reconstruction remains the accepted current D1 authority until the Gate-A reconciliation passes an independent D1/D2 review and is explicitly ratified by the human owner. This branch materializes the complete proposed Gate-A D1 candidate in the canonical owner file so review can operate on one assembled scientific method rather than amendment overlays. D2 must concretize this candidate faithfully if and when it is accepted; D3/D4 may not redefine it.
+**Authority status.** The reconstruction accepted on 2026-09-13 remains the current D1 scientific/mathematical authority. This branch materializes the later Gate-A Revision-5 target-order reconciliation directly in the canonical owner path as a **proposed** candidate so an independent reviewer can inspect one assembled paper. Repository presence does not accept the amendment. The Gate-A candidate becomes current only after the required independent D1/D2 falsification and explicit human ratification. The 2026-09-13 reconstruction provenance remains applicable to unaffected text; the later target-order reconciliation requires its own acceptance provenance.
 
 ## 2. Scientific background
 
@@ -42,87 +45,91 @@ $$
 \mathbf F_i=-\frac{\partial E_\theta}{\partial \mathbf R_i},
 $$
 
-and, when stress is part of the accepted label contract, Cauchy stress is the corresponding cell/strain derivative under the declared source convention,
+and, when stress is part of the accepted label contract, the Cauchy stress is the corresponding cell/strain derivative under the declared source convention,
 
 $$
 \boldsymbol\sigma=-\frac{1}{V}\frac{\partial E_\theta}{\partial \boldsymbol\varepsilon}.
 $$
 
-Sign, tensor, shear, unit, and strain conventions are part of scientific label identity. Values produced under incompatible derivative or reference conventions are not interchangeable observations.
+The sign, tensor, shear, unit, and strain conventions are part of the scientific label identity. Energy, force, and stress values produced under incompatible derivative or reference conventions are not interchangeable observations.
 
-The present mdstats workflow fine-tunes an accepted MACE foundation model rather than proposing a new neural-network ansatz. MACE supplies the equivariant message-passing representation; mdstats supplies source certification, evidence design, target-size experiment, fine-tuning controls, validation boundaries, and provenance.
+The present mdstats workflow fine-tunes an accepted MACE foundation model rather than proposing a new neural-network ansatz. MACE provides the equivariant message-passing representation; mdstats supplies the source certification, evidence design, target-size experiment, fine-tuning controls, validation boundaries, and provenance needed to make a scientific statement about the resulting model.
 
 ### 2.2 Why trajectory frames are not independent samples
 
-Molecular-dynamics (MD) trajectories contain serial correlation. Adjacent structures may be nearly identical, event windows may contain many frames generated by one physical transition, and slowly evolving structural coordinates may remain correlated for much of a run. A random frame split can therefore place near-replicates on both sides of an evaluation boundary and underestimate generalization error.
+Molecular-dynamics (MD) trajectories contain serial correlation. Adjacent structures may be nearly identical, event windows may contain many frames generated by one physical transition, and a slowly evolving site, defect, phase, or structural coordinate may remain correlated for much of a run. A random frame split can therefore place near-replicates on both sides of an evaluation boundary and underestimate generalization error.
 
 For a stationary scalar observable `x_t`, the normalized autocorrelation is
 
 $$
-\rho(k)=\frac{\operatorname{Cov}(x_t,x_{t+k})}{\operatorname{Var}(x_t)},
+\rho(k)=\frac{\text{Cov}(x_t,x_{t+k})}{\text{Var}(x_t)},
 $$
 
 and the integrated autocorrelation time is represented in stored-frame units as
 
 $$
-\tau_{\mathrm{int}}=\frac12+\sum_{k=1}^{k^\star}\rho(k).
+\tau_{\text{int}}=\frac12+\sum_{k=1}^{k^\star}\rho(k).
 $$
 
 The associated diagnostic effective sample count is
 
 $$
-N_{\mathrm{eff}}=\min\left(N,\frac{N}{2\tau_{\mathrm{int}}}\right).
+N_{\text{eff}}=\min\left(N,\frac{N}{2\tau_{\text{int}}}\right).
 $$
 
-This measures serial redundancy under the chosen observable and truncation rule. It does not prove that every relevant slow variable has decorrelated or that separate blocks are independent metastable-state realizations. mdstats therefore carries categorical independence evidence and limitation codes in addition to numerical autocorrelation estimates.
+This quantity measures serial redundancy under the chosen observable and truncation rule. It is **not** proof that every relevant slow variable has decorrelated, nor proof that separate temporal blocks are independent metastable-state realizations. mdstats therefore carries categorical independence evidence and limitation codes in addition to the numerical autocorrelation estimate.
 
 ### 2.3 Why target size is an experiment
 
-Target-training cardinality `N` is a scientific independent variable, not a storage knob. If changing `N` also changes the sampling rule, fitted preprocessing, optimizer progress, model-selection population, loss semantics, or hidden loader exposure, the resulting difference cannot be interpreted cleanly as a target-data-size effect.
+Target-training cardinality `N` is a scientific independent variable, not a storage knob. If changing `N` also changes the sampling rule, fitted preprocessing, optimizer progress, evaluation population, loss semantics, or hidden loader exposure, the observed difference cannot be interpreted cleanly as a target-data-size effect.
 
-The target-size experiment therefore uses one deterministic training order, exact nested training prefixes, one fixed exact model-selection reserve `M3`, common candidate-independent training preparation, paired optimizer seeds, and an explicit short-horizon comparison policy. Every automatic fidelity boundary evaluates the same exact `M3` target-force estimand. Smaller nested `M1/M2` populations may exist only as diagnostic probability samples and have no ranking, elimination, qualification, tie-break, recommendation, horizon-selection, or freeze authority. The automatic screen recommends a size; the operator owns the provisional downstream design, and post-selection cross-validation evaluates that frozen design rather than feeding backward into it.
-
-### 2.4 Target-order terminology
-
-A **coverage-progressive training order** is one whose exact nested prefixes deliberately add structural support under one frozen, candidate-independent rule rather than depending on arbitrary stable identifiers. **Farthest-point sampling (FPS)** is the maximin construction used inside each neutral condition: after an initial representative is chosen, the next frame maximizes its distance to the nearest already selected frame under the accepted fitted structural metric. **Coverage evidence** characterizes sampling support; it is not model accuracy, transferability, physical validation, or deployment adequacy.
+The target-size experiment therefore uses one deterministic training order, exact nested training prefixes, one fixed exact model-selection reserve `M3`, common candidate-independent training preparation, paired optimizer seeds, and an explicit short-horizon comparison policy. Every automatic fidelity boundary evaluates the same exact `M3` target-force estimand. Smaller nested `M1/M2` populations may exist only as diagnostic probability samples and have no ranking, elimination, qualification, tie-break, recommendation, horizon-selection, or freeze authority. The automatic screen is a diagnostic that recommends a size. The operator remains responsible for the provisional downstream design, and post-selection cross-validation evaluates that frozen design rather than feeding backward into it.
 
 ## 3. Source evidence, label compatibility, and physical conventions
 
 ### 3.1 Source occurrence, geometry, and label identity
 
-mdstats distinguishes:
+mdstats distinguishes several identities that answer different scientific questions:
 
 - **source-content identity** — whether source bytes/control content are the same;
 - **source-occurrence identity** — whether a record represents the same declared run occurrence;
 - **frame occurrence identity** — a particular source-frame occurrence;
 - **geometry identity** — the atom-ordered structure, cell, periodicity, and coordinates independent of labels;
-- **label identity** — the energy/force/stress payload together with units and scientific conventions; and
+- **label identity** — the energy/force/stress payload together with its units and scientific conventions; and
 - **labeled-configuration identity** — the combined geometry-plus-label statement.
 
-A copied file may have identical content but represent a distinct declared occurrence. Different occurrences may contain the same geometry and must not automatically be treated as independent evidence. Geometry identity excludes energy, force, stress, temperature, source locator, and label-domain metadata so duplicate geometry remains visible.
+A copied file may have identical content but represent a distinct declared occurrence. Conversely, two different occurrences may contain the same geometry and must not automatically be treated as independent evidence. Geometry identity deliberately excludes energy, force, stress, temperature, source locator, and label-domain metadata; duplicate geometry is therefore visible rather than hidden inside a combined record key.
 
 ### 3.2 Label-domain compatibility remains current science
 
-Compatibility of target labels is current authority. Source authority distinguishes at least theory/electronic-structure identity, energy-reference identity, derivative/stress convention, numerical-quality profile, and software/provenance evidence. A compatibility policy may recognize non-semantic provenance differences but may not merge incompatible theory levels, energy references, or derivative conventions.
+Compatibility of target labels is not retired. Current source authority distinguishes at least:
 
-What is retired is using `label_domain_id` as a pre-target-size partition axis that creates separate target-size selectors, target-size CV authorities, or per-domain target-size maps. Source-label compatibility is resolved upstream; target-size construction then operates on accepted canonical evidence without reintroducing a second domain-specific target-size authority.
+- theory/electronic-structure identity;
+- energy-reference identity;
+- derivative and stress convention;
+- numerical-quality profile; and
+- software/provenance evidence.
+
+A compatibility policy may recognize non-semantic provenance differences, but it must not silently merge incompatible theory levels, energy references, or derivative conventions. A target training bundle contains one compatible target label domain, plus a separately identified replay lineage when replay is enabled.
+
+What **was** retired is a different concept: using `label_domain_id` as a pre-target-size partition axis that creates separate target-size selectors, separate target-size CV authorities, or per-domain target-size maps. The current neutral target-size substrate has no compatibility-domain or pre-target-size-CV axis. Source-label compatibility is resolved upstream; target-size construction then operates on the accepted canonical evidence without reintroducing a second domain-specific target-size authority.
 
 ### 3.3 Energy channel
 
-The target energy is an explicit named channel. Units, completeness, electronic/reference convention, and relationship to derivative labels are preserved. Energy selected from one convention cannot be silently paired with forces or stress from another.
+The target energy is an explicit named channel. Its units, completeness, electronic/reference convention, and relationship to derivative labels are preserved. An energy value selected from one convention cannot be silently paired with forces or stress from another convention.
 
 ### 3.4 Ensemble and temperature evidence
 
-Nominal thermodynamic control and realized observations are distinct. A source may specify a target temperature, a ramp, or no target temperature, while also carrying instantaneous-temperature observations. Realized statistics do not overwrite source control semantics.
+Nominal thermodynamic control and realized observations are distinct. A source may specify a target temperature, a ramp, or no target temperature (for example, an NVE trajectory), while also carrying instantaneous-temperature observations. Realized temperature statistics do not overwrite the source control semantics.
 
-Composition, temperature, strain, regime, phase, defect state, surface/interface state, preparation history, and user-declared scientific axes may matter to applicability. These axes are hierarchical and material-dependent rather than an automatically complete Cartesian product.
+Temperature, composition, strain, regime, phase, defect state, surface/interface state, preparation history, and user-declared scientific axes may all matter to applicability. These axes are hierarchical and material-dependent rather than an automatically complete Cartesian product. A physically inapplicable combination is not a missing observation merely because its labels can be named.
 
 ### 3.5 Cell, deformation, and strain
 
 ASE-style source geometry uses row-vector cells,
 
 $$
-\mathbf r_{\mathrm{row}}=\mathbf s_{\mathrm{row}}\mathbf H.
+\mathbf r_{\text{row}}=\mathbf s_{\text{row}}\mathbf H.
 $$
 
 For reference cell `H_0` and current cell `H_t`, the Cartesian column-vector deformation gradient is
@@ -131,49 +138,83 @@ $$
 \mathbf F=\left(\mathbf H_0^{-1}\mathbf H_t\right)^T.
 $$
 
-The scientific strain context includes proper polar decomposition `F=RU` and may report linearized, Green-Lagrange, and logarithmic strain measures, volume ratio, rotation, principal strains, hydrostatic/deviatoric measures, and engineering shear. Reference-cell selection is explicit.
+The scientific strain context includes a proper polar decomposition
+
+$$
+\mathbf F=\mathbf R\mathbf U,
+$$
+
+and may report linearized, Green-Lagrange, and logarithmic strain measures, volume ratio, rotation, principal strains, hydrostatic/deviatoric measures, and engineering shear. Reference-cell selection is explicit; an ambiguous or physically unsuitable reference cell is not silently inferred.
 
 ### 3.6 Stress convention
 
-The canonical target stress is a symmetric Cartesian Cauchy stress in the accepted ASE/MACE sign convention and canonical internal units. Tensor shear components and engineering shear are not interchangeable. Virial-like quantities remain distinct unless a current specification explicitly defines valid conversion.
+The canonical target stress is a symmetric Cartesian Cauchy stress in the accepted ASE/MACE sign convention and canonical internal units. Tensor shear components and engineering shear are not interchangeable. Virial-like quantities remain distinct from stress unless a current specification explicitly defines a valid conversion.
 
-### 3.7 Eligibility is not typicality
+Unit, sign, Voigt-order, and shear-factor round trips are scientific correctness conditions, not display formatting.
 
-Eligibility answers whether a labeled frame may enter the scientific evidence base. Hard failures include missing or non-finite required labels, malformed geometry/cell state, incompatible atom counts, unrecoverable incomplete source records, and disallowed electronic-convergence failures.
+### 3.7 Eligibility is not “typicality”
 
-High but finite forces, unusual strain, rare coordination, event frames, and difficult model residuals are not rejected merely for being unusual. Quality, rarity, difficulty, and applicability remain separate from eligibility.
+Eligibility answers whether a labeled frame may enter the scientific evidence base. Hard failures include missing or non-finite required labels, malformed geometry/cell state, incompatible atom counts, unrecoverable incomplete source records, disallowed electronic-convergence failures, or other conditions that make the reference observation unusable under the active policy.
+
+High but finite forces, unusual strain, rare coordination, event frames, and difficult model residuals are **not** rejected merely for being unusual. Such evidence can be scientifically valuable precisely because it probes difficult regions. Quality, rarity, difficulty, and applicability evidence are recorded separately from eligibility.
 
 ## 4. Evidence roles, leakage, and statistical independence
 
 ### 4.1 Strongest-supported independence, not invented independence
 
-mdstats prefers the strongest evidence available: independent replica or preparation, independent structural/chemical realization, independent thermodynamic run, then purged temporal blocks. Temporal distance alone does not establish an independent slow-state realization.
+mdstats prefers the strongest evidence available, for example:
+
+1. independent replica or independently prepared realization;
+2. independent structural or chemical ordering;
+3. independent thermodynamic run; and
+4. purged temporal blocks within a run.
+
+Temporal distance alone does not establish an independent slow-state realization. When only weak independence is supportable, the evidence must say so.
 
 ### 4.2 Correlation units and protected relations
 
-Before incompatible roles are allocated, the workflow constructs correlation-aware complete-frame units and preserves relations that make frames scientifically unsafe to separate. Current protected relations include correlation-unit membership, exact geometry duplicates, protected-event membership, condition-scoped replica lineage, and condition-scoped structural-realization lineage. Transitive closure is scientifically binding: if `a` is inseparable from `b` and `b` from `c`, all three form one indivisible component.
+Before incompatible roles are allocated, the workflow constructs correlation-aware complete-frame units and preserves relations that make frames scientifically unsafe to separate. Current protected relations include:
+
+- membership in the same correlation unit;
+- exact geometry duplicates;
+- membership in the same protected event window;
+- condition-scoped replica lineage across distinct runs; and
+- condition-scoped structural-realization lineage across distinct runs.
+
+The transitive closure is scientifically important. If `a` is inseparable from `b` and `b` from `c`, then `a,b,c` form one indivisible relation component for the target-size development split even if no direct `a-c` relation was stored.
 
 ### 4.3 Event detection precedes thinning
 
-Rare events are identified at full temporal resolution before ordinary-frame thinning. Protected event windows remain indivisible across incompatible evidence roles.
+Rare events are identified at full temporal resolution before any ordinary-frame thinning that could erase the event shape or split one event into apparently independent samples. Protected event windows remain indivisible across incompatible evidence roles.
 
 ### 4.4 Evidence roles
 
-The broader MLFF evidence model distinguishes development evidence, checkpoint/model-control monitor evidence, post-selection held-out cross-validation (CV), uncertainty-calibration evidence, locked interpolation-test evidence, and purged/excluded evidence.
+The broader MLFF evidence model distinguishes:
+
+- development evidence that may supply gradients or model-selection evidence according to a narrower role;
+- checkpoint/model-control monitor evidence that supplies no gradients;
+- post-selection held-out cross-validation evidence;
+- uncertainty-calibration evidence where applicable;
+- locked interpolation-test evidence activated only after the required freeze boundary; and
+- purged or excluded evidence.
 
 A frame that supplied a gradient is not independent validation evidence for that model. A held-out fold cannot choose the checkpoint at which it is evaluated. Calibration cannot tune the protocol it is supposed to calibrate. Locked evidence cannot affect membership, target size, fitting, stopping, checkpoint choice, calibration-policy design, acquisition, or final-product membership.
 
-The exact `M3` reserve is target-size development/model-selection evidence, not post-selection held-out CV and not a locked final test. `M1/M2` are nested diagnostic probability samples of `M3`; they may characterize evaluation-sampling behavior but cannot make target-size decisions.
+The exact `M3` reserve is target-size development/model-selection evidence, not post-selection held-out cross-validation (CV) and not a locked final test. `M1/M2` are nested diagnostic probability samples of `M3`; they may characterize evaluation-sampling behavior but cannot make target-size decisions.
 
 ### 4.5 Feasibility and deferral
 
-Requested evidence roles may be scientifically infeasible. The method permits explicit outcomes such as temporal-block-only support, calibration deferral, insufficient locked-test support, or insufficient requested roles. Desired percentages or fold counts do not justify fabricating independent evidence.
+Requested evidence roles may be scientifically infeasible. The method permits explicit outcomes such as temporal-block-only support, calibration deferral, insufficient locked-test support, or insufficient requested roles. A percentage target or desired fold count does not justify fabricating independent evidence from a short or correlated trajectory.
 
 ### 4.6 Feature blinding and fitted evidence
 
-Raw structural and event facts may be computed before final role assignment when their provider is genuinely partition-independent. Label-derived or dataset-fitted quantities obey stricter domain restrictions. Held-out, calibration, and locked labels cannot leak backward into target membership, fitted transforms, checkpoint selection, or target-size decisions.
+Raw structural and event facts may be computed before final role assignment when their provider is genuinely partition-independent. Label-derived or dataset-fitted quantities obey a stricter rule: scaling, whitening/PCA, fitted metrics, foundation residuals/difficulty, and related quantities may be fitted only on the authorized domain for the operation that consumes them.
+
+Held-out, calibration, and locked labels cannot leak backward into target membership, fitted transforms, checkpoint selection, or target-size decisions.
 
 ## 5. Two distinct candidate-independent fitted stages
+
+The reconstruction review found that older architecture prose sometimes used “common preparation” for two semantically different stages. They must remain separate.
 
 ### 5.1 Pre-order selection evidence
 
@@ -181,24 +222,26 @@ The baseline target-order method uses only candidate-independent evidence whose 
 
 - canonical neutral condition/provenance evidence;
 - universal frame-level cell geometry;
-- universal strain coordinates where scientifically defined; and
+- universal strain coordinates where they are scientifically defined; and
 - material-neutral, element-resolved frame summaries of the accepted universal local-structure feature contract.
 
-These inputs define one target-order metric family and one order owner. Mass density, material/profile-specific pair-rule coordinates, profile-declared atom groups or site classes, material-specific event descriptors, foundation-model predictions/descriptors, and label-derived residual/difficulty are not baseline membership coordinates.
+These inputs define one target-order metric and one order owner. Mass density, material/profile-specific pair-rule coordinates, profile-declared atom groups or site classes, material-specific event descriptors, foundation-model predictions/descriptors, and label-derived residual/difficulty are not baseline membership coordinates.
 
-Fitted target-order transforms obey their authorized domains: pre-split redundancy evidence is fitted only on exact `U_size`; post-split training-order evidence is refitted only on exact `P_train`. `M3` labels and candidate outcomes fit neither metric. Candidate-independent evidence does not create a second selector or per-candidate order.
+Fitted target-order transforms obey their authorized domain: pre-split redundancy evidence is fitted only on exact `U_size`; post-split training-order evidence is refitted only on exact `P_train`. `M3` labels and candidate outcomes fit neither metric. Candidate-independent evidence does not create a second selector or per-candidate order.
 
 ### 5.2 Target-size common training preparation
 
-After the target-size split and canonical training order exist, one `TargetSizeCommonPreparation` is fitted over exact `P_train` under the frozen candidate-training method. It is shared unchanged by all candidate sizes and optimizer seeds. It includes the target atomic-reference fit, configuration/property weights, foundation/head identity where applicable, and common MACE normalization/model-construction inputs.
+After the current target-size split and canonical orders exist, one `TargetSizeCommonPreparation` is fitted over the exact target-training pool `P_train` under the frozen candidate-training method. It is shared unchanged by all target-size candidates and optimizer seeds. It includes the training-side fitted state required by the current execution method, including the target atomic-reference fit, configuration/property weights, foundation/head identity where applicable, and current common MACE normalization/model-construction inputs.
 
-This later training preparation is not an input used to decide `pi_train`. Candidate projection selects exact `T_N` rows from already fitted common state; it does not refit or renormalize them by candidate size.
+This later common training preparation is **not** an input used to decide `pi_train`. Candidate projection selects the exact `T_N` rows from the already fitted common state; it does not refit or renormalize them by candidate size.
+
+The distinction prevents a circular dependency and keeps `N` as the intended experimental variable.
 
 ## 6. Target-size scientific experiment
 
 ### 6.1 Population, measures, and exact development split
 
-The target-size population `U_size` contains currently eligible, canonically labeled frames from the neutral development role. Physical-only frames without required canonical training labels do not enter this experiment.
+The target-size population `U_size` contains currently eligible, canonically labeled frames from the neutral **development** role. Physical-only frames without the required canonical training labels do not enter the target-size training experiment.
 
 Three measures are intentionally distinct:
 
@@ -219,17 +262,23 @@ all protected components remain indivisible
 
 Failure to satisfy these constraints exactly is a scientific split-infeasibility result; it is not permission to erase a condition, split a protected component, change `M3`, or relax exactness.
 
+`M3` is deliberately a finite **development/model-selection reserve** constructed while training support has priority. The exact-`M3` target-force response is the finite-population estimand used by this screen. It is **not claimed to be an unbiased estimator of error over a broader physical, deployment, or application population**.
+
 ### 6.2 Training support and redundant residual reserve
 
-Training support has priority. Among exact hard-feasible splits, neutral-condition depletion is minimized globally. Within globally condition-optimal exact completions, reserve construction preferentially removes structure redundant relative to the currently retained training population, with redundancy recomputed after every component removal.
+Training support has priority. Among exact hard-feasible splits, neutral-condition depletion is minimized globally. Within globally condition-optimal exact completions, reserve construction preferentially removes structure that is redundant relative to the **currently retained** training population, and that redundancy is recomputed after every component removal.
 
-Two components may not permanently certify one another as redundant and then both disappear without rescoring the second. This retained-set criterion is not claimed to globally minimize final `P_train` covering radius; exact cardinality and protected-relation constraints may force the loss of distinctive support, which remains visible in diagnostics.
+Two components may therefore not permanently certify one another as redundant and then both disappear without rescoring the second after the first is removed. This retained-set criterion is not claimed to globally minimize final `P_train` covering radius; exact cardinality and protected-relation constraints may still force the loss of distinctive support, which remains visible in diagnostics.
 
 ### 6.3 Structural-support scope
 
-The baseline target-order metric claims frame-level support across universal cell geometry, universal strain where defined, and material-neutral element-resolved summaries of the accepted local-structure kernel.
+The baseline target-order metric claims frame-level support across:
 
-It does not claim exhaustive coverage of every atomic environment, material-profile group, site class, or material-specific event. Mass density, material/profile pair rules, declared material groups, phase-specific geometry plans, site classes, material-specific event descriptors, foundation predictions, and label-derived difficulty are excluded from baseline membership authority.
+- universal cell geometry;
+- universal strain coordinates where defined; and
+- material-neutral element-resolved summaries of the accepted local-structure kernel.
+
+It does not claim exhaustive coverage of every atomic environment, material-profile group, site class, or material-specific event. Mass density, material/profile pair-rule coordinates, declared material groups, phase-specific geometry plans, site classes, material-specific event descriptors, foundation predictions, and label-derived difficulty are excluded from baseline membership authority.
 
 ### 6.4 One canonical training order
 
@@ -241,7 +290,7 @@ $$
 
 is constructed before candidate training. Every nonempty `P_train` neutral condition contributes one representative anchor before ordinary progression, so configured `N_min` must be at least the number of represented `P_train` conditions.
 
-After anchors, selected condition counts track empirical `P_train` frame mass as closely as exact integer prefixes permit. Within each condition, exact FPS progressively expands accepted frame-level structural support.
+After anchors, selected condition counts track empirical `P_train` frame mass as closely as exact integer prefixes permit. Within each condition, exact farthest-point sampling (FPS) progressively expands the accepted frame-level structural support.
 
 Candidate membership is exactly
 
@@ -249,29 +298,31 @@ $$
 T_N=\pi_{\mathrm{train}}[:N].
 $$
 
-For `N_a<N_b`, the smaller candidate is a prefix of the larger. There is no per-`N` rerun, swap, repair, or selector.
+For `N_a<N_b`, the smaller candidate is a prefix of the larger candidate. There is no per-`N` rerun, swap, repair, or selector.
 
 Only explicit accepted hard-support obligations may qualify/reject an exact prefix after order construction. FPS distances, retained-set redundancy scores, coverage diagnostics, event/environment summaries, correlation diagnostics, and diagnostic evaluation-sampling uncertainty remain soft evidence.
 
 ### 6.5 Exact `M3` decision population at every automatic fidelity boundary
 
-The historical changing `M1/M2/M3` decision ladder is retired.
+The historical changing `M1/M2/M3` **decision** ladder is retired by this method.
 
-At every configured automatic training-fidelity boundary, every active `(N, optimizer_seed)` candidate is evaluated on the same exact `M3` frame population. Practical-equivalence comparison, funnel elimination, configured-ceiling diagnosis, recommendation, and no-recommendation state consume only the exact `M3` target-force response.
+At every configured automatic training-fidelity boundary, every active `(N, optimizer_seed)` candidate is evaluated on the same exact `M3` frame population. The reducer's practical-equivalence comparison, funnel elimination, configured-ceiling diagnostic, recommendation, and no-recommendation state consume only the exact `M3` target-force response.
 
-The evaluation population therefore does not change across automatic boundaries, and a candidate cannot be eliminated because of evaluation-subset sampling noise. The remaining controlled stochastic replicate dimension is optimizer-seed/training stochasticity rather than an evaluation-population draw.
+Therefore the evaluation population does not change across automatic boundaries, and a candidate cannot be eliminated because of evaluation-subset sampling noise. The remaining controlled stochastic replicate dimension is the optimizer-seed population and training stochasticity rather than a random evaluation-population draw.
+
+Training fidelity may still increase through the accepted continuous training trajectory; only the model-selection population remains fixed.
 
 ### 6.6 Diagnostic `M1/M2` probability samples
 
-A persisted random permutation `pi_eval` over distinct `M3` frame occurrences may define nested diagnostic prefixes `M1` and `M2`. Under the accepted D2 randomization design these are simple random samples without replacement (SRSWOR) from the finite `M3` occurrence population.
+One persisted random permutation `pi_eval` over distinct exact `M3` frame occurrences may define nested diagnostic prefixes `M1` and `M2`. Under the accepted D2 randomization design the prefixes are simple random samples without replacement (SRSWOR) from the finite `M3` occurrence population.
 
-They may diagnose finite-population sampling error, atom/component-mass discrepancy, condition/correlation discrepancy, and whether a smaller evaluation population might be adequate under a future separately accepted method.
+They may diagnose finite-population sampling error, atom/component-mass discrepancy, condition/correlation discrepancy, and whether a smaller evaluation population might be adequate under some future separately accepted method.
 
-`M1/M2` may not rank, eliminate, qualify, tie-break, recommend, select horizons, alter practical equivalence, or freeze target-size membership. Changing only the diagnostic permutation invalidates its diagnostic descendants but does not change reducer evidence when exact `M3`, model state, and per-frame predictions are unchanged.
+`M1/M2` may not rank, eliminate, qualify, tie-break, recommend, select horizons, alter practical equivalence, or freeze target-size membership. Changing only the diagnostic permutation invalidates its diagnostic descendants but does not change target-size reducer evidence when exact `M3`, model state, and per-frame predictions are unchanged.
 
 ### 6.7 Primary target-size response
 
-For trained candidate `f`, let `SSE_x(f)` be the sum of squared target-force component errors for frame `x` and let
+For a trained candidate `f`, let `SSE_x(f)` be the sum of squared target-force component errors for frame `x` and let
 
 $$
 C_x=3n_{\mathrm{atoms}}(x).
@@ -283,11 +334,11 @@ $$
 R_{M3}(f)=\sqrt{\frac{\sum_{x\in M3}SSE_x(f)}{\sum_{x\in M3}C_x}}.
 $$
 
-This is the exact target-force root-mean-square error (RMSE) over admitted Cartesian force components of `M3`; the current screen stores it in meV/Å. Energy and stress may remain part of training/checkpoint semantics but do not silently replace this ranking response.
+This is the exact target-force root-mean-square error (RMSE) over admitted Cartesian force components of `M3`; the current screen stores it in meV/Å. Energy and stress may remain part of the training objective and checkpoint admissibility, but they do not silently replace this ranking response.
 
 ### 6.8 Controlled stochastic replicate dimension and successive fidelity
 
-The optimizer-seed set is explicit and common to all candidate sizes. A candidate score is formed only from a complete comparable seed population. A numerical failure is not silently discarded to improve a candidate mean.
+The optimizer-seed set is explicit and common to all candidate sizes. A candidate score is formed only from a complete comparable seed population. A numerical failure is not silently discarded to improve the candidate mean.
 
 A surviving `(N, seed)` trajectory continues through later fidelity boundaries with the same model/optimizer/random-number-generator lineage rather than restarting as an unrelated rung-local experiment. Every boundary evaluates exact `M3`.
 
@@ -295,11 +346,15 @@ The automatic stage therefore measures one configured short-horizon screening pr
 
 ### 6.9 Practical equivalence, configured ceiling, and operator decision
 
-A configured practical-equivalence tolerance `epsilon` defines improvements too small to justify preferring a larger target dataset. Within the equivalence band, smaller `N` is preferred.
+A configured practical-equivalence tolerance `epsilon` defines improvements too small to justify preferring a larger target dataset in the screen. Within the equivalence band, the smaller `N` is preferred.
 
-At terminal comparison, if the largest configured candidate is materially superior to every other successful finalist by more than `epsilon`, it remains the best tested permitted size and is recommended while recording that a plateau was not demonstrated inside the configured ladder. The configured ceiling is a budget boundary, not an asymptotic-convergence claim.
+At the terminal comparison, if the largest configured candidate is materially superior to every other successful finalist by more than `epsilon`, it remains the best tested permitted size and is recommended. The result simultaneously records that a plateau was **not demonstrated** inside the configured ladder. The configured ceiling is a practical budget boundary, not an asymptotic-convergence claim.
 
-If too few complete comparable candidates remain, the automatic result is no recommendation. The operator owns the provisional downstream design and may accept, ignore, or override a recommendation within the qualified configured candidate set, including selecting multiple sizes for a comparative downstream experiment. `cross-validate` admission remains the freeze boundary for selected memberships and role-specific horizons.
+If too few complete comparable candidates remain, the correct automatic result is no recommendation. A no-recommendation result is a statement about the diagnostic, not a claim that the campaign has no usable target size; it does not erase an existing operator proposal and does not prohibit an explicit qualified choice.
+
+The reducer produces evidence. The operator owns the provisional downstream design and may accept, ignore, or override the recommendation within the qualified configured candidate set, including selecting more than one size for a comparative downstream experiment. Each provisional entry also owns its CV and production horizons.
+
+`cross-validate` admission is the freeze boundary. It binds every selected `N` to its exact `T_N` and its role-specific horizons. Post-selection evidence cannot retrospectively choose a different target membership.
 
 ### 6.10 Leakage and correlation limits
 
@@ -311,113 +366,211 @@ Foundation predictions, target-label residual/difficulty, candidate outcomes, CV
 
 ### 7.1 Three distinct weighting layers
 
-The training objective preserves three scientific meanings: global energy/force/stress coefficients, per-configuration weights, and local property availability masks. Missing properties contribute zero through local masks; they are not modeled by changing the global objective. Per-configuration weighting does not redefine relative property coefficients.
+The training objective preserves three scientific meanings:
 
-The current executable method uses MACE's native weighted energy+forces+stress loss. A different loss family is a different training method even when coefficient strings look similar.
+1. **global energy/force/stress coefficients**, expressing the relative property objective;
+2. **per-configuration weights**, expressing configuration-level emphasis; and
+3. **local property availability masks**, normally `1` when a canonical property is present and `0` when absent.
+
+A missing property contributes zero through its local mask. It is not modeled by changing the global objective. Per-configuration weighting likewise does not redefine the relative energy/force/stress coefficients.
+
+The current executable method uses MACE's native weighted energy+forces+stress loss. A different loss family is a different training method, even if some configuration strings look similar.
 
 ### 7.2 Atomic reference energies
 
-Elemental reference energies (`E0`) are fitted quantities, not universal elemental constants. For foundation-model fine-tuning, the current method fits elemental corrections to the foundation energy baseline from the authorized training domain and adds them to foundation references.
+Elemental reference energies (`E0`) are fitted numerical quantities, not universal elemental constants. For foundation-model fine-tuning, the current method fits elemental **corrections** to the foundation model's energy baseline from the authorized training domain and adds those corrections to the foundation references.
 
-Identifiability depends on the composition count matrix. Rank deficiency does not become identifiability merely because a solver returns numbers. Rank/null-space evidence and residuals remain part of interpretation. Target-size screening uses one common `P_train` fit; post-selection CV uses fold-local fits excluding held-out labels; final production uses the applicable final-training fit.
+Identifiability depends on the composition count matrix. A rank-deficient elemental decomposition does not become identifiable merely because the solver returns numbers. Rank, singular values/null-space evidence, residuals, and any fixed-domain admissibility policy remain part of the scientific interpretation.
+
+Target-size screening uses the one common `P_train` fit; post-selection CV uses fold-local fits that exclude held-out labels; final production uses the applicable final-training fit.
 
 ### 7.3 Checkpoint admissibility is constrained model selection
 
-Checkpoint choice is not lowest-one-scalar-at-any-cost. The active policy may combine a primary target-monitor metric with mandatory target, species/focus-group, condition, property, replay-retention, and integrity constraints. A checkpoint violating a mandatory constraint is inadmissible even if its primary target metric is lower.
+Checkpoint choice is not “lowest one scalar at any cost.” The active policy may combine a primary target-monitor metric with mandatory target, species/focus-group, condition, property, replay-retention, and integrity constraints. A checkpoint that violates a mandatory constraint is inadmissible even if its primary target metric is lower.
 
-Held-out CV evidence does not participate in checkpoint choice. A required run with no admissible checkpoint is a methodological failure.
+Held-out CV evidence does not participate in checkpoint choice. A required run with no admissible checkpoint is a methodological failure, not a reason to evaluate whichever checkpoint happens to exist.
 
 ## 8. Foundation-model fine-tuning and replay
 
 ### 8.1 Target-size screen is target-only
 
-The target-size screen measures the target method without replay exposure. Replay evidence cannot rank, reject, or tie-break a target size. A replay-only method/lineage change does not retroactively change frozen target-size evidence or membership.
+The current target-size screen measures the target method without replay exposure. Replay evidence therefore cannot rank, reject, or tie-break a target size. A replay-only method or lineage change does not retroactively change the target-size experiment or frozen target membership.
 
 ### 8.2 Post-selection replay lineage
 
-Post-selection fine-tuning may include a separately identified replay source and head. The canonical default label mode is true reference/density-functional-theory (DFT) replay when the source provides those labels. Foundation pseudo-label replay is explicit opt-in, not a fallback for missing reference labels.
+Post-selection fine-tuning may include a separately identified replay source and head. The canonical default label mode is true reference/DFT replay when the source provides those labels. Foundation pseudo-label replay is an explicit opt-in mode, not a fallback for missing reference labels.
 
-When pseudo-label replay is used, the pseudo target is bound to the frozen foundation model/head while a separate true-reference replay monitor remains independent physical-retention evidence. Changing replay mode, source content, split, prediction policy, or qualification changes replay lineage and invalidates affected post-selection evidence.
+When pseudo-label replay is used, the pseudo target is bound to the frozen foundation model/head, while a separate mandatory true-reference replay monitor remains independent evidence about physical retention. Changing replay mode, source content, split, prediction policy, or qualification changes replay lineage and invalidates the affected post-selection evidence.
 
-Replay configurations are not counted in target-size `N`; replay evidence is not a target-size ranking population; target and replay monitors remain distinct; replay retention is an admissibility constraint rather than positive target-size ranking credit; and hidden target duplication may not redefine effective target exposure.
+Replay remains scientifically distinct from the target dataset:
+
+- replay configurations are not counted in the target-size independent variable `N`;
+- replay evidence is not a target-size ranking population;
+- target and replay monitors remain distinct;
+- replay retention is an admissibility constraint, not positive target-size ranking credit; and
+- hidden loader duplication of target frames is not allowed to redefine effective target exposure.
 
 ## 9. Post-selection cross-validation
 
 ### 9.1 Question being answered
 
-Post-selection CV asks whether the complete frozen training method associated with an admitted target membership performs acceptably on held-out development evidence whose independence strength and limitations are explicit. Held out does not guarantee strongest physical independence.
+Post-selection cross-validation (CV) asks whether the **complete frozen training method** associated with an admitted target membership performs acceptably on held-out development evidence whose independence strength and limitations are explicit.
+
+“Held out” does not guarantee the strongest possible physical independence. A fold may rely on purged temporal evidence when stronger replicas/runs are unavailable; the associated limitation remains part of the claim.
 
 ### 9.2 Fold semantics
 
-For every required selected size, fold, and seed: fold membership lies inside exact `T_N`; protected relations and purge constraints are preserved; a fresh model/optimizer lineage is trained on the fold-authorized gradient domain; the checkpoint monitor is distinct from held-out evaluation; fold-local fitted quantities exclude held-out labels; checkpoint choice is frozen before held-out evaluation; and every required fold/seed must satisfy acceptance.
+For every required selected size, fold, and seed:
 
-CV can accept or reject the frozen method. It cannot change `N`, `T_N`, or earlier automatic-screen evidence.
+- fold membership lies inside exact `T_N`;
+- protected relations and purge constraints are preserved;
+- a fresh model/optimizer lineage is trained on the fold-authorized gradient domain;
+- the checkpoint monitor is distinct from the held-out evaluation fold and is drawn only from training-eligible evidence;
+- all fold-local fitted quantities are fitted without held-out labels;
+- checkpoint choice is frozen before held-out evaluation; and
+- every required fold/seed must satisfy the acceptance rule.
+
+CV can accept or reject the frozen method. It cannot change `N`, `T_N`, or the earlier automatic-screen evidence.
 
 ## 10. Fresh final production and product membership
 
-Acceptance does not promote a target-size or CV checkpoint into production. Final production starts a fresh model/optimizer lineage from the accepted foundation/init family and trains complete selected target membership under its frozen production horizon and current post-selection method.
+Acceptance does not promote a target-size or CV checkpoint into production. Final production starts a fresh model/optimizer lineage from the accepted foundation/init family and trains the complete selected target membership under its frozen production horizon and current post-selection method.
 
-When multiple final seeds are available, the final-production owner decides the published member set before downstream qualification. Downstream physical, calibration, or locked evidence cannot add, remove, reorder, or choose committee members after the fact.
+When multiple final seeds are available, the **final-production owner** decides the published member set before downstream qualification. Current policies may publish all already-qualified final seeds or one best already-frozen admissible representative under the accepted target-side production metric. Downstream physical, calibration, or locked evidence cannot add, remove, reorder, or choose committee members after the fact.
+
+This prevents release qualification from becoming hidden model selection on test evidence.
 
 ## 11. Downstream qualification is a separate scientific layer
 
-Interpolation-style CV is necessary but not sufficient evidence for an interatomic potential intended for molecular simulation. Downstream qualification may evaluate deployment/runtime parity, local potential-energy-surface response, relaxation topology/geometry fidelity, finite-temperature stability, uncertainty calibration, and explicitly activated locked interpolation tests.
+Interpolation-style CV is necessary but not sufficient evidence for an interatomic potential intended for molecular simulation. Downstream qualification may evaluate:
 
-These analyses consume a frozen final publication. They do not feed backward into target size, training method, checkpoint choice, or final-product membership. Numerical definitions of structural/dynamical/topological/transport observables remain owned by their corresponding `mdstats.analysis` method families.
+- deployment/runtime parity;
+- local potential-energy-surface response against matched references;
+- relaxation topology and geometry fidelity;
+- finite-temperature stability and protected structural behavior;
+- uncertainty calibration where applicable; and
+- an explicitly activated locked interpolation test.
+
+These downstream analyses consume a frozen final publication. They do not feed backward into target size, training method, checkpoint choice, or final-product membership.
+
+The numerical definitions of structural, dynamical, topological, and transport observables are owned by the corresponding `mdstats.analysis` method/architecture families. The MLFF branch invokes them; it does not redefine radial distribution functions, mean-square displacement, velocity spectra, diffusion, topology statistics, conductivity, or other analysis algorithms.
 
 **Current product limitation:** post-production qualification/release is currently defined for a single-size frozen experiment. A multi-size frozen design remains a comparative completed experiment but is not silently promoted into a release-qualified product family.
 
 ## 12. Material/profile applicability
 
-The generic MLFF method permits material/profile contracts to define meaningful condition axes, required focus groups, environment classes, and applicability rules. These extensions may affect evidence interpretation and weighting but cannot create a second target-size selector or silently rewrite global target membership order.
+The generic MLFF method permits material/profile contracts to define scientifically meaningful condition axes, required focus groups, environment classes, and applicability rules. These extensions may affect evidence interpretation and weighting but cannot create a second target-size selector or silently rewrite the global target order.
 
-For the historical Li/Na/K-LTA application, framework atoms can dominate global metrics, condition support is hierarchical, one trajectory per condition limits independence, fixed framework stoichiometry can make individual `E0` corrections non-identifiable, and short trajectories/rare migration create explicit coverage limitations rather than synthetic evidence. These application facts motivate focus-group, condition, correlation, and identifiability evidence; they are not universal defaults.
+For the historical Li/Na/K-LTA motivating application, several limitations are especially important:
+
+- framework atoms can numerically dominate global metrics even when mobile-ion behavior is the scientific focus;
+- composition, temperature, strain, and regime support is hierarchical rather than a complete Cartesian grid;
+- one trajectory per condition provides limited independence evidence even when it contains many frames;
+- fixed framework stoichiometry can make individual elemental `E0` corrections non-identifiable without anchors or broader compositional support; and
+- short trajectories or rare migration/site transitions create explicit coverage limitations rather than synthetic evidence.
+
+These application facts motivate focus-group, condition, correlation, and identifiability evidence; they are not universal defaults for every material.
 
 ## 13. Validity domain and uncertainty
 
 ### 13.1 What the target-size diagnostic supports
 
-Within the exact configured candidate ladder, canonical target population, protected `P_train/M3` split, frozen target-order metric and `pi_train`, common training preparation, objective/weights, optimizer-normalization policy, optimizer-seed population, fidelity schedule, exact full-`M3` evaluation policy, and practical-equivalence threshold, the diagnostic supports a **comparative short-horizon statement** about exact-`M3` target-force error for tested memberships.
+Within the exact configured candidate ladder, canonical target population, protected `P_train/M3` split, frozen target-order metric and `pi_train`, common training preparation, objective/weights, target-size optimizer-normalization policy, optimizer-seed population, fidelity schedule, exact full-`M3` evaluation policy, and practical-equivalence threshold, the diagnostic supports a **comparative short-horizon statement** about exact-`M3` target-force error for the tested target memberships.
 
-It supports an operator decision among qualified configured memberships. It does not prove that an untested size behaves monotonically, that a selected size transfers to a different training method, or that diagnostic `M1/M2` sampling behavior is model-selection evidence.
+It supports an operator decision among qualified configured memberships. It does not prove that an untested size would behave monotonically, that a selected size transfers to a different training method, that exact-`M3` error is an unbiased estimator of a broader physical population, or that diagnostic `M1/M2` sampling behavior is model-selection evidence.
 
 ### 13.2 What post-selection CV supports
 
-Post-selection CV supports a separate statement about the frozen method over specific held-out development folds and recorded independence regime. It does not transform development CV into external challenge evidence, physical validation, uncertainty calibration, or long-time MD validation.
+Post-selection CV supports a separate statement about the frozen method over the specific held-out development folds and recorded independence regime. It does not transform development CV into external challenge evidence, physical validation, uncertainty calibration, or long-time MD validation.
 
 ### 13.3 What the method does not establish by itself
 
-The core workflow does not by itself establish asymptotic convergence with training-set size; complete independence/exploration of slow states; transfer to unsupported composition/temperature/pressure/strain/phase/defect/surface/interface/reaction regimes; correct phase-transition temperatures or rare-event kinetics; long-time MD stability; calibrated predictive uncertainty; equivalence between interpolation CV and external challenge tests; universal atomic-reference identifiability; or a universal `N` transferable to another foundation model, objective, optimizer protocol, replay method, or data-generation process.
+The core workflow does not by itself establish:
+
+- asymptotic convergence with respect to training-set size;
+- complete independence or exploration of all slow states;
+- transfer to unsupported composition, temperature, pressure, strain, phase, defect, surface/interface, or reaction regimes;
+- correct phase-transition temperatures or rare-event kinetics;
+- long-time MD stability;
+- calibrated predictive uncertainty;
+- equivalence between interpolation CV and external challenge tests;
+- universal atomic-reference identifiability; or
+- a universal `N` transferable to a different foundation model, objective, optimizer protocol, replay method, or data-generation process.
 
 ### 13.4 Principal uncertainty and sensitivity sources
 
-Material sources include DFT/electronic-structure and numerical-quality systematic error; label-convention ambiguity; temporal correlation and unresolved slow states; finite condition/rare-event support; imperfect independence of held-out cohorts; candidate-ladder discretization; optimizer-seed variation; short-horizon screening bias; practical-equivalence threshold; foundation-model/head dependence; objective/configuration-weight choices; atomic-reference conditioning/null spaces; target/replay applicability mismatch; and numerical/runtime failure to realize the authenticated method.
+Material sources include:
 
-Exact `M3` membership/finiteness and target-force measurement remain model-selection evidence dependencies. `M1/M2` finite-population sampling uncertainty is diagnostic only and cannot cause reducer elimination under this method.
+- DFT/electronic-structure and numerical-quality systematic error;
+- ambiguity or incompatibility in energy/reference/derivative conventions;
+- temporal correlation and unresolved slow states;
+- finite condition and rare-event support;
+- imperfect independence of available held-out cohorts;
+- candidate-ladder discretization;
+- optimizer-seed variation;
+- short-horizon screening bias;
+- the practical-equivalence threshold;
+- foundation-model/head dependence;
+- objective/configuration-weight choices;
+- atomic-reference conditioning and null spaces;
+- target/replay applicability mismatch; and
+- numerical/runtime failure to realize the authenticated method.
+
+The workflow retains these as structured evidence rather than compressing them into one unsupported scalar uncertainty estimate.
+
+Exact `M3` membership/finiteness and target-force measurement remain model-selection evidence dependencies. `M1/M2` finite-population sampling uncertainty is diagnostic only and cannot be a causal source of reducer elimination under the Gate-A method.
 
 ## 14. Scientific falsification and reopen conditions
 
-Evidence forcing reconsideration includes incompatible labels merged into one training domain; incorrect stress/strain/sign/unit semantics; systematic exclusion of rare but valid configurations merely for atypicality; protected-relation leakage; candidate-dependent refitting of common state; held-out/calibration/locked labels influencing membership/fitting/checkpoint selection; hidden replay/loader exposure changes; executed loss/optimizer/model method differing materially from authenticated method; too few comparable target-size outcomes; strong ceiling improvement showing no demonstrated plateau; post-selection CV failure; or downstream physical/deployment qualification contradicting intended use.
+Evidence that should force reconsideration of the scientific formulation or its applicability includes:
 
-Target-order-specific falsification also includes:
+- incompatible target labels being treated as one compatible training domain;
+- incorrect stress/strain/sign/unit semantics;
+- systematic exclusion of scientifically important rare but valid configurations merely because they look atypical;
+- protected-relation leakage across incompatible evidence roles;
+- candidate memberships that are not exact prefixes of the canonical order;
+- candidate-dependent refitting of state that is supposed to be common;
+- held-out/calibration/locked labels influencing membership, fitting, or checkpoint choice;
+- hidden replay or loader behavior changing effective target exposure;
+- an executed loss/optimizer/model method materially different from the authenticated method;
+- too few comparable target-size outcomes for the declared diagnostic;
+- strong ceiling improvement showing that the tested ladder did not demonstrate a plateau;
+- post-selection CV failure under the frozen method; or
+- downstream physical/deployment qualification contradicting intended use.
+
+Additional target-order falsification conditions are:
 
 - a supposedly valid split removes the last training member of an eligible neutral condition;
 - a protected component is divided between `P_train` and `M3`;
 - reserve redundancy is not recomputed after retained-set changes;
-- target membership depends on mass density, material-specific/profile coordinates, foundation predictions, or label-derived difficulty without a later accepted D1 amendment;
-- a configured `T_N` is not the exact prefix of one canonical `pi_train`;
-- an automatic fidelity boundary ranks/eliminates candidates on `M1` or `M2` rather than exact `M3`; or
-- changing only diagnostic `pi_eval` changes target-size recommendation while exact `M3` predictions are unchanged.
+- target-order membership depends on mass density, material-specific/profile coordinates, foundation predictions, or label-derived difficulty without a later accepted D1 amendment;
+- an automatic fidelity boundary ranks or eliminates candidates on `M1` or `M2` rather than exact `M3`; or
+- changing only diagnostic `pi_eval` changes the target-size recommendation while exact `M3` predictions are unchanged.
 
-These are D1/D2 method violations; D3/D4 may not compensate by adding wrappers, rescue selectors, or hidden thresholds.
+These are D1/D2 method violations; D3/D4 may not compensate for them by adding wrappers, rescue selectors, or hidden thresholds.
+
+Scientific evidence is not repaired by relabeling old records. A material method change creates a new applicable protocol identity and requires reconsideration of descendant evidence.
 
 ## 15. Reproducibility and provenance
 
-A reproducible claim binds, as applicable: source occurrence/content and canonical label identity; energy/derivative/stress/reference conventions; physical conditions, reference-cell/strain context, quality and eligibility; raw/event evidence and protected relations; evidence roles/independence limitations; exact `U_size`; protected `P_train/M3` split and split-policy identity; fitted target-order metric identities; `pi_train`; exact `T_N` prefixes; exact `M3` model-selection membership; separately identified diagnostic `pi_eval/M1/M2`; common training preparation; screening seed/fidelity/normalization/ranking policy and outcomes; frozen selected memberships/horizons; post-selection training/checkpoint/replay method; CV fold/seed evidence; and fresh final-publication identity.
+A reproducible claim binds, as applicable:
+
+- source occurrence/content and canonical label identity;
+- energy/derivative/stress/reference conventions;
+- physical conditions, reference-cell/strain context, quality and eligibility decisions;
+- raw/event evidence and protected statistical relations;
+- outer evidence roles and independence limitations;
+- the exact `U_size`, protected `P_train/M3` split and split-policy identity, fitted target-order metric identities, `pi_train`, exact `T_N` prefixes, exact `M3` model-selection membership, and separately identified diagnostic `pi_eval/M1/M2` sampling evidence;
+- target-size common training preparation;
+- screening seed/fidelity/normalization/ranking policy and exact outcomes;
+- frozen selected memberships and role horizons;
+- executed post-selection training/checkpoint/replay method;
+- CV fold/seed evidence; and
+- fresh final-publication identity for downstream claims.
 
 Content digests bind exact content and ancestry. They are identity/provenance mechanisms, not substitutes for scientific adequacy.
 
-The accepted baseline was reconstructed against repository commit `9fd82b0ed40990d56716a393aa3f7db0a2ff44d0` and accepted 2026-09-13. The target-order reconciliation represented here is a later proposed Gate-A amendment and must not be described as covered by that earlier independent review. Its acceptance provenance must name the eventual independent Gate-A review and human ratification.
+The accepted baseline was reconstructed against repository commit `9fd82b0ed40990d56716a393aa3f7db0a2ff44d0` and accepted on 2026-09-13. The target-order reconciliation represented here is a later proposed Gate-A amendment and must not be described as covered by that earlier independent review. Its acceptance provenance must name the eventual independent Gate-A review and human ratification.
 
 ## 16. D1 -> D2 handoff
 
@@ -447,4 +600,4 @@ No D3 or D4 implementation choice is promoted by this D1 method.
 9. C. Schran, K. Brezina, and O. Marsalek, “Committee Neural Network Potentials Control Generalization Errors and Enable Active Learning,” *Journal of Chemical Physics* **153**, 104105 (2020). DOI: 10.1063/5.0016004.
 10. A. R. Tan, S. Urata, S. Goldman, J. C. B. Dietschreit, and R. Gomez-Bombarelli, “Single-Model Uncertainty Quantification in Neural Network Potentials Does Not Consistently Outperform Model Ensembles,” *npj Computational Materials* **9**, 225 (2023). DOI: 10.1038/s41524-023-01180-8.
 
-Implementation-specific dependency references, exact MACE runtime/version locks, VASP/ASE source conventions, and policy constants remain in current D3/D4 specifications unless their value changes D1 scientific meaning.
+Implementation-specific dependency references, exact MACE runtime/version locks, VASP/ASE source conventions, and policy constants remain in the current specifications and architecture reference list rather than being made independently tunable by this D1 paper.
