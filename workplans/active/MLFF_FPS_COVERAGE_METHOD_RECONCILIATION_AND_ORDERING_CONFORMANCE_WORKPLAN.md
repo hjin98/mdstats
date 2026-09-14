@@ -477,3 +477,193 @@ Explicit human adjudication is required for:
 This work closes only when a fresh competent reader can recover from current D1/D2 **why** the target-size ladders are constructed, **how** `pi_train` and `pi_eval` are numerically constructed, what coverage diagnostics mean and do not mean, and what exact evidence is allowed at each boundary; and when the production D3/D4 path demonstrably realizes that method through one preparation-owned evidence flow and one order owner.
 
 A green target-size screen is insufficient. Closure requires proof that production no longer obtains its ordinary ladder from omitted priority evidence and lexical UID fallback, while the accepted V7 simplification, exact nested prefixes, hard/soft separation, leakage boundaries, prepared-generation reuse, and bounded execution all remain intact.
+
+## 11. Mandatory review corrections — remaining closure gaps
+
+The first workplan draft is directionally correct but was not yet snapshot-complete for implementation. This section is normative for the current workplan and refines Sections 2–10 where they were underspecified. If an earlier sentence can be read more weakly than the requirements below, the requirements below control this cycle.
+
+### 11.1 Define the represented measure before choosing a coverage method
+
+“Representative” and “coverage” are incomplete scientific terms unless the reference measure is explicit. D1 must define, separately where necessary, the measure that the training ladder and evaluation ladder are intended to represent. At minimum adjudicate among or explicitly compose:
+
+- equal mass per eligible frame;
+- equal or configured mass per scientific condition/stratum;
+- empirical trajectory/production-frequency mass;
+- correlation-adjusted or unique-reference mass;
+- profile-declared scientific importance weights; and
+- any deliberate challenge/tail mass that is not intended to approximate the ordinary population frequency.
+
+Call the accepted measures `mu_train` and `mu_eval` conceptually; exact symbol/name is delegated. They may differ only with an explicit D1 rationale. Historical “covered mass”, `N95`, centroid representation, condition balancing, and ordinary frame-count coverage must be mapped to the accepted measure rather than mixed implicitly.
+
+D2 must then define every weighted/unweighted coverage statistic against the accepted measure. A quantile, `D_sum`, uncovered fraction/mass, or representative-centroid objective is not reproducible until its weighting measure and normalization are specified. Equal-condition round-robin, equal-frame FPS, and weighted-reference coverage are materially different numerical methods.
+
+### 11.2 Preserve the EVAL2 estimand across the nested evaluation ladder
+
+The current EVAL2 force RMSE is evaluated directly on `M_i`. Therefore a diversity-biased `pi_eval` can change the effective evaluation distribution between `M1`, `M2`, and `M3` even when every candidate at one rung sees the same frames.
+
+D1 must explicitly decide whether each `M_i` is intended to:
+
+1. approximate the same `mu_eval`/M3 model-selection estimand at increasing resolution; or
+2. act as a deliberately different nested challenge distribution.
+
+If option 1 is accepted, D2 must make the nested construction and any required evaluation weights preserve that estimand to the accepted approximation/error semantics. If option 2 is accepted, D1 must state what scientific conclusion early-rung comparisons support and why survivor decisions remain valid despite the changing challenge distribution. The implementation may not silently use pure FPS for `pi_eval` while interpreting unweighted RMSE as ordinary representative error.
+
+Any evaluation weights introduced by this reconciliation are numerical-method identity, common to all candidates at the same rung, and must not depend on candidate predictions/outcomes. If no weights are accepted, D2 must justify the unweighted direct-population estimator under the accepted `pi_eval` construction.
+
+### 11.3 Close the `U_size -> P_train + M3` algorithm, not only its D1 intent
+
+Section 3 intentionally reopens whether representative/coverage evidence participates in choosing `M3` among exact feasible protected-relation allocations. Gate A must close that question completely:
+
+- If coverage does **not** participate, D2 must explicitly preserve or replace the current deterministic exact-subset allocation rule and explain how the resulting split satisfies the accepted D1 meaning.
+- If coverage **does** participate, D2 must define the constrained split objective, weighting measure, deterministic tie rule, precision, approximation/exactness semantics, and failure behavior while preserving exact `|M3| = m3`, `|P_train| >= Nmax`, and complete protected-relation components.
+- A heuristic traversal may not claim scientific infeasibility merely because it missed a feasible exact allocation. Keep an exact/reference feasibility oracle on bounded cases and specify the admissible production approximation, if any.
+- Split-scoring evidence must obey the stage authorization matrix in 11.4; post-split fitted or M3-label-derived evidence cannot flow backward into split selection.
+
+This is a D2 obligation, not an implementation detail left to P2 code.
+
+### 11.4 Produce an explicit stage-by-evidence authorization matrix and eliminate circular fitting
+
+Before D1/D2 acceptance, publish one compact matrix covering every candidate evidence class and every target-order stage. At minimum include:
+
+```text
+rows:
+  canonical condition/provenance facts
+  geometry-only/raw structural features
+  profile/environment features
+  fitted geometry metric / scaler / PCA / whitening
+  frozen foundation descriptors/predictions
+  target-label-derived foundation residual/difficulty
+  protected-event evidence
+  correlation/duplicate/protected-relation evidence
+
+columns:
+  U_size eligibility
+  P_train/M3 split scoring
+  pi_train construction
+  pi_eval construction
+  soft coverage diagnostics
+  hard prefix qualification
+```
+
+For every allowed cell record the owning source, fit domain, label access, and identity dependency; forbidden cells are explicit.
+
+The matrix must prevent circularity. In particular:
+
+- evidence used to choose `P_train/M3` cannot be fitted only on `P_train` after that split exists;
+- P_train-only label-derived difficulty may be admissible for `pi_train` after the split if D1 accepts it, but cannot thereby influence the earlier split;
+- M3 target labels may not be used to fit a training-order metric or difficulty signal merely because M3 is development/model-selection evidence;
+- a geometry-only transform fitted over `U_size` may use M3 geometry only if D1/D2 explicitly accept that non-label information boundary;
+- `pi_eval` may not consume candidate outcomes and may consume label-derived difficulty only if D1 explicitly accepts the resulting evaluation estimand;
+- hard qualification consumes only the exact accepted hard-obligation evidence, never soft scores by implication.
+
+No implementation work may resolve an empty/ambiguous cell by convenience.
+
+### 11.5 Audit current producer lineage before reusing DATA6 or other historical products
+
+The plan must not assume that an existing `Data6FeatureBundle`, DATA7 record, retired target-coverage artifact, or MACE model-sweep product is automatically a valid current-generation pre-order evidence owner. Before D3/D4 design freeze:
+
+1. inventory the current code paths that can produce each accepted D2 input;
+2. verify their fit/role/label-domain ancestry against the 11.4 authorization matrix;
+3. distinguish reusable low-level descriptor/prediction sidecars from obsolete role/membership authority;
+4. reject any producer whose identity still depends on retired pre-target CV, `label_domain_id` target-size fanout, fold-local DATA7 selection, or another incompatible lineage;
+5. choose the smallest current owner/API that can publish the accepted evidence without recreating the retired product topology.
+
+If foundation-model descriptors, predictions, or residuals are part of the accepted method, their checkpoint/head, calculator/adapter, dependency/runtime version where numerically material, dtype/precision, and fit-domain identities must be bound. Reusing bytes from an old cache is allowed only after the new owner authenticates that those bytes are semantically valid for the current evidence contract.
+
+### 11.6 Make the order method explicit and non-optional at the production boundary
+
+D4 must expose one resolved target-order policy/identity (exact class/name delegated) whose method kind and required evidence are explicit. Production semantics must not be represented by `None`, omitted optional arguments, or “empty vector means default” when the accepted method requires coverage evidence.
+
+Required consequences:
+
+- missing mandatory pre-order evidence is a typed preparation failure, not UID fallback;
+- an intentionally supported no-feature/minimal policy has an explicit distinct policy identity and is admissible only if D1/D2 accept that scientific method;
+- changing method kind, represented measure, feature/metric recipe, evidence composition, tie rule, or another order-changing parameter changes target-size generation identity;
+- exact parser/default/configuration behavior is reconciled in the current D4 specification instead of being inferred from call-site omissions.
+
+### 11.7 Old empty-evidence generations and their descendants are not silently upgraded
+
+Once the revised D1/D2 method is accepted, target-size generations created under the challenged empty-evidence/UID-order method become evidence for the old method, not current evidence for the new method.
+
+D3/D4 must provide a fail-closed generation boundary strong enough that an old prepared aggregate cannot deserialize/re-hash itself into the new order policy by supplying newly defaulted fields. Use a schema/version/method-identity transition sufficient to guarantee:
+
+- old `pi_train/pi_eval` and prefix identities cannot remain current under the new method;
+- old screen/reducer/provisional/frozen/CV/production descendants are invalidated for the new protocol according to actual dependency;
+- historical artifacts remain recoverable as historical evidence where useful;
+- current operation requires re-`prepare` rather than semantic migration/reinterpretation;
+- no current frozen campaign is relabeled as having used FPS/coverage when it actually used UID fallback.
+
+The final impact record must identify which prior evidence remains valid for unrelated claims and which target-order-dependent evidence is stale/review-required.
+
+### 11.8 Strengthen numerical falsification with metamorphic identity tests
+
+Add the following discriminating oracles to Section 7:
+
+1. **UID-renaming invariance:** replace every frame UID with a one-to-one different lexical naming while preserving all scientific/numerical evidence. `pi_train/pi_eval` mapped back to original frames must remain unchanged except where the accepted method declares a genuine numerical tie whose final tie-break is UID.
+2. **Input-enumeration invariance:** reorder source/catalog/serialization traversal without changing canonical evidence; the resulting orders and coverage diagnostics must be identical.
+3. **Tie-locality:** changing UID spelling may affect only frames inside an accepted exact/tolerance tie set, never frames with distinct governing scores/distances.
+4. **Metric-coordinate identity:** when feature names define canonical coordinate identity, permuting serialized feature-column order while preserving names/values must not change the fitted metric/order after canonicalization.
+5. **Old-generation negative:** a real pre-repair/constructed empty-evidence generation must fail current-generation admission rather than deserialize with new defaults.
+6. **Independent evaluation-estimand check:** for bounded fixtures with known `mu_eval`, verify the accepted nested `M_i` construction/weights against a direct reference estimator, not the production selector itself.
+7. **Split counterexample:** when coverage-aware split selection is accepted, include a fixture where two exact feasible M3 component subsets exist but have materially different accepted coverage score; verify deterministic choice of the better subset and exact-feasibility preservation.
+
+These tests target the actual failure mode more strongly than checking that one crafted fixture differs from lexical UID order.
+
+### 11.9 Complete the capability-transfer map as a transfer map, not only a disposition checklist
+
+Before Gate A closes, expand the Section 2 table so every materially relevant capability records:
+
+```text
+historical capability
+ -> immutable evidence/source identity
+ -> current authority binding or PROPOSED_FOR_PROMOTION / EVIDENCE_ONLY / retired
+ -> accepted replacement/current mechanism
+ -> acceptance/oracle route
+ -> omission rationale when not preserved
+```
+
+This must cover both the early quota/FPS DATA7 lineage and the later target-coverage/MVSEL/MVQUAL lineage. The review must not collapse those two histories into one mechanism: they expressed overlapping but not identical objectives. Historical qualification success may justify a capability hypothesis; it cannot by itself choose the current D1/D2 objective or numerical constants.
+
+Refresh the PEM basis/HAS before Gate A acceptance and again before final closeout if the accepted project state/PEM advances materially. A stale HAS cannot close the work merely because this branch began from `1093a8b...`.
+
+### 11.10 Bound new dependency/resource consequences of descriptor or difficulty evidence
+
+If accepted `pi_train`/`pi_eval` requires foundation-model inference, high-dimensional descriptors, or another expensive provider, Gate A/B must state whether that dependency is mandatory or optional and what environment is required to construct a prepared generation.
+
+- Do not accidentally turn `prepare` into an undocumented GPU-only scientific prerequisite.
+- Full production GPU qualification remains deferred as already required by this project, but every mandatory preparation dependency must have bounded functional evidence on an available supported backend or remain an explicit blocker.
+- Provider construction, batching, cache layout, worker count, and device scheduling remain D3/D4 unless they change the accepted metric/order; their resource behavior must remain bounded.
+- If a simpler geometry-only evidence set satisfies D1/D2, do not retain foundation inference solely because historical machinery once used it.
+
+### 11.11 Gate A must emit one resolved method contract, not a menu of undecided mechanisms
+
+Before human ratification, Gate A must produce a compact decision table that resolves, for the proposed current method:
+
+- `mu_train` and `mu_eval`;
+- `P_train/M3` allocation objective and exactness/tie semantics;
+- every allowed pre-order evidence class and its fit domain;
+- the fitted metric and numerical precision/tolerance identity;
+- exact `pi_train` construction and composition/interleaving policy;
+- exact `pi_eval` construction and EVAL2 estimator/weighting semantics;
+- hard-support versus soft-diagnostic boundary;
+- required coverage diagnostics and their weighting measure;
+- resource/scaling envelope;
+- restart/currentness identity inputs; and
+- explicit retired historical mechanisms/constants.
+
+An implementation agent must not need to infer any of those choices from old specifications, source code, or this workplan's list of alternatives. If one of these rows is still unresolved, Gate A is not accepted and D3/D4 behavioral implementation remains blocked.
+
+### 11.12 Revised closure condition
+
+Section 10 remains necessary but is not sufficient. Final closure additionally requires:
+
+- the represented training/evaluation measures and EVAL2 estimand are explicit and internally consistent;
+- the exact P_train/M3 split algorithm is reconciled if its objective changed;
+- the stage-by-evidence authorization matrix has no circular or unauthorized label dependencies;
+- current pre-order evidence is produced by authenticated current-generation owners rather than inherited authority-shaped legacy products;
+- the production order method is explicit/non-optional and old empty-evidence generations fail closed;
+- UID renaming/input ordering cannot materially steer membership outside genuine accepted tie sets;
+- any new model/provider dependency has bounded functional/resource evidence without violating the deferred final-GPU policy; and
+- capability transfer, evidence applicability, semantic history, and stale descendant impact are closed explicitly.
+
+**Workplan review disposition after these corrections:** PASS for the reconciliation cycle. The underlying D1/D2 method remains under the declared SERIOUS CHALLENGE until Gate A independent falsification and human ratification complete.
