@@ -2,370 +2,415 @@
 kind: d1-d2-authority-candidate
 workplan_id: MLFF-FPS-COVERAGE-METHOD-RECONCILIATION-1
 protocol_version: 6.3.0
-status: proposed-awaiting-independent-review-and-human-ratification
+status: proposed-awaiting-fresh-independent-review-and-human-ratification
 proposal_date: 2026-09-13
+revision: 2
+revision_basis_review: GATE_A_INDEPENDENT_D1_D2_REVIEW.md
 branch: design/mlff-fps-coverage-method-reconciliation
 project_state_basis: e8d04144f55c72d799ffcd3fe40c75e47078a66d
 accepted_pem: hjin98/mdstats@4eabe2ae9783c7ff92f3a1093c37502a01380812:PROJECT-ENGINEERING-MEMORY.md
 highest_affected_domain: D1
 ---
 
-# Gate A D1/D2 candidate — FPS/coverage target-order method
+# Gate A D1/D2 candidate — FPS/coverage target-order method, Revision 2
 
 ## 0. Authority status
 
-This file is a **Gate A proposal**, not current permanent authority. The current normative owners remain `docs/methods/mlff_scientific_method.md` and `docs/methods/mlff_numerical_algorithmic_method.md` until this candidate passes independent D1/D2 falsification and receives explicit human ratification. No behavior-changing D3/D4 implementation may claim conformance to this proposal before that gate closes.
+This is a **repaired Gate A proposal**, not current permanent authority. It responds to the independent NO-PASS review of candidate `cc55be388fa8ab6dd0641eeefc3b914bfcaefe0f`. The normative owners remain `docs/methods/mlff_scientific_method.md` and `docs/methods/mlff_numerical_algorithmic_method.md` until this revision passes a fresh independent D1/D2 Challenge review and receives explicit human ratification.
 
-The candidate resolves the decision menu in `MLFF_FPS_COVERAGE_METHOD_RECONCILIATION_AND_ORDERING_CONFORMANCE_WORKPLAN.md` into one implementable method. It deliberately does not revive FEAS/MVIDX/MVSEL/REPAIR/MVQUAL, historical selector quotas, per-N repair, target-size label-domain fanout, foundation-model difficulty ordering, or a second selector topology.
+No behavior-changing D3/D4 implementation is accepted before Gate A closes. The repair preserves the accepted V7 shape: one `P_train/M3` split, one `pi_train`, one `pi_eval`, exact nested prefixes, one prepared generation, no per-N selector/repair, no pre-target CV/label-domain fanout, and no revived FEAS/MVIDX/MVSEL/REPAIR/MVQUAL topology.
 
-## 1. Refreshed Historical Applicability Set
+## 1. Historical applicability and capability transfer
 
-The branch began from semantic candidate `1093a8b...`; accepted `main` has since advanced to `e8d04144f55c72d799ffcd3fe40c75e47078a66d` through the D1/D2 reconstruction merge. The accepted Project Engineering Memory (PEM) remains the record at `4eabe2ae9783c7ff92f3a1093c37502a01380812`.
+The applicable Project Engineering Memory (PEM) dispositions remain SP-001, FF-005, SP-002, SP-003, and SP-004 as applicable; FF-001 through FF-004 remain non-owning for this repair. The accepted PEM basis is unchanged from Revision 1.
 
-| PEM item | Disposition | Application here |
-| --- | --- | --- |
-| SP-001 | APPLICABLE | One current order owner; reuse mature pure FPS kernels without reviving retired selector topology. |
-| FF-005 | APPLICABLE | Pre-order evidence is preparation-owned and published once in the immutable prepared generation. |
-| SP-002 | APPLICABLE | Order/evidence/metric identity is fail-closed across restart and stale ancestry. |
-| SP-003 | APPLICABLE | Structural descriptors and fitted metric are built once at preparation, not rebuilt downstream. |
-| SP-004 | APPLICABLE | Final acceptance must exercise real `prepare -> P2 order -> prepared-generation consumer`. |
-| FF-001 | NOT_APPLICABLE | TRAIN2/EVAL2 model construction is unchanged by the order method. |
-| FF-002 | NOT_APPLICABLE | Checkpoint continuation is not an ordering owner. |
-| FF-003 | NOT_APPLICABLE | Storage routing is not redesigned. |
-| FF-004 | NOT_APPLICABLE | The proposed method has no mandatory GPU dependency; final GPU qualification remains deferred. |
+The capability-transfer decision is unchanged except where this revision narrows claims:
 
-## 2. Capability-transfer map
+- deterministic master order + exact prefixes: preserve;
+- representative support: promote through per-condition representative anchors;
+- exact frame-level farthest-point sampling (FPS): promote after the representative anchor;
+- material-neutral frame-level local-structure coverage: promote;
+- exhaustive atomic-environment/profile-specific coverage: **not claimed by this baseline**; profile-specific evidence remains diagnostic/future-authority material;
+- foundation residual/difficulty ordering: retired from the baseline method;
+- independent coverage rescoring: preserve as verification;
+- historical fixed quotas, `N95`, uncovered-radius thresholds, public multi-view selector topology: retired unless separately re-accepted.
 
-| Historical capability | Evidence/source identity | Candidate disposition | Current replacement/mechanism | Acceptance/oracle route |
-| --- | --- | --- | --- | --- |
-| One deterministic master order and exact prefixes | P2 population/split identities | CURRENT + PRESERVE | one `pi_train`, one `pi_eval`, exact prefix projection | permutation/prefix tests |
-| Mandatory condition/support anchors | neutral condition keys | PROPOSED_FOR_PROMOTION | one representative training anchor per nonempty `P_train` neutral condition | condition-anchor and smallest-N feasibility tests |
-| Representative centroid support | fitted geometry metric | PROPOSED_FOR_PROMOTION | condition medoid is the first local training representative | direct medoid oracle |
-| Exact configuration FPS/maximin diversity | fitted geometry metric | PROPOSED_FOR_PROMOTION | exact FP64 within-condition FPS after each medoid | direct bounded FPS oracle |
-| Empirical production/condition mass | neutral condition membership | PROPOSED_FOR_PROMOTION | global training queue follows empirical condition counts after mandatory anchors | proportional-deficit oracle |
-| Material-neutral local structural/environment diversity | universal structural provider | PROPOSED_FOR_PROMOTION | geometry-only universal frame descriptor block, rebound to current pre-order authority | provider-lineage + metric-coordinate tests |
-| Profile-specific environment features | profile providers | EVIDENCE_ONLY in baseline | diagnostics/future method revision; not required to construct current order | lineage review |
-| Protected/rare-event prioritization | neutral event/protected-relation evidence | HARD ONLY WHEN EXPLICIT; otherwise diagnostic | existing explicit hard-support obligations plus soft reporting | hard/soft separation tests |
-| Foundation residual/difficulty enrichment | foundation prediction/residual products | RETIRED FROM BASELINE METHOD | none; future method change only after separate D1/D2 acceptance | forbidden-flow tests |
-| Candidate nearest-distance quantiles | fitted metric + selected prefix | PROPOSED_FOR_PROMOTION | `Q50/Q90/Q95/Q99` over `P_train` | direct rescoring oracle |
-| Maximum covering radius / historical `D_max` | fitted metric + selected prefix | PROPOSED_FOR_PROMOTION | `R_max=max_x d_x(S)` | direct rescoring oracle |
-| Historical `D_sum` | fitted metric + `mu_train` | REINTERPRETED | report `D_mean = |P_train|^-1 sum_x d_x(S)`; no unnormalized size-dependent sum | direct rescoring oracle |
-| Historical `N95` and uncovered mass | historical radius threshold | RETIRED UNTIL A CURRENT RADIUS THRESHOLD IS ACCEPTED | none in baseline | absence/no hidden threshold test |
-| Selected-selected nearest-neighbor diagnostics | fitted metric | PROPOSED_FOR_PROMOTION | selected NN `Q50/Q90/Q95` | direct scorer |
-| Condition/environment/event support counts | current neutral evidence | PROPOSED_FOR_PROMOTION as diagnostics | monotone support counts; only configured hard obligations gate | direct counts |
-| Bounded/incremental exact FPS kernels | `selection.py` mature kernels | REUSE CAPABILITY | one neutral pure numerical owner after Gate B/C | optimized-vs-simple equivalence |
-| Independent coverage rescoring | historical MVQUAL pattern | PRESERVE AS VERIFICATION PATTERN | simple scorer independent of optimized selector state | falsification tests |
-| FEAS/MVIDX/MVSEL/REPAIR/MVQUAL public topology | retired products | RETIRED | none | repository search/current ownership review |
-| Historical fixed selector quotas/fractions/score thresholds | archived policies | RETIRED | no quota schedule in this candidate | configuration/schema negative |
+## 2. D1 scientific contract
 
-## 3. D1 scientific contract
+### 2.1 Scientific question
 
-### 3.1 Scientific question
+The target-size experiment asks how one fixed MLFF training method behaves as the number of training configurations `N` increases under one frozen, candidate-independent data-construction policy. The intended experimental variable is configuration cardinality; membership therefore changes only by extending one precomputed order.
 
-The target-size experiment asks how the fixed MLFF training method behaves as the number of training configurations increases under **one frozen, candidate-independent training-data construction**. The independent variable is cardinality `N`; changes in membership must therefore follow one declared coverage-progressive order rather than lexical frame identity or candidate outcomes.
+Coverage describes support of the selected configuration population. It does not prove force-field accuracy, deployment adequacy, long-horizon stability, or physical transferability. EVAL2, post-selection cross-validation, replay, and downstream validation remain separate evidence.
 
-Coverage is evidence about the support of the selected data population. It is not evidence of MLFF adequacy, long-horizon stability, or deployment validity. EVAL2, replay, post-selection CV, and downstream physical validation remain separate authorities.
+### 2.2 Three measures that must not be conflated
 
-### 3.2 Training reference measure `mu_train`
+This revision distinguishes three different measures.
 
-`mu_train` is the empirical configuration measure on exact `P_train`: every admissible frame has equal mass `1/|P_train|`. The training construction adds one explicit support constraint: every nonempty neutral condition in `P_train` must contribute one representative medoid before the ordinary proportional coverage progression. This avoids the known pure-FPS failure mode where sparse geometric extremes can displace all representation of a scientifically declared condition.
+**Selection/support measure `mu_sel`.** On exact `P_train`, every eligible configuration has equal mass `1/|P_train|`. `mu_sel` governs the configuration-membership experiment: a target size of 512 means 512 configurations, not 512 weighted loss units or 512 effective independent samples.
 
-The target-size policy is method-infeasible if its smallest configured candidate size is smaller than the number of nonempty `P_train` neutral conditions. This is a policy/configuration error, not an emergent per-candidate repair rule.
+**Training-loss influence measure `mu_loss`.** The frozen downstream training method may apply common per-configuration weights, property masks, and global objective coefficients. Those weights are fitted once over exact `P_train` and projected unchanged to every `T_N`; they do not define membership and are not renormalized per candidate. Their policy identity is nevertheless part of the target-size experimental method because changing it changes what the fixed training method means.
 
-After those condition anchors, the number of selected frames from each condition follows the empirical condition frame count as closely as integer prefix cardinality permits. Thus the method does not permanently equal-weight conditions and does not import historical quota fractions.
+**Evaluation estimand `mu_eval`.** EVAL2 is the component-weighted force-error estimand on exact `M3`, because every admitted Cartesian force component contributes once to the numerator and denominator.
 
-### 3.3 Evaluation reference measure `mu_eval` and EVAL2 estimand
+The target-size claim therefore does **not** assert that `mu_sel = mu_loss = mu_eval`. It asserts that membership is varied under fixed `mu_sel` while `mu_loss`, the optimizer method, and the evaluation design are frozen across candidates. This separation is intentional: using training weights to choose membership would feed a later fitted training objective backward into the pre-order experiment.
 
-`mu_eval` is the exact M3 empirical target distribution represented by the existing EVAL2 force-component RMSE:
+### 2.3 Training support and condition anchors
+
+`pi_train` must provide frame-level structural coverage while preserving declared neutral-condition support. Every nonempty neutral condition that remains in `P_train` contributes one representative anchor before ordinary proportional progression.
+
+This is a **method feasibility invariant**, not an optional `hard_support_obligation`: the configured smallest target size must be at least the number of nonempty `P_train` conditions. Optional hard obligations remain separate qualification authority and may impose additional prefix requirements.
+
+After the anchor phase, condition counts track the empirical frame mass of `P_train` as closely as integer cardinality permits. Thus the order does not permanently equal-weight conditions and does not import historical fixed quota fractions.
+
+### 2.4 Scientific scope of structural coverage
+
+The baseline claims coverage of:
+
+1. the accepted raw frame-level physical geometry variables; and
+2. material-neutral **frame-level summaries** of local structure from the universal structural provider.
+
+It does not claim exhaustive coverage of every atomic environment, profile-specific site class, or material-specific event. Those signals may remain diagnostics or become future D1/D2 authority, but are not allowed to silently alter current membership.
+
+This scope is deliberately narrower than some historical DATA7/MVSEL machinery. The omitted capabilities are not treated as secretly preserved by aggregate frame descriptors.
+
+### 2.5 `U_size -> P_train/M3`: training-priority residual allocation
+
+The split objective is now explicit.
+
+1. All P1 split-excluding/protected relations are closed transitively first; components are indivisible.
+2. `|M3|` remains exact and `|P_train| >= N_max` remains mandatory.
+3. Subject to exact feasibility, reserve allocation preferentially removes **redundant neutral-condition support** rather than scarce support. For a protected component `g`, define its neutral-condition depletion cost
 
 ```text
-R_M3(f) = sqrt(
-  sum_{x in M3} sum_{a=1}^{n_x} sum_{k=1}^{3} e_f(x,a,k)^2
-  /
-  sum_{x in M3} 3 n_x
-)
+J(g) = sum_c n(g,c) / N_c
 ```
 
-`M1` and `M2` are increasing-resolution approximations to that same M3 estimand, not increasingly difficult challenge distributions. `pi_eval` therefore does **not** use FPS, target-label difficulty, foundation residuals, candidate predictions, reducer state, or selected-N evidence.
+where `N_c` is the number of `U_size` frames in condition `c` and `n(g,c)` is the number of members of `g` in that condition.
+4. Among exact-cardinality feasible component subsets, the split minimizes total `sum_g J(g)`. This penalizes taking a large fraction of a scarce condition more than taking the same number of frames from abundant support.
+5. Exact ties use the scientific component identity defined in D2.
 
-The baseline keeps the existing unweighted EVAL2 reduction. Nested evaluation prefixes are formed by deterministic stratified pseudorandom-like sampling that tracks M3 neutral-condition frame proportions; M3 itself remains exact. No new EVAL2 weight field is introduced by this candidate.
+This is the accepted meaning of “M3 preferentially consumes redundant residual support” for this baseline. **Geometry/FPS is not part of the split objective.** Geometry coverage begins only after the split, avoiding a circular `fit P_train metric -> choose P_train` dependency.
 
-### 3.4 Split meaning
+M3 is development/model-selection evidence drawn from redundant residual support; it is not claimed to be a complete scientific-validation population for every scarce condition. Scarce support may deliberately remain training-side because training support has priority.
 
-The accepted `U_size -> P_train/M3` split remains a protected-relation exact allocation and is **not made coverage-metric aware** in this repair. Training support keeps priority and the split is completed before the P_train-only fitted geometry metric exists. This prevents a circular `fit metric -> choose split -> refit metric` authority loop and confines the present repair to the target-order defect.
+### 2.6 Evaluation ladder and its estimand
 
-The only split change proposed here is numerical tie identity: lexical `frame_uid` spelling must not choose among scientifically distinct feasible allocations. Split/component ties use canonical scientific occurrence keys defined in Section 5.7.
-
-### 3.5 Hard versus soft evidence
-
-Only explicit accepted `hard_support_obligations` may qualify or reject an exact training prefix. FPS distance, coverage quantiles, event counts, environment counts, representative scores, or difficulty diagnostics are soft unless a future D1/D2 revision explicitly promotes a named quantity into a hard obligation.
-
-The one-medoid-per-condition rule is part of the training-order construction itself, not an after-the-fact prefix repair and not a hidden qualification threshold.
-
-### 3.6 Excluded scientific dependencies
-
-The baseline method does not require foundation-model inference, target-label residuals, or difficulty scores. This is intentional: a geometry/condition method satisfies the target-size coverage claim without turning `prepare` into a GPU/model-provider prerequisite or allowing label-derived challenge ordering to steer `pi_eval`.
-
-Profile-specific selection features remain admissible evidence for diagnostics or a future method revision, but they do not alter baseline membership until their producer lineage and weighting are separately accepted.
-
-## 4. D2 numerical contract
-
-### 4.1 Current pre-order evidence
-
-The training metric has exactly two geometry-only blocks:
-
-1. **raw physical geometry block**, sourced from current `NeutralFeatureEvidence.raw_features`, excluding every label-derived quantity; and
-2. **universal structural frame block**, using the material-neutral local-structure provider already implemented by `mdstats.analysis.local_structure` / `UniversalStructuralFeatureCatalog`, but rebound by D3/D4 to current pre-order P1/P2 ancestry rather than importing DATA6/DATA7 role authority.
-
-The raw block includes, in canonical name order:
+Exact M3 defines the final EVAL2 population and therefore the exact final force-component estimand:
 
 ```text
-cell_volume_angstrom3
-mass_density_g_cm3
-cell_length_a_angstrom
-cell_length_b_angstrom
-cell_length_c_angstrom
-cell_angle_alpha_degrees
-cell_angle_beta_degrees
-cell_angle_gamma_degrees
-hydrostatic_strain
-deviatoric_strain_norm
-engineering_shear_xy
-engineering_shear_xz
-engineering_shear_yz
-pair:<rule_id>:minimum_pair_distance_angstrom
-pair:<rule_id>:mean_nearest_neighbor_distance_angstrom
-pair:<rule_id>:maximum_nearest_neighbor_distance_angstrom
-pair:<rule_id>:coordination_mean
-pair:<rule_id>:coordination_maximum
+R_M3(f) = sqrt( sum_x SSE_x(f) / sum_x C_x )
+C_x = 3 * n_atoms(x)
 ```
 
-Pair coordinates are included for every active `RawFeaturePolicy.pair_rules` entry in lexical `rule_id` order. Energy, force, force quantile/statistic, pressure, stress, and temperature-label values are excluded from the metric. Temperature/composition/regime/strain-class support enters through the neutral condition key rather than as a continuously scaled score.
+`M1` and `M2` are **finite-population frame-cluster samples** used for successive screening of that same ratio-of-totals estimand. They are not separate challenge distributions and do not use geometry FPS, target-label difficulty, foundation residuals, candidate predictions, reducer state, or selected-N evidence.
 
-The universal structural block is the canonical `UniversalFrameStructuralDescriptor.feature_names`/vector after provider authentication. Atomic-environment rows are not FPS candidates and no millions-of-environment FPS is performed.
-
-### 4.2 Fit domain and metric transformation
-
-The split is established first. Metric fitting uses **P_train geometry only**; M3 contributes no fitted coordinates. Both blocks canonicalize coordinates by semantic feature name before any matrix construction.
-
-For each numerical coordinate over P_train:
-
-1. missing values are replaced by the coordinate median of observed values;
-2. one binary missingness indicator is appended for that coordinate when any P_train value is missing;
-3. center is the observed-value median;
-4. primary scale is `Q75 - Q25`;
-5. if that scale is numerically degenerate, fallback scale is the maximum absolute observed deviation from the median;
-6. if both are degenerate, transformed numerical values are exactly zero and scale identity is recorded as constant-coordinate;
-7. nonconstant scale is accepted only when greater than `1e-12 * max(1, max_abs_observed_value)`; otherwise the next fallback is used.
-
-Each resulting block is divided by `sqrt(d_b)`, where `d_b` is its transformed output dimension including missingness indicators. The two present blocks have equal block weight. The final metric is FP64 Euclidean distance over the concatenated normalized blocks. There is no PCA, whitening, randomized projection, learned feature weighting, or foundation descriptor in this baseline.
-
-The fitted metric record binds the exact input feature names, missing masks, centers, scales/fallback kind, block dimensions, block normalization, provider/policy digests, P_train membership digest, FP64 identity, and tolerance policy.
-
-### 4.3 Numerical equality/tie policy
-
-All metric fitting, centroid/medoid scoring, distance accumulation, and FPS nearest-distance state use IEEE-754 binary64 (`float64`). For a governing nonnegative score `s*`, values are in the same numerical tie set when
+The evaluation order is one frozen pseudo-random permutation of M3 frames. Consequently every prefix of size `m` is interpreted, over the randomization ensemble, as a simple random sample without replacement (SRSWOR) of M3 frame clusters. The existing EVAL2 calculation on a prefix,
 
 ```text
-abs(s - s*) <= 1e-12 * max(1, abs(s*))
+R_m(f) = sqrt( sum_{x in M_m} SSE_x(f) / sum_{x in M_m} C_x )
 ```
 
-The `1e-12` relative/absolute floor is a numerical equivalence tolerance, not a scientific coverage threshold. It is part of method identity and requires Gate A ratification with the rest of this contract.
+is a finite-population ratio estimator of the exact M3 component-weighted mean-squared force error. It is not exactly unbiased at finite `m`, but is design-consistent, its sampling uncertainty decreases as the prefix grows, and the approximation error vanishes exactly at M3.
 
-### 4.4 Exact local training queues
+The same frozen evaluation membership is used for every candidate at a rung, preserving paired candidate comparison. Sampling uncertainty is diagnostic evidence; it does not silently replace the current reducer rule.
 
-For every nonempty neutral condition `c` in P_train:
+### 2.7 Correlation and effective independence
 
-1. collect its transformed metric vectors;
-2. compute their FP64 centroid;
-3. choose the **medoid anchor** minimizing Euclidean distance to the centroid; numerical ties use the scientific key from Section 5.7;
-4. initialize exact FPS with that medoid;
-5. each subsequent local rank chooses the remaining frame maximizing its current nearest-selected distance under the accepted metric; numerical ties use the same scientific key;
-6. update nearest-selected distances incrementally without a persistent pairwise distance matrix.
+Target size `N` intentionally counts configurations, not estimated independent samples. Correlation/protected relations govern split exclusion and are reported diagnostically after the split; they do not redefine target cardinality or create another ordering domain. This is a limitation of the target-size interpretation: adding strongly correlated frames can increase `N` with less information gain than adding independent frames. Coverage and correlation diagnostics must make that visible rather than pretending `N` is effective sample size.
 
-The local queue is therefore representative at rank 1 and maximin/coverage-progressive thereafter. This is not pure global FPS and contains no category quota schedule.
+### 2.8 Hard versus soft evidence
 
-### 4.5 Global `pi_train` interleaving
+Only explicit accepted `hard_support_obligations` qualify/reject prefixes. FPS distances, coverage radii/quantiles, event counts, correlation diagnostics, environment summaries, and sampling-uncertainty diagnostics are soft. The mandatory representative anchor phase is part of the order method itself, not an after-the-fact qualification repair.
 
-Let `N_c` be the number of P_train frames in condition `c`, `N=sum_c N_c`, `s_c(k)` the number from `c` already emitted after `k` global ranks.
+### 2.9 Excluded dependencies
 
-**Anchor phase.** Emit one medoid from every condition. Conditions are ordered by decreasing `N_c/N`; exact count ties use canonical condition identity. The smallest configured target size must contain this complete anchor phase.
+No foundation-model inference, target-label residual, or difficulty score is required for membership. This keeps `prepare` CPU-capable and prevents target labels or candidate outcomes from steering `pi_train` or `pi_eval`.
 
-**Proportional phase.** For the next global position `k+1`, among nonexhausted condition queues choose the condition maximizing
+## 3. D2 numerical contract
+
+### 3.1 Scientific occurrence and component keys
+
+Lexical `frame_uid` spelling is not a score. Define an occurrence key `kappa(x)` from canonical scientific/provenance fields:
 
 ```text
-Delta_c(k+1) = (k+1) * N_c / N - s_c(k)
+condition_id
+source_identity_signature
+source_frame_index
+geometry_fingerprint
 ```
 
-with exact numerical ties resolved by canonical condition identity, then emit that condition's next local FPS frame.
+using the exact hash encoding below. `source_identity_signature` and source-frame index are intentionally included because the current method distinguishes authenticated occurrences, not only geometries. Repackaging that changes source identity therefore creates a new prepared-generation identity. For `pi_train`, this can affect only accepted numerical tie sets. Evaluation random priority is geometry-based first, so source repackaging may alter order only among equal geometry-priority ties.
 
-This largest-proportional-deficit scheduler makes integer condition counts track `mu_train` after the required support anchors while local FPS expands structural coverage inside each condition.
+A component key is the digest of the sorted member `kappa` values plus the canonical P1 protected-relation identity.
 
-The scientifically governed FPS region extends through `K=max(configured candidate_sizes)` ranks. To preserve the current full-permutation record without forcing an unnecessary full O(N^2) FPS traversal, remaining unused P_train frames are appended by continuing the same proportional condition scheduler with each local remainder ordered by the scientific key. No configured `T_N` may intersect this completion tail. Raising `K` is an order-policy identity change and requires a fresh prepared generation.
+### 3.2 Exact hash byte encoding
 
-`T_N` remains exactly `pi_train[:N]`; no per-N rerun, repair, swap, or selector exists.
+All D2 order hashes use SHA-256 over a length-prefixed byte sequence, not implementation-defined JSON.
 
-### 4.6 Exact `pi_eval`
-
-`pi_eval` is independent of the fitted training metric and all candidate outcomes.
-
-For each M3 frame define the scientific occurrence key in Section 5.7 and an evaluation hash
+For schema tag and each ordered UTF-8 string field `v`, encode:
 
 ```text
-h(x) = sha256(canonical({
-  schema: "mdstats.target-size-eval-order-key.v1",
-  policy_seed: 0,
-  scientific_occurrence_key: kappa(x)
-}))
+uint64_big_endian(len(utf8(v))) || utf8(v)
 ```
 
-Within each neutral condition, order frames by `(h(x), kappa(x))`. Globally, starting with zero selected counts, choose at each rank the nonexhausted condition maximizing the same frame-count proportional deficit
+and concatenate fields in the order specified by the owning formula. Integer seed fields are encoded as unsigned 64-bit big-endian integers. There is no delimiter ambiguity and no mapping-iteration dependence.
+
+### 3.3 Exact split algorithm
+
+Let protected components be `g_1...g_C`, with integer size `w_j` and exact rational depletion cost
 
 ```text
-Delta_c(k+1) = (k+1) * N_c / |M3| - s_c(k)
+J_j = sum_c n(g_j,c) / N_c.
 ```
 
-and emit the next hashed frame from that condition. There is **no mandatory one-per-condition evaluation anchor**: doing so would deliberately distort the early-rung empirical M3 measure. The scheduler naturally includes rare conditions when their empirical mass warrants it.
+Solve the exact-cardinality reserve problem by dynamic programming over reachable totals `0..M3`. For each total store the predecessor subset with minimum exact rational total cost. Rational comparisons use exact integer numerator/denominator arithmetic; they are not floating-point scores. If costs tie exactly, choose the lexicographically smaller sorted component-key tuple.
 
-`M_i` remains the exact configured prefix of this one order; `M3` is the full reserve. Existing EVAL2 force-component RMSE is unchanged.
+This preserves `O(C*M3)` reachability states. Cost arithmetic may use reduced rational integers; no condition-count vector is part of the state. If M3 is unreachable, split construction fails. The method is exact for the stated additive depletion objective; it does not claim to globally optimize geometry coverage.
 
-### 4.7 UID-independent scientific keys
+### 3.4 Training feature families
 
-`frame_uid` remains a persisted identity, but lexical UID spelling is not a scientific score. Define
+The frame metric uses only current geometry-derived evidence and has named semantic **families**, not two arbitrary blocks.
+
+Raw families:
+
+- `cell_geometry`: volume, density, cell lengths, cell angles;
+- `strain`: hydrostatic strain, deviatoric strain norm, engineering shear components;
+- `pair_geometry`: all active pair-rule minimum/mean-nearest/maximum-nearest/coordination summary coordinates, canonicalized by `(rule_id, coordinate_name)`.
+
+Universal structural families are the provider's enabled material-neutral feature families (for example pair-distance, radial-environment, coordination, connectivity, chemical-environment, local-density, angular-environment, orientational-order), identified by the provider's semantic family name. A provider change that changes the enabled family set is metric identity.
+
+Energy, forces, stress/pressure, instantaneous temperature labels, foundation predictions, residuals, and target-derived difficulty are excluded. Neutral condition identity handles composition/temperature/regime/strain-class support as a discrete support axis rather than a fitted continuous score.
+
+### 3.5 Canonical coordinate transform
+
+Metric fitting occurs on exact `P_train` after the split. M3 contributes no fitted metric coordinates.
+
+For every numerical coordinate, first sort P_train rows by `kappa`. Missing values are imputed with the observed-value median and a binary missingness indicator is appended if any value is missing.
+
+Quantiles use Hyndman-Fan **type 7** interpolation. For sorted observed values `x[0..n-1]` and probability `p`, let `h=(n-1)p`, `i=floor(h)`, `r=h-i`; then
 
 ```text
-kappa(x) = sha256(canonical({
-  schema: "mdstats.target-order-scientific-occurrence-key.v1",
-  condition_id: neutral_condition_id(x),
-  source_identity_signature: source_identity_signature(x),
-  source_frame_index: source_frame_index(x),
-  geometry_fingerprint: geometry_fingerprint(x)
-}))
+Q_p = (1-r)*x[i] + r*x[min(i+1,n-1)].
 ```
 
-No target label value or label digest participates. If two records somehow have identical `kappa` despite being distinct current frames, preparation fails as ambiguous rather than using arbitrary UID spelling.
+Center is `Q_0.5`. Primary scale is `Q_0.75-Q_0.25`. If the scale is numerically degenerate under Section 3.7, fallback scale is the maximum absolute deviation from the median. If that is also degenerate, the transformed numerical coordinate is identically zero and the coordinate is recorded as constant.
 
-For protected split components, define a component key as the digest of the sorted member `kappa` values plus the component's accepted protected-relation identity. Current exact split feasibility/allocation semantics are preserved, but all formerly arbitrary component/DP tie choices use this component key instead of minimum UID.
+Every transformed semantic family `f` is divided by `sqrt(d_f)`, where `d_f` includes its active missingness indicators. Thus each accepted family has equal total Euclidean weight before data-dependent variation, and adding more coordinates to one family does not automatically multiply that family's nominal influence.
 
-### 4.8 Coverage diagnostics
+**Rationale:** D1 asserts coverage across named frame-level physical/local-structure families but provides no accepted evidence that one family deserves a larger prior weight. Equal family mass is therefore the symmetry-preserving baseline. It is an explicit ratifiable method choice, not an accidental consequence of coordinate count. Sensitivity/ablation evidence remains mandatory before promotion; material instability to plausible family regrouping reopens D2.
 
-For every configured training prefix `S_N=T_N`, independently rescore against full P_train in the accepted metric:
+The final metric is FP64 Euclidean distance over the concatenated family-normalized coordinates. No PCA, whitening, learned weights, random projection, profile-specific feature block, or foundation descriptor is present.
+
+### 3.6 Deterministic distance and representative computation
+
+All feature coordinates are traversed in canonical `(family_name, coordinate_name)` order. Squared Euclidean distance is accumulated left-to-right in binary64 in that fixed order; fused contraction is not part of the semantic reference. Optimized implementations may reorder/vectorize only if they reproduce the reference ordering decisions under the accepted equivalence envelope.
+
+The representative anchor for one condition is the **coordinate-median medoid**, avoiding an order-sensitive floating-point centroid:
+
+1. compute the type-7 median independently for every transformed coordinate;
+2. compute each frame's squared distance to that median vector;
+3. select the smallest distance, with numerical ties resolved by `kappa`.
+
+Exact FPS then starts from this medoid and repeatedly selects the remaining frame with maximum nearest-selected squared distance. Nearest-distance state is updated incrementally; no persistent dense pairwise matrix is required.
+
+### 3.7 Finite-precision equivalence
+
+Let binary64 unit roundoff be `u = 2^-53`. For a squared-distance sum over `d` transformed coordinates define
 
 ```text
-d_x(S_N) = min_{y in S_N} d(z_x, z_y)
+gamma_d = d*u / (1-d*u)
+```
+
+for `d*u < 1`. Two nonnegative squared-distance scores `a,b` belong to the same numerical tie set when
+
+```text
+|a-b| <= 8*gamma_d*max(1,|a|,|b|).
+```
+
+The factor 8 is the accepted guard for accumulation and preceding coordinate-transform roundoff in the scalar reference; it must be falsified against higher-precision/direct fixtures before promotion.
+
+Scale degeneracy is a separate one-coordinate question. A positive scale `s` is treated as numerically zero when
+
+```text
+s <= 32*u*max(1,max_abs_observed_value).
+```
+
+These tolerances are numerical equivalence bounds, not scientific coverage thresholds. If independent higher-precision evidence shows they merge scientifically distinct values or fail to cover legitimate reference roundoff, D2 reopens; implementations do not tune them to make tests pass.
+
+### 3.8 Global `pi_train`
+
+Let `N_c` be P_train frame count in condition `c`, `N=sum_c N_c`, and `s_c(k)` the count already emitted after `k` ranks.
+
+**Anchor phase:** emit one condition medoid from every nonempty condition, ordered by decreasing `N_c`, then canonical condition ID. `N_min` must contain the full anchor phase.
+
+**Proportional phase:** choose the nonexhausted condition maximizing the exact integer deficit numerator
+
+```text
+D_c(k+1) = (k+1)*N_c - s_c(k)*N.
+```
+
+There is no floating-point proportional comparison. Exact ties use canonical condition ID. Emit that condition's next local FPS frame.
+
+FPS governs through `K=max(configured candidate_sizes)`. Remaining frames exist only to complete the persisted permutation and are interleaved by the same exact condition-deficit scheduler with within-condition remainder ordered by `kappa`. No configured `T_N` may enter this tail. Changing K changes method identity.
+
+Every candidate is exactly `T_N=pi_train[:N]`; there is no per-N rerun, swap, repair, or selector.
+
+### 3.9 Exact `pi_eval`: frozen simple-random frame permutation
+
+The evaluation order is a deterministic realization of SRSWOR over M3 frame clusters.
+
+For each frame define a random-priority digest from:
+
+```text
+schema = "mdstats.target-size-eval-random-priority.v2"
+policy_seed = fixed unsigned 64-bit evaluation seed
+condition_id
+geometry_fingerprint
+```
+
+encoded by Section 3.2. Order by `(priority_digest, kappa)`. Geometry-identical priority ties use occurrence lineage only as the final tie break. Candidate outcomes, labels, fitted training metric, protected-event scores, and reducer state are forbidden.
+
+The seed is part of method identity and is common to every candidate. It is not varied per N, seed, fold, or candidate. `M_i=pi_eval[:m_i]`; M3 is the full reserve.
+
+This order intentionally does **not** force per-condition quotas, because unequal deterministic stratum inclusion probabilities would require a changed EVAL2 weighting estimator. Instead, condition/component-mass discrepancies are diagnostics of the realized finite sample.
+
+### 3.10 Evaluation sampling uncertainty
+
+For candidate model `f` and an evaluation prefix of `m` frames, define per-frame
+
+```text
+Y_x = SSE_x(f)
+C_x = 3*n_atoms(x)
+r_m = sum Y_x / sum C_x
+```
+
+and `R_m=sqrt(r_m)`. Under the SRSWOR design, `r_m` is the usual finite-population ratio estimator for the M3 ratio of totals. It is not claimed exactly unbiased. A diagnostic linearization standard error may be reported using
+
+```text
+z_x = Y_x - r_m*C_x
+SE(r_m) ~= sqrt((1-m/M3_size) * s_z^2 / (m * mean(C)^2))
+```
+
+with the usual sample variance `s_z^2`; delta-method propagation may report `SE(R_m)` when `r_m>0`. These uncertainty diagnostics never alter membership or silently change the reducer. Their role is to expose when early-rung estimates are too noisy to interpret strongly. At M3, sampling error from the ladder is exactly zero.
+
+### 3.11 Coverage and correlation diagnostics
+
+For every configured training prefix `S_N` independently rescore full P_train in the accepted metric:
+
+```text
+d_x(S_N) = min_y d(x,y)
 R_max(N) = max_x d_x(S_N)
-D_mean(N) = (1 / |P_train|) * sum_x d_x(S_N)
-Q50/Q90/Q95/Q99 of {d_x(S_N)} under equal-frame mu_train
-selected-NN Q50/Q90/Q95 over min_{y in S_N, y != x} d(z_x,z_y)
+D_mean(N) = mean_x d_x(S_N)
+Q50/Q90/Q95/Q99 of d_x(S_N) under equal-frame mu_sel
+selected-NN Q50/Q90/Q95
 represented neutral-condition count
-represented universal-structure support summaries where provider definitions are monotone
+material-neutral frame-structural family support summaries
 protected-event represented count/fraction
-explicit hard-obligation status (reported separately from soft diagnostics)
+correlation-unit count and effective-sample diagnostics from accepted P1 evidence
+explicit hard-obligation status, separately
 ```
 
-`R_max` must be nonincreasing over nested prefixes. Historical `D_max` maps to `R_max`; historical size-dependent `D_sum` is replaced by normalized `D_mean`. `N95` and uncovered-mass measures are absent because this candidate defines no scientifically accepted coverage-radius threshold.
+`R_max` must be nonincreasing over nested prefixes. Historical `D_max` maps to `R_max`; historical unnormalized `D_sum`, `N95`, and uncovered-radius mass are not current authority.
 
-For evaluation prefixes, report condition-count discrepancy from the full M3 frame proportions and the exact EVAL2 component count. These are diagnostics only.
+Evaluation diagnostics include atom/component-mass discrepancy, condition-count discrepancy, correlation-unit coverage, and the candidate-specific ratio-estimator uncertainty diagnostic above.
 
-### 4.9 Resource envelope
+### 3.12 Resource envelope
 
-- Descriptor production: current material-neutral local-structure provider, CPU-capable; no foundation model and no GPU prerequisite.
-- Metric fit/storage: `O(N d)` memory and work up to provider cost; no dense `N x N` pairwise matrix.
-- Training FPS: incremental nearest-distance state, `O(N)` distance state plus `O(N d)` feature matrix; only the first `K=max candidate N` ranks use FPS. Worst-case distance work is `O(K N d)` and may be reduced by condition partitioning, but numerical results must equal the simple reference.
-- Evaluation order: `O(|M3| log |M3|)` hash/sort plus linear proportional interleaving.
-- Coverage rescoring: bounded/incremental or chunked exact calculation with no persistent dense quadratic state.
+- current structural-provider construction must remain CPU-capable; no foundation/GPU prerequisite;
+- fitted feature storage is `O(Nd)`; no persistent `N x N` matrix;
+- local FPS uses `O(N)` nearest-distance state and is required only through K=max configured candidate size;
+- worst-case scalar reference work is `O(KNd)` across the governed prefixes, with condition partitioning/vectorization allowed only under reference-equivalent semantics;
+- split DP remains `O(C*M3)` states plus exact rational cost arithmetic;
+- evaluation random priorities are `O(|M3| log |M3|)` sort work;
+- coverage rescoring must be chunked/incremental without persistent dense quadratic state.
 
-Execution batching, thread/process count, cache layout, and vectorization are D3/D4 choices only if exact results and tie sets are preserved.
+## 4. Stage-by-evidence authorization matrix
 
-## 5. Stage-by-evidence authorization matrix
+Legend: `A` method-relevant; `I` identity/support only; `D` diagnostic only; `H` explicit hard obligation only; `F` forbidden.
 
-Legend: `A` allowed and method-relevant; `I` identity/support only; `D` diagnostic only; `H` only through explicit existing hard obligation; `F` forbidden for the baseline method.
-
-| Evidence class | U_size eligibility | P_train/M3 split scoring | pi_train | pi_eval | soft diagnostics | hard qualification |
+| Evidence class | U_size eligibility | P_train/M3 split | pi_train | pi_eval | soft diagnostics | hard qualification |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| canonical condition/provenance facts | I | A (accepted split constraints/ties) | A | A | A | H |
-| geometry-only/raw structural features | I | F | A, fit on P_train | I only for `kappa`; no geometry priority | A | H only if explicitly configured |
-| universal structural frame features | F | F | A, fit on P_train after current-generation provider authentication | F | A | H only if separately accepted/configured |
-| profile/environment features | F | F | F in baseline | F | D | H only through existing explicit obligation |
-| fitted geometry metric/scaler/PCA/whitening | F | F | A; scaler fit P_train; no PCA/whitening | F | A | F |
-| frozen foundation descriptors/predictions | F | F | F | F | D only outside membership identity | F |
-| target-label foundation residual/difficulty | F | F | F | F | D only after membership freeze | F |
-| protected-event evidence | I | A only through accepted protected relations | D; does not reorder baseline | F | A | H |
-| correlation/duplicate/protected relations | I | A | D | D | A | H where existing obligation names it |
+| canonical condition/provenance facts | I | A: condition depletion + component identity | A | I: hash/key only | A | H |
+| raw geometry features | I | F | A, fit P_train | F | A | H only if separately explicit |
+| universal frame structural features | F | F | A, fit P_train | F | A | H only if separately explicit |
+| profile/environment extensions | F | F | F baseline | F | D | H only if separately accepted |
+| fitted geometry metric/scaler | F | F | A | F | A | F |
+| foundation descriptors/predictions | F | F | F | F | D after membership freeze | F |
+| target-label residual/difficulty | F | F | F | F | D after membership freeze | F |
+| protected-event evidence | I | A only through inherited split protection | D | F | A | H |
+| correlation/duplicate/protected relations | I | A | D | D | A | H where explicitly named |
 | candidate outcomes/reducer/CV/replay/physical validation | F | F | F | F | post hoc only | F |
 
-Circularity consequence: no evidence fitted only after the split can flow backward into split selection. M3 labels never fit the training order. Candidate outcomes never affect either order.
+No P_train-fitted evidence flows backward into the split. No M3 target label or candidate outcome influences either order.
 
-## 6. Resolved Gate A decision table
+## 5. Identity/currentness and stale descendants
 
-| Decision | Candidate resolution |
+Current target-order identity must bind at least:
+
+- split-exclusion authority digest;
+- split depletion-objective version and exact component membership;
+- `P_train/M3` identities;
+- `mu_sel` and evaluation-design identities;
+- training weight-policy identity as part of the fixed experiment, without feeding it into membership;
+- feature-provider/family names and provider policies;
+- fitted transform parameters, type-7 quantile convention, family normalization;
+- FP64 reference/tolerance semantics;
+- K=max configured candidate N;
+- `pi_train` and `pi_eval` digests;
+- evaluation randomization policy/seed;
+- hard-support-obligation policy.
+
+Pre-repair empty-evidence/UID-order prepared generations are historical evidence only. A current method-version/schema boundary must require fresh `prepare` rather than default-field migration.
+
+Target-order-dependent descendants become stale: aggregate/order identities, `T_N/M_i`, screen/reducer evidence, provisional/frozen target selections, and any downstream CV/production evidence whose exact selected membership descends from those orders. Unrelated authenticated source/P1 authority, normalized frame payloads, and other evidence not semantically dependent on the old order remain valid where their own identities still match. Common-training evidence is reusable only if it is independently bound to the same exact P_train and training-method identity; it is not reinterpreted across a changed P_train.
+
+## 6. Revision-1 review closure map
+
+| Review blocker | Revision-2 repair |
 | --- | --- |
-| `mu_train` | equal mass per P_train frame, with one representative medoid anchor per nonempty neutral condition before proportional progression |
-| `mu_eval` | exact M3 empirical force-component EVAL2 estimand; early prefixes approximate same population |
-| split objective | preserve accepted exact protected-relation P_train/M3 allocation; no coverage score in split |
-| split tie | UID-independent component scientific key |
-| training evidence | current neutral raw geometry + current-generation rebound universal structural frame descriptors; labels/foundation/difficulty excluded |
-| fit domain | P_train geometry only, after split |
-| metric | two equal blocks, robust median/IQR with explicit fallback/missing indicators, block dimension normalization, FP64 Euclidean, no PCA |
-| metric tolerance | `1e-12 * max(1, |score|)` tie/degeneracy tolerance |
-| `pi_train` | condition medoid anchors -> within-condition exact FPS -> empirical-condition proportional global scheduler through max configured N -> deterministic nonexperimental tail completion |
-| `pi_eval` | condition-proportional deterministic hash order over M3; no FPS/difficulty/challenge enrichment |
-| EVAL2 weighting | unchanged existing force-component RMSE; no new weights |
-| hard/soft boundary | only explicit hard-support obligations gate; coverage/event/difficulty diagnostics remain soft |
-| coverage diagnostics | `R_max`, `D_mean`, Q50/Q90/Q95/Q99, selected-NN quantiles, support counts, event fraction |
-| resource envelope | CPU-capable; O(Nd) persistent feature state; no dense persistent O(N^2); FPS bounded to max configured N |
-| restart identity | order method/version, represented measures, evidence/provider identities, split digest, fitted metric digest, K=max N, tolerance/tie policy, kappa schema, pi_train/pi_eval digests, eval hash policy/seed, hard-obligation policy |
-| old empty-evidence generations | historical only; fail current admission and require fresh `prepare`; no default migration |
-| retired constants/mechanisms | historical quotas, MVSEL/MVQUAL public topology, N95/uncovered radius thresholds, foundation difficulty ordering, UID fallback |
+| B1 frame-count `pi_eval` vs force-component EVAL2 | removed condition-count evaluation scheduler; defined SRSWOR frame-cluster ratio estimator for exact component-weighted M3 estimand |
+| B2 no evaluation approximation/error semantics | added finite-population sampling interpretation, frozen randomization, ratio-estimator uncertainty, and exact zero sampling error at M3 |
+| B3 split lacked scientific allocation objective | added exact neutral-condition depletion-cost objective over protected components; geometry split scoring explicitly retired for baseline |
+| B4 `mu_train` conflicted with training weights | separated `mu_sel`, `mu_loss`, and `mu_eval`; bound weight-policy identity without feeding weights backward into membership |
+| B5 unratified arbitrary two-block metric | narrowed D1 claim; replaced raw-vs-structural block weighting with named equal-family baseline and mandatory sensitivity/ablation falsification |
+| B6 numerical identity under-specified | froze type-7 quantiles, fixed coordinate order, median-medoid, exact integer deficit comparison, exact hash byte encoding, and dimension-aware FP64 tolerances |
+| G1 anchor authority unclear | explicitly classified as method feasibility invariant, separate from optional hard qualification |
+| G2 correlation role unjustified | explicitly defined N as configuration cardinality and correlation as split/diagnostic evidence, not effective-sample target |
+| G3 kappa repackaging scope unclear | explicitly declared occurrence-lineage sensitivity; evaluation priority uses geometry before occurrence tie |
+| G4 stale impact map absent | added bounded stale-descendant/preserved-evidence map |
 
-## 7. D3/D4 contract implied after ratification
+## 7. Required falsification before promotion
 
-If ratified, Gate B/C/D must realize the following without changing the D1/D2 meaning:
+Fresh independent review must attempt to falsify this revision with at least:
 
-```text
-P1 canonical frame / neutral statistical / raw feature authority
-  + current-generation universal structural descriptor provider
-  -> one preparation-owned TargetOrderEvidence/metric authority
-  -> existing single P2 split/order owner
-       -> exact split
-       -> fitted P_train metric
-       -> pi_train + pi_eval + diagnostics
-  -> immutable prepared target-size generation
-  -> downstream consumers (read only; zero metric/FPS rebuild)
-```
+1. variable-atom-count M3 fixture proving the SRSWOR prefix estimator targets the exact component-weighted M3 ratio and exposing finite-prefix uncertainty;
+2. heterogeneous within-condition force-error fixture demonstrating that no condition-quota claim is being smuggled into the estimator;
+3. exact split fixture with two same-size feasible M3 subsets and different depletion costs; verify the lower-cost subset and protected-component closure;
+4. split fixture showing additive depletion cost protects scarce support relative to UID/component-order baseline without claiming impossible geometry optimality;
+5. real-family metric sensitivity/ablation including a rare local-structure case; material order instability under plausible regrouping is a D2 challenge;
+6. type-7 quantile, scale-degeneracy, distance-tie, and higher-precision differential checks for the proposed FP64 envelopes;
+7. direct simple-reference median-medoid/FPS/coverage scoring and optimized-kernel equivalence;
+8. UID-renaming invariance outside genuine numerical ties, plus source-enumeration and feature-column permutation invariance;
+9. source-repackaging test demonstrating only the explicitly allowed occurrence-tie/currentness consequences;
+10. old-generation rejection plus dependency-bounded stale/preserved descendant checks;
+11. current universal-structural producer-lineage authentication with no retired DATA6/DATA7 role authority imported;
+12. CPU/resource benchmark ruling out dense quadratic state at representative K/N/d.
 
-The current DATA6/DATA7 role authority may not be imported wholesale. Reuse the low-level material-neutral structural provider and mature pure FPS kernels; rebind them to current P1/P2 ancestry. Production order APIs must require the resolved method/evidence explicitly. `None` or empty priority vectors may remain only for deserializing historical method records, never as the current production default.
+The prior author-side fixture remains supporting evidence for the interleaving concept, but is stale for the revised metric/evaluation/split semantics and cannot by itself close this revision.
 
-A schema/method-version boundary must make pre-repair empty-evidence generations stale. No current descendant may be relabeled as having used the new method.
+## 8. Human ratification bundle
 
-## 8. Required falsification before ratification
+If fresh independent review passes, human ratification must accept or reject this bundle as one D1/D2 method:
 
-The following remain Gate A acceptance requirements:
+- configuration-count target-size experiment under equal-frame selection/support measure;
+- separate fixed training-loss influence policy;
+- training-priority exact M3 split minimizing neutral-condition depletion over protected components;
+- one medoid-seeded, condition-local exact FPS training order with exact proportional condition interleaving;
+- frame-level raw + material-neutral structural-family coverage only, not exhaustive atomic-environment coverage;
+- equal semantic-family metric weighting after robust type-7 scaling as the no-preference baseline;
+- one frozen SRSWOR evaluation permutation and current unweighted EVAL2 ratio estimator, with finite-prefix sampling uncertainty treated diagnostically;
+- exact numerical serialization/reduction/tolerance semantics above;
+- no foundation/difficulty ordering, no historical quota schedule/radius threshold, and no GPU prerequisite.
 
-1. bounded clustered/common + rare-support fixture comparing UID order, pure FPS, representative-only, difficulty-only, and this combined method;
-2. UID-renaming invariance outside genuine numerical tie sets;
-3. source/enumeration-order invariance;
-4. metric-coordinate-name permutation invariance;
-5. direct medoid/FPS equivalence to a simple reference;
-6. monotone `R_max` and exact-prefix/permutation checks;
-7. evaluation-prefix proportionality and direct comparison to full-M3 EVAL2 estimand on a fixture with heterogeneous error patterns;
-8. old-generation negative;
-9. producer-lineage proof that the universal structural descriptor bytes are rebound to current ancestry and carry no retired label-domain/CV authority;
-10. resource benchmark sufficient to rule out accidental dense pairwise storage.
-
-A bounded same-session falsification record may prepare this review, but it is not the independent Protocol review required by Gate A.
-
-## 9. Human ratification statement
-
-Gate A closes only when a human owner explicitly ratifies or rejects this resolved bundle, including these material choices as one method contract:
-
-- empirical-frame `mu_train` plus one training medoid anchor per neutral condition;
-- geometry-only raw + universal structural metric, with no foundation/difficulty ordering;
-- robust two-block FP64 metric and `1e-12` numerical tolerance;
-- condition-local medoid-seeded FPS with proportional global interleaving;
-- proportional deterministic-hash `pi_eval` preserving the ordinary M3 EVAL2 estimand;
-- no coverage-aware split objective beyond UID-independent tie repair;
-- no historical quota schedule or radius threshold;
-- CPU-capable preparation with FPS bounded to the largest configured target size.
-
-Until that explicit decision and an independent review exist, permanent D1/D2 documents and behavior-changing D3/D4 code remain unchanged.
+Until both fresh independent review and explicit human ratification complete, permanent D1/D2 method papers and behavior-changing D3/D4 remain unchanged.
