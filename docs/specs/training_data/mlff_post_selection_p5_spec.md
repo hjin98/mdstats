@@ -113,6 +113,14 @@ rank/null-space/tolerance/anchor evidence     required
 composition-transfer result                  required
 ```
 
+The owning role plan/run plan is created before its fitted preparation. A
+current fitted preparation binds that owning plan/run ancestry together with
+the common-monitor and required-composition transfer ancestry it realizes.
+The fitted preparation is therefore downstream of the plan; its digest is
+then bound by `PostSelectionMaterialization` and the resulting run evidence.
+Current CV and final-production plans SHALL NOT bind a fitted-preparation
+digest.
+
 The following are forbidden as current foundation-P5 preparation parents or payloads:
 
 ```text
@@ -285,7 +293,6 @@ exact common-monitor record digest
 current monitor-vs-target protected-relation separation evidence
 fold membership identity
 replay authority/monitor lineage where applicable
-foundation fitted-preparation ancestry where applicable
 ```
 
 Every sibling selected size, fold, and seed within the same current campaign/method SHALL bind the same common-monitor record digest.
@@ -312,7 +319,6 @@ accepted current CV ancestry
 exact common-monitor record digest
 current monitor-vs-target protected-relation separation evidence
 replay authority/monitor lineage where applicable
-foundation fitted-preparation ancestry where applicable
 production seed/run identity
 ```
 
@@ -385,6 +391,10 @@ fold train/eval/purge membership where applicable
 method/CV/final/run-plan digests
 final publication metric lineage where applicable
 ```
+
+Materialization and run evidence are downstream of the owning plan/run plan
+and bind the resulting fitted-preparation digest. They do not become parents
+of the CV or final-production plan through that binding.
 
 Transport formats such as extended XYZ carry only fields needed by their consumer; longer ancestry remains in authenticated sidecars/records rather than becoming a second authority.
 

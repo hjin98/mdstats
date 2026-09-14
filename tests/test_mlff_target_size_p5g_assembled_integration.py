@@ -116,6 +116,8 @@ def test_p5g_assembled_post_selection_lifecycle(tmp_path: Path, capsys):
         assert final_plan.cv_authorization_digest == acceptance.content_digest
         assert final_plan.method_identity_digest == context.method.content_digest
         assert final_plan.cv_plan_digest == plan.content_digest
+        assert "preparation_digest" not in final_plan.to_dict()
+        assert "fitted_preparation_digest" not in final_plan.to_dict()
         assert final_plan.n_selected == n_selected
         assert final_plan.target_membership_digest == selected_digest
         assert final_plan.planned_epochs == PRODUCTION_MAX_NUM_EPOCHS
@@ -171,6 +173,17 @@ def test_p5g_assembled_post_selection_lifecycle(tmp_path: Path, capsys):
         assert len(set(identities)) == len(identities)
         assert set(cv.runs) | set(production.runs) == set(identities)
         assert not set(cv.runs) & set(production.runs)
+        plans_by_digest = {
+            request.run_plan.content_digest
+            for request in (*cv.requests, *production.requests)
+        }
+        preparations_by_digest = {
+            item.content_digest: item for item in preparations
+        }
+        for item in materializations:
+            assert item.run_plan_digest in plans_by_digest
+            preparation = preparations_by_digest[item.preparation_digest]
+            assert preparation.owner_plan_digest == item.run_plan_digest
 
         # --- P4 is byte-for-byte untouched by all of the above ---------------
         after = load_target_size_campaign_revision(store)

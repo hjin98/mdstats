@@ -587,6 +587,9 @@ legacy_normalized = true
         preparation = context.evidence_store.get(
             evidence.preparation_digest, PostSelectionFittedPreparation.from_dict
         )
+        assert "preparation_digest" not in cv_plan.to_dict()
+        assert preparation.owner_plan_digest == run_plan.content_digest
+        assert materialization.preparation_digest == preparation.content_digest
         assert preparation.training_mode == "multihead_replay"
         assert preparation.fitted_weights_digest is None
         assert preparation.foundation_head == context.method_policies.foundation_head

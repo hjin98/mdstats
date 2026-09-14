@@ -1,6 +1,6 @@
 # MLFF_POST_SELECTION_UNIVERSAL_LOSS_MONITOR_AND_CV_METHOD_RESTORATION — restore post-selection fine-tuning semantics
 
-**Status:** active — independent Protocol 6.3 implementation Review NO-PASS on 2026-09-14 for code candidate `521bc932ec9b52cc769db32a2561fa4cd1b8eba8` (derived-doc head `f71c5b9af34454940814445fd2e50b97265526d1`); G0/G1/G1A remain CLOSED/PASS; G1B is REOPENED for a D4 ancestry-direction contradiction; Stages A–D are implemented, but candidate-bound G11/G12 evidence, G13 pilot/full CV, and closeout remain open  
+**Status:** active — independent Protocol 6.3 implementation Review NO-PASS on 2026-09-14 for code candidate `521bc932ec9b52cc769db32a2561fa4cd1b8eba8` (derived-doc head `f71c5b9af34454940814445fd2e50b97265526d1`); G0/G1/G1A remain CLOSED/PASS; the narrow G1B D4 ancestry repair is implemented in the current working tree with no product-runtime source change, and candidate-bound focused G11/G12/affected evidence is recorded below; G13 pilot/three-fold CV, narrow independent re-review, and closeout remain open
 **Current authority:** accepted D1/D2 in `docs/methods/mlff_scientific_method.md` and `docs/methods/mlff_numerical_algorithmic_method.md`; current D3 in `docs/arch_manuals/mlff_training_data_architecture.md` plus canonical chapters; current D4 restored-P5 handoff in `docs/specs/training_data/mlff_post_selection_p5_spec.md`, with G1B narrowly reopened as specified below  
 **Target branch/base:** `fix/mlff-post-selection-method-restoration` from `1b6b6f83918d31c4b27a0e60d7bc047ef58b6067`  
 **Protocol:** SSDP 6.3  
@@ -12,7 +12,7 @@ The upstream D1/D2 Serious Challenge is resolved for this restoration branch. Th
 
 G1 authority/API/evidence census and G1A D3 reconciliation remain closed PASS. Independent implementation Review found no D1/D2 Serious Challenge and no D3 architecture contradiction: the accepted D3 dependency direction remains acyclic (`role plan -> fitted P5 preparation -> materialization -> evidence`). G1B is, however, narrowly reopened because the normative D4 P5 specification later states that the CV/final plan itself binds `foundation fitted-preparation ancestry`, which reverses that dependency and would create a plan/preparation cycle if implemented literally. This is a D4 specification defect, not authority for a compensating runtime graph.
 
-Stages A–D are implemented on code candidate `521bc932ec9b52cc769db32a2561fa4cd1b8eba8`. The assembled implementation inspected in Review is otherwise substantially aligned with the restored method: current foundation loss/exposure, common-monitor routing, selected-head residual E0/transfer, currentness, and M3-free publication all route through existing owners rather than parallel machinery. Closure is nevertheless blocked until the narrow G1B repair is reviewed/frozen and candidate-bound G11/G12 plus G13 evidence is produced.
+Stages A–D are implemented on code candidate `521bc932ec9b52cc769db32a2561fa4cd1b8eba8`. The narrow G1B repair is applied in the current working tree; it changes only the canonical D4 specification and real-owner tests, not product runtime. The assembled implementation remains substantially aligned with the restored method: current foundation loss/exposure, common-monitor routing, selected-head residual E0/transfer, currentness, and M3-free publication all route through existing owners rather than parallel machinery. Closure is nevertheless blocked until the narrow G1B repair is independently re-reviewed/frozen, G13 is executed, and the remaining closeout gates pass.
 
 The repair remains deliberately reductive: remove wrong/retired semantics and rewire existing owners. Do not create a custom loss, second sampler, second E0 solver, shadow trainer, parallel method/protocol registry, second currentness system, compatibility wrapper that merely preserves an obsolete current path, or a reverse plan->preparation binding added only to satisfy contradictory wording.
 
@@ -265,7 +265,7 @@ docs/arch_manuals/mlff_training_data/80_ownership_and_decisions.md
 
 The top-level manual is itself canonical D3 authority alongside the chapters; it is not a generated aggregate.
 
-### G1B — D4 handoff freeze — **REOPENED / REVIEW BLOCKER**
+### G1B — D4 handoff freeze — **REOPENED / REPAIR APPLIED; RE-REVIEW PENDING**
 
 Normative restored-P5 handoff: `docs/specs/training_data/mlff_post_selection_p5_spec.md`.
 
@@ -557,6 +557,23 @@ Reviewed assembled code candidate `521bc932ec9b52cc769db32a2561fa4cd1b8eba8` plu
 - Serena/Semgrep-specific execution was unavailable in the remote review environment; structural/symbol/file inspection was performed through the repository connector. This limits analyzer-specific completeness claims but does not relax any qualification gate.
 
 **Repair/closure order:** G1B spec correction + narrow re-review -> candidate-bound G11/G12 and affected regression -> G13 pilot -> required three-fold affected qualification -> independent implementation re-review -> documentation/history/dependency/learning closeout. Production-scale GPU qualification remains deferred to the final complete release package.
+
+### Candidate-bound post-review evidence — 2026-09-14
+
+The narrow G1B repair was applied without adding a runtime owner, wrapper, schema, or reverse dependency. The tested repaired implementation/spec/test state is current `HEAD` `10d09f4d192b5788f67f75e0a84bd139c8802b00` plus the four-file implementation/spec/test working-tree diff, whose SHA-256 is `e56a2eafd8adc43ca695e18ec1163960e6b4deab099113087f2ff64e0d1fef05` (the workplan note itself is excluded). No product-runtime source file changed.
+
+Focused and affected evidence was run with the user's requested 16-worker xdist allocation (`pytest -n 16 --dist=load`) wherever the owner suite supported it:
+
+- G1B real-owner ancestry test plus existing P5 method-owner/Hypothesis coverage: `24 passed`.
+- CV/identity/publication owners (`P5B`, `P5C`, `P5H`): `33 passed`.
+- P5-G assembled lifecycle, including CV/final plan and materialization ancestry: `3 passed`.
+- Affected implementation matrix covering downstream integration, executable configuration, control plane, P5 TRAIN2/EVAL2/CuEq/restart/recovery, P7, replay ownership, target-size cutovers, P5 guards, and P6 compatibility: `554 passed, 17 CUDA-specific skipped`.
+- MACE execution and replay/MACE P5 recovery owners: `28 passed`.
+- Direct P5 materialization/CV/memory/context owners: `61 passed`.
+
+The real-owner assembled MACE qualification suite passed serially as `5 passed, 1 CUDA-specific skipped`; its isolated 16-worker attempt hit an existing xdist worker/import race involving partially initialized `mdstats.training_data` symbols and did not produce a valid concurrent result. The serial result is retained because all affected concurrent suites above passed and no product-runtime import change is authorized for this D4 repair. The existing source-qualification owner also passed against the supplied MACE/ASE archives: `mace-torch==0.3.16`, source compile/top-level import/`mace.cli.run_train` import all passed, no required or optional dependencies were missing, and the qualified MACE source-tree digest was `0a59f3411759db89f7dc37aeb635078ef2d02781ba0b64e74e36ed1e2d646c1f`. The pinned runtime check resolved native `mace.modules.loss.UniversalLoss` with the expected native signature. The broader exploratory `tests/test_mlff_*.py` 16-worker sweep is not acceptance evidence (`2669 passed, 34 skipped, 126` pre-existing release/documentation/version-drift failures); its stale P5-F source-absence oracle also detects the legitimate `--restart_latest` token.
+
+Serena and Semgrep execution remained unavailable because their configured analyzer/cache locations are read-only; bounded source/AST checks passed instead. Hypothesis executed as part of the owner suite. G13 is assessed but not closed: real LTA inputs exist in external read-only locations, while the available prior campaign predates this repair, lacks current-candidate identity/writable run evidence, and rejected its checkpoints. No current-candidate bounded pilot, required three-fold CV, or GPU qualification was claimed. Narrow independent G1B/implementation re-review and the remaining G13/closeout gates therefore remain open.
 
 ## 11. Stage E — bounded scientific pilot then full CV
 

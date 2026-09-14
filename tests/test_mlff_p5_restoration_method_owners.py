@@ -214,6 +214,34 @@ def test_historical_method_identity_payload_is_not_current():
         )
 
 
+def test_p5_plan_and_fitted_preparation_ancestry_is_one_way():
+    """The real D4 owners keep plan -> preparation -> materialization order."""
+
+    from dataclasses import fields
+
+    from mdstats.training_data.post_selection_cv_plan import PostSelectionCvPlan
+    from mdstats.training_data.post_selection_execution import PostSelectionMaterialization
+    from mdstats.training_data.post_selection_production import FinalProductionPlan
+
+    cv_plan_fields = {field.name for field in fields(PostSelectionCvPlan)}
+    final_plan_fields = {field.name for field in fields(FinalProductionPlan)}
+    preparation_fields = {field.name for field in fields(PostSelectionFittedPreparation)}
+    materialization_fields = {field.name for field in fields(PostSelectionMaterialization)}
+
+    # A fitted-preparation digest is downstream evidence, never a parent of
+    # either current role plan.  The preparation itself authenticates the
+    # exact plan/run that authorized its fit.
+    forbidden_plan_parents = {
+        "preparation_digest",
+        "fitted_preparation_digest",
+        "foundation_preparation_digest",
+    }
+    assert not forbidden_plan_parents & cv_plan_fields
+    assert not forbidden_plan_parents & final_plan_fields
+    assert "owner_plan_digest" in preparation_fields
+    assert "preparation_digest" in materialization_fields
+
+
 # ---------------------------------------------------------------------------
 # Composition-level E0 transfer (D2 section 8.4 oracles)
 # ---------------------------------------------------------------------------
