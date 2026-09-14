@@ -4,15 +4,15 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 ## Current active MLFF work
 
-There is currently **no active post-selection restoration repair workplan** on `fix/mlff-post-selection-method-restoration`.
+`MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_WORKPLAN.md` is the current active MLFF workplan on branch `fix/mlff-cv-competence-threshold-separation`, based on accepted `main` state `8553ebe9ed86b24dfe910c9e43acc6230d3ece90`.
 
-`MLFF_POST_SELECTION_UNIVERSAL_LOSS_MONITOR_AND_CV_METHOD_RESTORATION_WORKPLAN.md` was closed and archived on 2026-09-14 after independent Implementation/Integration Review R4 found no remaining D4 implementation/integration blocker and no Serious Challenge to D1/D2/D3. The lifecycle closeout record is `workplans/archive/MLFF_POST_SELECTION_UNIVERSAL_LOSS_MONITOR_AND_CV_METHOD_RESTORATION_CLOSEOUT_2026-09-14.md`; the historical workplan snapshot is archived beside it.
+Its final independent workplan review is **PASS after amendment**. The workplan remains `proposed`, with highest affected domain D1, because the material D1/D2 authority revision still requires its own independent falsification/review and stakeholder ratification before accepted-current promotion. It governs the proposed separation between foundation-CV competence (`45 meV/angstrom` target-force RMSE for the current cycle) and fresh-production checkpoint quality (`30 meV/angstrom`), while preserving scratch, replay, fixed-budget training, common-monitor separation and downstream qualification semantics.
 
-The stakeholder is now running the **full MLFF campaign**. That campaign qualification is **IN PROGRESS** and is intentionally not represented as a synthetic G13 PASS. Its outputs are the next operational/scientific evidence source. Any newly observed failure or contradiction should be independently diagnosed and, when repair is required, opened as a new bounded workplan at the earliest owning D1/D2/D3/D4 layer rather than reopening the archived restoration plan by default.
+The preceding post-selection restoration workplan is closed and archived. This new cycle does not reopen that archived implementation by default; it addresses a newly identified authority/identity coupling in the accepted restored baseline.
 
-If correctly restored TRUE_DFT replay still shows material forgetting comparable to the prior failure regime, route a Serious Challenge to D1/D2 rather than adding compensating D4 machinery.
+`MLFF_POST_SELECTION_UNIVERSAL_LOSS_MONITOR_AND_CV_METHOD_RESTORATION_WORKPLAN.md` was closed and archived on 2026-09-14 after independent Implementation/Integration Review R4 found no remaining D4 implementation/integration blocker and no Serious Challenge to its accepted D1/D2/D3 scope. Its lifecycle closeout record is `workplans/archive/MLFF_POST_SELECTION_UNIVERSAL_LOSS_MONITOR_AND_CV_METHOD_RESTORATION_CLOSEOUT_2026-09-14.md`.
 
-Production-scale GPU/CuEq/LAMMPS/MLIAP release qualification remains governed by the existing final-release policy.
+Production-scale GPU/CuEq/LAMMPS/MLIAP release qualification remains governed by the standing final-release policy and is not an intermediate gate for the active threshold-separation cycle.
 
 There is no active target-order redesign. The withdrawn FPS/coverage Gate-A lineage remains archived and does not alter the accepted target-size method.
 
