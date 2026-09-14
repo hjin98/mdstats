@@ -1033,7 +1033,7 @@ No module layout, cache format, process topology, solver library, or accelerator
 
 The accepted baseline was reconstructed against repository commit `9fd82b0ed40990d56716a393aa3f7db0a2ff44d0` and accepted on 2026-09-13. The target-order reconciliation represented here is a later proposed Gate-A amendment and requires its own independent D1/D2 review and human ratification.
 
-1. I. Batatia, D. P. Kovacs, G. N. C. Simm, C. Ortner, and R. Gomez-Bombarelli, “MACE: Higher Order Equivariant Message Passing Neural Networks for Fast and Accurate Force Fields,” *Advances in Neural Information Processing Systems* **35**, 11423–11436 (2022), arXiv:2206.07697.
+1. I. Batatia, D. P. Kovacs, G. N. C. Simm, C. Ortner, and G. Csanyi, “MACE: Higher Order Equivariant Message Passing Neural Networks for Fast and Accurate Force Fields,” *Advances in Neural Information Processing Systems* **35**, 11423–11436 (2022), arXiv:2206.07697.
 2. H. Flyvbjerg and H. G. Petersen, “Error Estimates on Averages of Correlated Data,” *Journal of Chemical Physics* **91**, 461–466 (1989). DOI: 10.1063/1.457480.
 3. C. J. Geyer, “Practical Markov Chain Monte Carlo,” *Statistical Science* **7**, 473–483 (1992). DOI: 10.1214/ss/1177011137.
 4. J. Racine, “Consistent Cross-Validatory Model-Selection for Dependent Data: hv-Block Cross-Validation,” *Journal of Econometrics* **99**, 39–61 (2000). DOI: 10.1016/S0304-4076(00)00030-0.
