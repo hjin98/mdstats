@@ -1,122 +1,330 @@
 # MLFF_POST_SELECTION_UNIVERSAL_LOSS_MONITOR_AND_CV_METHOD_RESTORATION — restore post-selection fine-tuning semantics
 
-**Status:** active — serious upstream D2 challenge; implementation not yet authorized as current behavior  
+**Status:** active — Serious Challenge to accepted D1/D2 P5 semantics; implementation is not current behavior until the upstream authority change is independently reviewed and accepted  
 **Current authority:** `docs/methods/mlff_scientific_method.md`, `docs/methods/mlff_numerical_algorithmic_method.md`, current MLFF training-data architecture/specifications  
 **Target branch/base:** `fix/mlff-post-selection-method-restoration` from `1b6b6f83918d31c4b27a0e60d7bc047ef58b6067`  
 **Protocol:** SSDP 6.3  
+**Review state:** second independent workplan review incorporated; no implementation gate may bypass G0
 
-## 1. Objective
+## 1. Disposition and objective
 
-Restore the post-selection foundation-model fine-tuning/replay method to the historically demonstrated MACE `UniversalLoss` behavior, restore the campaign-common protected 256-frame target checkpoint monitor, retire the current target/replay training-head scalar-weight mechanism, and restore the post-selection CV default to three folds while preserving TRUE_DFT replay, existing target/replay acceptance thresholds, target-size evidence, and the current frozen target memberships.
+Current P5 authority is challenged at D1 before D2. Accepted D1 currently states both that the executable training method uses weighted energy+forces+stress loss and that each post-selection fold obtains its checkpoint monitor from training-eligible evidence. Accepted D2 concretizes the same choices. The restoration selected for this cycle instead requires native MACE `UniversalLoss` and one campaign-common protected target checkpoint monitor outside `T_selected`. This is therefore an upstream method revision, not a local loss-string or CV-plan repair.
 
-This is not a local D4 loss-string repair. The accepted D2 paper currently requires weighted energy+forces+stress loss for the MACE method, treats forced `UniversalLoss` as a dependency behavior that must be suppressed, and states that each post-selection fold derives its checkpoint-monitor role from training-eligible evidence. Current implementation/specification follows that authority. Historical and current failure evidence now materially challenge those D2 statements for P5 foundation fine-tuning/replay. Therefore D2 must be reconciled first; D3/D4 may not silently contradict accepted D2.
+The proposed end state for P5 foundation-model adaptation is:
 
-This workplan is temporary transition coordination and does not itself change current product authority.
+```text
+loss family                     native MACE UniversalLoss
+huber_delta                     0.01, explicitly bound
+global E:F:S coefficients       1:10:1
+general config_weight in P5     not a scientific weighting layer; neutral transport only
+target:replay training scalar   none
+replay-label default            TRUE_DFT
+implicit target duplication     forbidden
+checkpoint target monitor       one protected campaign-common 256-frame monitor
+CV fold default                 3
+held-out CV evidence            unavailable to fitting/checkpoint choice
+replay degradation criterion    unchanged
+production-scale GPU qualification deferred to final release
+```
 
-## 2. Triggering evidence and problem
+The repair is deliberately reductive. Remove wrong/retired semantics, reconnect to current owners, and reuse qualified native MACE behavior. Do not create a custom loss, second sampler, shadow trainer, parallel identity registry, or compensating wrapper where owner rewiring/removal suffices.
 
-Current P5 cross-validation with TRUE_DFT replay showed catastrophic replay forgetting: all observed candidate checkpoints were rejected, target-force error could improve while replay error degraded by hundreds of meV/A, and the current fold-local checkpoint monitors could be extremely small because one split-exclusion component per fold was reserved as the monitor.
+A successful assembled restoration demonstrates that the restored method works. Because loss, monitor topology, retired head scaling, and default CV geometry change together, it does not by itself prove that any one of those changes caused the historical/current replay-retention difference.
 
-Historical reconstruction established that the prior successful foundation fine-tuning path used native MACE `UniversalLoss`; the pinned MACE 0.3.16 multi-head path naturally chooses `UniversalLoss`; the current adapter deliberately rewrites that choice to `stress`; an older campaign-common deterministic 256-frame target monitor already exists over protected `OUTER_MONITOR`; and target/replay scalar weights survived through several schema/configuration layers even though `UniversalLoss` does not realize those scalars as the intended independent target-versus-replay loss weighting.
+## 2. Triggering evidence
 
-The repair is deliberately reductive: remove the incorrect loss override, retire the unsupported head-scalar machinery, and reconnect P5 to the existing protected monitor owner rather than adding another loss, sampler, compatibility wrapper, or scheduler.
+Current TRUE_DFT post-selection CV produced no admissible checkpoint in the observed campaign: target error could improve while replay degradation rose by hundreds of meV/A. The current P5 monitor can also become extremely small because one split-exclusion component is reserved per fold.
 
-## 3. Governing invariants
+Historical/current-source reconstruction established that:
 
-### 3.1 Scientific/statistical invariants
+- prior successful foundation multi-head fine-tuning executed native MACE `UniversalLoss`;
+- pinned `mace-torch==0.3.16` natively forces `UniversalLoss` for multi-head fine-tuning;
+- current mdstats deliberately rewrites that native choice to `stress`;
+- an older fixed 256-frame target-monitor design used deterministic condition/run/time-balanced model-control evidence shared by competing runs;
+- current P5 contains live target/replay scalar-weight fields even though UniversalLoss does not consume `config_weight` as an independent scalar;
+- current MLCV later introduced a separate fold/final target-monitor subsystem rather than the old common monitor.
 
-- Held-out CV evaluation remains unavailable to fitting, checkpoint choice, stopping, or target-size choice.
-- Target-size screening remains upstream and target-only; P5 replay changes cannot mutate P2/P3 target-size memberships/evidence.
-- TRUE_DFT replay remains the canonical default; pseudo-label replay remains explicit opt-in.
-- The existing target-force acceptance ceiling and replay-retention ceiling are not relaxed to make the repaired method pass.
-- Replay geometry/split identity is independent of whether training labels are TRUE_DFT or foundation pseudo-labels.
-- Checkpoint monitoring is model-control/development evidence, not held-out CV evidence and not target-size authority.
+These observations motivate the challenge but do not self-authorize the replacement method. G0 owns the upstream adjudication.
 
-### 3.2 Numerical invariants
+## 3. Governing scientific/statistical invariants
 
-For P5 foundation-model adaptation, the proposed restored loss identity is:
+### 3.1 Evidence roles
+
+- Target-size P2/P3 evidence remains upstream, target-only, and immutable under replay-only/P5 changes.
+- `T_N` and `T_selected` remain exact authenticated target memberships.
+- Checkpoint-monitor evidence is development/model-control evidence. It may select/stabilize a checkpoint but is not held-out CV evaluation and is not target-size authority.
+- Held-out CV evidence cannot affect fitting, fitted preprocessing/E0, checkpoint choice, stopping, target size, or monitor construction.
+- Final production begins a fresh lineage and must execute the same shared P5 training/checkpoint method that CV validated.
+- The common target monitor is reused across every selected size, CV fold, CV seed, and final-production seed/run. A fold-specific or final-specific target checkpoint domain would define a different method.
+- Sharing one monitor across folds creates correlated model-control decisions. D1 must state this limitation explicitly; held-out outer evaluations remain the independent fold evidence used for CV acceptance.
+
+### 3.2 Replay invariants
+
+- TRUE_DFT replay remains the canonical default when canonical true labels are available.
+- Foundation pseudo-label replay remains explicit opt-in and never replaces the mandatory true-reference replay-monitor lineage.
+- Switching TRUE_DFT versus pseudo-label training labels over the same source/split must not change replay geometry membership.
+- Replay retention remains an admissibility constraint, not positive target-size ranking credit.
+- Existing target-force and replay-degradation gates are not weakened to manufacture a pass.
+
+### 3.3 Weight taxonomy
+
+Four distinct concepts must not be conflated:
+
+1. global energy/force/stress coefficients of the P5 loss;
+2. general `ConfigurationWeightPolicy` / `config_weight` used by separately accepted methods;
+3. target-versus-replay training-head scalar weights, which this restoration retires;
+4. checkpoint/adaptive-stop target/replay score weights, which remain separately owned by the stopping/ranking policy.
+
+Retiring item 3 does not delete item 4 and does not globally delete item 2.
+
+For restored UniversalLoss P5, item 2 is also **not an active P5 loss weighting layer**, because pinned MACE UniversalLoss does not consume `ref.weight`. P5 therefore must not fit or identity-bind a `ConfigurationWeightPolicy` that has no executable effect. If the upstream owner decides that nontrivial per-configuration scientific weighting is mandatory for P5, UniversalLoss as proposed here is not an admissible concretization and G0 must remain NO-PASS rather than emulate the weights with a custom loss, property-mask abuse, residual scaling, or sample duplication.
+
+## 4. Proposed D2 numerical method for P5
+
+G0 must make the loss reconstructible mathematically rather than naming only the dependency class.
+
+For pinned MACE 0.3.16 `UniversalLoss` with `delta = 0.01`:
+
+- energy uses Huber loss on per-atom energy residuals;
+- stress uses Huber loss on Cartesian stress residuals;
+- forces use MACE `conditional_huber_forces`;
+- the force Huber delta is multiplied by `[1.0, 0.7, 0.4, 0.1]` according to reference-force norm regimes `<100`, `[100,200)`, `[200,300)`, and `>=300`;
+- global energy/forces/stress coefficients multiply the three reduced loss terms outside those nonlinear property reductions;
+- local `config_energy_weight`, `config_forces_weight`, and `config_stress_weight` participate inside the nonlinear residual transform and for current P5 are binary availability masks only;
+- `config_weight` / `ref.weight` is not consumed by UniversalLoss and therefore cannot carry current P5 scientific weighting authority;
+- distributed/reduction behavior must remain equivalent to the accepted native reduction semantics or reopen D2.
+
+The current P5 values are explicitly:
 
 ```text
 loss_family   = universal
-loss_class    = native MACE UniversalLoss
 huber_delta   = 0.01
 energy_weight = 1.0
 forces_weight = 10.0
 stress_weight = 1.0
 ```
 
-`huber_delta=0.01` is bound explicitly rather than inherited as an invisible dependency default.
+A future MACE version may replace the pinned implementation only if it proves these accepted numerical semantics, or after a new D2 revision. Source markers and Python class names are D3/D4 conformance evidence, not timeless D2 axioms.
 
-Do not conflate three distinct weight concepts:
+### 4.1 P5 sample exposure
 
-1. global E/F/S objective coefficients;
-2. general scientific `ConfigurationWeightPolicy` / per-configuration weighting where separately accepted and consumed by its owner;
-3. target/replay training-head scalar weights.
-
-This workplan retires only item 3 from current P5 UniversalLoss semantics. It does not automatically delete general configuration weighting, checkpoint-ranking weights, replay-retention thresholds, or other separately owned quantities that happen to contain the word `weight`.
-
-### 3.3 Membership/exposure invariants
-
-Under restored P5 UniversalLoss there is no independent mdstats target-versus-replay scalar. Relative aggregate exposure arises from authenticated target and replay memberships and native combined-loader semantics.
-
-Intentional target duplication remains forbidden. `real_pt_data_ratio_threshold=0.0` remains required for the replay-enabled pinned-MACE path. Effective target membership/count must equal authenticated target exposure.
-
-### 3.4 Monitor invariants
-
-Target-size ladder populations originate only from the accepted DEVELOPMENT target-size universe. The restored checkpoint monitor originates only from protected `OUTER_MONITOR` through the existing common deterministic target-monitor owner.
-
-For the common target monitor `M_mon` and every configured target-size prefix `T_N`:
+The restoration uses native pinned-MACE combined-loader semantics unless G0 explicitly changes them:
 
 ```text
-M_mon intersection T_N = empty
+target dataset + replay dataset -> ConcatDataset
+shuffle                         -> enabled under the accepted seed
+target/replay head balancing    -> none
+intentional duplication         -> none
+ratio-driven target duplication -> disabled by real_pt_data_ratio_threshold=0.0
+non-LBFGS combined drop_last    -> native true
 ```
 
-For every post-selection fold `k`, with gradient-training membership `G_k` and held-out evaluation `E_k`:
+Therefore authenticated corpus membership and realized per-epoch exposure are not identical claims: with `drop_last=true`, at most one final partial combined batch is omitted after shuffle. Runtime evidence must record combined count, head counts, seed/sampler/shuffle policy, batch size, `drop_last`, and batches per epoch. Do not falsely claim every P5 frame is exposed exactly once per epoch.
+
+This P5 exposure rule is separate from P3 target-size screening, whose optimizer-normalization method requires complete target batches and `drop_last=false`.
+
+## 5. Proposed checkpoint-monitor topology
+
+### 5.1 One current target monitor
+
+The current P5 target checkpoint domain shall be one campaign-common monitor `M_mon` selected once from the current neutral statistical substrate's protected `OuterRole.OUTER_MONITOR` population.
 
 ```text
-G_k intersection E_k     = empty
-M_mon intersection G_k   = empty
-M_mon intersection E_k   = empty
+NeutralStatisticalBase
+  +-- DEVELOPMENT -> target-size U_size -> pi_train -> T_N / T_selected
+  +-- OUTER_MONITOR -> deterministic common target checkpoint monitor M_mon
 ```
 
-The value 256 appearing as both a possible target-size rung and monitor cardinality is numerical coincidence; no monitor membership may be derived as a rung, prefix, complement, or folded-off part of the target-size ladder.
+Requested and normally realized cardinality is 256. The numeric coincidence between a 256 target-size rung and a 256 monitor budget has no semantic meaning.
 
-### 3.5 Identity/currentness invariants
+For every configured target prefix and every P5 fold:
 
-Recorded P5 method identity, generated MACE configuration, materialized memberships, native dependency realization, TRAIN2 runtime evidence, and EVAL2 reconstruction must describe one method.
+```text
+M_mon ∩ T_N = empty
+M_mon ∩ G_k = empty
+M_mon ∩ E_k = empty
+```
 
-A trajectory-changing change to loss family, Huber delta, E/F/S coefficients, foundation/head identity, replay label/exposure lineage, optimizer/LR/EMA semantics, precision/backend, or checkpoint policy invalidates materially dependent P5 evidence.
+Exact frame disjointness is necessary but not sufficient. Consume the canonical P1 split-exclusion relation authority and prove that no selected monitor frame is in a split-exclusion component that also contains any frame of `T_selected` (and, for configured-ladder qualification, any frame of every configured `T_N`). This check must use the existing relation owner for correlation units, duplicate geometry, protected events, replica lineage, and structural-realization lineage; P5 must not invent a second relation taxonomy.
 
-CV-policy identity separately binds fold count, partition seed, monitor identity/policy, CV horizon, required optimizer seeds, and acceptance policy.
+If the current neutral outer partition permits a monitor/training split that violates this relation-level invariant, reopen the P1 partition/statistical-design owner instead of weakening the relation or silently falling back to DEVELOPMENT.
 
-Old weighted-stress P5 CV evidence cannot authorize final production under restored UniversalLoss.
+### 5.2 Preserve sampler semantics, not legacy DATA5 authority
 
-## 4. Scope
+The historical `OnlineMonitorPolicy` sampling rule is useful evidence: balanced condition/run quotas plus deterministic systematic temporal spreading with seed 161803. But the existing `build_target_online_monitor(data5_bundle, ..., label_domain_id, ...)` interface is tied to retired DATA5/label-domain authority and is not a valid current parent interface.
 
-### Included
+Implementation shall refactor/reconnect that existing sampler logic so its current parent is the accepted neutral outer partition/frame authority. Do not reactivate `label_domain_id`, pre-target-size DATA5 CV, or retired DATA5 role-budget authority. Do not create a second target sampler.
 
-- current D1/D2 clauses governing post-selection checkpoint evidence, loss/exposure, and dependency realization;
-- P5 CV and final-production method identity/currentness;
-- MACE compatibility/critical-precision execution seam;
-- replay preparation/materialization where target/replay scalar weighting is represented;
-- DATA8/MACE ExtXYZ/cache identities affected only by retired head scaling;
-- common protected online target monitor integration;
-- P5 fold planning after removal of fold-local checkpoint-monitor allocation;
-- CV default fold count;
-- configuration, specifications, architecture, user-facing current documentation, tests, qualification, and semantic-history consequences of the accepted change.
+The current target-monitor record generation must bind the current neutral parent/outer-partition identity. Historical DATA5 monitor records remain readable historical evidence and cannot authorize current P5.
+
+### 5.3 Current MLCV monitor machinery
+
+`mlcv_monitors.py` currently owns a different per-run target-full/target-light construction. Reconcile it rather than running two target-monitor systems:
+
+- retire fold/final-specific target checkpoint-parent construction;
+- preserve TRUE_DFT replay full/light monitoring;
+- preserve selection-inert training-diagnostic monitoring;
+- make every run reference the same common target full membership;
+- any lightweight target monitor used for stopping must be a deterministic subset of the common target monitor, never a new fold/final parent. With the current 256 light budget and a 256 common target monitor, it may equal the full common membership;
+- remove duplicated target-side quota/systematic sampling code once responsibility has returned to the one current common sampler, unless a still-distinct training-diagnostic use justifies a shared primitive.
+
+## 6. CV and final-production topology
+
+### 6.1 Current fold generation
+
+Current `PostSelectionCvFold` structurally requires a selected-only checkpoint monitor and treats training + monitor + outer evaluation + purge as a partition of `T_selected`. That schema must advance.
+
+The current-generation fold shall account only for:
+
+```text
+T_selected -> gradient training + held-out outer evaluation + accepted purge/exclusion
+```
+
+The common target monitor is external to `T_selected` and is referenced by the CV plan/run lineage rather than owned by each fold.
+
+Historical fold-local schemas may remain readable for provenance, but they cannot authorize restored current runs. No compatibility migration may reinterpret an old selected-only checkpoint membership as the new common monitor.
+
+### 6.2 Default folds
+
+Change the one authoritative current P5 default from 5 to 3. Preserve:
+
+- `K >= 2`;
+- explicit configured override;
+- all-required-fold/all-required-seed acceptance;
+- current optimizer-seed policy unless separately revised.
+
+Do not resurrect retired `role_budget.py` / DATA5 `cross_validation_folds` or `checkpoint_monitor_minimum_units_per_fold` as current P5 authority merely because those historical defaults contain the number three.
+
+### 6.3 Final production
+
+Fresh final production must consume the same shared P5 loss, replay-exposure semantics, common target monitor/checkpoint policy, and replay-retention method validated by CV. Only production horizon/seeds/publication policy remain role-specific.
+
+## 7. Identity and currentness requirements
+
+The implementation must preserve the DAG:
+
+```text
+accepted D1/D2 P5 method
+ -> shared P5 method identity
+ -> CV/final role policy
+ -> current selected/replay/common-monitor lineage
+ -> run plan
+ -> DATA8 materialization
+ -> TRAIN2 runtime/checkpoint evidence
+ -> EVAL2 / checkpoint-selection evidence
+```
+
+### 7.1 Shared method identity
+
+Bind at least:
+
+- method recipe generation;
+- training mode;
+- foundation/head identity;
+- UniversalLoss numerical identity including delta and global coefficients;
+- local-property-mask policy;
+- P5 sample-exposure semantics;
+- replay label/source/split policy;
+- optimizer/LR/EMA/precision/backend semantics;
+- shared checkpoint/admissibility policy including the common-monitor construction policy.
+
+Do **not** bind exact realized monitor membership into a pre-work method identity. Exact monitor parent/membership/digest belongs to plan/evidence lineage.
+
+Do not reuse the whole `TargetSizeCommonTrainingPolicy.content_digest` as P5 shared method identity after P3/P5 semantics diverge. Reuse its real component owners where applicable (for example objective coefficients or accepted atomic-reference policy) and project only components actually consumed by P5. Do not create a second general registry.
+
+### 7.2 P5 fitted preparation
+
+Current P5 preparation fits `ConfigurationWeightPolicy` and records a fitted-weight digest. Reconcile it so restored P5 does not fit or currentness-bind a non-executable configuration-weight method. If ExtXYZ transport requires `config_weight`, emit/validate a neutral value (`1.0`) without giving it scientific identity.
+
+Binary local property masks remain material and must still be authenticated.
+
+### 7.3 CV policy/plan
+
+CV policy binds fold count, partition seed, construction algorithm, purge semantics, CV horizon, required seeds, acceptance rule, and any CV-only policy. It no longer contains `checkpoint_monitor_components_per_fold`.
+
+Advance current CV policy/fold/plan schema or generation so historical fold-local plans cannot be accepted as current common-monitor plans.
+
+### 7.4 Runtime cutover
+
+Advance the existing P5 method/currentness/run identity as needed. Old weighted-stress/fold-local-monitor artifacts are stale not only as final verdicts but as executable continuation:
+
+- old TRAIN2 checkpoints/workspaces cannot resume as restored UniversalLoss runs;
+- old DATA8 P5 materializations cannot be reused as current;
+- old MLCV target-monitor catalogs cannot authorize current runs;
+- old CV verdicts cannot authorize restored final production.
+
+Unaffected P1/P2/P3 evidence, frozen target memberships, and other independent prepared evidence remain reusable.
+
+## 8. Scope and non-goals
+
+### Included current surfaces
+
+At minimum census/reconcile:
+
+```text
+docs/methods/mlff_scientific_method.md
+docs/methods/mlff_numerical_algorithmic_method.md
+docs/arch_manuals/mlff_training_data/**
+docs/specs/training_data/mlff_data_stage_plan_spec.md
+docs/specs/training_data/mlff_data8_mace_artifacts_spec.md
+docs/specs/training_data/mlff_data9a2_real_mace_realization_spec.md
+docs/specs/training_data/mlff_data9b3_campaign_cli_spec.md
+docs/specs/training_data/mlff_adaptive_training_stop_spec.md
+docs/guides/mlff_campaign_cli_user_guide.md
+README.md
+campaign.toml.example
+mdstats/__init__.py
+mdstats/training_data/mace_compatibility.py
+mdstats/training_data/critical_precision_cli.py
+mdstats/training_data/post_selection_identity.py
+mdstats/training_data/post_selection_cv_plan.py
+mdstats/training_data/post_selection_execution.py
+mdstats/training_data/post_selection_publication.py
+mdstats/training_data/campaign_post_selection_runtime.py
+mdstats/training_data/_campaign_cli_core.py
+mdstats/training_data/replay.py
+mdstats/training_data/data8_bundle.py
+mdstats/training_data/online_monitor.py
+mdstats/training_data/mlcv_monitors.py
+mdstats/training_data/adaptive_stop.py
+mdstats/training_data/neutral_substrate/partition.py
+mdstats/training_data/neutral_substrate/split_exclusion.py
+mdstats/training_data/role_budget.py
+current affected tests / generated config / qualification owners
+```
+
+Reference-census at least:
+
+```text
+UniversalLoss
+WeightedEnergyForcesStressLoss
+MACE_EXECUTABLE_LOSS_FAMILY
+huber_delta
+config_weight / ConfigurationWeightPolicy
+config_energy_weight / config_forces_weight / config_stress_weight
+target_head_weight / replay_head_weight / target_weight / head_weight
+target_score_weight / replay_score_weight
+checkpoint_monitor_components_per_fold
+OnlineMonitorPolicy / build_target_online_monitor
+MlcvMonitorPolicy / MlcvRunMonitorRecord
+online_monitor_policy_digest / target_online_monitor_record_digest
+fold_count / cross_validation_folds
+checkpoint_monitor_minimum_units_per_fold
+DATA5 / label_domain_id uses on current P5 paths
+```
 
 ### Explicitly excluded unless reopened by evidence
 
-- changing target-size P2/P3 candidate membership/order/reducer;
-- automatically changing the P3 target-size screening loss family;
-- changing TRUE_DFT replay to pseudo labels;
-- changing replay train:monitor geometry split;
-- relaxing target/replay acceptance thresholds;
-- restoring historical optimizer-seed multiplicity merely for historical resemblance;
-- adding a custom loss, custom sampler, alternate trainer, shadow method registry, or parallel monitor implementation;
-- production-scale GPU qualification before the established final-release qualification phase.
+- target-size P2/P3 membership/order/reducer changes;
+- changing P3 loss family merely to match P5;
+- changing replay geometry split;
+- changing TRUE_DFT default to pseudo labels;
+- relaxing target/replay acceptance gates;
+- restoring historical optimizer-seed multiplicity solely for resemblance;
+- replacing native MACE with a custom trainer/loss/sampler;
+- production-scale GPU qualification before final release.
 
-## 5. Historical Applicability Set
+## 9. Historical Applicability Set
 
 PEM is materially applicable because this cycle restores/replaces mature training machinery.
 
@@ -128,429 +336,317 @@ pem_basis:
 has:
   - id: FF-001
     disposition: APPLICABLE
-    reason: P5 MACE method identity and actual dependency realization can drift when model-affecting semantics are reconstructed/overridden in multiple owners.
+    reason: Actual MACE realization can drift from recorded method identity when model-affecting semantics are duplicated or overridden.
+  - id: FF-002
+    disposition: APPLICABLE
+    reason: The method-generation cutover must prevent old stress/fold-local TRAIN2 continuation state from becoming current UniversalLoss authority.
   - id: SP-001
     disposition: APPLICABLE
-    reason: This repair should remove duplicated/incorrect loss, monitor, and head-weight machinery and return responsibility to native/current owners rather than add synchronization wrappers.
+    reason: Remove duplicated/incorrect loss and target-monitor machinery and return responsibility to real owners.
   - id: SP-002
     disposition: APPLICABLE
-    reason: Retired head-weight fields and stale CV evidence must fail closed at current identity/configuration boundaries.
+    reason: Retired fields, historical schemas, and stale run evidence must fail closed at current identity boundaries.
   - id: SP-003
     disposition: APPLICABLE
-    reason: Unaffected prepared memberships and authenticated completed evidence should be preserved rather than recomputed merely because downstream P5 semantics change.
+    reason: Preserve independent immutable P1/P2/P3/selected evidence rather than recomputing it.
   - id: SP-004
     disposition: APPLICABLE
-    reason: Real pinned-MACE parser/loss/loader/TRAIN2/EVAL2 qualification is required; helper/mock-only proof cannot close this repair.
+    reason: Real pinned-MACE and real current monitor/currentness paths are required; helper/mock-only proof is insufficient.
 ```
 
-The PEM is partial and reconciled only through its declared historical horizon. Absence of another lesson is not evidence of non-applicability. Refresh this HAS if the accepted PEM basis materially advances before implementation closeout.
+The accepted PEM is partial. Refresh the HAS if accepted memory or governing authority materially advances before closeout.
 
-## 6. Capability-transfer map
+## 10. Capability-transfer map
 
 ```text
-current forced universal->stress source rewrite
-  -> retain source qualification and runtime authentication
-  -> remove only the loss-family mutation for restored P5
+forced UniversalLoss -> stress rewrite
+  -> remove only the P5 loss mutation
+  -> retain pinned-source qualification and unrelated execution repairs
 
-current fold-local one-component P5 monitor
-  -> retire monitor extraction from T_selected
-  -> reuse existing OnlineMonitorPolicy/build_target_online_monitor over OUTER_MONITOR
+P5 configuration-weight fitting
+  -> retain general owner for methods that use it
+  -> project it out of restored UniversalLoss P5
+  -> neutral config_weight only if transport requires it
 
-current target/replay head-scalar configuration and weighted replay materialization
-  -> retire from current P5 UniversalLoss semantics
-  -> retain historical schema read support only where compatibility requires it
+fold-local selected-only checkpoint monitor
+  -> retire from current P5 fold policy/schema
+  -> common external protected target monitor
 
-current authenticated membership/currentness machinery
-  -> preserve and extend only as needed for restored method identity
+legacy DATA5 common-monitor parent interface
+  -> preserve deterministic balanced sampler semantics
+  -> current neutral OuterRole.OUTER_MONITOR parent and lineage
+
+current MLCV fold/final target sampler
+  -> retire competing target checkpoint-parent construction
+  -> preserve replay monitor and training diagnostic capabilities
+
+head-scalar replay materialization
+  -> retire from current configuration/plan/cache/evidence
+  -> historical read compatibility only as required
+
+current authenticated run/currentness/restart machinery
+  -> preserve
+  -> advance generation so old stress/fold-local state cannot resume as current
 ```
 
-## 7. Gates
+## 11. Gates
 
-### G0 — D1/D2 challenge adjudication and method reconciliation
+### G0 — Mandatory D1 then D2 adjudication
 
-**Goal:** repair the earliest affected authority before implementation.
+**Goal:** repair the earliest affected authority before D3/D4 implementation.
 
 **Work:**
 
-- Re-review D1 checkpoint-development versus held-out-evaluation roles. Amend D1 only if current wording cannot represent one campaign-common protected target monitor without changing the scientific estimand.
-- Amend D2 Sections 8-9, 14-18, verification oracles, and reproducibility language as required.
-- Split target-size-screen objective authority from P5 foundation-adaptation objective authority. Do not leave the current claim that one executable loss family necessarily governs every MLFF training role.
-- For P5 foundation fine-tuning/replay, accept native UniversalLoss with explicit `huber_delta=0.01` and global E:F:S `1:10:1`.
-- State explicitly that P5 UniversalLoss has no independent target/replay scalar head weight.
-- Replace the fold-local checkpoint-monitor construction rule with the campaign-common protected `OUTER_MONITOR` rule.
-- Preserve TRUE_DFT as canonical replay-label default, no-hidden-target-duplication semantics, fresh CV/final lineages, held-out evaluation exclusion, and existing acceptance gates.
+1. Amend D1 P5 training/objective language so the accepted foundation-adaptation method is compatible with UniversalLoss, not a universal weighted-stress requirement.
+2. Amend D1 P5 weighting semantics: general nontrivial per-configuration weighting is not an active UniversalLoss P5 layer. Preserve it only for separately owned methods. Keep local property weights as binary availability masks.
+3. Amend D1 fold semantics so checkpoint selection may use one protected campaign-common monitor outside `T_selected`; state that this monitor is shared across folds/runs and therefore model-control decisions are correlated.
+4. Preserve held-out evaluation exclusion and all other unaffected scientific-role semantics.
+5. Amend D2 to define the exact UniversalLoss numerical functional and pinned-MACE exposure semantics described in Sections 4 and 4.1.
+6. Keep P3 target-size objective/exposure separately owned.
+7. Confirm existing score-weight/replay-degradation semantics remain separate from retired training-head weighting.
+8. Independently falsify the D1/D2 amendment and obtain required human acceptance before dependent current-authority promotion.
 
 **Acceptance:**
 
-- Current D1 and D2 are internally coherent and jointly realizable.
-- D2 no longer simultaneously requires weighted-stress P5 while the workplan asks D4 to execute UniversalLoss.
-- D2 clearly distinguishes P3 target-size screening from P5 foundation adaptation.
-- No accepted authority still requires a fold-local monitor from `T_selected` for checkpoint choice.
-- Human acceptance required by the D1/D2 authority process is recorded before dependent D3/D4 promotion.
+- D1 no longer requires weighted-stress or fold-training-derived checkpoint monitoring for restored P5.
+- D1 and D2 are jointly coherent and realizable without hidden/inert weighting fields.
+- D2 is reconstructible without reverse-engineering MACE source.
+- P3 remains unchanged unless separately and explicitly reopened.
+- Any requirement for nontrivial P5 configuration weighting blocks UniversalLoss rather than spawning an emulation workaround.
 
-### G1 — Current-authority and affected-surface census
+### G1 — Complete authority/API/evidence census
 
-**Goal:** prevent hidden parallel owners and stale current documentation.
+Classify every affected reference as current authority, current implementation/API, current guide/config, compatibility reader, historical evidence, or unrelated concept. Include public `mdstats.__init__` exports and legacy DATA5/role-budget symbols so the change cannot silently reactivate retired authority or break a public API accidentally.
 
-**Work:**
+**Acceptance:** one current owner for every changed semantic; compatibility disposition is explicit; historical release/workplan text remains historical.
 
-Reference-census at least:
+### G2 — Restore native UniversalLoss realization
+
+- Remove only the P5 UniversalLoss->stress source mutation.
+- Keep source qualification, restart/CUDA/precision/runtime repairs, and P3 complete-batch patch where applicable.
+- Replay-enabled multi-head P5 allows native MACE to choose UniversalLoss and verifies the resolved class/parameters.
+- Accepted non-multihead foundation fine-tuning requests `loss="universal"` explicitly when native routing would not.
+- Bind `huber_delta=0.01`, E/F/S 1/10/1, and exact numerical semantics into identity/evidence.
+- If SWA or another phase can change loss coefficients/family, either prove it disabled or bind/qualify its trajectory-changing semantics too.
+
+**Acceptance:** real pinned parser + `get_loss_fn()` + training path execute the accepted P5 loss; no custom loss exists.
+
+### G3 — Remove inert P5 configuration weighting and retire head scalars
+
+- Stop fitting `ConfigurationWeightPolicy` in restored P5 preparation.
+- Remove it from P5 current method/currentness identity when it is not consumed.
+- Preserve general configuration-weight owners for P3/other methods.
+- Emit/validate neutral `config_weight=1.0` only if fixed-file transport requires the key.
+- Keep binary property masks and bind them.
+- Remove live `target_head_weight`, `replay_head_weight`, and equivalent `target_weight`/`head_weight` P5 semantics from current configuration, replay preparation, cache identity, materialization, and runtime evidence.
+- Current config specifying retired head-scalar fields fails closed with a removal/migration error.
+- Historical payloads may remain parseable but cannot authorize current P5.
+
+**Acceptance:** changing an inert configuration-weight/head-scalar value cannot alter or retire current P5 evidence because no such current method field exists; separately owned weighting remains intact.
+
+### G4 — Move the common target sampler onto current neutral authority
+
+- Reuse/refactor the existing balanced condition/run/time systematic target-sampling implementation.
+- Parent it from current `NeutralStatisticalBase` / `NeutralOuterPartition` `OuterRole.OUTER_MONITOR` plus canonical frame authority.
+- Remove current P5 dependence on `data5_bundle.outer_partition_for_domain(label_domain_id)` and legacy `parent_role=data5_outer_monitor` identity.
+- Advance target-monitor record/policy generation where needed so current records bind neutral parent lineage.
+- Preserve historical DATA5 records through explicit read compatibility only.
+- Review `mdstats.__init__` public exports; do not silently break or repurpose legacy API semantics.
+
+**Acceptance:** one current target sampler, no current label-domain/DATA5 monitor parent, deterministic 256 membership under the accepted neutral parent.
+
+### G5 — Collapse MLCV target-monitor topology onto the common monitor
+
+- Advance CV policy/fold/plan and MLCV target-monitor record/catalog generations.
+- Remove `checkpoint_monitor_components_per_fold` and selected-only checkpoint-monitor fields from current fold semantics.
+- Retire fold/final target-full parent construction in `mlcv_monitors.py`.
+- Preserve replay full/light monitoring and training diagnostics.
+- Each CV/final run references the same common target full monitor; target-light is a deterministic subset only.
+- Reconcile DATA8 `target_checkpoint_monitor` / `target_checkpoint_full` materialization so they no longer encode fold-local/final-specific target parents.
+
+**Acceptance:** no current P5 path can construct or authorize a fold-local/final-specific target checkpoint parent; historical monitor catalogs cannot be reinterpreted as current.
+
+### G6 — Qualify actual protected monitor parent and statistical separation
+
+Produce actual LTA evidence containing at least:
 
 ```text
-UniversalLoss
-WeightedEnergyForcesStressLoss
-MACE_EXECUTABLE_LOSS_FAMILY
-loss="stress"
-loss="universal"
-huber_delta
-target_head_weight
-replay_head_weight
-head_weight
-target_weight
-configuration_weight
-checkpoint_monitor_components_per_fold
-online_target_monitor_configurations
-OnlineMonitorPolicy
-build_target_online_monitor
-fold_count
+neutral statistical-base / outer-partition digests
+accepted NeutralLeakageReport disposition
+P1 split-exclusion evidence digest
+OUTER_MONITOR parent unit/frame counts
+independence grades / effective sample evidence already owned upstream
+condition and run IDs represented
+available -> selected counts per condition/run
+source-time span/systematic positions
+canonical label/property completeness for every selected monitor frame
+requested/realized count
+monitor membership digest
+exact frame overlap with every T_N and T_selected
+split-exclusion-component overlap with every T_N and T_selected
 ```
 
-Classify every result as current normative owner, current implementation, current guide/example, historical/release evidence, or unrelated weight concept.
+Do not invent a new generic minimum-run/minimum-unit constant merely to pass. Do not treat the existing neutral leakage report as sufficient for cross-role replica/duplicate/structural-lineage separation if it does not test those relations; consume the canonical P1 split-exclusion authority for that claim.
 
-Inspect at minimum:
+**Acceptance:** realized size 256 when parent support permits; no exact or protected-relation leakage into the configured target ladder; monitor labels are usable for the accepted checkpoint metrics; diversity is adequate under actual evidence. Failure reopens the upstream partition/statistical-design owner rather than falling back to DEVELOPMENT.
 
-```text
-docs/methods/mlff_scientific_method.md
-docs/methods/mlff_numerical_algorithmic_method.md
-docs/arch_manuals/mlff_training_data/**
-docs/specs/training_data/mlff_data_stage_plan_spec.md
-docs/specs/training_data/mlff_data8_mace_artifacts_spec.md
-docs/specs/training_data/mlff_data9a2_real_mace_realization_spec.md
-docs/specs/training_data/mlff_data9b3_campaign_cli_spec.md
-docs/guides/mlff_campaign_cli_user_guide.md
-README.md
-campaign.toml.example
-mdstats/training_data/mace_compatibility.py
-mdstats/training_data/critical_precision_cli.py
-mdstats/training_data/post_selection_identity.py
-mdstats/training_data/post_selection_cv_plan.py
-mdstats/training_data/post_selection_execution.py
-mdstats/training_data/campaign_post_selection_runtime.py
-mdstats/training_data/_campaign_cli_core.py
-mdstats/training_data/replay.py
-mdstats/training_data/data8_bundle.py
-mdstats/training_data/online_monitor.py
-mdstats/training_data/mlcv_monitors.py
-```
+### G7 — Restore the current CV default to three
 
-**Acceptance:**
+- Change one authoritative P5 default 5 -> 3.
+- Reconcile config/spec/guide/tests.
+- Preserve `K>=2`, explicit override, all-required-fold/seed semantics, and current seed population.
+- Prove no legacy DATA5 `cross_validation_folds=3` owner has been reactivated.
 
-- Every current owner of changed semantics is mapped.
-- Historical source patches/workplans remain historical and are not rewritten as current authority.
-- No current README/guide/spec continues to describe retired head-scalar or fold-local-monitor semantics after implementation.
-- Weight concepts not owned by this workplan are preserved with explicit reason.
+### G8 — Preserve adaptive-stop/checkpoint-score semantics
 
-### G2 — Loss realization restoration
+Explicitly preserve current `target_score_weight`, `replay_score_weight`, matched foundation replay baselines, signed replay degradation, and the default 30 meV/A replay-degradation budget unless separately changed by accepted authority. Retirement of training-head weights must not mutate these score/retention semantics.
 
-**Goal:** make P5 execute the accepted native UniversalLoss method without introducing a custom loss.
+### G9 — Method identity, runtime evidence, and restart/currentness cutover
 
-**Work:**
-
-- Remove the P5 path's source rewrite that changes native MACE multi-head `UniversalLoss` into `stress`.
-- Retain the source-shape/version qualification and unrelated qualified patches.
-- For replay-enabled multi-head fine-tuning, allow pinned MACE to select UniversalLoss natively and verify the result.
-- For any accepted non-multihead foundation fine-tuning role requiring UniversalLoss where MACE will not select it automatically, request `loss="universal"` explicitly.
-- Explicitly bind `huber_delta=0.01` through current method/config identity and runtime evidence.
-- Make runtime loss validation role/method aware rather than globally requiring `WeightedEnergyForcesStressLoss`.
-
-Preserve unrelated execution semantics, including target-size complete final batches, restart-epoch repair, TRAIN2 persistence/recovery, membership authentication, CUDA/process-lifetime repairs, `force_mh_ft_lr=True` where applicable, and `real_pt_data_ratio_threshold=0.0` for replay-enabled fine-tuning.
-
-**Acceptance:**
-
-- Real pinned MACE parser + native `get_loss_fn()` resolves UniversalLoss for accepted P5 foundation adaptation.
-- P3 remains on its separately accepted method unless G0 explicitly changes it.
-- No mdstats custom loss implementation exists.
-- Mutating `huber_delta` changes P5 method identity and runtime configuration together.
-
-### G3 — Retire target/replay training-head scalar weighting
-
-**Goal:** remove a current parameter family that has no accepted meaning under restored P5 UniversalLoss.
-
-**Work:**
-
-- Remove `target_head_weight` and `replay_head_weight` from current generated/default/example P5 configuration.
-- Remove current resolver ownership and current P5 method/evidence fields representing those scalars.
-- Remove target/replay ExtXYZ `config_weight` multiplication or weighted-cache recipes whose sole purpose is those scalars.
-- Reconcile `ReplayPreparationPlan` `head_weight`/`target_weight` fields: remove them from the current schema or isolate them strictly to historical read compatibility; do not leave live defaults such as 1/10 or 1/5 under a new name.
-- Reconcile DATA8 replay cache/content identities so retired scalar weights cannot alter current UniversalLoss P5 materialization or cache key.
-- Current configuration that explicitly supplies retired target/replay training-head scalar fields must fail closed with a migration/removal error rather than silently ignore them.
-
-Do not delete general `ConfigurationWeightPolicy`, checkpoint ranking/score weights, or replay-retention parameters merely because they contain `weight`.
-
-**Acceptance:**
-
-- Current P5 has no independent target/replay scalar parameter or runtime evidence field.
-- Counterfactual mutation of a general `ConfigurationWeightPolicy` field that UniversalLoss P5 does not consume cannot silently alter P5 executable identity/trajectory; either it is genuinely consumed and bound, or it is outside P5 identity.
-- No current replay materialization scales configurations solely to emulate retired head weighting.
-- Legacy serialized records remain readable only to the degree required by current compatibility policy and cannot authorize a current method.
-
-### G4 — Restore campaign-common protected 256-frame target monitor
-
-**Goal:** reconnect P5 checkpoint selection to the existing protected monitor owner and stop consuming selected training cardinality for monitoring.
-
-**Work:**
-
-- Retire `checkpoint_monitor_components_per_fold` from current P5 policy/identity/configuration.
-- Remove `_spaced_selection(...checkpoint_monitor_components_per_fold...)` or equivalent fold-local monitor allocation from the P5 CV plan.
-- Reuse the existing common target-monitor construction over `OuterRole.OUTER_MONITOR`; do not implement another sampler.
-- Preserve the established deterministic condition/run-balanced, time-systematic sampling semantics and seed unless G0 establishes a different accepted owner.
-- Bind requested size, realized membership digest, parent outer-partition identity, policy identity, and condition/run stratum census into appropriate CV/checkpoint evidence.
-- Fold construction over `T_selected` shall create only gradient-training, held-out evaluation, and accepted purge/exclusion state; the common target monitor is external to `T_selected`.
-
-**Acceptance:**
-
-- Requested target monitor size is 256.
-- Exact zero overlap is proven against every configured `T_N`, not only selected `T_N`.
-- Exact zero overlap is proven against every fold's gradient-training and held-out evaluation memberships.
-- Same accepted parent + policy + seed reconstructs identical monitor membership.
-- No one-component/tiny fold-local checkpoint monitor remains in current P5.
-
-### G5 — Monitor-parent adequacy qualification
-
-**Goal:** prove the existing sampler has an adequate parent in the actual LTA campaign instead of assuming cardinality implies diversity.
-
-**Work:**
-
-Produce an actual-data monitor census containing at least:
+Runtime evidence records at least:
 
 ```text
-OUTER_MONITOR parent frame count
-independent-unit composition available from existing evidence
-condition IDs represented
-run IDs represented
-available frames per condition/run
-selected frames per condition/run
-source-index/time span or equivalent temporal spread evidence
-requested monitor count
-realized monitor count
-monitor digest
-intersection with every target-size prefix and T_selected
-```
-
-Do not introduce a new arbitrary generic minimum-run/minimum-unit constant merely to pass this gate.
-
-**Acceptance:**
-
-- Realized target monitor count is exactly 256 when the protected parent has at least 256 eligible frames.
-- Existing condition/run/time systematic sampler materially represents the available protected parent.
-- Any inability of the protected parent to provide an adequate monitor reopens the upstream partition/statistical-design owner; P5 must not silently sample DEVELOPMENT or accept a tiny biased monitor.
-
-### G6 — Restore default post-selection CV fold count to three
-
-**Goal:** reduce default CV cost and restore the intended three-fold default without changing explicit-user overrides or conflating CV design with training-method identity.
-
-**Work:**
-
-- Change the one authoritative P5 default from 5 to 3.
-- Regenerate/reconcile example configuration, guides, specs, and tests from that owner.
-- Preserve `K >= 2` and explicit configured override support.
-- Preserve the current required optimizer-seed population unless separately changed by accepted authority.
-
-**Acceptance:**
-
-- Default current P5 CV resolves exactly three folds.
-- No second resolver/default silently restores five.
-- Changing only `fold_count` changes CV policy/plan identity and downstream CV currentness, not the shared P5 training-method recipe identity.
-
-### G7 — Runtime evidence and method/currentness cutover
-
-**Goal:** prove one method from configuration through dependency realization and prevent stale evidence reuse.
-
-**Work:**
-
-Extend/reconcile existing evidence owners to record at least:
-
-```text
-training role
-loss family/native class
-huber_delta
-energy/forces/stress coefficients
+training role / mode
 foundation/head identity
-replay label mode
-replay source/split identity
-target train count
-replay train count
-combined count
-membership digests
-batch size and material drop_last semantics
-batches per epoch where meaningful
-LR and EMA settings
-real_pt_data_ratio_threshold / duplication evidence
-common target monitor identity and realized count
-fold train/eval memberships
-method and CV policy digests
+loss family/class and exact UniversalLoss parameters
+binary property-mask policy
+E/F/S coefficients
+target and replay membership digests/counts
+combined dataset count and head counts
+shuffle/sampler seed and policy
+batch size / drop_last / batches per epoch
+LR / EMA / precision / backend
+real_pt_data_ratio_threshold and realized duplication factor
+common target-monitor parent/policy/membership digest
+replay monitor lineage
+fold train/eval/purge membership
+method / CV / run-plan digests
 ```
 
-No current target/replay training-head scalar evidence field shall remain.
+Advance existing recipe/run/evidence schemas as needed. Old stress/fold-local TRAIN2 checkpoints, DATA8 materializations, MLCV catalogs, and CV verdicts must fail currentness before execution/restart reuse. Preserve independent P1/P2/P3/T_selected evidence.
 
-Advance existing P5 method recipe/currentness schema/generation as needed; do not create another registry.
+### G10 — Counterfactual falsification matrix
 
-**Acceptance:**
+At minimum falsify:
 
-- Weighted-stress P5 CV/final evidence is stale for restored UniversalLoss method.
-- Prepared target-size evidence and exact `T_selected` remain reusable unless independently shown dependent on the changed P5 method.
-- A true method-field mutation changes identity and blocks stale descendants.
-- An inert/retired field cannot retire or authorize current P5 evidence.
+1. config/identity says UniversalLoss but runtime resolves stress;
+2. runtime class is UniversalLoss but delta/EFS/conditional-force semantics differ;
+3. D2 omits config-weight non-consumption or property-mask nonlinear placement;
+4. P5 still fits/binds nontrivial `ConfigurationWeightPolicy`;
+5. non-neutral `config_weight` changes P5 trajectory/identity;
+6. current config accepts retired target/replay head scalars;
+7. replay cache/materialization still applies head-scalar weighting;
+8. target monitor still consumes legacy DATA5/label-domain authority;
+9. current MLCV still builds fold/final target checkpoint parents;
+10. common monitor is copied into each fold as selected membership rather than external lineage;
+11. monitor overlaps or is split-exclusion-related to any configured `T_N`;
+12. monitor parent cannot realize adequate 256 evidence but execution silently continues;
+13. monitor contains unusable/incompatible labels for checkpoint metrics;
+14. score/replay-retention weights are accidentally deleted with training-head weights;
+15. default K falls back to five through another resolver;
+16. legacy DATA5 K=3/role-budget semantics become current accidentally;
+17. TRUE_DFT versus pseudo labels change replay geometry split;
+18. MACE target duplication occurs;
+19. P5 combined-loader sampler/drop_last differs from accepted exposure identity;
+20. P3 complete-batch semantics are accidentally changed by the P5 restoration;
+21. LR/EMA/precision/backend are overwritten without identity/evidence change;
+22. old stress/fold-local checkpoint resumes as current UniversalLoss run;
+23. stale weighted-stress CV authorizes restored final production;
+24. exact common monitor differs across CV folds/seeds/selected sizes/final runs;
+25. an execution-only field incorrectly invalidates scientific method identity;
+26. a true method field fails to invalidate dependent evidence.
 
-### G8 — Counterfactual falsification matrix
+Every case is rejected by a real owner or documented as inapplicable with evidence.
 
-**Goal:** ensure tests discriminate the repaired semantics rather than merely seeing expected strings.
+### G11 — Real-owner assembled qualification
 
-At minimum attempt to falsify:
-
-1. generated P5 config says UniversalLoss but wrapper executes stress;
-2. method identity says UniversalLoss but runtime class is weighted-stress;
-3. Huber delta changes without identity/currentness change;
-4. E/F/S coefficients change without executable/evidence change;
-5. current config still accepts `target_head_weight`;
-6. current config still accepts `replay_head_weight`;
-7. replay materialization still scales `config_weight` for target/replay ratio;
-8. `ReplayPreparationPlan` retains live current head-scalar semantics;
-9. retired scalar changes a P5 cache key/trajectory;
-10. general configuration weighting is accidentally removed from a separately owned path;
-11. checkpoint ranking/retention score weights are accidentally removed with head weights;
-12. P5 monitor is derived from DEVELOPMENT, `T_selected`, fold training, or fold evaluation;
-13. a one-component/tiny fold-local monitor returns;
-14. common monitor overlaps any configured target prefix;
-15. common monitor overlaps fold evaluation;
-16. actual protected parent cannot realize 256 but execution silently continues;
-17. default fold count falls back to five through another resolver;
-18. TRUE_DFT versus pseudo-label selection changes replay geometry split;
-19. MACE duplicates target examples;
-20. accepted LR/EMA are silently overwritten;
-21. stale weighted-stress CV evidence authorizes UniversalLoss final production;
-22. a true method-field mutation fails to invalidate evidence;
-23. an execution-only field incorrectly changes scientific method identity.
-
-**Acceptance:** every counterfactual is either rejected by the real owner or demonstrated inapplicable with documented reason.
-
-### G9 — Real-owner assembled qualification
-
-**Goal:** close the repair through the production semantic path, not a reimplementation in tests.
-
-Exercise:
+Exercise the real path:
 
 ```text
-campaign configuration
- -> canonical P5 method/CV resolver
- -> target/replay/common-monitor materialization
- -> MACE parser-facing configuration
- -> qualified mdstats execution seam
- -> pinned mace-torch 0.3.16
- -> native UniversalLoss
- -> real combined loader
+campaign config
+ -> D1/D2-conforming P5 resolver
+ -> current neutral common-monitor construction
+ -> target/replay materialization
+ -> current method/CV/run identity
+ -> parser-facing MACE config
+ -> source-qualified mdstats MACE seam
+ -> pinned mace-torch 0.3.16 UniversalLoss
+ -> native combined loader
  -> optimizer update
- -> TRAIN2 persistence/runtime evidence
- -> checkpoint admissibility
- -> EVAL2 reconstruction/evaluation
+ -> TRAIN2 persistence/restart evidence
+ -> adaptive stop / checkpoint candidate evidence
+ -> full checkpoint selection
+ -> EVAL2 held-out evaluation
+ -> fresh final-production representative path
 ```
 
-Mocks/doubles are allowed only below/outside the owner whose behavior is being proved.
+Mocks are permitted only below/outside the owner being proved.
 
-**Acceptance:** real dependency-facing evidence proves configured identity equals actual executable semantics and membership/exposure semantics.
+### G12 — Bounded scientific pilot then full CV
 
-### G10 — Bounded scientific pilot before full CV
+Before a full campaign, record a true pre-update foundation baseline and the first several restored checkpoints on representative real LTA data. Record target monitor RMSE, TRUE_DFT replay RMSE/degradation, resolved loss/exposure identity, corpus counts, and common monitor identity.
 
-**Goal:** cheaply falsify the restoration before spending a full CV campaign.
+Do not relax gates. Immediate replay degradation of the previous hundreds-of-meV/A scale falsifies the restored method and reopens D1/D2 rather than triggering another D4 patch.
 
-**Work:**
+After pilot PASS, run the required three-fold affected qualification and independent Protocol 6.3 Review. Production-scale GPU qualification remains deferred to final release.
 
-Using representative real prepared LTA data and the restored method, record a true pre-update checkpoint before the first optimizer step and the first several epoch boundaries. Measure at least:
+## 12. Second independent review findings incorporated
 
-```text
-target force RMSE
-TRUE_DFT replay force RMSE
-replay degradation versus frozen foundation baseline
-resolved loss identity
-resolved corpus counts/exposure evidence
-common target-monitor metric
-```
+This revision closes additional gaps found by independently reconstructing accepted D1, current P5/MLCV code, the neutral substrate, and pinned MACE 0.3.16:
 
-Keep target/replay thresholds unchanged.
+1. **D1, not D2, is the earliest contradictory owner.** D1 explicitly requires weighted-stress execution and training-eligible fold monitors. G0 is now mandatory D1 -> D2 reconciliation.
+2. **UniversalLoss makes current P5 configuration weighting inert.** It does not consume `ref.weight`; P5 must project nontrivial `ConfigurationWeightPolicy` out rather than carry a no-op identity field.
+3. **UniversalLoss numerical identity was under-specified.** D2 must bind per-atom energy Huber, conditional-force Huber regimes/factors, stress Huber, binary masks, reductions, globals, and delta—not just a class name.
+4. **The historical target sampler has a legacy parent interface.** Its DATA5/label-domain signature cannot become current authority; only its deterministic sampling capability is transferred to the neutral substrate.
+5. **Current MLCV has a competing target-monitor owner.** Its fold/final target full/light construction must be collapsed onto the common monitor while replay monitoring and training diagnostics survive.
+6. **The common monitor must govern final production too.** Otherwise CV validates a different checkpoint-selection method from production.
+7. **Current CV schemas encode the old topology.** Fold/CV/MLCV generations must advance; old selected-only monitor records remain historical.
+8. **Exact disjointness is insufficient.** The P1 split-exclusion authority must also show no monitor/training relation through correlation, duplicates, protected events, replica lineage, or structural realization.
+9. **Existing neutral leakage evidence is useful but not a substitute for the full P1 relation check.** Reuse both owners for the claims they actually establish.
+10. **Monitor label adequacy must be proven.** Protected membership alone does not guarantee every selected frame supports the accepted checkpoint metrics.
+11. **Adaptive score weights are a separate owner.** `target_score_weight` / `replay_score_weight` and the 30 meV/A degradation budget remain current and must not be confused with retired training-head scalars.
+12. **Native P5 loader semantics are part of exposure.** Combined `ConcatDataset`, shuffle, seed, no balancing/duplication, and native non-LBFGS `drop_last=true` must be represented; P3's `drop_last=false` rule remains separate.
+13. **Old executable continuation must be cut off, not only old verdicts.** Restart/currentness must reject stress/fold-local TRAIN2 and DATA8 state under the restored generation.
+14. **P3/P5 policy identity was over-coupled.** Reuse component owners, not an entire P3 common-policy digest containing P5-inert configuration weighting.
+15. **Public API compatibility is part of the affected surface.** Legacy exported monitor builders cannot be silently repurposed without an explicit compatibility disposition.
 
-**Acceptance:** the method remains NO-PASS if replay degradation immediately reproduces the previous hundreds-of-meV/A failure. Do not cure failure by widening the retention gate. If the pilot falsifies the restored method, reopen D2 with the actual evidence rather than layering another D4 compensation.
-
-### G11 — Full affected regression, CV qualification, and independent Review
-
-**Goal:** close the assembled transition only after all affected owners and evidence are reconciled.
-
-**Work:**
-
-- run focused tests after each material executable stage;
-- run affected post-selection/replay/monitor/TRAIN2/EVAL2/currentness/configuration regression;
-- run broader suite where impact cannot be confidently bounded;
-- run three-fold post-selection CV after G10 passes;
-- perform independent Protocol 6.3 Review against assembled candidate, current authority, actual dependency realization, HAS/capability transfer, and impact closure;
-- reconcile current architecture/specifications/guides/README, semantic history, evidence applicability, workplan status, and PEM only if its admission/reconciliation criteria are actually triggered.
-
-**Acceptance:**
-
-- no Serious Challenge remains unresolved;
-- no genuine D1-D4 blocker remains;
-- required tests and real-owner qualification pass;
-- current docs no longer describe retired P5 semantics;
-- stale historical evidence remains recoverable but cannot authorize current behavior;
-- production-scale GPU qualification remains explicitly deferred to final release and is not falsely claimed.
-
-## 8. Review-pass findings incorporated before activation
-
-The workplan was independently challenged against accepted head `1b6b6f83918d31c4b27a0e60d7bc047ef58b6067` before publication. The following gaps were found and are closed in the plan rather than deferred as amendments:
-
-1. **D2 is the earliest contradictory owner.** Current D2 explicitly requires weighted energy+forces+stress semantics and explicitly treats forced UniversalLoss as a dependency defect. G0 now makes D2 adjudication mandatory before D4.
-2. **Current D2 also owns the wrong monitor topology.** Section 14 explicitly derives a checkpoint-monitor role from fold training-eligible evidence. G0/G4 now amend that owner rather than merely rewiring `post_selection_cv_plan.py`.
-3. **P3/P5 loss semantics were previously over-coupled.** The repair now explicitly preserves P3 unless separately reopened, avoiding an unjustified target-size-method change.
-4. **Head-weight authority is internally inconsistent.** Campaign config currently resolves target/replay 5:1 while `ReplayPreparationPlan` has live `target_weight`/`head_weight` semantics in replay machinery. G3 requires retirement across config, plan schema, materialization, cache identity, and runtime evidence rather than deleting only two TOML keys.
-5. **`weight` is overloaded.** General configuration weighting, target/replay training-head weighting, and checkpoint/retention score weighting are distinct. The plan now contains negative tests to ensure the repair removes only the retired head scalar.
-6. **Existing protected monitor machinery should be reused.** The plan forbids another sampler and adds actual-parent adequacy evidence because diversity cannot be inferred from requested count alone.
-7. **The active documentation surface is broader than D2/code.** Stage-plan/spec/guide/README references to checkpoint monitor, scoring, and current loss semantics are included in the census and closeout so current docs cannot retain a second truth.
-8. **Historical replication is not claimed literally.** Three-fold default is restored, but current optimizer-seed policy remains unchanged; TRUE_DFT is intentionally preserved. The scientific pilot therefore tests the assembled restored method without attributing any improvement solely to one simultaneous change.
-9. **Evidence causality is bounded.** Success after simultaneous loss/monitor/head-weight/fold restoration establishes the assembled restored method, not that any one component alone caused the historical/current difference. Discriminating follow-up evidence is required for narrower causal claims.
-10. **PEM basis is older/partial.** The HAS is explicitly bound to the accepted PEM publication and must be refreshed if the accepted memory advances; the newer repository head itself is not falsely treated as an accepted PEM publication.
-
-## 9. Reopen conditions
+## 13. Reopen conditions
 
 Reopen D1/D2 rather than adding D4 compensation if evidence shows:
 
 - UniversalLoss cannot express the scientifically required P5 objective;
-- P5 genuinely requires an independent target/replay scalar after all;
-- the native combined loader has unacceptable exposure semantics not representable by authenticated corpus membership;
-- the protected `OUTER_MONITOR` parent cannot provide scientifically adequate checkpoint evidence;
-- P3/P5 cannot legitimately use different loss families under the intended target-size estimand;
-- TRUE_DFT replay still causes material forgetting after the other restored semantics are correctly realized;
-- existing target/replay acceptance gates are scientifically incompatible with the restored method.
+- nontrivial per-configuration weighting is required in P5;
+- the accepted native combined-loader exposure is scientifically unacceptable;
+- the protected neutral `OUTER_MONITOR` parent cannot provide adequate/independent checkpoint evidence;
+- monitor and target populations cannot satisfy canonical P1 split-exclusion constraints;
+- P3/P5 cannot legitimately use different loss/exposure methods for the intended conclusions;
+- TRUE_DFT replay still causes material forgetting after correct restoration;
+- current target/replay acceptance gates are scientifically incompatible with the restored method.
 
-Reopen D3 when one accepted method still requires multiple competing owners or a new durable structural boundary. Local implementation defects under coherent D1-D3 remain D4 repairs.
+Reopen D3 when one accepted method still needs competing owners or a new durable architecture boundary. Local implementation defects under coherent D1-D3 remain D4 repairs.
 
-## 10. Closeout
+## 14. Closeout
 
-When all gates pass:
+The workplan closes only after:
 
-1. promote accepted D1/D2 amendments through their normal authority process;
-2. reconcile D3 architecture to one loss/monitor/identity flow;
-3. reconcile D4 specifications, implementation, tests, configuration, guides, and README;
-4. preserve affected evidence/currentness and explicitly stale only materially dependent old P5 evidence;
-5. record semantic history explaining why weighted-stress/fold-local-monitor/head-scalar P5 was replaced;
-6. perform closeout-learning/PEM assessment without manufacturing a new family from one coordinated intervention;
-7. archive this workplan only after its still-current semantics live in accepted current authority.
+1. D1 and D2 amendments are independently reviewed and accepted through their normal authority process;
+2. D3 has one coherent loss/exposure/monitor/currentness flow;
+3. D4 specs/code/config/public API/tests realize that flow with no inert current fields;
+4. affected old evidence is stale only where materially dependent, while independent P1/P2/P3/selection evidence remains usable;
+5. semantic history explains the replaced weighted-stress/fold-local/head-scalar lineage;
+6. closeout learning/PEM is reconciled only where admission criteria are met;
+7. the active plan is archived only after all still-current semantics reside in accepted authority.
 
-The central closure invariant is:
+Central closure invariant:
 
 ```text
-recorded P5 method identity
-  = configured P5 method
-  = authenticated target/replay/monitor memberships
-  = native MACE executable realization
-  = TRAIN2/EVAL2 evidence interpretation
+accepted P5 scientific method
+ = accepted P5 numerical method
+ = recorded shared method identity
+ = authenticated target/replay/common-monitor lineage
+ = actual pinned-MACE loss and loader realization
+ = TRAIN2/restart evidence
+ = checkpoint/EVAL2 interpretation
 ```
 
-No current setting may change recorded scientific/numerical identity without changing actual execution, or change actual execution without changing recorded identity.
+No current setting may change recorded method identity without changing governed execution, change governed execution without changing recorded identity, or remain current while having no executable/scientific effect.
