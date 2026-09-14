@@ -1,9 +1,11 @@
 ---
-title: "mdstats MLFF Scientific Method — post-selection foundation-adaptation revision candidate"
+title: "mdstats MLFF Scientific Method — post-selection foundation-adaptation revision"
 artifact_level: "D1 scientific formulation"
-status: "candidate D1 authority on fix/mlff-post-selection-method-restoration; review blockers repaired 2026-09-14; independent D1/D2 re-review required before integration"
+status: "accepted D1 authority for the post-selection restoration on fix/mlff-post-selection-method-restoration; independent review PASS and stakeholder ratification 2026-09-14; pending repository integration"
 baseline_accepted_date: "2026-09-13"
 candidate_revision_date: "2026-09-14"
+review_date: "2026-09-14"
+accepted_date: "2026-09-14"
 candidate_against_commit: "421e23aaed0a13443e984327bc903fc4cf4bc82e"
 ---
 
@@ -13,9 +15,9 @@ candidate_against_commit: "421e23aaed0a13443e984327bc903fc4cf4bc82e"
 
 This paper states the scientific formulation of the machine-learned force-field (MLFF) branch of mdstats: the scientific questions, evidence roles, physical conventions, target-size experiment, foundation-model adaptation, replay semantics, cross-validation, fresh final production, validity limits, and falsification conditions that downstream numerical and software layers must preserve.
 
-This 2026-09-14 candidate revises only the scientific semantics materially implicated by the post-selection restoration. It preserves the accepted target-size population, order, evaluation ladder, reducer, replay geometry lineage, target/replay acceptance thresholds, downstream qualification separation, and all other unaffected P1/P2/P3 scientific semantics. In particular, it does **not** change the P2/P3 target-size method or silently broaden the restoration to post-selection training from scratch.
+This 2026-09-14 accepted branch revision changes only the scientific semantics materially implicated by the post-selection restoration. It preserves the accepted target-size population, order, evaluation ladder, reducer, replay geometry lineage, target/replay acceptance thresholds, downstream qualification separation, and all other unaffected P1/P2/P3 scientific semantics. In particular, it does **not** change the P2/P3 target-size method or silently broaden the restoration to post-selection training from scratch.
 
-The candidate changes the scientific method for **foundation-model post-selection adaptation**—`naive_fine_tuning` and `multihead_replay`—in four coupled respects:
+The revision changes the scientific method for **foundation-model post-selection adaptation**—`naive_fine_tuning` and `multihead_replay`—in four coupled respects:
 
 1. foundation adaptation uses a robust energy/force/stress training objective whose exact numerical definition is delegated to D2, rather than the previously universal weighted-quadratic requirement;
 2. nontrivial per-configuration loss weighting and target-versus-replay training-head scalar weighting are not part of this foundation-adaptation method;
@@ -26,7 +28,7 @@ Foundation-residual elemental reference-energy fitting remains mandatory and is 
 
 The numerical method is delegated to `mlff_numerical_algorithmic_method.md`. D3 architecture and D4 specifications/implementation own software decomposition, persisted schemas, runtime control, dependency adaptation, caches, and interfaces. They may not redefine the scientific semantics below.
 
-This branch document is a candidate replacement authority. The 2026-09-13 accepted paper remains the integrated baseline until this candidate passes the required independent D1/D2 re-review and integration acceptance. Repository presence alone does not promote the candidate.
+This branch document is the accepted D1 authority for this restoration cycle after independent review and stakeholder ratification on 2026-09-14. The 2026-09-13 paper remains the repository-integrated baseline until this branch is integrated; branch acceptance authorizes downstream D3/D4 concretization against this revision but does not by itself merge or publish it to the integration branch.
 
 ## 2. Scientific background
 
@@ -61,7 +63,7 @@ Molecular-dynamics (MD) trajectories contain serial correlation. Adjacent struct
 For a stationary scalar observable `x_t`, the normalized autocorrelation is
 
 $$
-\rho(k)=\frac{\operatorname{Cov}(x_t,x_{t+k})}{\operatorname{Var}(x_t)},
+\rho(k)=\frac{\mathrm{Cov}(x_t,x_{t+k})}{\mathrm{Var}(x_t)},
 $$
 
 and the integrated autocorrelation time is represented in stored-frame units as
@@ -276,7 +278,7 @@ The automatic stage measures one configured short-horizon screening protocol. It
 The primary automatic-screen response is target-force root-mean-square error (RMSE) on the exact target-side model-selection population,
 
 $$
-\operatorname{RMSE}_F=\sqrt{\frac{1}{K}\sum_{k=1}^{K}\left(F_k^{\mathrm{pred}}-F_k^{\mathrm{ref}}\right)^2},
+\mathrm{RMSE}_F=\sqrt{\frac{1}{K}\sum_{k=1}^{K}\left(F_k^{\mathrm{pred}}-F_k^{\mathrm{ref}}\right)^2},
 $$
 
 where `k` indexes admitted Cartesian force components of the exact evaluation membership. The current screen stores the result in meV/Å. Energy and stress may remain part of training/checkpoint semantics but do not silently replace this frozen ranking response.
@@ -525,18 +527,18 @@ Content digests bind exact content and ancestry. They are identity/provenance me
 
 ### 16.1 Revision provenance
 
-The 2026-09-13 baseline was reconstructed against repository commit `9fd82b0ed40990d56716a393aa3f7db0a2ff44d0`. This 2026-09-14 candidate revision was prepared on `fix/mlff-post-selection-method-restoration` after reconstruction showed that historically successful foundation multi-head adaptation used native MACE `UniversalLoss`, while current P5 forced a different loss family and had replaced the earlier common protected monitor with fold/final-local monitor constructions. The branch workplan records the triggering replay-forgetting evidence, historical applicability set, and dependent D2-D4 impact closure.
+The 2026-09-13 baseline was reconstructed against repository commit `9fd82b0ed40990d56716a393aa3f7db0a2ff44d0`. This 2026-09-14 revision was prepared on `fix/mlff-post-selection-method-restoration` after reconstruction showed that historically successful foundation multi-head adaptation used native MACE `UniversalLoss`, while current P5 forced a different loss family and had replaced the earlier common protected monitor with fold/final-local monitor constructions. The branch workplan records the triggering replay-forgetting evidence, historical applicability set, and dependent D2-D4 impact closure.
 
-The first independent review of the candidate found two authority defects: composition-level E0 identifiability had been overstated as individual elemental identifiability, and compression of unchanged baseline prose had hidden several still-current P1/P2/P3 constraints. This revision repairs those defects while leaving the intended P5 restoration unchanged. Provenance motivates and scopes the revision; it does not itself prove scientific adequacy, so independent re-review remains required before integration.
+The first independent review found two authority defects: composition-level E0 identifiability had been overstated as individual elemental identifiability, and compression of unchanged baseline prose had hidden several still-current P1/P2/P3 constraints. Those defects were repaired without changing the intended P5 restoration. A subsequent independent re-review passed the repaired D1/D2 pair, and the stakeholder ratified the branch authority on 2026-09-14 by directing downstream D3/D4 closure to proceed. Repository integration remains a separate lifecycle step.
 
 ## 17. D1 to D2 handoff
 
-D2 shall concretize, without silently strengthening or weakening, at least these revised invariants:
+D2 concretizes, without silently strengthening or weakening, at least these revised invariants:
 
 1. P1/P2/P3 target-size and broader evidence-role semantics remain unchanged by this restoration, including explicit infeasibility/deferral outcomes and all existing protected-relation requirements.
 2. Foundation-model P5 uses the robust energy/force/stress objective with global coefficients `1:10:1`, binary property masks, no nontrivial configuration-weight layer, and no target/replay training-head scalar.
-3. D2 must define the robust loss mathematically, including property-specific units of every Huber threshold, residual normalization, nonlinear regimes, reduction, and stochastic exposure needed to distinguish a materially different objective.
-4. Foundation-model P5 atomic references are selected-head foundation-residual fits over the authorized target gradient domain only. For every governed target composition vector `c`, D2 must require invariance of `c^T delta_e` over the unanchored fit null space or an explicitly accepted anchor for the relevant direction; failure is run/fold infeasibility. Individual elemental coefficients need not be unique when all required composition-weighted corrections are unique.
+3. D2 defines the robust loss mathematically, including property-specific units of every Huber threshold, residual normalization, nonlinear regimes, reduction, and stochastic exposure needed to distinguish a materially different objective.
+4. Foundation-model P5 atomic references are selected-head foundation-residual fits over the authorized target gradient domain only. For every governed target composition vector `c`, D2 requires invariance of `c^T delta_e` over the unanchored fit null space or an explicitly accepted anchor for the relevant direction; failure is run/fold infeasibility. Individual elemental coefficients need not be unique when all required composition-weighted corrections are unique.
 5. Replay geometry/source/label lineage remains separate from target membership; true-reference replay is the default, pseudo-label replay remains opt-in, and replay retention remains an admissibility constraint.
 6. One deterministic coverage-oriented 256-frame target checkpoint monitor is drawn only from protected neutral `OUTER_MONITOR` evidence, is separated from every configured `T_N` by the full P1 relation authority, is common across CV/final runs, and has no gradient/fitting role.
 7. Post-selection CV folds partition only frozen `T_N` among gradient, held-out evaluation, and accepted purge/exclusion roles. The current default is three folds, with explicit `K>=2` override permitted.

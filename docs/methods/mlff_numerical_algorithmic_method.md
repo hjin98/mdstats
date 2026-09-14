@@ -1,9 +1,11 @@
 ---
-title: "mdstats MLFF Numerical Algorithmic Method — post-selection foundation-adaptation revision candidate"
+title: "mdstats MLFF Numerical Algorithmic Method — post-selection foundation-adaptation revision"
 artifact_level: "D2 numerical algorithm design"
-status: "candidate D2 authority on fix/mlff-post-selection-method-restoration; constrained by candidate D1; review blockers and exposure-order blocker repaired 2026-09-14; independent D2 re-review required before integration"
+status: "accepted D2 authority for the post-selection restoration on fix/mlff-post-selection-method-restoration; constrained by accepted branch D1; independent review PASS and stakeholder ratification 2026-09-14; pending repository integration"
 baseline_accepted_date: "2026-09-13"
 candidate_revision_date: "2026-09-14"
+review_date: "2026-09-14"
+accepted_date: "2026-09-14"
 candidate_against_commit: "421e23aaed0a13443e984327bc903fc4cf4bc82e"
 ---
 
@@ -13,7 +15,7 @@ candidate_against_commit: "421e23aaed0a13443e984327bc903fc4cf4bc82e"
 
 This paper specifies the numerical and algorithmic method that concretizes `mlff_scientific_method.md`. It separates numerically meaningful invariants from replaceable software realization so that implementation, dependency adaptation, optimization, or restart logic cannot silently change the scientific experiment.
 
-This candidate preserves the accepted P1/P2/P3 target-size algorithm and revises only the materially dependent post-selection foundation-adaptation method. The revised D2 scope covers:
+This accepted branch revision preserves the accepted P1/P2/P3 target-size algorithm and revises only the materially dependent post-selection foundation-adaptation method. The revised D2 scope covers:
 
 - the robust foundation-adaptation loss functional and its exact parameterization;
 - post-selection target/replay exposure semantics;
@@ -26,7 +28,7 @@ This candidate preserves the accepted P1/P2/P3 target-size algorithm and revises
 
 P3 target-size screening retains its accepted weighted objective, complete-batch update geometry, optimizer-progress normalization, candidate/evaluation orders, deterministic exact `M3` membership rule, qualification and reducer sufficiency rules, and restart semantics. Post-selection training from scratch also retains its accepted weighted energy+forces+stress objective, configuration-weight semantics, and local property masks; it is not changed merely because foundation-model P5 is restored to a different robust objective.
 
-The branch document is a candidate replacement D2 authority. It does not become integrated current authority until the candidate D1/D2 pair receives the required independent review and integration acceptance. The repaired D1 has passed the latest authority review; this D2 revision still requires independent D2 re-review. D3/D4 work must not proceed as though the new method were accepted before that gate closes.
+This branch document is the accepted D2 authority for this restoration cycle after independent review and stakeholder ratification on 2026-09-14. The 2026-09-13 paper remains the repository-integrated baseline until this branch is integrated. D3/D4 may now concretize this accepted branch method; branch acceptance does not itself merge or publish the authority to the integration branch.
 
 ## 2. Canonical source numerical conventions
 
@@ -350,7 +352,7 @@ $$
 The stress term uses the canonical symmetric `3\times3` Cartesian stress representation but, matching the reference realization, reduces **all nine stored tensor entries** rather than only the six algebraically independent components:
 
 $$
-L_S=\operatorname{mean}_{i,\alpha,\beta\in\{x,y,z\}}
+L_S=\mathrm{mean}_{i,\alpha,\beta\in\{x,y,z\}}
 H_{\delta_S}\!\left(m_i^S\Delta\sigma_{i\alpha\beta}\right).
 $$
 
@@ -470,14 +472,14 @@ Accepted progress is immutable evidence. Unaccepted first-rung materialization/c
 At boundary `j`, the exact checkpoint is evaluated on exact `M_j`. If `K` Cartesian force components are admitted,
 
 $$
-\operatorname{RMSE}_{F,\mathrm{eV/Å}}=
+\mathrm{RMSE}_{F,\mathrm{eV/Å}}=
 \sqrt{\frac1K\sum_{k=1}^K(\widehat F_k-F_k)^2},
 $$
 
 and stored target-size metric is
 
 $$
-\operatorname{RMSE}_{F,\mathrm{meV/Å}}=1000\,\operatorname{RMSE}_{F,\mathrm{eV/Å}}.
+\mathrm{RMSE}_{F,\mathrm{meV/Å}}=1000\,\mathrm{RMSE}_{F,\mathrm{eV/Å}}.
 $$
 
 Inference batching is execution-only only if membership, model state, prediction semantics, and aggregate metric remain equivalent. Non-finite prediction or target metric is typed numerical failure, not an invented infinite score.
@@ -733,7 +735,7 @@ For each required final seed, the representative is frozen under the accepted ch
 
 ## 20. Dependency realization boundary
 
-The current qualified execution dependency is `mace-torch==0.3.16`. Dependency names and source markers are D3/D4 conformance mechanisms, but the following observed upstream semantics define the reference realization against which this D2 candidate is written:
+The current qualified execution dependency is `mace-torch==0.3.16`. Dependency names and source markers are D3/D4 conformance mechanisms, but the following observed upstream semantics define the reference realization against which this D2 revision is written:
 
 - multi-head fine-tuning sets the dependency loss to `universal`;
 - native `UniversalLoss` uses per-atom energy Huber, conditional force Huber, full `3x3` stress Huber, configured global E/F/S coefficients, and local property masks, and does not consume the general configuration scalar `ref.weight`;
@@ -784,7 +786,7 @@ Training dominates total cost. Performance changes are admissible only when they
 
 ## 23. Verification and falsification oracles
 
-Independent D2 re-review should attempt at least the following counterexamples/oracles.
+D2 review and verification should attempt at least the following counterexamples/oracles.
 
 ### 23.1 Preserved P1/P2/P3
 
@@ -857,7 +859,7 @@ A failure of these oracles is D2 or lower-layer nonconformance. If repair requir
 
 ## 24. D2 to D3 handoff
 
-After this candidate passes independent re-review and becomes accepted, D3 must preserve at least:
+D3 must preserve at least:
 
 1. the unchanged P1/P2/P3 numerical method, including event/block closure, exact deterministic `M3` membership, minimum qualified-candidate admission, first-order optimizer-normalization interpretation, reducer comparison sufficiency, and target-size restart semantics;
 2. separate P3/post-selection-scratch versus foundation-P5 objective/exposure owners;
@@ -881,7 +883,7 @@ Runtime caches and scratch state need not be preserved when exactly reconstructi
 
 ## 26. Revision provenance and realization evidence
 
-The 2026-09-13 accepted D2 baseline remains the source of all unaffected P1/P2/P3 semantics. The first independent review of this candidate found that the initial rewrite had accidentally compressed out several still-current baseline invariants and had conflated elemental-coefficient identifiability with composition-energy identifiability. That review repair restored the baseline invariants explicitly, narrowed the new E0 feasibility rule to the scientifically consumed composition-weighted corrections, and made the shared numeric Huber parameter dimensionally explicit per property channel. A subsequent re-review found one remaining D2 reproducibility defect: the candidate had written the combined multi-head corpus as target-first/replay-second even though pinned MACE orders `pt_head` first and shuffles the resulting replay-first/target-second combined index space. This revision corrects that ordering, binds it to exposure identity/oracles, and does not change D1 or broaden the intended P5 restoration.
+The 2026-09-13 accepted D2 baseline remains the source of all unaffected P1/P2/P3 semantics. The first independent review found that the initial rewrite had accidentally compressed out several still-current baseline invariants and had conflated elemental-coefficient identifiability with composition-energy identifiability. That review repair restored the baseline invariants explicitly, narrowed the new E0 feasibility rule to the scientifically consumed composition-weighted corrections, and made the shared numeric Huber parameter dimensionally explicit per property channel. A subsequent re-review found one remaining D2 reproducibility defect: the candidate had written the combined multi-head corpus as target-first/replay-second even though pinned MACE orders `pt_head` first and shuffles the resulting replay-first/target-second combined index space. That ordering was corrected and bound to exposure identity/oracles. Final independent re-review then passed the repaired D1/D2 pair, and the stakeholder ratified the branch authority on 2026-09-14 by directing D3/D4 closure to proceed. Repository integration remains pending.
 
 Reference realization evidence:
 
@@ -891,7 +893,7 @@ Reference realization evidence:
 4. J. Racine, “Consistent Cross-Validatory Model-Selection for Dependent Data: hv-Block Cross-Validation,” *Journal of Econometrics* **99**, 39–61 (2000). DOI: 10.1016/S0304-4076(00)00030-0.
 5. D. R. Roberts, V. Bahn, S. Ciuti, et al., “Cross-Validation Strategies for Data with Temporal, Spatial, Hierarchical, or Phylogenetic Structure,” *Ecography* **40**, 913–929 (2017). DOI: 10.1111/ecog.02881.
 6. J. D. Morrow, J. L. A. Gardner, and V. L. Deringer, “How to Validate Machine-Learned Interatomic Potentials,” *Journal of Chemical Physics* **158**, 121501 (2023). DOI: 10.1063/5.0139611.
-7. ACEsuit `mace-torch==0.3.16`, `mace.modules.loss.UniversalLoss` and `conditional_huber_forces`, used as current reference realization evidence for the candidate robust functional.
+7. ACEsuit `mace-torch==0.3.16`, `mace.modules.loss.UniversalLoss` and `conditional_huber_forces`, used as current reference realization evidence for the robust functional.
 8. ACEsuit `mace-torch==0.3.16`, `mace.cli.run_train`, used as current reference realization evidence for multi-head loss routing, target-duplication heuristic, selected dataset/head ordering, loader geometry, and head-local atomic-energy behavior.
 
 Exact current schema names, source-probe markers, package paths, persistence formats, and wrapper patch mechanics remain D3/D4 concerns except where changing them changes the numerical method above.
