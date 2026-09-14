@@ -2,7 +2,7 @@
 title: "MLFF Training-Data System Contract"
 subtitle: "Cross-cutting current-generation invariants"
 author: "mdstats project"
-date: "2026-08-21"
+date: "2026-09-14"
 geometry: margin=0.78in
 toc: true
 ---
@@ -11,32 +11,40 @@ toc: true
 
 This document is the cross-cutting current system contract for the mdstats MLFF training-data and fine-tuning workflow. The legacy filename is retained for stable references; this is **not** an implementation-stage plan.
 
-It owns only invariants that span narrower specifications: evidence-role separation, dependency direction, identity/lineage, fitted-domain isolation, target-membership/target-size ownership, protocol identity, replay/monitor separation, sealed evaluation, calibration, bounded execution, and fail-closed current-generation publication.
+It owns only invariants that span narrower specifications: evidence-role separation, dependency direction, identity/lineage, fitted-domain isolation, target-membership/target-size ownership, current P5 method ownership, replay/monitor separation, sealed evaluation, bounded execution, and fail-closed current-generation publication.
 
-Narrow specifications own exact module schemas, numerical constants, algorithms, storage formats, and runtime behavior. Architecture owns the higher-level dependency/ownership model. Workplans and historical documents are non-normative.
+Narrow specifications own exact module schemas, numerical constants, algorithms, storage formats, and runtime behavior. D3 architecture owns the higher-level ownership graph. Workplans and historical documents are non-normative once their binding semantics are promoted into current D1-D4 authority.
 
 # Normative principles
 
-1. Source facts, eligibility, evidence roles, fitted preparation, target membership, target size, weighting, exposure, checkpoint selection, validation, calibration, and acquisition are distinct record/decision families.
+1. Source facts, eligibility, evidence roles, fitted preparation, target membership, target size, weighting, exposure, checkpoint selection, validation, and qualification are distinct record/decision families.
 2. A frame that supplied a gradient is not independent validation evidence for that model.
-3. Held-out cross-validation evaluates a frozen protocol and cannot control target size, stopping, or checkpoint choice for that protocol.
-4. After target selection, every post-selection fold has a gradient-training partition, an authorized checkpoint monitor, and a held-out evaluation fold with explicit independence/purge evidence.
-5. Cross-validation trains a fresh model/optimizer lineage for each held-out fold and validates the complete `TrainingProtocolIdentity` actually used by final training.
-6. Feature fitting, E0 fitting, label-derived difficulty evidence, and target-subset inputs inspect only the applicable authorized training partition; post-selection fold-local fits never inspect that fold's held-out partition.
-7. Current DATA6/DATA7 preparation publishes fitted inputs and evidence for the common target-size owner and SHALL NOT publish target membership or target size.
-8. One canonical training order `pi_train` is the sole current target-membership authority; every candidate is the exact prefix `T_N = pi_train[:N]`.
-9. The one target-size reducer is the sole owner of the *automatic* target-size diagnostic, which recommends a size and freezes nothing. The operator owns the provisional choice, restricted to the configured qualified candidate set. Monitor/replay/batch/pool cardinalities are different semantic types.
-10. Exact target membership, the ordered collection of provisional target sizes, and their per-size effective role training horizons are frozen together, once, at `cross-validate` admission.
-11. Target-size screening uses only authorized development/model-selection evidence. Held-out CV, calibration, and locked tests are forbidden inputs.
-12. Locked tests cannot affect fitting, membership, size, protocol choice, stopping, checkpointing, calibration-policy choice, or acquisition and are activated only after protocol/committee freeze.
-13. Replay training, replay monitoring, target monitoring, and target training preserve separate source/role identities.
-14. Replay retention and mandatory physical/deployment integrity are hard admissibility constraints unless an explicit current scientific policy states otherwise.
-15. Dynamic resampling/exposure semantics require an explicit current adapter/protocol; static files alone cannot claim them.
-16. Calibration is bound to predictions from the actual frozen final committee and an explicit applicability domain.
-17. Active-learning child generations inherit prior evidence roles unless a new evaluation lineage explicitly reassigns them.
-18. Retired campaign generations are rejected and re-prepared rather than migrated into current semantics. Retired derived target-size state is detected before any semantic deserialization, candidate or checkpoint reuse, or descendant publication, and is quarantined rather than translated. Only raw scientific inputs and independently valid low-level content caches whose recipes do not depend on retired target-size semantics may be reused, and each is re-validated by the current owner that consumes it.
-19. Execution caches, worker scheduling, out-of-core layout, and other realization choices cannot change scientific identity or authoritative decisions.
-20. Publication fails closed when required current-generation identities, upstream evidence, or schema/content validation are missing/incompatible.
+3. Held-out cross-validation evaluates a frozen P5 method and cannot control target size, fitting, stopping, or checkpoint choice for that fold.
+4. After target selection, every current post-selection fold has a gradient-training partition, a held-out outer-evaluation partition, and accepted purge/exclusion evidence. The target checkpoint monitor is external campaign-common evidence, not fold membership.
+5. Cross-validation trains a fresh model/optimizer lineage for each held-out fold and validates the current `PostSelectionMethodIdentity` actually used by final production.
+6. Current P5 has one method authority: `PostSelectionMethodIdentity`. Broad DATA8-era `TrainingProtocolIdentity` records do not authorize restored P5.
+7. Feature fitting, E0 fitting, and other label-derived fitted products inspect only their authorized training partition. Foundation-P5 transfer checks may inspect governed geometry/composition classes from monitor/evaluation consumers but not their labels for fitting.
+8. Current DATA6/DATA7 preparation publishes fitted inputs/evidence for upstream selection/P3 owners and SHALL NOT publish target membership or target size.
+9. One canonical training order `pi_train` is the sole current target-membership authority; every candidate is exact prefix `T_N = pi_train[:N]`.
+10. The target-size reducer recommends only. The operator owns provisional choice, and `cross-validate` admission freezes exact selected memberships and role horizons.
+11. Target-size screening uses only authorized development/model-selection evidence. Held-out CV and locked evidence are forbidden inputs.
+12. Replay training, replay monitoring, target monitoring, and target training preserve separate source/role identities.
+13. Current P5 target checkpoint control uses one immutable campaign-common exact 256-frame monitor `M_mon` from neutral `OUTER_MONITOR`, reused across every selected size, CV fold/seed, and final-production seed/run.
+14. Monitor sampling precedes protected-relation qualification. Relation conflict or insufficient exact support fails closed; monitor members are not filtered, replaced, or resampled into a different method.
+15. Every current CV and final-production plan binds the same common-monitor record digest and current cross-role P1 separation evidence.
+16. Foundation P5 uses selected-head foundation-residual E0 fitting and composition-level transfer validation. Historical/from-scratch foundation preparation is not current.
+17. Foundation P5 does not bind the whole P3 `TargetSizeCommonTrainingPolicy` or nontrivial P3 configuration-weight fitting.
+18. Foundation P5 realizes native MACE UniversalLoss with accepted fixed parameters through the one MACE adapter; P3 and P5 scratch retain separately accepted weighted methods.
+19. Retired target/replay training-head scalar weights are absent from current P5. Checkpoint/adaptive-stop target/replay score weights remain separate owners.
+20. Foundation P5 exposure binds replay/`pt_head` first then target before shuffle, no implicit target duplication, `drop_last=true`, and the qualified single-process path. Distributed foundation P5 fails closed pending separate equivalence acceptance.
+21. Canonical single-source replay omission resolves TRUE_DFT; explicit pseudo replay remains opt-in and requires independent TRUE_DFT replay monitoring. Ambiguous omitted legacy split-file semantics fail closed.
+22. Final production is fresh and uses the same common monitor as accepted CV.
+23. M3 is not P5 checkpoint, final-seed ranking, plan, currentness, or publication ancestry. M3 remains P3 evidence and may feed separately authorized downstream probes only through the P3 owner.
+24. `single_best_final_seed` selects only among already-frozen admissible representatives using already-authenticated common-monitor target records and accepted target-only ordering semantics. It performs no second target or M3 evaluation.
+25. Locked tests cannot affect fitting, membership, size, method choice, stopping, checkpointing, publication membership, calibration-policy choice, or acquisition.
+26. Retired campaign generations are rejected/quarantined rather than migrated into current semantics. Independently valid upstream evidence may be reused only through its current owner.
+27. Execution caches, worker scheduling, storage layout, and other realization choices cannot change scientific/numerical identity.
+28. Publication fails closed when required current identities, upstream evidence, or content validation are missing/incompatible.
 
 # Core record ownership
 
@@ -45,165 +53,87 @@ Narrow specifications own exact module schemas, numerical constants, algorithms,
 | `TrainingDataSource` / source records | source bytes/controls/composition/label-domain lineage | frame eligibility or evidence role |
 | `TrainingFrameRecord` | immutable source-bound frame facts | eligibility, partition, membership, exposure |
 | `FrameEligibilityDecision` | post-label/quality eligibility | partition or target membership |
-| `PartitionAssignment` | one statistical role under DATA5 policy | fitted quantities or target order |
-| `PartitionFeasibilityReport` | whether requested evidence roles are supportable | fabricated independent evidence |
-| `PartitionIndependenceReport` | actual independence/purge/duplicate limitations | stronger independence than observed |
-| DATA6/7 fitted records | authorized training-partition descriptors/transforms/E0/difficulty/objective/weights/subset inputs | held-out labels, target membership, target size |
-| target-size development split | one `P_train`/`M3` split derived from the neutral substrate | training order or size choice |
-| canonical training order `pi_train` | one deterministic order whose prefixes are the candidate subsets | evaluation populations or size choice |
-| canonical evaluation ladder `pi_eval` | nested direct populations `M1 subset M2 subset M3` | training membership or size choice |
-| common target-size preparation | one preparation identity shared by every candidate size and optimizer seed | any per-size or per-seed variation |
-| target-size policy / reducer decision | configured candidate ladder, fidelity funnel, a recommended target size or a typed no-recommendation outcome | freezing a size; monitor construction; post-selection cross-validation |
-| `CampaignStore` provisional proposal | ordered collection of mutable `(N, T_N identity, selection source, H_cv, H_prod)` | immutable ancestry; running screen work |
-| `CampaignStore` frozen selection | ordered collection of selected sizes $\{N_i\}$ bound to exact $T_{N_i}$ membership digests, plus per-size role horizons | re-deciding the size or accepting the method |
-| `OnlineTargetMonitorPolicy` | common target-monitor evidence set | target-training size |
-| `ReplayMonitorPolicy` | replay-monitor evidence set | target-training size or replay-training membership |
-| `TrainingProtocolIdentity` | complete frozen model/data/replay/membership/size/objective/exposure/checkpoint/runtime protocol | mutable runtime observations or test results |
-| `ProtocolFreezeRecord` | frozen protocol/committee identities and promotion evidence | locked-test results |
-| calibration records | final-committee uncertainty calibration/applicability | refitting the protocol being calibrated |
-| locked-test activation/evidence | final sealed evaluation | upstream model-control decisions |
-| `CandidateAdmissibilityDecision` | pre-query safety/admissibility | DFT convergence result |
-| `AcquisitionDecision` | calibrated/rank-only acquisition result | post-DFT eligibility |
+| neutral DATA5/P1 role/relation records | statistical roles and protected relations | fitted quantities or target order |
+| DATA6/7 fitted records | authorized descriptors/transforms/difficulty/foundation evidence | held-out labels, target membership, target size |
+| target-size development split | one `P_train`/M3 split | training order or size choice |
+| canonical `pi_train` | one deterministic training order | evaluation populations or size choice |
+| common P3 preparation | P3 training preparation shared as accepted | P5 foundation method authority |
+| target-size reducer decision | recommendation or typed no-recommendation | freezing size; P5 monitor/CV |
+| `CampaignStore` frozen selection | selected sizes and exact `T_N` identities + role horizons | re-deciding size or accepting P5 |
+| common P5 target-monitor record | exact `M_mon` membership and lineage | target-training size; held-out CV membership |
+| `PostSelectionMethodIdentity` | current P5 method identity | realized fold/monitor/fitted/checkpoint results |
+| P5 fitted preparation | authorized fit result + foundation transfer evidence | target-size ownership; inert P3 weighting authority |
+| CV/final role plans | role-specific descendant lineage | alternate method or monitor construction |
+| `PostSelectionMaterialization` | executable P5 realization identity | independent scientific method definition |
+| final publication decision | frozen P5 member set before qualification | downstream qualification-driven selection |
+| `TrainingProtocolIdentity` | separately current non-P5 general/historical DATA8 identity where still consumed | restored P5 authority |
+| qualification records | downstream release evidence for frozen publication | P5 target/method/checkpoint/member selection |
 
 Every serialized current record SHALL carry a versioned schema, deterministic content identity, explicit upstream lineage, and explicit policy/failure identities as appropriate.
 
-# Identity and leakage contract
-
-## Source occurrence, geometry, and labels
-
-Source occurrence (`frame_uid` or current equivalent), geometry fingerprint, label payload digest, and combined labeled-configuration fingerprint are distinct identities.
-
-Geometry identity excludes energy/force/stress labels. Label identity includes selected labels and label-domain identity. Leakage audits use exact occurrence overlap, exact geometry overlap, exact labeled-configuration overlap, near-duplicate evidence where required, and forbidden temporal proximity.
-
-## Label-domain compatibility
-
-Label-domain identity separates theory/electronic-structure identity, energy-reference identity, derivative/stress convention, numerical-quality profile, and software provenance. A current compatibility policy may accept non-semantic provenance differences but cannot silently merge incompatible theory or energy-reference domains.
-
-One target MACE bundle contains one compatible target label domain plus a separately identified replay lineage where replay is enabled.
-
 # Fitted-domain isolation
 
-Raw physical/structural/event facts may be constructed before partitioning when the owning provider is partition-independent. Any learned/fitted transform—including scaling, PCA/whitening, fitted metrics, E0 corrections, or label-derived residual difficulty—is bound to a specific authorized gradient-training domain.
-
-Before selection, the common preparation is global. After admission of the
-ordered frozen collection, fold-local and final fitted domains branch over
-each frozen size's exact membership `T_N`:
+Before target selection, fitted products are owned by their authorized upstream domains. After admission of a frozen selected size, current P5 branches as:
 
 ```text
-P_train / common target-size preparation
-  -> one pi_train and ordered collection of frozen sizes {N_selected}
-  -> for each frozen size N_selected, exact membership T_N = pi_train[:N_selected]:
-       |-> post-selection fold_training_partition_k(N)
-       |     -> fold-local fitted products and checkpoint choice using its authorized monitor
-       |     -> held_out_evaluation_fold_k(N) only after checkpoint freeze
-       |-> final-training fitted products for T_N
-             -> fresh final production for T_N
+TargetBinding
+  + common M_mon record
+  + current P1 separation evidence
+  + PostSelectionMethodIdentity
+  -> CV fold k:
+       gradient-training membership
+         -> fold fitted preparation
+         -> checkpoint/adaptive stop on external M_mon
+         -> held-out evaluation after checkpoint freeze
+  -> final production:
+       complete T_selected fitted preparation
+         -> fresh production
+         -> representative metric on same external M_mon
+         -> publication decision
 ```
 
-A reverse dependency from held-out evaluation into fitted products, target size, or checkpoint selection is prohibited.
+No reverse dependency from held-out evaluation or downstream qualification into fitting, checkpoint selection, target size, or method identity is permitted.
 
-# Target membership and target-size contract
+# Current P5 monitor contract
 
-The current target-subset construction chain is:
+Current `OnlineTargetMonitorPolicy` for P5 is exact, not best-effort:
 
 ```text
-neutral statistical substrate
-  -> one P_train / M3 development split
-  -> one canonical training order pi_train
-  -> one canonical evaluation ladder M1 subset M2 subset M3
-  -> one common target-size preparation
-  -> optional paired optimizer-seed automatic diagnostic (recommends only)
-  -> operator-owned provisional design (ordered collection of (N, H_cv, H_prod))
-  -> cross-validate admission
-  -> ordered collection of frozen entries (N_selected, T_selected = pi_train[:N_selected], and role horizons)
+parent role        OUTER_MONITOR
+requested size     256
+realized size      256
+seed               161803
+shortfall          infeasible/fail closed
 ```
 
-No current alternate, migration, or rescue branch exists. Retired derived
-target-size state is rejected before reuse rather than translated.
+The exact deterministic construction is owned by D2 and the narrow monitor specification. Membership is selected once, then canonical P1 cross-role separation is checked against every governed `T_N`. A selected-only relation projection is insufficient as sole proof.
 
-The configured candidate ladder, the screen `(n1,n2,n3)`, and the independent
-production-horizon policy are owned by the architecture manual's Part V and the
-campaign configuration; they are not duplicated here.
+# Current P5 protocol and MACE realization
 
-Candidate membership at size `N` is the exact prefix `pi_train[:N]`. `cross-validate`
-admission freezes the ordered collection of selected sizes, each with its exact
-membership `T_selected = pi_train[:N]` and its effective CV and production
-horizons. Identity projection stays role-specific: CV depends on the
-frozen CV horizon and never on the production horizon, and vice versa.
+`PostSelectionMethodIdentity` binds the current P5 method. Foundation modes resolve native MACE UniversalLoss with accepted fixed objective; scratch and P3 keep their own methods. Foundation P5 uses no active general configuration-weight layer and no target/replay training-head scalar balancing.
 
-Because every candidate is a prefix of one order, increasing `N` only adds
-frames; a non-monotone qualification result over nested increasing prefixes is an
-invariant failure.
+The one MACE adapter verifies method-specific head ordering, loader realization, loss resolution, checkpoint retention/control, precision/backend, and effective exposure. Intended exposure cannot substitute for realized evidence.
 
-# Current campaign lifecycle
+# Final publication contract
 
-The public campaign lifecycle, including configuration initialization, is:
+Current final publication reauthenticates target binding, accepted CV, current P5 method, production plan, common-monitor lineage, fitted preparation, run representative, and required metric records.
 
-```text
-init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production
-```
+`all_qualified_final_seeds` publishes all required admissible representatives. `single_best_final_seed` reuses accepted target-only representative-ordering semantics over frozen common-monitor metric records and never reruns target/M3 evaluation.
 
-`storage` is an orthogonal artifact-management command. `status` and `advance`
-project the same current owners. The P6 campaign ends at fresh final-production
-closure; deployment, physical-observable, calibration, and locked-test
-qualification remain downstream contracts; downstream qualification cannot feed
-back into target-size or method selection.
-
-# Training-protocol and checkpoint contract
-
-`TrainingProtocolIdentity` SHALL bind, as applicable:
-
-```text
-foundation/model/head identity
-applicable selected target size and exact per-size membership identity
-post-selection fold partition identity where the protocol is a CV fold
-replay source/training/monitor identities
-common target-monitor identity
-objective and configuration/property weights
-exposure backend and realized balancing/duplication policy
-checkpoint metric and replay-retention policy
-optimizer/LR/stopping/epoch policy
-seed policy
-precision/backend
-MACE adapter/runtime lock
-```
-
-A comparison or CV claim applies only to the protocol identity actually evaluated.
-
-Checkpoint selection uses explicit target/focus/replay/property/integrity constraints. A candidate violating a mandatory constraint is inadmissible even if another target metric is lower.
-
-# MACE realization and exposure
-
-Current MACE artifacts contain only supported labels/weights/compact identities in their interchange format; extended provenance remains sidecar/content-addressed.
-
-The adapter verifies current upstream behaviors on which protocol semantics depend: head ordering, loader realization, checkpoint retention/control, precision/backend, and effective target/replay exposure.
-
-Intended exposure cannot substitute for realized exposure. Silent loader duplication or changed target/replay counts fail closed unless the accepted current protocol explicitly binds that behavior.
-
-Runtime/package locks are owned by the narrow current runtime specification and may evolve independently of this cross-cutting contract.
-
-# Sealed evaluation, calibration, and active learning
-
-Development, calibration, and locked evaluation artifacts remain role-separated. Locked-test configuration/path access is absent from development control flow until explicit activation after protocol/committee freeze.
-
-Calibration numerical thresholds derive from the actual frozen final committee and a dedicated authorized calibration cohort. Applicability/transfer decisions explicitly distinguish within-domain, rank-only, recalibration-required, and incompatible-domain behavior.
-
-Active-learning labels create a new development generation. Existing role assignments are inherited by default; repartitioning previously classified evidence creates a new evaluation lineage.
+Downstream qualification consumes the publication and cannot alter membership.
 
 # Bounded execution and persistence
 
-Scientific policy must be realizable without duplicating product-scale state per target-size rung. The current architectural materialization is one fitted-input authority, one canonical training order, one common target-size preparation, prefix metadata for candidate rungs, and only currently authorized training artifacts.
+Scientific policy must be realizable without duplicating product-scale state per target-size rung. Persistent execution caches are reconstructible unless another current specification explicitly makes them evidence. Corrupt/stale state is rebuilt or fails cleanly; policy is not changed to rescue a run.
 
-Persistent execution caches are reconstructible unless another current specification explicitly makes them scientific evidence. Every cache validates semantic inputs and payload integrity. Corrupt/stale state is rebuilt or fails cleanly; it never changes policy to rescue a run.
-
-Worker count, queue ordering, chunking, file-backed versus in-memory layout, and cache path are non-semantic under an exact-equivalence contract.
+Worker count, queue ordering, chunking, and storage layout are non-semantic only under the accepted equivalence contract. Current foundation P5 specifically remains single-process until distributed equivalence is accepted.
 
 # Current-generation publication and failure rules
 
-Current products SHALL fail closed when required source/label identity, evidence roles, fitted-partition lineage, target-size decision, replay/monitor lineage, post-selection acceptance, training protocol, runtime behavior, or publication payload validation is missing/incompatible.
+Current products SHALL fail closed when required source/label identity, evidence roles, fitted lineage, target binding, common-monitor lineage/separation, replay lineage, P5 method identity, foundation transfer evidence, runtime realization, or publication payload validation is missing/incompatible.
 
-Unsupported historical campaign schemas are not current compatibility obligations. Current code may retain low-level readers for forensic purposes, but those readers cannot create a second product-semantic path and are not normative documentation authority. The immediate fixed-fidelity predecessor is handled only by the explicit fail-closed re-authentication boundary above; it is not blanket historical compatibility.
+Historical readers cannot create a second product-semantic path. Old stress/fold-local/M3-P5/from-scratch-foundation/missing-transfer/target-first P5 records remain historical even if readable.
 
 # Extension rule
 
-A new feature/provider may enrich raw or DATA7 inputs without creating another membership selector. A new selector objective, target-size population, evidence role, loss function, stopping rule, or compatibility generation changes scientific protocol semantics and requires explicit architecture/specification revision plus qualification.
+A new feature/provider may enrich upstream evidence without creating another membership selector, P5 method owner, target monitor, E0 solver, or publication selector. A change to accepted scientific meaning routes to D1; a change to numerical method/equivalence routes to D2; ownership/topology changes route to D3; local schema/concretization changes under the accepted graph remain D4.
