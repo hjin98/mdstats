@@ -329,8 +329,7 @@ def resolve_stress_capability(
 ) -> StressCapabilityDecision:
     """Decide the stress channel from product/runtime capability plus policy."""
 
-    common = context.method_policies.common_training
-    objective = getattr(common, "objective_policy", None)
+    objective = getattr(context.method_policies, "objective", None)
     if objective is None:
         raise QualificationError(
             "The accepted training method exposes no objective policy, so stress "

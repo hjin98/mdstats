@@ -13,7 +13,6 @@ verdict for every size before a campaign rejection is reduced.
 from __future__ import annotations
 
 import ast
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -26,7 +25,6 @@ import tests.test_mlff_target_size_p4d_runtime_cutover as p4d
 import tests.test_mlff_target_size_p5_r9_guards as r9
 
 from mdstats.training_data import _campaign_cli_core as cli
-from mdstats.training_data._campaign_cli_core import CampaignStore
 from mdstats.training_data.campaign_post_selection import PostSelectionError
 from mdstats.training_data.campaign_post_selection_runtime import (
     build_post_selection_contexts,
@@ -138,12 +136,15 @@ def test_relative_foundation_locator_without_a_campaign_directory_fails_closed(
 
 
 def _foundation_backed_campaign(
-    root: Path, *, foundation: Path, spelling: str
+    root: Path, *, foundation: Path, spelling: str, cv_text: str | None = None
 ) -> Path:
     """A real selected campaign whose frozen method is foundation-backed."""
 
     r9._write_tiny_mace_foundation(foundation)
-    config_text = fx.fixture_config_text().replace(
+    base_text = fx.fixture_config_text()
+    if cv_text is not None:
+        base_text = base_text.replace("fold_count = 2\npartition_seed = 7", cv_text)
+    config_text = base_text.replace(
         'training_root = "{training_root}"',
         "\n".join(
             (
@@ -450,75 +451,6 @@ def _failed_foundation_workspace(tmp_path: Path):
 
 
 @pytest.mark.slow
-def test_pre_repair_materialization_recovers_in_the_same_workspace(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A failed attempt's immutable scratch cannot permanently block a retry.
-
-    The pre-repair representation is reproduced faithfully - the published
-    configuration bytes carry the old ``foundation_model`` locator key that the
-    current owner no longer writes - so the retry meets exactly the immutable
-    create-or-verify conflict the observed failure would leave behind.
-    """
-
-    campaign_root = tmp_path / "campaign-root"
-    campaign_root.mkdir()
-    store_dir = tmp_path / "foundation-store"
-    store_dir.mkdir()
-    config = _foundation_backed_campaign(
-        campaign_root,
-        foundation=store_dir / "foundation.model",
-        spelling="../foundation-store/foundation.model",
-    )
-
-    failing = _FailAfterMaterialization()
-    with pytest.raises(AssertionError, match="Foundation model file is missing"):
-        p4d._run(
-            config,
-            "cross-validate",
-            _external_post_selection_trainer=failing,
-            _external_inference_evaluator=fx.PostSelectionHarness().evaluate,
-        )
-    assert failing.roots
-    material_directory = failing.roots[0]
-    config_path = material_directory / "post_selection_mace_config.yaml"
-    stale = json.loads(config_path.read_text(encoding="utf-8"))
-    assert "foundation_model" not in stale
-    stale["foundation_model"] = str(
-        config.parent / "~" / "QE" / "mace-mpa-0-medium.model"
-    )
-    config_path.write_text(
-        json.dumps(stale, indent=2, sort_keys=True), encoding="utf-8"
-    )
-    # The old representation is faithful only when its immutable record also
-    # authenticates the old bytes. This models the actual pre-fix conflict,
-    # rather than an already-corrupt record that the repaired owner must reject.
-    record_path = material_directory / "materialization.json"
-    record_payload = json.loads(record_path.read_text(encoding="utf-8"))
-    stale_bytes = config_path.read_bytes()
-    record_payload["mace_config_sha256"] = hashlib.sha256(stale_bytes).hexdigest()
-    record_payload["mace_config_digest"] = digest(stale)
-    record_payload.pop("content_digest", None)
-    record = PostSelectionMaterialization.from_dict(record_payload)
-    record_path.write_text(
-        json.dumps(record.to_dict(), indent=2, sort_keys=True), encoding="utf-8"
-    )
-
-    # No harness deletion of any kind: the corrected owner is handed exactly the
-    # workspace the failure left.
-    assert fx.run_cross_validate(config, fx.PostSelectionHarness()) == 0
-    recovered = json.loads(config_path.read_text(encoding="utf-8"))
-    assert "foundation_model" not in recovered
-
-    cfg, paths, campaign_store = fx.load_context(config)
-    try:
-        context = build_post_selection_contexts(cfg, paths, campaign_store)[0]
-        assert resolve_current_cv_acceptance(context).accepted
-    finally:
-        campaign_store.close()
-
-
-@pytest.mark.slow
 def test_current_unaccepted_materialization_is_idempotent_without_reclamation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -654,7 +586,7 @@ class _PauseAfterFirstEpoch:
         return fx.train_like_mace(request)
 
 
-def _paused_foundation_workspace(tmp_path: Path):
+def _paused_foundation_workspace(tmp_path: Path, *, cv_text: str | None = None):
     """Create one real P5 run with authenticated partial TRAIN2 progress."""
 
     campaign_root = tmp_path / "campaign-root"
@@ -666,6 +598,7 @@ def _paused_foundation_workspace(tmp_path: Path):
         campaign_root,
         foundation=foundation,
         spelling="../foundation-store/foundation.model",
+        cv_text=cv_text,
     )
     pauser = _PauseAfterFirstEpoch()
     with pytest.raises(AssertionError, match="bounded interruption"):
@@ -949,7 +882,12 @@ def test_foreign_sibling_continuation_with_equal_runtime_shape_fails_before_eval
 
     import shutil
 
-    config, _foundation, paused_root, _pauser = _paused_foundation_workspace(tmp_path)
+    # This partition seed gives both folds equal gradient-training sizes on
+    # the fixture's selected set, so their TRAIN2 runtime plans are equal.
+    config, _foundation, paused_root, _pauser = _paused_foundation_workspace(
+        tmp_path,
+        cv_text="fold_count = 2\npartition_seed = 0",
+    )
     staged = _ResumeFirstThenFailSecond()
     with pytest.raises(AssertionError, match="after materialization"):
         p4d._run(

@@ -35,11 +35,14 @@ from .runtime_capability import deployed_static_evaluation
 
 
 def probe_cohort(context: Any, *, count: int) -> tuple[str, ...]:
-    """A deterministic bounded M3 development cohort, frozen before prediction."""
+    """A deterministic bounded M3 development cohort, frozen before prediction.
 
-    from ..post_selection_production import frozen_m3_development_evidence
+    M3 is resolved from the accepted P2/P3 experiment definition itself; it is a
+    downstream probe cohort only and never P5 checkpoint or publication lineage.
+    """
 
-    _size, membership, _digest = frozen_m3_development_evidence(context.selected)
+    definition = context.selected.definition
+    membership = tuple(definition.evaluation_membership(int(definition.policy.m3)))
     if not membership:
         raise QualificationError(
             "The frozen M3 development reserve is empty, so no deterministic "

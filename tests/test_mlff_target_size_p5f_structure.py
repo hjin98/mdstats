@@ -123,22 +123,129 @@ def test_p5f_the_only_campaign_state_write_is_the_fenced_pointer():
     assert "INSERT OR REPLACE INTO meta" in body
 
 
+_SCREENING_CONTINUATION_SEEDS = frozenset(
+    {
+        "resolve_target_size_candidate_for_resume",
+        "TargetSizeContinuationRequest",
+        "continuation_request_from_boundary",
+        "build_target_size_candidate_trajectory",
+        "promote_target_size_boundary_snapshot",
+    }
+)
+
+
+def _screening_continuation_owner_closure() -> frozenset[str]:
+    """Top-level target-size definitions that are, or route to, continuation owners.
+
+    A renamed wrapper around a screening-continuation owner stays in this set
+    because membership follows references, not spelling.
+    """
+
+    references: dict[str, set[str]] = {}
+    for path in (_TRAINING_DATA / "target_size_execution").glob("*.py"):
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                references[node.name] = {
+                    item.id for item in ast.walk(node) if isinstance(item, ast.Name)
+                } | {
+                    item.attr for item in ast.walk(node) if isinstance(item, ast.Attribute)
+                }
+    closure = set(_SCREENING_CONTINUATION_SEEDS)
+    while True:
+        added = {
+            name for name, refs in references.items() if name not in closure and refs & closure
+        }
+        if not added:
+            return frozenset(closure)
+        closure |= added
+
+
+def _continuation_edges(source: str, owners: frozenset[str]) -> list[str]:
+    edges: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom):
+            edges.extend(alias.name for alias in node.names if alias.name in owners)
+        elif isinstance(node, ast.Attribute) and node.attr in owners:
+            edges.append(node.attr)
+        elif isinstance(node, ast.Name) and node.id in owners:
+            edges.append(node.id)
+    return edges
+
+
+def test_p5f_continuation_closure_rule_detects_renamed_and_attribute_routes():
+    owners = _screening_continuation_owner_closure()
+    assert _SCREENING_CONTINUATION_SEEDS <= owners
+    # Real screening recovery routes are in the closure by reference.
+    assert "recover_authenticated_boundary_progress" in owners
+    assert "initial_target_size_continuation_request" in owners
+    assert _continuation_edges(
+        "from .target_size_execution import initial_target_size_continuation_request as fresh\n",
+        owners,
+    )
+    assert _continuation_edges(
+        "from . import target_size_execution as tse\n"
+        "def f(x):\n    return tse.resolve_target_size_candidate_for_resume(x)\n",
+        owners,
+    )
+    # P5's own authenticated MACE continuation is not a screening owner.
+    assert not _continuation_edges(
+        "def launch(request, command):\n"
+        "    if int(request.start_epoch) > 0:\n"
+        "        command.append('--restart_latest')\n",
+        owners,
+    )
+
+
 def test_p5f_no_screening_continuation_owner_is_reachable_from_post_selection():
     """Absence: a screening trajectory can never be resumed as a P5 run."""
 
-    offenders: list[tuple[str, str]] = []
-    for name, source in _sources().items():
-        for marker in (
-            "resolve_target_size_candidate_for_resume",
-            "TargetSizeContinuationRequest",
-            "continuation_request_from_boundary",
-            "build_target_size_candidate_trajectory",
-            "promote_target_size_boundary_snapshot",
-            "restart_latest",
-        ):
-            if marker in source:
-                offenders.append((name, marker))
+    owners = _screening_continuation_owner_closure()
+    offenders = [
+        (name, edge)
+        for name, source in _sources().items()
+        for edge in _continuation_edges(source, owners)
+    ]
     assert not offenders, offenders
+
+
+def test_p5f_p5_restart_launch_is_bound_to_authenticated_p5_continuation():
+    """Positive ownership: P5's ``--restart_latest`` comes only from its own owner.
+
+    The trainer emits the flag only for ``request.start_epoch > 0``, and the
+    runtime's only source of that epoch is the authenticated TRAIN2/P5
+    continuation owner.
+    """
+
+    execution = (_TRAINING_DATA / "post_selection_execution.py").read_text(encoding="utf-8")
+    guards = [
+        node
+        for node in ast.walk(ast.parse(execution))
+        if isinstance(node, ast.If)
+        and "--restart_latest" in ast.unparse(node)
+        and "request.start_epoch" in ast.unparse(node.test)
+    ]
+    assert len(guards) == 1
+
+    runtime = ast.parse(
+        (_TRAINING_DATA / "campaign_post_selection_runtime.py").read_text(encoding="utf-8")
+    )
+    producers = [
+        ast.unparse(node.value)
+        for node in ast.walk(runtime)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Tuple)
+            and any(isinstance(item, ast.Name) and item.id == "start_epoch" for item in target.elts)
+            or isinstance(target, ast.Name) and target.id == "start_epoch"
+            for target in node.targets
+        )
+    ]
+    assert producers, producers
+    assert all(
+        value.startswith("_authenticate_post_selection_continuation(")
+        or value == "setup.start_epoch"
+        for value in producers
+    ), producers
 
 
 def test_p5f_no_target_size_result_json_is_read_as_authority():

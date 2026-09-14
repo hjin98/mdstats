@@ -246,9 +246,7 @@ def test_r13_required_reference_stress_and_bundle_provenance_are_authenticated(t
 def _stress_context(stress_weight: float = 1.0):
     return SimpleNamespace(
         method_policies=SimpleNamespace(
-            common_training=SimpleNamespace(
-                objective_policy=SimpleNamespace(stress_weight=stress_weight)
-            )
+            objective=SimpleNamespace(stress_weight=stress_weight)
         ),
         selected=SimpleNamespace(
             authorities=SimpleNamespace(frame_array_index={})

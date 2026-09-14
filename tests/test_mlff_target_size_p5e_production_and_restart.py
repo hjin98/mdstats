@@ -16,6 +16,7 @@ import pytest
 
 import tests.test_mlff_target_size_p4d_runtime_cutover as p4d
 from tests._mlff_post_selection_fixture import (
+    monitor_kwargs,
     PRODUCTION_MAX_NUM_EPOCHS,
     PostSelectionHarness,
     build_selected_campaign,
@@ -45,7 +46,6 @@ from mdstats.training_data.post_selection_identity import (
 )
 from mdstats.training_data.post_selection_production import (
     build_final_production_run_plan,
-    frozen_m3_development_evidence,
 )
 from mdstats.training_data.post_selection_run_identity import (
     PostSelectionRunRole,
@@ -86,11 +86,11 @@ def test_p5e_production_trains_on_the_full_exact_t_selected(tmp_path: Path):
         assert set(target.frame_uids) == set(context.selected_membership)
         assert len(target.frame_uids) == context.n_selected
 
-        # The final model-selection monitor is the frozen M3 reserve, and it is
-        # disjoint from the training data by construction.
-        _m3_size, m3_membership, _digest = frozen_m3_development_evidence(context)
+        # The final checkpoint monitor is the exact common target monitor CV
+        # used, disjoint from the training data by construction; M3 has no role.
+        monitor_record, _separation = monitor_kwargs(context).values()
         monitor = request.materialization.checkpoint_monitor_artifact
-        assert set(monitor.frame_uids) == set(m3_membership)
+        assert tuple(monitor.frame_uids) == tuple(monitor_record.selected_identities)
         assert not set(monitor.frame_uids) & set(context.selected_membership)
 
         # Production has no held-out outer fold; CV owns that role.
@@ -512,6 +512,10 @@ def test_p5e_the_held_out_fold_is_invisible_until_the_representative_is_frozen(
             context,
             resolve_post_selection_method_identity(cfg),
             resolve_cv_validation_policy_identity(cfg),
+            **monitor_kwargs(context),
+        )
+        common_monitor = frozenset(
+            monitor_kwargs(context)["common_monitor"].selected_identities
         )
     finally:
         store.close()
@@ -539,7 +543,7 @@ def test_p5e_the_held_out_fold_is_invisible_until_the_representative_is_frozen(
     harness = _Recording()
     assert run_cross_validate(config, harness) == 0
 
-    monitors = {frozenset(fold.checkpoint_monitor_frame_uids) for fold in plan.folds}
+    monitors = {common_monitor}
     outers = {frozenset(fold.outer_evaluation_frame_uids) for fold in plan.folds}
     allowed = monitors | outers
     assert harness.chunks

@@ -39,7 +39,7 @@ from ._common import (
     validate_digest,
 )
 from ._frame_access import ase_atoms_for_frame, build_frame_array_index
-from .mace_compatibility import MACE_EXECUTABLE_LOSS_FAMILY, mace_runtime_warning_handled
+from .mace_compatibility import MACE_WEIGHTED_LOSS_FAMILY, mace_runtime_warning_handled
 from .critical_precision import (
     MaceCriticalPrecisionPolicy,
     activate_mace_critical_precision_policy,
@@ -541,7 +541,7 @@ def _mace_candidate_architecture_from_args(args: Any) -> dict[str, Any]:
         "scaling": "no_scaling",
         "mean": 0.0,
         "std": 1.0,
-        "loss": MACE_EXECUTABLE_LOSS_FAMILY,
+        "loss": MACE_WEIGHTED_LOSS_FAMILY,
         "heads": ["target_head"],
     }
 
@@ -685,11 +685,11 @@ def _validate_mace_candidate_architecture(
     # the executable training objective.
     if (
         str(value["scaling"]) != "no_scaling"
-        or str(value["loss"]) != MACE_EXECUTABLE_LOSS_FAMILY
+        or str(value["loss"]) != MACE_WEIGHTED_LOSS_FAMILY
     ):
         raise TrainingDataInputError(
             "Target-size MACE architecture must use the accepted no_scaling/"
-            f"{MACE_EXECUTABLE_LOSS_FAMILY} realization."
+            f"{MACE_WEIGHTED_LOSS_FAMILY} realization."
         )
     interaction_first = str(value["interaction_first"])
     if interaction_first not in {
@@ -746,7 +746,7 @@ def _validate_mace_candidate_architecture(
         "scaling": "no_scaling",
         "mean": mean,
         "std": std,
-        "loss": MACE_EXECUTABLE_LOSS_FAMILY,
+        "loss": MACE_WEIGHTED_LOSS_FAMILY,
         "heads": ["target_head"],
     }
     return result

@@ -43,9 +43,6 @@ from mdstats.training_data.post_selection_execution import (
     PostSelectionFittedPreparation,
     PostSelectionMaterialization,
 )
-from mdstats.training_data.post_selection_production import (
-    frozen_m3_development_evidence,
-)
 from mdstats.training_data.post_selection_run_identity import PostSelectionRunRole
 from mdstats.training_data.post_selection_store import (
     open_post_selection_store,
@@ -119,16 +116,20 @@ def test_p5g_assembled_post_selection_lifecycle(tmp_path: Path, capsys):
         assert final_plan.cv_authorization_digest == acceptance.content_digest
         assert final_plan.method_identity_digest == context.method.content_digest
         assert final_plan.cv_plan_digest == plan.content_digest
+        assert "preparation_digest" not in final_plan.to_dict()
+        assert "fitted_preparation_digest" not in final_plan.to_dict()
         assert final_plan.n_selected == n_selected
         assert final_plan.target_membership_digest == selected_digest
         assert final_plan.planned_epochs == PRODUCTION_MAX_NUM_EPOCHS
 
-        # --- M3 is inherited lineage on the plan, not a production knob ------
-        m3_size, m3_membership, m3_digest = frozen_m3_development_evidence(selected)
-        assert final_plan.m3_evaluation_size == m3_size
-        assert final_plan.m3_membership_digest == m3_digest
-        assert "m3_membership_digest" not in context.production_policy.to_dict()
-        assert not set(m3_membership) & universe
+        # --- one exact common monitor, shared by CV and production, no M3 ----
+        monitor_record, separation = context.common_target_monitor()
+        assert final_plan.common_monitor_record_digest == monitor_record.content_digest
+        assert plan.common_monitor_record_digest == monitor_record.content_digest
+        assert final_plan.monitor_separation_digest == separation.content_digest
+        assert monitor_record.realized_size == 256
+        assert "m3_membership_digest" not in final_plan.to_dict()
+        assert not set(monitor_record.selected_identities) & universe
 
         # --- fold-local fitting saw only its own training frames -------------
         evidence = open_post_selection_store(paths, selected.binding)
@@ -151,7 +152,7 @@ def test_p5g_assembled_post_selection_lifecycle(tmp_path: Path, capsys):
                     fold.outer_evaluation_frame_uids
                 )
                 assert not set(item.membership) & set(
-                    fold.checkpoint_monitor_frame_uids
+                    monitor_record.selected_identities
                 )
 
         # --- final production fitted from the full T_selected ---------------
@@ -164,7 +165,7 @@ def test_p5g_assembled_post_selection_lifecycle(tmp_path: Path, capsys):
         materializations = []
         for path in sorted((evidence.root / "objects").rglob("*.json")):
             payload = json.loads(path.read_text(encoding="utf-8"))
-            if payload.get("schema") == "mdstats.post-selection-materialization.v1":
+            if payload.get("schema") == "mdstats.post-selection-materialization.v2":
                 materializations.append(
                     PostSelectionMaterialization.from_dict(payload)
                 )
@@ -172,6 +173,17 @@ def test_p5g_assembled_post_selection_lifecycle(tmp_path: Path, capsys):
         assert len(set(identities)) == len(identities)
         assert set(cv.runs) | set(production.runs) == set(identities)
         assert not set(cv.runs) & set(production.runs)
+        plans_by_digest = {
+            request.run_plan.content_digest
+            for request in (*cv.requests, *production.requests)
+        }
+        preparations_by_digest = {
+            item.content_digest: item for item in preparations
+        }
+        for item in materializations:
+            assert item.run_plan_digest in plans_by_digest
+            preparation = preparations_by_digest[item.preparation_digest]
+            assert preparation.owner_plan_digest == item.run_plan_digest
 
         # --- P4 is byte-for-byte untouched by all of the above ---------------
         after = load_target_size_campaign_revision(store)

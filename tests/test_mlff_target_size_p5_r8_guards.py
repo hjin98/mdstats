@@ -80,7 +80,6 @@ from mdstats.training_data.post_selection_identity import (
 from mdstats.training_data.post_selection_production import (
     FinalProductionPlan,
     build_final_production_plan,
-    frozen_m3_development_evidence,
     validate_final_production_plan,
 )
 from mdstats.training_data.replay import (
@@ -100,6 +99,7 @@ from mdstats.training_data.train2_runtime import (
     Train2RuntimeSummary,
 )
 from tests._mlff_post_selection_fixture import (
+    context_monitor_kwargs,
     PostSelectionHarness,
     build_selected_campaign,
     fixture_config_text,
@@ -146,10 +146,21 @@ def _synthetic_inspection(*, heads: tuple[str, ...] = ("default",), family: str 
 
 
 def _make_dummy_method_identity(mode: str = "scratch", backend: str = "e3nn") -> PostSelectionMethodIdentity:
+    from mdstats.training_data.post_selection_identity import (
+        POST_SELECTION_FOUNDATION_EXPOSURE_POLICY,
+        POST_SELECTION_SCRATCH_EXPOSURE_POLICY,
+    )
+
     return PostSelectionMethodIdentity(
         method_recipe_version="mdstats.post-selection-method.2026-08.v1",
         training_mode=mode,
-        common_training_policy_digest="11" * 32,
+        objective_policy_digest="11" * 32,
+        preparation_policy_digest="10" * 32,
+        exposure_policy=(
+            POST_SELECTION_SCRATCH_EXPOSURE_POLICY
+            if mode == "scratch"
+            else POST_SELECTION_FOUNDATION_EXPOSURE_POLICY
+        ),
         learning_rate_schedule_policy_digest="22" * 32,
         checkpoint_admissibility_policy_digest="33" * 32,
         checkpoint_selection_policy_digest="44" * 32,
@@ -482,9 +493,7 @@ def test_claims_17_18_19_20_eval_interval_and_acceleration_parity():
         fitted_atomic_references=SimpleNamespace(
             reference_energies_ev=((3, 0.0), (8, 0.0))
         ),
-        # The fitted preparation carries the resolved global objective, which the
-        # generated MACE config must emit explicitly.
-        objective_policy=TrainingObjectivePolicy(),
+        training_mode="scratch",
     )
     target_train = SimpleNamespace(relative_path="train.extxyz", atomic_numbers=(3, 8))
     monitor = SimpleNamespace(relative_path="valid.extxyz", atomic_numbers=(3, 8))
@@ -508,6 +517,7 @@ def test_claims_17_18_19_20_eval_interval_and_acceleration_parity():
         target_train=target_train,
         monitor=monitor,
         extxyz_policy=resolve_post_selection_method_policies(cfg2).extxyz,
+        objective=resolve_post_selection_method_policies(cfg2).objective,
         method=method2,
     )
     assert internal2["eval_interval"] == 5
@@ -552,6 +562,7 @@ def test_claims_17_18_19_20_eval_interval_and_acceleration_parity():
         target_train=target_train,
         monitor=monitor,
         extxyz_policy=cueq_policies.extxyz,
+        objective=cueq_policies.objective,
         method=cueq_method,
     )
     cueq_exec = post_selection_mace_run_configuration(cueq_internal)
@@ -608,6 +619,12 @@ exit 0
 
     internal_config = {
         "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
+        "training_mode": "multihead_replay",
+        "loss": "universal",
+        "huber_delta": 0.01,
+        "energy_weight": 1.0,
+        "forces_weight": 10.0,
+        "stress_weight": 1.0,
         "name": "test_run",
         "seed": 42,
         "target_train_file": "train.extxyz",
@@ -802,9 +819,14 @@ def test_claims_30_to_38_assembled_lifecycle_and_restart_reauthentication(tmp_pa
         assert final_plan.target_membership_digest == selected.selected_membership_digest
 
         # Claim 38: Reauthentication succeeds on unmodified store
-        validate_post_selection_cv_plan(cv_plan, selected, replay_lineage_digest=cv_plan.replay_lineage_digest)
+        validate_post_selection_cv_plan(
+            cv_plan, selected, replay_lineage_digest=cv_plan.replay_lineage_digest,
+            **context_monitor_kwargs(context),
+        )
         validate_final_production_plan(
-            final_plan, selected, method=context.method, policy=context.production_policy, replay_lineage_digest=final_plan.replay_lineage_digest
+            final_plan, selected, method=context.method, policy=context.production_policy,
+            replay_lineage_digest=final_plan.replay_lineage_digest,
+            **context_monitor_kwargs(context),
         )
     finally:
         store.close()

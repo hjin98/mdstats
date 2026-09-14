@@ -37,6 +37,7 @@ from mdstats.training_data.post_selection_identity import (
 )
 from mdstats.training_data.post_selection_production import build_final_production_plan
 from tests._mlff_post_selection_fixture import (
+    context_monitor_kwargs,
     PostSelectionHarness,
     build_selected_campaign,
     load_context,
@@ -45,10 +46,10 @@ from tests._mlff_post_selection_fixture import (
 
 #: The immediately previous method-recipe token.  It remains readable history
 #: but cannot authorize the corrected EMA checkpoint convention.
-HISTORICAL_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v3"
+HISTORICAL_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v4"
 #: The static fixture predates the prior repair and intentionally remains v2.
 PRE_REPAIR_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v2"
-CURRENT_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v4"
+CURRENT_METHOD_RECIPE = "mdstats.post-selection-method.2026-09.v5"
 
 
 def _load_pre_repair_authorization_fixture() -> tuple[
@@ -157,7 +158,8 @@ def test_r6d_historical_method_cv_cannot_authorize_corrected_final_production(
                 context.production_policy,
                 cv_plan=historical_plan,
                 cv_acceptance=historical_acceptance,
-                replay_lineage_digest=historical_plan.replay_lineage_digest,
+                **context_monitor_kwargs(context),
+replay_lineage_digest=historical_plan.replay_lineage_digest,
             )
         message = str(excinfo.value)
         assert "different training method" in message or "different shared method" in message
@@ -174,7 +176,8 @@ def test_r6d_historical_method_cv_cannot_authorize_corrected_final_production(
             context.production_policy,
             cv_plan=plan,
             cv_acceptance=acceptance,
-            replay_lineage_digest=plan.replay_lineage_digest,
+            **context_monitor_kwargs(context),
+replay_lineage_digest=plan.replay_lineage_digest,
         )
         assert admitted.method_identity_digest == corrected_method.content_digest
         assert admitted.cv_authorization_digest == acceptance.content_digest
@@ -185,40 +188,17 @@ def test_r6d_historical_method_cv_cannot_authorize_corrected_final_production(
 def test_r6d_static_pre_repair_authorization_is_rejected_before_trainer_launch(
     tmp_path: Path,
 ):
-    """Stored v2 authorization is rejected by the real production owner."""
+    """Stored pre-restoration authorization never deserializes as current.
 
-    config, _workspace = build_selected_campaign(tmp_path)
-    cfg, paths, store = load_context(config)
-    harness = PostSelectionHarness()
-    try:
-        context = build_post_selection_context(cfg, paths, store)
-        historical_method, historical_plan, historical_acceptance = (
-            _load_pre_repair_authorization_fixture()
-        )
-        assert historical_method.method_recipe_version == PRE_REPAIR_METHOD_RECIPE
-        assert historical_plan.method_identity_digest == historical_method.content_digest
-        assert historical_acceptance.cv_plan_digest == historical_plan.content_digest
-        assert historical_acceptance.method_identity_digest == historical_method.content_digest
-        assert historical_acceptance.accepted
+    The restored method identity, CV plan, and acceptance chain advanced their
+    schemas, so the exact historical serialized chain is refused by the current
+    readers before any production owner or trainer could consume it.
+    """
 
-        with pytest.raises((PostSelectionError, PostSelectionCvRejectedError)) as excinfo:
-            build_final_production_plan(
-                context.selected,
-                context.method,
-                context.production_policy,
-                cv_plan=historical_plan,
-                cv_acceptance=historical_acceptance,
-                replay_lineage_digest=historical_plan.replay_lineage_digest,
-            )
-        err_msg = str(excinfo.value)
-        assert (
-            "different training method" in err_msg
-            or "different shared method" in err_msg
-            or "Stale descendants are never republished as current" in err_msg
-        )
-        assert getattr(harness, "trained", []) == []
-    finally:
-        store.close()
+    from mdstats.training_data._common import TrainingDataSerializationError
+
+    with pytest.raises(TrainingDataSerializationError, match="schema"):
+        _load_pre_repair_authorization_fixture()
 
 
 def test_r6d_corrected_cv_cannot_authorize_a_historical_method_run(tmp_path: Path):
@@ -244,7 +224,8 @@ def test_r6d_corrected_cv_cannot_authorize_a_historical_method_run(tmp_path: Pat
                 context.production_policy,
                 cv_plan=plan,
                 cv_acceptance=acceptance,
-                replay_lineage_digest=plan.replay_lineage_digest,
+                **context_monitor_kwargs(context),
+replay_lineage_digest=plan.replay_lineage_digest,
             )
     finally:
         store.close()

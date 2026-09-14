@@ -298,6 +298,53 @@ def test_p6_generated_config_and_example_expose_only_current_authority():
         assert "remove_evaluation_graph_cache_after_evaluate" not in cfg.get("cleanup", {})
 
 
+def _first_toml_block_with(text: str, header: str) -> dict:
+    for block in text.split("```toml\n")[1:]:
+        body = block.split("```", 1)[0]
+        if header in body:
+            return tomllib.loads(body)
+    raise AssertionError(f"no toml block with {header}")
+
+
+def test_generated_post_selection_defaults_objective_scope_and_current_docs_agree():
+    """Public/config truth: prose cannot drift from the generator or P5 ownership."""
+
+    template = cli._config_template(
+        workspace="/tmp/g12a", training_root="/tmp/g12a-training",
+        foundation_model="/tmp/g12a-foundation", replay_set="/tmp/g12a-replay",
+    )
+    generated = tomllib.loads(template)["post_selection"]
+    assert generated["cv"]["fold_count"] == 3
+    assert generated["cv"]["partition_seed"] == 104729
+    assert generated["cv"]["seeds"] == [0]
+    assert generated["cv"]["max_num_epochs"] == 30
+    example_text = (_REPO / "campaign.toml.example").read_text(encoding="utf-8")
+    assert tomllib.loads(example_text)["post_selection"] == generated
+
+    guide = (_REPO / "docs/guides/mlff_campaign_cli_user_guide.md").read_text(encoding="utf-8")
+    cli_spec = (_REPO / "docs/specs/training_data/mlff_data9b3_campaign_cli_spec.md").read_text(encoding="utf-8")
+    for document in (guide, cli_spec):
+        assert _first_toml_block_with(document, "[post_selection.cv]")["post_selection"] == generated
+
+    # [objective] is P3/P5-scratch authority, never foundation-P5 CV/final.
+    for text in (template, example_text):
+        comment = text[text.index("[objective]") : text.index("energy_weight = ")]
+        assert "post-selection cross-validation, and fresh" not in comment
+        assert "do not read this table" in comment
+    assert "for the screen, for cross-validation, and for final production" not in guide
+    assert "do not read `[objective]`" in guide
+
+    commands = cli_spec[cli_spec.index("## Public command surface") :]
+    commands = commands[: commands.index("```", commands.index("```text") + 7)]
+    assert "qualification {status,run,activate-locked}" in commands
+
+    p7 = (_REPO / "docs/specs/training_data/mlff_p7_post_production_qualification_spec.md").read_text(encoding="utf-8")
+    decision = p7[p7.index("# 1a.") : p7.index("# 2.")]
+    assert "frozen M3 membership" not in decision
+    assert "common_monitor_record_digest" in decision
+    assert "existing M3 lineage" not in cli_spec
+
+
 def test_p6_preparation_projection_excludes_cv_authoring():
     cfg = {
         "partition": {

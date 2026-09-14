@@ -19,7 +19,7 @@ from mdstats.training_data._common import (
     TrainingDataInputError,
     TrainingDataSerializationError,
 )
-from mdstats.training_data.mace_compatibility import MACE_EXECUTABLE_LOSS_FAMILY
+from mdstats.training_data.mace_compatibility import MACE_WEIGHTED_LOSS_FAMILY
 from mdstats.training_data.objectives import (
     FRAME_TRAINING_WEIGHT_SCHEMA,
     TRAINING_WEIGHT_CATALOG_SCHEMA,
@@ -60,8 +60,9 @@ def test_every_reinterpretable_schema_was_versioned_forward() -> None:
     assert TARGET_SIZE_COMMON_PREPARATION_SCHEMA.endswith(".v3")
     assert FRAME_TRAINING_WEIGHT_SCHEMA.endswith(".v2")
     assert TRAINING_WEIGHT_CATALOG_SCHEMA.endswith(".v2")
-    assert POST_SELECTION_PREPARATION_SCHEMA.endswith(".v2")
-    assert POST_SELECTION_MACE_CONFIG_SCHEMA.endswith(".v2")
+    # Restored P5: mode-disjoint preparations and mode-specific MACE configs.
+    assert POST_SELECTION_PREPARATION_SCHEMA.endswith(".v3")
+    assert POST_SELECTION_MACE_CONFIG_SCHEMA.endswith(".v3")
 
 
 @pytest.mark.parametrize(
@@ -130,24 +131,26 @@ def test_local_property_weights_are_masks_under_the_current_schema() -> None:
         FrameTrainingWeight.from_dict(retired)
 
 
-def test_the_executable_loss_family_is_one_authority() -> None:
-    """Screen, post-selection, and model reconstruction name the same family."""
+def test_the_weighted_loss_family_is_scoped_away_from_foundation_p5() -> None:
+    """P3 and P5 scratch keep the weighted family; foundation P5 does not."""
 
     from mdstats.training_data.model_features import (
         mace_candidate_architecture_defaults,
     )
-    from mdstats.training_data.post_selection_execution import (
-        POST_SELECTION_MACE_LOSS_FAMILY,
+    from mdstats.training_data.objectives import TrainingObjectivePolicy
+    from mdstats.training_data.post_selection_identity import (
+        FoundationAdaptationObjectivePolicy,
     )
     from mdstats.training_data.target_size_execution.candidate import (
         TARGET_SIZE_MACE_LOSS_FAMILY,
     )
 
-    assert MACE_EXECUTABLE_LOSS_FAMILY == "stress"
-    assert TARGET_SIZE_MACE_LOSS_FAMILY == MACE_EXECUTABLE_LOSS_FAMILY
-    assert POST_SELECTION_MACE_LOSS_FAMILY == MACE_EXECUTABLE_LOSS_FAMILY
+    assert MACE_WEIGHTED_LOSS_FAMILY == "stress"
+    assert TARGET_SIZE_MACE_LOSS_FAMILY == MACE_WEIGHTED_LOSS_FAMILY
+    assert TrainingObjectivePolicy().loss_family == MACE_WEIGHTED_LOSS_FAMILY
+    assert FoundationAdaptationObjectivePolicy().loss_family == "universal"
     assert (
-        mace_candidate_architecture_defaults()["loss"] == MACE_EXECUTABLE_LOSS_FAMILY
+        mace_candidate_architecture_defaults()["loss"] == MACE_WEIGHTED_LOSS_FAMILY
     )
 
 
@@ -189,4 +192,4 @@ def test_reconstruction_output_configuration_is_unchanged_by_the_loss_family() -
         args = SimpleNamespace(loss=loss)
         return (args.loss == "virials", args.loss in ("stress", "huber", "universal"))
 
-    assert output_flags(MACE_EXECUTABLE_LOSS_FAMILY) == output_flags("universal")
+    assert output_flags(MACE_WEIGHTED_LOSS_FAMILY) == output_flags("universal")

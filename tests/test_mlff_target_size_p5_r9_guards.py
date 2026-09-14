@@ -225,6 +225,12 @@ def test_r9a_mace_translation_uses_training_artifact_and_true_monitor_separately
 
     internal = {
         "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
+        "training_mode": "multihead_replay",
+        "loss": "universal",
+        "huber_delta": 0.01,
+        "energy_weight": 1.0,
+        "forces_weight": 10.0,
+        "stress_weight": 1.0,
         "name": "r9a",
         "seed": 1,
         "target_train_file": "target-train.extxyz",
@@ -332,6 +338,12 @@ def test_r9b_head_namespace_is_one_owner_across_policy_and_mace_translation(
 
     internal = {
         "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
+        "training_mode": "multihead_replay",
+        "loss": "universal",
+        "huber_delta": 0.01,
+        "energy_weight": 1.0,
+        "forces_weight": 10.0,
+        "stress_weight": 1.0,
         "name": "r9b",
         "seed": 1,
         "target_train_file": "train.extxyz",

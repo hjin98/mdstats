@@ -144,6 +144,11 @@ def _lifecycle_fixture(
     )
     monkeypatch.setattr(
         runtime,
+        "_fit_post_selection_run_preparation",
+        lambda *_args, **_kwargs: preparation,
+    )
+    monkeypatch.setattr(
+        runtime,
         "materialize_post_selection_run",
         lambda *_args, **_kwargs: (preparation, materialization),
     )
@@ -192,6 +197,7 @@ def _lifecycle_fixture(
         method=SimpleNamespace(),
         method_policies=SimpleNamespace(
             extxyz=SimpleNamespace(),
+            objective=SimpleNamespace(),
             checkpoint_admissibility=SimpleNamespace(replay_enabled=replay_enabled),
             checkpoint_selection=SimpleNamespace(),
             training_mode="multihead_replay",
@@ -204,9 +210,6 @@ def _lifecycle_fixture(
             ),
             foundation_model=str(tmp_path / "foundation.model"),
             foundation_head="default",
-            common_training=SimpleNamespace(
-                eval2_metric_policy_digest=_digest("c"),
-            ),
             # The learned-model dtype is resolved by the one binary precision
             # authority and carried on the method policies, not by the
             # common-preparation policy, which does not consume it.

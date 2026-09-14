@@ -1375,11 +1375,12 @@ def test_replay_routing_repair_bumps_no_scientific_or_schema_version():
         REPLAY_SPLIT_MANIFEST_SCHEMA,
     )
 
-    assert POST_SELECTION_METHOD_RECIPE_VERSION == "mdstats.post-selection-method.2026-09.v4"
+    assert POST_SELECTION_METHOD_RECIPE_VERSION == "mdstats.post-selection-method.2026-09.v5"
     assert REPLAY_INVALIDATION_VERSION == "REPLAY-UNIFY1E-v1"
     assert REPLAY_SINGLE_SOURCE_CONFIG_SCHEMA == "mdstats.replay-single-source-config.v1"
     assert REPLAY_SPLIT_MANIFEST_SCHEMA == "mdstats.replay-split-manifest.v1"
-    assert REPLAY_PREPARATION_PLAN_SCHEMA == "mdstats.replay-preparation-plan.v4"
+    # v5: retired training-head scalar weights left the replay plan.
+    assert REPLAY_PREPARATION_PLAN_SCHEMA == "mdstats.replay-preparation-plan.v5"
 
 
 # ---------------------------------------------------------------------------
@@ -3184,3 +3185,119 @@ def test_hypothesis_exact_bool_gate_rejection(val):
     with pytest.raises(cli.CampaignCliError, match="allow_small_corpus"):
         cli._replay_qualification_gate_semantics(cfg)
 
+
+
+# ---------------------------------------------------------------------------
+# G12A - repaired replay-view transport currentness
+# ---------------------------------------------------------------------------
+
+
+def _seed_pre_repair_view(view: Path) -> None:
+    """Rewrite one current view as a self-authenticating pre-repair v1 view."""
+
+    from ase.io import read, write
+
+    frames = read(view, index=":", format="extxyz")
+    for atoms in frames:
+        atoms.info.update(
+            {"config_weight": 4.0, "config_energy_weight": 0.3, "config_forces_weight": 2.5}
+        )
+    write(view, frames, format="extxyz")
+    receipt_path = view.with_name(view.name + ".replay.json")
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["schema"] = receipt["schema"].replace(".v2", ".v1")
+    receipt["view"]["schema"] = receipt["view"]["schema"].replace(".v2", ".v1")
+    receipt["view"]["sha256"] = sha256_file_cached(view)
+    receipt["view"].pop("logical_digest", None)
+    receipt["view"].pop("content_digest", None)
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    artifact_receipt = view.with_name(view.name + ".mdstats-artifact.json")
+    if artifact_receipt.is_file():
+        payload = json.loads(artifact_receipt.read_text(encoding="utf-8"))
+        payload["schema"] = payload["schema"].replace(".v2", ".v1")
+        payload["artifact"]["sha256"] = sha256_file_cached(view)
+        artifact_receipt.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_pre_repair_replay_views_rematerialize_from_unchanged_parents_without_inference(
+    tmp_path: Path, monkeypatch
+):
+    from ase.io import iread
+
+    source = tmp_path / "replay.extxyz"
+    _write_source(source, 12)
+    cfg, paths = _write_config(tmp_path, source, label_mode="foundation_pseudolabel")
+    _install_pseudo_prerequisites(monkeypatch, cfg)
+    original = mdstats.build_replay_foundation_prediction_cache
+    providers: list[_CountingProvider] = []
+
+    def build_with_double(src, policy, cache_root, **kwargs):
+        provider = _CountingProvider(policy)
+        providers.append(provider)
+        return original(src, policy, cache_root, provider=provider, **kwargs)
+
+    monkeypatch.setattr(mdstats, "build_replay_foundation_prediction_cache", build_with_double)
+    _publish(cfg, paths)
+    assert providers[0].calls
+
+    parents = (
+        "replay_source",
+        "replay_true_label_cache",
+        "replay_split_manifest",
+        "replay_foundation_prediction_cache",
+        "replay_pseudolabel_qualification",
+    )
+
+    def parent_digests() -> dict[str, str | None]:
+        store = cli.CampaignStore(paths.state_db)
+        try:
+            return {key: store.record_digest(key) for key in parents}
+        finally:
+            store.close()
+
+    before = parent_digests()
+    views = sorted((paths.internal / "replay-unified" / "views").glob("replay_*.extxyz"))
+    assert {view.name for view in views} == {
+        "replay_train.pseudolabel.extxyz",
+        "replay_monitor.pseudolabel.extxyz",
+        "replay_monitor.true-label.extxyz",
+    }
+    for view in views:
+        _seed_pre_repair_view(view)
+
+    def assert_canonical(view: Path) -> None:
+        for atoms in iread(view, index=":", format="extxyz"):
+            assert atoms.info["config_weight"] == 1.0
+            assert atoms.info["config_energy_weight"] == 1.0
+            assert atoms.info["config_forces_weight"] == 1.0
+            assert atoms.info["config_stress_weight"] == (1.0 if "REF_stress" in atoms.info else 0.0)
+
+    # The post-selection read owner cannot reuse a stale view either.
+    context = cli._single_source_replay_context(cfg, paths)
+    assert context is not None
+    for view in views:
+        assert_canonical(view)
+
+    # Ordinary `prepare` converges the current aliases on the repaired views
+    # from unchanged scientific parents with zero foundation inference.
+    for view in views:
+        _seed_pre_repair_view(view)
+    republished = _publish(cfg, paths)
+    assert republished["prediction_cache_disposition"] == "hit"
+    assert all(provider.calls == [] for provider in providers[1:])
+    assert parent_digests() == before
+    for view in views:
+        assert_canonical(view)
+    store = cli.CampaignStore(paths.state_db)
+    try:
+        train_view = store.get_record(
+            "replay_pseudolabel_train_view", mdstats.ReplayPseudolabelViewArtifact
+        )
+        monitor_view = store.get_record(
+            "replay_true_monitor_view", mdstats.ReplayTrueLabelViewArtifact
+        )
+    finally:
+        store.close()
+    assert train_view.serialization_schema == mdstats.REPLAY_PSEUDOLABEL_VIEW_SCHEMA
+    assert train_view.sha256 == sha256_file_cached(Path(train_view.path))
+    assert monitor_view.sha256 == sha256_file_cached(Path(monitor_view.path))

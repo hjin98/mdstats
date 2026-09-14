@@ -43,11 +43,10 @@ from .campaign_post_selection import (
     PostSelectionError,
 )
 from .mace_compatibility import (
-    MACE_EXECUTABLE_LOSS_FAMILY as _MACE_EXECUTABLE_LOSS_FAMILY,
-)
-from .mace_compatibility import (
+    FOUNDATION_ADAPTATION_TRAINING_MODES,
     MACE_REPLAY_FORCE_MH_FT_LR,
     MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+    POST_SELECTION_TRAINING_MODES,
 )
 from .post_selection_identity import (
     POST_SELECTION_REPLAY_HEAD_NAME,
@@ -61,12 +60,17 @@ from .progress_timing import (
     format_progress_timing_fields,
 )
 
-POST_SELECTION_PREPARATION_SCHEMA = "mdstats.post-selection-fitted-preparation.v2"
-POST_SELECTION_MATERIALIZATION_SCHEMA = "mdstats.post-selection-materialization.v1"
-POST_SELECTION_MACE_CONFIG_SCHEMA = "mdstats.post-selection-mace-config.v2"
-#: The executable MACE loss family for post-selection CV and fresh production;
-#: the shared owner in ``objectives`` explains why this family and not ``universal``.
-POST_SELECTION_MACE_LOSS_FAMILY = _MACE_EXECUTABLE_LOSS_FAMILY
+# v3 preparations are tagged and mode-disjoint; v3 MACE configurations carry
+# the authenticated training mode and its mode-specific native loss.
+POST_SELECTION_PREPARATION_SCHEMA = "mdstats.post-selection-fitted-preparation.v3"
+POST_SELECTION_COMPOSITION_TRANSFER_SCHEMA = "mdstats.post-selection-composition-transfer.v1"
+POST_SELECTION_COMPOSITION_SET_SCHEMA = "mdstats.post-selection-composition-set.v1"
+POST_SELECTION_FOUNDATION_RESIDUAL_INPUTS_SCHEMA = (
+    "mdstats.post-selection-foundation-residual-inputs.v1"
+)
+POST_SELECTION_FOUNDATION_RESIDUAL_INPUTS_FILENAME = "foundation_residual_inputs.json"
+POST_SELECTION_MATERIALIZATION_SCHEMA = "mdstats.post-selection-materialization.v2"
+POST_SELECTION_MACE_CONFIG_SCHEMA = "mdstats.post-selection-mace-config.v3"
 POST_SELECTION_REPLAY_FORCE_MH_FT_LR = MACE_REPLAY_FORCE_MH_FT_LR
 POST_SELECTION_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD = (
     MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD
@@ -108,86 +112,131 @@ class PostSelectionCancelledError(PostSelectionExecutionError):
 # ---------------------------------------------------------------------------
 
 
-@dataclass(frozen=True, slots=True)
-class PostSelectionFittedPreparation:
-    """Atomic references and training weights fitted over one exact membership.
+def _composition_key(counts: Mapping[int, int]) -> tuple[tuple[int, int], ...]:
+    return tuple(sorted((int(z), int(n)) for z, n in counts.items() if int(n) != 0))
 
-    The membership is an authorization boundary, not a convenience: a CV fold
-    fits only from its gradient-training frames, and final production fits from
-    the full ``T_selected``.  The record binds the run plan that authorized the
-    fit so a fitted product can always be traced to the exact evidence it was
-    allowed to see.
+
+def _composition_counts_by_frame(
+    selected: CurrentSelectedTrainingContext, frame_uids: Sequence[str]
+) -> dict[str, tuple[tuple[int, int], ...]]:
+    """Element-count composition class of each frame, from geometry only.
+
+    Labels are never read here: common-monitor and held-out consumers are
+    inspected only for the composition classes whose E0 correction they
+    consume.
     """
 
-    owner_plan_digest: str
-    dataset_role: str
-    common_training_policy_digest: str
-    objective_policy: Any
-    membership: tuple[str, ...]
-    membership_digest: str
-    fitted_atomic_reference_digest: str
-    fitted_weights_digest: str
-    fitted_atomic_references: Any
-    fitted_frame_weights: tuple[Any, ...]
+    import numpy as np
+
+    authorities = selected.authorities
+    index = authorities.frame_array_index
+    by_run: dict[str, tuple[tuple[int, int], ...]] = {}
+    result: dict[str, tuple[tuple[int, int], ...]] = {}
+    for uid in frame_uids:
+        record, data, _local = index[str(uid)]
+        run_id = str(record.run_id)
+        if run_id not in by_run:
+            numbers = np.asarray(data.atomic_numbers, dtype=np.int64)
+            unique, counts = np.unique(numbers, return_counts=True)
+            by_run[run_id] = _composition_key(
+                {int(z): int(n) for z, n in zip(unique, counts, strict=True)}
+            )
+        result[str(uid)] = by_run[run_id]
+    return result
+
+
+@dataclass(frozen=True, slots=True)
+class CompositionTransferResult:
+    """Composition-level E0 transfer evidence for one foundation-residual fit.
+
+    The fit's elemental corrections need not be unique.  What must be unique is
+    the correction ``c^T delta_e`` consumed by every governed composition ``c``,
+    which holds iff ``c`` is orthogonal to the unanchored null space of the
+    authorized count matrix.  Count matrices are integers, so the null space and
+    the orthogonality test are evaluated in exact rational arithmetic; the
+    solver's numerical rank at the accepted tolerance must agree with the exact
+    rank, otherwise the fit is too ill-conditioned to interpret and fails.
+    No prior/anchor is currently accepted.
+    """
+
+    element_order: tuple[int, ...]
+    fit_composition_classes: tuple[tuple[tuple[int, int], ...], ...]
+    numerical_rank: int
+    exact_rank: int
+    relative_singular_value_tolerance: float
+    null_space_basis: tuple[tuple[str, ...], ...]
+    anchor_identity: str | None
+    required_compositions: tuple[tuple[tuple[int, int], ...], ...]
+    non_transferable_compositions: tuple[tuple[tuple[int, int], ...], ...]
 
     def __post_init__(self) -> None:
+        elements = tuple(int(z) for z in self.element_order)
+        if not elements or tuple(sorted(set(elements))) != elements:
+            raise TrainingDataInputError(
+                "Composition-transfer element order must be unique increasing atomic numbers."
+            )
+        object.__setattr__(self, "element_order", elements)
         for name in (
-            "owner_plan_digest",
-            "common_training_policy_digest",
-            "membership_digest",
-            "fitted_atomic_reference_digest",
-            "fitted_weights_digest",
+            "fit_composition_classes",
+            "required_compositions",
+            "non_transferable_compositions",
         ):
-            object.__setattr__(
-                self, name, validate_digest(getattr(self, name), name=name)
+            classes = tuple(
+                sorted({_composition_key(dict(item)) for item in getattr(self, name)})
             )
-        membership = tuple(str(v) for v in self.membership)
-        if not membership or len(set(membership)) != len(membership):
+            object.__setattr__(self, name, classes)
+        if not self.fit_composition_classes or not self.required_compositions:
             raise TrainingDataInputError(
-                "A fitted preparation requires a unique non-empty membership."
+                "Composition transfer requires fit and required composition classes."
             )
-        if digest({"frame_uids": list(membership)}) != self.membership_digest:
+        if self.anchor_identity is not None:
+            raise PostSelectionExecutionError(
+                "No foundation-P5 E0 anchor is currently accepted."
+            )
+        if int(self.exact_rank) + len(self.null_space_basis) != len(elements):
             raise TrainingDataInputError(
-                "Fitted preparation membership does not match its digest."
+                "Composition-transfer rank and null-space dimension are inconsistent."
             )
-        weights = tuple(self.fitted_frame_weights)
-        if tuple(item.frame_uid for item in weights) != tuple(sorted(membership)):
-            raise TrainingDataInputError(
-                "Fitted weights must cover exactly the fitted membership."
-            )
-        if (
-            digest({"frame_weights": [item.to_dict() for item in weights]})
-            != self.fitted_weights_digest
-        ):
-            raise TrainingDataInputError(
-                "Fitted weights do not match their digest."
-            )
-        object.__setattr__(self, "membership", membership)
-        object.__setattr__(self, "fitted_frame_weights", weights)
-        object.__setattr__(self, "dataset_role", str(self.dataset_role))
 
-    def frame_weight_table(self) -> Any:
-        from .objectives import FrameTrainingWeightTable
+    @property
+    def transferable(self) -> bool:
+        return not self.non_transferable_compositions
 
-        return FrameTrainingWeightTable.from_records(self.fitted_frame_weights)
+    @property
+    def required_composition_set_digest(self) -> str:
+        return digest(
+            {
+                "schema": POST_SELECTION_COMPOSITION_SET_SCHEMA,
+                "compositions": [
+                    [list(pair) for pair in item] for item in self.required_compositions
+                ],
+            }
+        )
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": POST_SELECTION_PREPARATION_SCHEMA,
-            "owner_plan_digest": self.owner_plan_digest,
-            "dataset_role": self.dataset_role,
-            "common_training_policy_digest": self.common_training_policy_digest,
-            # The resolved global objective travels with the fitted preparation so
-            # CV and final production emit the same coefficients the screen did.
-            "objective_policy": self.objective_policy.to_dict(),
-            "membership": list(self.membership),
-            "membership_digest": self.membership_digest,
-            "fitted_atomic_reference_digest": self.fitted_atomic_reference_digest,
-            "fitted_weights_digest": self.fitted_weights_digest,
-            "fitted_atomic_references": self.fitted_atomic_references.to_dict(),
-            "fitted_frame_weights": [
-                item.to_dict() for item in self.fitted_frame_weights
+            "schema": POST_SELECTION_COMPOSITION_TRANSFER_SCHEMA,
+            "element_order": list(self.element_order),
+            "fit_composition_classes": [
+                [list(pair) for pair in item] for item in self.fit_composition_classes
             ],
+            "numerical_rank": int(self.numerical_rank),
+            "exact_rank": int(self.exact_rank),
+            "relative_singular_value_tolerance": float(
+                self.relative_singular_value_tolerance
+            ),
+            "null_space_dimension": len(self.null_space_basis),
+            "null_space_basis": [list(row) for row in self.null_space_basis],
+            "anchor_identity": self.anchor_identity,
+            "required_composition_set_digest": self.required_composition_set_digest,
+            "required_compositions": [
+                [list(pair) for pair in item] for item in self.required_compositions
+            ],
+            "non_transferable_compositions": [
+                [list(pair) for pair in item]
+                for item in self.non_transferable_compositions
+            ],
+            "transferable": self.transferable,
         }
 
     @property
@@ -198,35 +247,606 @@ class PostSelectionFittedPreparation:
         return {**self._payload(), "content_digest": self.content_digest}
 
     @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "CompositionTransferResult":
+        if payload.get("schema") != POST_SELECTION_COMPOSITION_TRANSFER_SCHEMA:
+            raise TrainingDataSerializationError(
+                "Unsupported post-selection composition-transfer schema."
+            )
+
+        def classes(name: str) -> tuple[tuple[tuple[int, int], ...], ...]:
+            return tuple(
+                tuple((int(z), int(n)) for z, n in item) for item in payload[name]
+            )
+
+        result = cls(
+            element_order=tuple(int(z) for z in payload["element_order"]),
+            fit_composition_classes=classes("fit_composition_classes"),
+            numerical_rank=int(payload["numerical_rank"]),
+            exact_rank=int(payload["exact_rank"]),
+            relative_singular_value_tolerance=float(
+                payload["relative_singular_value_tolerance"]
+            ),
+            null_space_basis=tuple(
+                tuple(str(v) for v in row) for row in payload["null_space_basis"]
+            ),
+            anchor_identity=payload.get("anchor_identity"),
+            required_compositions=classes("required_compositions"),
+            non_transferable_compositions=classes("non_transferable_compositions"),
+        )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError(
+                "Post-selection composition-transfer digest mismatch."
+            )
+        return result
+
+
+def _exact_null_space(
+    rows: Sequence[Sequence[int]], column_count: int
+) -> tuple[int, tuple[tuple[Any, ...], ...]]:
+    """Exact rank and rational null-space basis of an integer matrix."""
+
+    from fractions import Fraction
+
+    matrix = [[Fraction(int(v)) for v in row] for row in rows]
+    pivots: list[int] = []
+    row_position = 0
+    for column in range(column_count):
+        pivot = next(
+            (r for r in range(row_position, len(matrix)) if matrix[r][column] != 0),
+            None,
+        )
+        if pivot is None:
+            continue
+        matrix[row_position], matrix[pivot] = matrix[pivot], matrix[row_position]
+        scale = matrix[row_position][column]
+        matrix[row_position] = [value / scale for value in matrix[row_position]]
+        for r in range(len(matrix)):
+            if r != row_position and matrix[r][column] != 0:
+                factor = matrix[r][column]
+                matrix[r] = [
+                    a - factor * b for a, b in zip(matrix[r], matrix[row_position])
+                ]
+        pivots.append(column)
+        row_position += 1
+        if row_position == len(matrix):
+            break
+    free = [column for column in range(column_count) if column not in pivots]
+    basis = []
+    for free_column in free:
+        vector = [Fraction(0)] * column_count
+        vector[free_column] = Fraction(1)
+        for r, pivot_column in enumerate(pivots):
+            vector[pivot_column] = -matrix[r][free_column]
+        basis.append(tuple(vector))
+    return len(pivots), tuple(basis)
+
+
+def validate_composition_transfer(
+    fit: Any,
+    *,
+    fit_compositions: Sequence[tuple[tuple[int, int], ...]],
+    required_compositions: Sequence[tuple[tuple[int, int], ...]],
+    relative_singular_value_tolerance: float,
+) -> CompositionTransferResult:
+    """Decide composition-level E0 transfer feasibility for one residual fit.
+
+    ``fit`` is the existing atomic-reference fitter's record; this owner never
+    re-solves E0.  Required compositions are the governed training,
+    common-monitor, and held-out consumer classes.  An element absent from the
+    fit spans a free null direction by itself, so any required composition
+    containing it is non-transferable absent an accepted anchor.  A
+    minimum-norm solver output is never treated as identification.
+    """
+
+    fit_classes = sorted({_composition_key(dict(item)) for item in fit_compositions})
+    required = sorted(
+        {_composition_key(dict(item)) for item in required_compositions}
+        | set(fit_classes)
+    )
+    elements = tuple(
+        sorted({z for item in required for z, _ in item} | set(fit.element_order))
+    )
+    position = {z: i for i, z in enumerate(elements)}
+
+    def dense(item: tuple[tuple[int, int], ...]) -> list[int]:
+        vector = [0] * len(elements)
+        for z, n in item:
+            vector[position[z]] = int(n)
+        return vector
+
+    fit_rows = [dense(item) for item in fit_classes]
+    exact_rank, basis = _exact_null_space(fit_rows, len(elements))
+    # The solver's numerical rank is over the fit's own element columns; an
+    # element absent from every fit row adds a free direction but no rank.
+    if exact_rank != int(fit.rank):
+        raise PostSelectionExecutionError(
+            f"The foundation-residual E0 fit has numerical rank {fit.rank} at the "
+            f"accepted tolerance but exact composition rank {exact_rank}; the fit is "
+            "too ill-conditioned to decide composition transfer."
+        )
+    non_transferable = tuple(
+        item
+        for item in required
+        if any(sum(a * b for a, b in zip(dense(item), v)) != 0 for v in basis)
+    )
+    return CompositionTransferResult(
+        element_order=elements,
+        fit_composition_classes=tuple(fit_classes),
+        numerical_rank=int(fit.rank),
+        exact_rank=exact_rank,
+        relative_singular_value_tolerance=float(relative_singular_value_tolerance),
+        null_space_basis=tuple(tuple(str(v) for v in row) for row in basis),
+        anchor_identity=None,
+        required_compositions=tuple(required),
+        non_transferable_compositions=non_transferable,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class FoundationResidualInputs:
+    """Selected-head foundation predictions and reference E0s for one fit.
+
+    Predictions are acquired once per run and persisted with its materialization,
+    so restart re-fits E0 from the exact same inputs instead of repeating
+    accelerator inference whose floating-point reductions need not be bitwise
+    reproducible.
+    """
+
+    foundation_checkpoint_digest: str
+    foundation_head: str
+    membership: tuple[str, ...]
+    prediction_energies_ev: tuple[float, ...]
+    reference_energies_ev: tuple[tuple[int, float], ...]
+
+    def __post_init__(self) -> None:
+        import math
+
+        object.__setattr__(
+            self,
+            "foundation_checkpoint_digest",
+            validate_digest(
+                self.foundation_checkpoint_digest, name="foundation_checkpoint_digest"
+            ),
+        )
+        head = str(self.foundation_head).strip()
+        if not head:
+            raise TrainingDataInputError("Foundation-residual inputs require a head.")
+        object.__setattr__(self, "foundation_head", head)
+        membership = tuple(str(v) for v in self.membership)
+        energies = tuple(float(v) for v in self.prediction_energies_ev)
+        if (
+            not membership
+            or len(set(membership)) != len(membership)
+            or len(energies) != len(membership)
+            or not all(math.isfinite(v) for v in energies)
+        ):
+            raise TrainingDataInputError(
+                "Foundation-residual predictions must be finite and align one-to-one "
+                "with a unique fit membership."
+            )
+        references = tuple(
+            sorted((int(z), float(e)) for z, e in self.reference_energies_ev)
+        )
+        if not references or len({z for z, _ in references}) != len(references) or not all(
+            math.isfinite(e) for _, e in references
+        ):
+            raise TrainingDataInputError(
+                "Foundation reference E0s must be a finite per-element mapping."
+            )
+        object.__setattr__(self, "membership", membership)
+        object.__setattr__(self, "prediction_energies_ev", energies)
+        object.__setattr__(self, "reference_energies_ev", references)
+
+    @property
+    def prediction_energy_by_frame(self) -> dict[str, float]:
+        return dict(zip(self.membership, self.prediction_energies_ev, strict=True))
+
+    @property
+    def reference_energies(self) -> dict[int, float]:
+        return dict(self.reference_energies_ev)
+
+    @property
+    def prediction_digest(self) -> str:
+        return digest(
+            {
+                "schema": "mdstats.post-selection-foundation-residual-predictions.v1",
+                "foundation_checkpoint_digest": self.foundation_checkpoint_digest,
+                "foundation_head": self.foundation_head,
+                "membership": list(self.membership),
+                "energy_ev": list(self.prediction_energies_ev),
+            }
+        )
+
+    @property
+    def reference_energy_digest(self) -> str:
+        return digest(
+            {
+                "schema": "mdstats.post-selection-foundation-reference-e0.v1",
+                "foundation_checkpoint_digest": self.foundation_checkpoint_digest,
+                "foundation_head": self.foundation_head,
+                "reference_energies_ev": {
+                    str(z): e for z, e in self.reference_energies_ev
+                },
+            }
+        )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": POST_SELECTION_FOUNDATION_RESIDUAL_INPUTS_SCHEMA,
+            "foundation_checkpoint_digest": self.foundation_checkpoint_digest,
+            "foundation_head": self.foundation_head,
+            "membership": list(self.membership),
+            "prediction_energies_ev": list(self.prediction_energies_ev),
+            "reference_energies_ev": {str(z): e for z, e in self.reference_energies_ev},
+            "prediction_digest": self.prediction_digest,
+            "reference_energy_digest": self.reference_energy_digest,
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "FoundationResidualInputs":
+        if payload.get("schema") != POST_SELECTION_FOUNDATION_RESIDUAL_INPUTS_SCHEMA:
+            raise TrainingDataSerializationError(
+                "Unsupported foundation-residual input schema."
+            )
+        result = cls(
+            foundation_checkpoint_digest=str(payload["foundation_checkpoint_digest"]),
+            foundation_head=str(payload["foundation_head"]),
+            membership=tuple(str(v) for v in payload["membership"]),
+            prediction_energies_ev=tuple(float(v) for v in payload["prediction_energies_ev"]),
+            reference_energies_ev=tuple(
+                (int(z), float(e)) for z, e in payload["reference_energies_ev"].items()
+            ),
+        )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError(
+                "Foundation-residual input digest mismatch."
+            )
+        return result
+
+
+def resolve_foundation_residual_inputs(
+    selected: CurrentSelectedTrainingContext,
+    *,
+    membership: Sequence[str],
+    foundation_model_path: str | os.PathLike[str],
+    foundation_identity: Any,
+    foundation_head: str,
+    device: str,
+    default_dtype: str,
+    execution_batch_width: int,
+    inference_evaluator: Callable[[Any, Sequence[Any]], Sequence[Any]] | None = None,
+) -> FoundationResidualInputs:
+    """Acquire exact selected-head predictions and E0s over the fit membership.
+
+    The canonical foundation provider is built for the exact selected head and
+    its head binding is verified: pinned MACE silently falls back to the last
+    head for an unknown name, which is not the selected head.  Only geometry is
+    evaluated; the fit membership's labels are consumed later by the fitter.
+    """
+
+    from ._frame_access import ase_atoms_for_frame
+
+    head = str(foundation_head).strip()
+    if not head or str(getattr(foundation_identity, "foundation_head", "")) != head:
+        raise PostSelectionExecutionError(
+            "Foundation-residual inputs require the exact selected foundation head."
+        )
+    frames = tuple(str(v) for v in membership)
+    provider = build_post_selection_foundation_baseline_provider(
+        foundation_path=foundation_model_path,
+        foundation_identity=foundation_identity,
+        foundation_head=head,
+        device=device,
+        default_dtype=default_dtype,
+    )
+    try:
+        calculator = getattr(provider, "_calculator", None)
+        available = tuple(str(v) for v in getattr(calculator, "available_heads", ()))
+        if str(getattr(calculator, "head", "")) != head or head not in available:
+            raise PostSelectionExecutionError(
+                f"The foundation provider resolved head "
+                f"{getattr(calculator, 'head', None)!r}, not the selected head {head!r}."
+            )
+        model = provider.model
+        table = model.atomic_energies_fn.atomic_energies.detach().cpu()
+        if table.ndim == 2:
+            heads = tuple(str(v) for v in getattr(model, "heads", ()))
+            if head not in heads or table.shape[0] != len(heads):
+                raise PostSelectionExecutionError(
+                    "The foundation E0 table cannot be resolved for the selected head."
+                )
+            table = table[heads.index(head)]
+        reference = {
+            int(z): float(value)
+            for z, value in zip(model.atomic_numbers.tolist(), table.tolist(), strict=True)
+        }
+        authorities = selected.authorities
+        atoms = [
+            ase_atoms_for_frame(*authorities.frame_array_index[uid]) for uid in frames
+        ]
+        predictions = run_bounded_inference(
+            provider,
+            atoms,
+            batch_width=int(execution_batch_width),
+            forward=inference_evaluator,
+        )
+    finally:
+        close = getattr(provider, "close", None)
+        if callable(close):
+            close()
+    return FoundationResidualInputs(
+        foundation_checkpoint_digest=str(foundation_identity.canonical_content_digest),
+        foundation_head=head,
+        membership=frames,
+        prediction_energies_ev=tuple(float(item.energy_ev) for item in predictions),
+        reference_energies_ev=tuple(reference.items()),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class PostSelectionFittedPreparation:
+    """Fitted P5 preparation over one exact authorized membership.
+
+    The membership is an authorization boundary, not a convenience: a CV fold
+    fits only from its gradient-training frames, and final production fits from
+    the full ``T_selected``.  The record binds the run plan that authorized the
+    fit so a fitted product can always be traced to the exact evidence it was
+    allowed to see.
+
+    The representation is tagged and mode-disjoint.  ``scratch`` carries its
+    accepted from-scratch E0 and fitted configuration-weight table.  Foundation
+    modes carry the selected-head foundation-residual E0 fit, its prediction and
+    reference-E0 lineage, the common-monitor record whose compositions it must
+    serve, and the composition-transfer result; they carry no P3 objective, no
+    configuration-weight policy, and no weight table.
+    """
+
+    owner_plan_digest: str
+    dataset_role: str
+    training_mode: str
+    preparation_policy_digest: str
+    membership: tuple[str, ...]
+    membership_digest: str
+    fitted_atomic_reference_digest: str
+    fitted_atomic_references: Any
+    fitted_weights_digest: str | None = None
+    fitted_frame_weights: tuple[Any, ...] | None = None
+    foundation_checkpoint_digest: str | None = None
+    foundation_head: str | None = None
+    foundation_prediction_digest: str | None = None
+    foundation_reference_energy_digest: str | None = None
+    common_monitor_record_digest: str | None = None
+    composition_transfer: CompositionTransferResult | None = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "owner_plan_digest",
+            "preparation_policy_digest",
+            "membership_digest",
+            "fitted_atomic_reference_digest",
+        ):
+            object.__setattr__(
+                self, name, validate_digest(getattr(self, name), name=name)
+            )
+        mode = str(self.training_mode)
+        if mode not in POST_SELECTION_TRAINING_MODES:
+            raise TrainingDataInputError(
+                f"Unsupported post-selection training mode: {mode!r}."
+            )
+        object.__setattr__(self, "training_mode", mode)
+        membership = tuple(str(v) for v in self.membership)
+        if not membership or len(set(membership)) != len(membership):
+            raise TrainingDataInputError(
+                "A fitted preparation requires a unique non-empty membership."
+            )
+        if digest({"frame_uids": list(membership)}) != self.membership_digest:
+            raise TrainingDataInputError(
+                "Fitted preparation membership does not match its digest."
+            )
+        if self.fitted_atomic_references.content_digest != self.fitted_atomic_reference_digest:
+            raise TrainingDataInputError(
+                "Fitted atomic references do not match their digest."
+            )
+        object.__setattr__(self, "membership", membership)
+        object.__setattr__(self, "dataset_role", str(self.dataset_role))
+        foundation_fields = (
+            "foundation_checkpoint_digest",
+            "foundation_head",
+            "foundation_prediction_digest",
+            "foundation_reference_energy_digest",
+            "common_monitor_record_digest",
+            "composition_transfer",
+        )
+        if self.is_foundation:
+            if self.fitted_weights_digest is not None or self.fitted_frame_weights is not None:
+                raise PostSelectionExecutionError(
+                    "A foundation-P5 preparation cannot carry configuration weights."
+                )
+            if any(getattr(self, name) is None for name in foundation_fields):
+                raise PostSelectionExecutionError(
+                    "A foundation-P5 preparation requires selected-head residual "
+                    "inputs, the common-monitor record, and composition transfer."
+                )
+            for name in (
+                "foundation_checkpoint_digest",
+                "foundation_prediction_digest",
+                "foundation_reference_energy_digest",
+                "common_monitor_record_digest",
+            ):
+                object.__setattr__(
+                    self, name, validate_digest(getattr(self, name), name=name)
+                )
+            if not self.fitted_atomic_references.foundation_checkpoint_digest:
+                raise PostSelectionExecutionError(
+                    "A foundation-P5 preparation requires a foundation-residual E0 fit."
+                )
+            if not self.composition_transfer.transferable:
+                raise PostSelectionExecutionError(
+                    "Foundation-residual E0 corrections are not identifiable for "
+                    "governed compositions "
+                    f"{list(self.composition_transfer.non_transferable_compositions)}."
+                )
+        else:
+            if any(getattr(self, name) is not None for name in foundation_fields):
+                raise PostSelectionExecutionError(
+                    "A P5 scratch preparation cannot carry foundation residual fields."
+                )
+            if self.fitted_weights_digest is None or self.fitted_frame_weights is None:
+                raise PostSelectionExecutionError(
+                    "A P5 scratch preparation requires its fitted configuration weights."
+                )
+            object.__setattr__(
+                self,
+                "fitted_weights_digest",
+                validate_digest(self.fitted_weights_digest, name="fitted_weights_digest"),
+            )
+            weights = tuple(self.fitted_frame_weights)
+            if tuple(item.frame_uid for item in weights) != tuple(sorted(membership)):
+                raise TrainingDataInputError(
+                    "Fitted weights must cover exactly the fitted membership."
+                )
+            if (
+                digest({"frame_weights": [item.to_dict() for item in weights]})
+                != self.fitted_weights_digest
+            ):
+                raise TrainingDataInputError(
+                    "Fitted weights do not match their digest."
+                )
+            object.__setattr__(self, "fitted_frame_weights", weights)
+
+    @property
+    def is_foundation(self) -> bool:
+        return self.training_mode in FOUNDATION_ADAPTATION_TRAINING_MODES
+
+    def frame_weight_table(self) -> Any:
+        """The scratch weight table; foundation P5 exports neutral transport."""
+
+        if self.fitted_frame_weights is None:
+            return None
+        from .objectives import FrameTrainingWeightTable
+
+        return FrameTrainingWeightTable.from_records(self.fitted_frame_weights)
+
+    def _payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema": POST_SELECTION_PREPARATION_SCHEMA,
+            "owner_plan_digest": self.owner_plan_digest,
+            "dataset_role": self.dataset_role,
+            "training_mode": self.training_mode,
+            "preparation_policy_digest": self.preparation_policy_digest,
+            "membership": list(self.membership),
+            "membership_digest": self.membership_digest,
+            "fitted_atomic_reference_digest": self.fitted_atomic_reference_digest,
+            "fitted_atomic_references": self.fitted_atomic_references.to_dict(),
+        }
+        if self.is_foundation:
+            payload.update(
+                {
+                    "foundation_checkpoint_digest": self.foundation_checkpoint_digest,
+                    "foundation_head": self.foundation_head,
+                    "foundation_prediction_digest": self.foundation_prediction_digest,
+                    "foundation_reference_energy_digest": (
+                        self.foundation_reference_energy_digest
+                    ),
+                    "common_monitor_record_digest": self.common_monitor_record_digest,
+                    "composition_transfer": self.composition_transfer.to_dict(),
+                }
+            )
+        else:
+            payload.update(
+                {
+                    "fitted_weights_digest": self.fitted_weights_digest,
+                    "fitted_frame_weights": [
+                        item.to_dict() for item in self.fitted_frame_weights
+                    ],
+                }
+            )
+        return payload
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PostSelectionFittedPreparation":
-        from .objectives import FrameTrainingWeight, TrainingObjectivePolicy
+        from .objectives import FrameTrainingWeight
         from .target_size_execution import CommonAtomicReferenceFit
 
+        # Pre-restoration preparations (v2) bound the whole P3 common policy
+        # and fitted weights for every mode; they are history, never current.
         if payload.get("schema") != POST_SELECTION_PREPARATION_SCHEMA:
             raise TrainingDataSerializationError(
                 "Unsupported post-selection fitted-preparation schema."
             )
+        allowed = (
+            {
+                "foundation_checkpoint_digest",
+                "foundation_head",
+                "foundation_prediction_digest",
+                "foundation_reference_energy_digest",
+                "common_monitor_record_digest",
+                "composition_transfer",
+            }
+            if str(payload.get("training_mode")) in FOUNDATION_ADAPTATION_TRAINING_MODES
+            else {"fitted_weights_digest", "fitted_frame_weights"}
+        )
+        common = {
+            "schema",
+            "content_digest",
+            "owner_plan_digest",
+            "dataset_role",
+            "training_mode",
+            "preparation_policy_digest",
+            "membership",
+            "membership_digest",
+            "fitted_atomic_reference_digest",
+            "fitted_atomic_references",
+        }
+        foreign = sorted(set(payload) - common - allowed)
+        if foreign:
+            raise TrainingDataSerializationError(
+                f"Post-selection fitted preparation carries cross-mode fields {foreign}."
+            )
+        transfer = payload.get("composition_transfer")
+        weights = payload.get("fitted_frame_weights")
         result = cls(
             owner_plan_digest=str(payload["owner_plan_digest"]),
             dataset_role=str(payload["dataset_role"]),
-            common_training_policy_digest=str(
-                payload["common_training_policy_digest"]
-            ),
-            objective_policy=TrainingObjectivePolicy.from_dict(
-                payload["objective_policy"]
-            ),
+            training_mode=str(payload["training_mode"]),
+            preparation_policy_digest=str(payload["preparation_policy_digest"]),
             membership=tuple(str(v) for v in payload["membership"]),
             membership_digest=str(payload["membership_digest"]),
             fitted_atomic_reference_digest=str(
                 payload["fitted_atomic_reference_digest"]
             ),
-            fitted_weights_digest=str(payload["fitted_weights_digest"]),
             fitted_atomic_references=CommonAtomicReferenceFit.from_dict(
                 payload["fitted_atomic_references"]
             ),
-            fitted_frame_weights=tuple(
-                FrameTrainingWeight.from_dict(item)
-                for item in payload["fitted_frame_weights"]
+            fitted_weights_digest=payload.get("fitted_weights_digest"),
+            fitted_frame_weights=(
+                None
+                if weights is None
+                else tuple(FrameTrainingWeight.from_dict(item) for item in weights)
+            ),
+            foundation_checkpoint_digest=payload.get("foundation_checkpoint_digest"),
+            foundation_head=payload.get("foundation_head"),
+            foundation_prediction_digest=payload.get("foundation_prediction_digest"),
+            foundation_reference_energy_digest=payload.get(
+                "foundation_reference_energy_digest"
+            ),
+            common_monitor_record_digest=payload.get("common_monitor_record_digest"),
+            composition_transfer=(
+                None if transfer is None else CompositionTransferResult.from_dict(transfer)
             ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
@@ -241,28 +861,28 @@ def fit_post_selection_preparation(
     *,
     membership: Sequence[str],
     owner_plan_digest: str,
-    common_training_policy: Any = None,
+    preparation_policy: Any,
     dataset_role: str = DATASET_ROLE_TARGET_TRAIN,
+    foundation_residual_inputs: FoundationResidualInputs | None = None,
+    common_monitor_record_digest: str | None = None,
+    consumer_frame_uids: Sequence[str] = (),
 ) -> PostSelectionFittedPreparation:
-    """Fit E0 and training weights from one authorized training membership.
+    """Fit one authorized P5 preparation through the existing E0 fitter.
 
     The membership is checked against ``T_selected`` before anything is fitted,
     so a caller cannot widen the fit domain past the selected data even by
-    mistake.
+    mistake.  ``consumer_frame_uids`` are the governed common-monitor and
+    held-out frames whose composition classes a foundation fit must serve; only
+    their geometry is inspected.
     """
 
     from .target_size_execution import (
-        TargetSizeCommonTrainingPolicy,
         fit_common_atomic_reference_energies,
         fit_common_configuration_weights,
         fit_membership_frame_training_weights,
     )
 
-    policy = (
-        TargetSizeCommonTrainingPolicy()
-        if common_training_policy is None
-        else common_training_policy
-    )
+    policy = preparation_policy
     frames = tuple(str(v) for v in membership)
     outside = set(frames) - set(context.selected_membership)
     if outside:
@@ -271,19 +891,74 @@ def fit_post_selection_preparation(
             "T_selected; post-selection preparation is fitted only from selected "
             "training data."
         )
+    consumers = tuple(str(v) for v in consumer_frame_uids)
+    if set(consumers) & set(frames):
+        raise PostSelectionExecutionError(
+            "Governed consumer frames overlap the preparation fit membership."
+        )
     authorities = context.authorities
-    # The foundation checkpoint is part of the non-scratch method identity, but
-    # it is not an input to the default from-scratch E0 fit.  Passing that
-    # lineage through unconditionally makes a valid naive/multihead
-    # post-selection preparation look like a foundation-residual fit and the
-    # shared DATA7 owner correctly rejects it.  Only the explicitly selected
-    # residual-fit authority may receive foundation fit inputs.
-    from .reference_fit import AtomicReferenceFitMode
+    if not policy.is_foundation:
+        atomic_references = fit_common_atomic_reference_energies(
+            authorities.frame_catalog,
+            authorities.frame_data_by_run,
+            frames,
+            policy=policy.atomic_reference_policy,
+            frame_array_index=authorities.frame_array_index,
+        )
+        configuration_weights = fit_common_configuration_weights(
+            authorities.aggregate.population,
+            frames,
+            policy=policy.configuration_weight_policy,
+        )
+        fitted_weights = fit_membership_frame_training_weights(
+            authorities.frame_array_index,
+            frames,
+            configuration_weights={
+                item.frame_uid: item for item in configuration_weights
+            },
+        )
+        return PostSelectionFittedPreparation(
+            owner_plan_digest=str(owner_plan_digest),
+            dataset_role=dataset_role,
+            training_mode=policy.training_mode,
+            preparation_policy_digest=policy.policy_digest,
+            membership=frames,
+            membership_digest=digest({"frame_uids": list(frames)}),
+            fitted_atomic_reference_digest=atomic_references.content_digest,
+            fitted_atomic_references=atomic_references,
+            fitted_weights_digest=digest(
+                {"frame_weights": [item.to_dict() for item in fitted_weights]}
+            ),
+            fitted_frame_weights=fitted_weights,
+        )
 
-    foundation_fit_digest = (
-        policy.foundation_checkpoint_digest
-        if policy.atomic_reference_policy.fit_mode is AtomicReferenceFitMode.FOUNDATION_RESIDUAL
-        else None
+    inputs = foundation_residual_inputs
+    if inputs is None:
+        raise PostSelectionExecutionError(
+            "Foundation-P5 preparation requires selected-head foundation predictions "
+            "and reference E0s over its exact fit membership."
+        )
+    if (
+        inputs.foundation_checkpoint_digest != policy.foundation_checkpoint_digest
+        or inputs.foundation_head != policy.foundation_head
+    ):
+        raise PostSelectionExecutionError(
+            "Foundation-residual inputs come from a different checkpoint or head than "
+            "the selected foundation identity."
+        )
+    if tuple(inputs.membership) != frames:
+        raise PostSelectionExecutionError(
+            "Foundation-residual predictions cover a different membership than the fit."
+        )
+    if common_monitor_record_digest is None:
+        raise PostSelectionExecutionError(
+            "Foundation-P5 preparation requires the exact common target-monitor record."
+        )
+    head_bound_identity = digest(
+        {
+            "foundation_checkpoint_digest": inputs.foundation_checkpoint_digest,
+            "foundation_head": inputs.foundation_head,
+        }
     )
     atomic_references = fit_common_atomic_reference_energies(
         authorities.frame_catalog,
@@ -291,34 +966,41 @@ def fit_post_selection_preparation(
         frames,
         policy=policy.atomic_reference_policy,
         frame_array_index=authorities.frame_array_index,
-        foundation_checkpoint_digest=foundation_fit_digest,
-        foundation_identity_digest=foundation_fit_digest,
+        foundation_prediction_energy_by_frame=inputs.prediction_energy_by_frame,
+        foundation_reference_energies=inputs.reference_energies,
+        foundation_checkpoint_digest=inputs.foundation_checkpoint_digest,
+        foundation_identity_digest=head_bound_identity,
     )
-    configuration_weights = fit_common_configuration_weights(
-        authorities.aggregate.population,
-        frames,
-        policy=policy.configuration_weight_policy,
+    compositions = _composition_counts_by_frame(context, frames + consumers)
+    transfer = validate_composition_transfer(
+        atomic_references,
+        fit_compositions=[compositions[uid] for uid in frames],
+        required_compositions=[compositions[uid] for uid in consumers],
+        relative_singular_value_tolerance=(
+            policy.atomic_reference_policy.relative_singular_value_tolerance
+        ),
     )
-    fitted_weights = fit_membership_frame_training_weights(
-        authorities.frame_array_index,
-        frames,
-        configuration_weights={
-            item.frame_uid: item for item in configuration_weights
-        },
-    )
+    if not transfer.transferable:
+        raise PostSelectionExecutionError(
+            "Foundation-residual E0 corrections are not identifiable for governed "
+            f"compositions {list(transfer.non_transferable_compositions)}; no anchor "
+            "is accepted, so this P5 run is infeasible."
+        )
     return PostSelectionFittedPreparation(
         owner_plan_digest=str(owner_plan_digest),
         dataset_role=dataset_role,
-        common_training_policy_digest=policy.content_digest,
-        objective_policy=policy.objective_policy,
+        training_mode=policy.training_mode,
+        preparation_policy_digest=policy.policy_digest,
         membership=frames,
         membership_digest=digest({"frame_uids": list(frames)}),
         fitted_atomic_reference_digest=atomic_references.content_digest,
-        fitted_weights_digest=digest(
-            {"frame_weights": [item.to_dict() for item in fitted_weights]}
-        ),
         fitted_atomic_references=atomic_references,
-        fitted_frame_weights=fitted_weights,
+        foundation_checkpoint_digest=inputs.foundation_checkpoint_digest,
+        foundation_head=inputs.foundation_head,
+        foundation_prediction_digest=inputs.prediction_digest,
+        foundation_reference_energy_digest=inputs.reference_energy_digest,
+        common_monitor_record_digest=str(common_monitor_record_digest),
+        composition_transfer=transfer,
     )
 
 
@@ -460,6 +1142,7 @@ def _post_selection_mace_config(
     optimizer_seed: int,
     planned_epochs: int,
     preparation: PostSelectionFittedPreparation,
+    objective: Any,
     optimizer_policy: Any,
     target_train: Any,
     monitor: Any,
@@ -480,13 +1163,16 @@ def _post_selection_mace_config(
     from .model_features import canonicalize_mace_candidate_architecture
 
     training_mode = str(method.training_mode).strip()
-    if training_mode not in {
-        "scratch",
-        "naive_fine_tuning",
-        "multihead_replay",
-    }:
+    if training_mode not in POST_SELECTION_TRAINING_MODES:
         raise PostSelectionExecutionError(
             f"Unsupported post-selection training mode: {training_mode!r}."
+        )
+    if (
+        preparation.training_mode != training_mode
+        or objective.policy_digest != method.objective_policy_digest
+    ):
+        raise PostSelectionExecutionError(
+            "Post-selection preparation/objective do not belong to the method identity."
         )
     expected_multihead = training_mode == "multihead_replay"
     if bool(multiheads_finetuning) != expected_multihead:
@@ -552,16 +1238,16 @@ def _post_selection_mace_config(
         "forces_key": extxyz_policy.forces_key,
         "stress_key": extxyz_policy.stress_key,
         "lr": float(optimizer_policy.learning_rate),
-        # The declared mdstats objective is the objective actually optimized, in
-        # cross-validation and in final production exactly as in the screen.
-        # ``loss="stress"`` selects MACE's WeightedEnergyForcesStressLoss, whose
-        # native reductions consume ``config_weight`` and the local property
-        # masks linearly; without these keys MACE would default to
-        # ``forces_weight=100`` under its own ``weighted`` loss.
-        "loss": POST_SELECTION_MACE_LOSS_FAMILY,
-        "energy_weight": float(preparation.objective_policy.energy_weight),
-        "forces_weight": float(preparation.objective_policy.forces_weight),
-        "stress_weight": float(preparation.objective_policy.stress_weight),
+        "training_mode": training_mode,
+        # The method's own objective is the objective actually optimized.  P5
+        # scratch selects the weighted family, whose native reductions consume
+        # ``config_weight`` and the local masks linearly.  Foundation P5 selects
+        # native UniversalLoss with its one fixed ``huber_delta``.  The global
+        # coefficients are always explicit: MACE's own defaults differ.
+        "loss": str(objective.loss_family),
+        "energy_weight": float(objective.energy_weight),
+        "forces_weight": float(objective.forces_weight),
+        "stress_weight": float(objective.stress_weight),
         "batch_size": int(optimizer_policy.batch_size),
         "valid_batch_size": int(optimizer_policy.valid_batch_size),
         "num_workers": int(optimizer_policy.num_workers),
@@ -587,6 +1273,8 @@ def _post_selection_mace_config(
         "target_head_name": POST_SELECTION_TARGET_HEAD_NAME,
         "replay_head_name": POST_SELECTION_REPLAY_HEAD_NAME,
     }
+    if training_mode in FOUNDATION_ADAPTATION_TRAINING_MODES:
+        config["huber_delta"] = float(objective.huber_delta)
     if hasattr(optimizer_policy, "eval_interval"):
         config["eval_interval"] = int(optimizer_policy.eval_interval)
     if hasattr(optimizer_policy, "acceleration_policy") and optimizer_policy.acceleration_policy is not None:
@@ -648,20 +1336,19 @@ def materialize_post_selection_run(
     optimizer_policy: Any,
     extxyz_policy: Any = None,
     output_directory: str | os.PathLike[str],
-    preparation: PostSelectionFittedPreparation | None = None,
-    common_training_policy: Any = None,
+    preparation: PostSelectionFittedPreparation,
+    objective: Any,
     mace_architecture: Mapping[str, Any] | None = None,
     foundation_head: str | None = None,
     multiheads_finetuning: bool = False,
     replay_train: Any = None,
     replay_monitor: Any = None,
 ) -> tuple[PostSelectionFittedPreparation, PostSelectionMaterialization]:
-    """Fit, export, and configure one post-selection run, idempotently.
+    """Export and configure one post-selection run from its fitted preparation.
 
     Role separation is enforced before any bytes are written: the three
-    memberships must be pairwise disjoint and entirely inside ``T_selected``
-    (the final-production monitor is the frozen M3 reserve, which is outside
-    ``T_selected`` by construction and is passed through unchanged).
+    memberships must be pairwise disjoint.  The checkpoint monitor is the
+    campaign-common target monitor, outside ``T_selected`` by construction.
     """
 
     from .mace_export import MaceExtxyzPolicy
@@ -688,16 +1375,20 @@ def materialize_post_selection_run(
                     "Post-selection training, checkpoint-monitor, and outer "
                     "evaluation memberships must be disjoint."
                 )
-    fitted = (
-        fit_post_selection_preparation(
-            context,
-            membership=training,
-            owner_plan_digest=run_plan.content_digest,
-            common_training_policy=common_training_policy,
+    fitted = preparation
+    if fitted.owner_plan_digest != run_plan.content_digest:
+        raise PostSelectionExecutionError(
+            "The supplied fitted preparation belongs to a different run plan."
         )
-        if preparation is None
-        else preparation
-    )
+    if fitted.is_foundation:
+        consumed = set(
+            _composition_counts_by_frame(context, monitor_frames + outer).values()
+        )
+        if not consumed <= set(fitted.composition_transfer.required_compositions):
+            raise PostSelectionExecutionError(
+                "The foundation preparation's composition transfer was not decided "
+                "for every common-monitor and held-out composition of this run."
+            )
     if set(fitted.membership) != set(training):
         raise PostSelectionExecutionError(
             "The supplied fitted preparation was fitted from a different "
@@ -736,6 +1427,7 @@ def materialize_post_selection_run(
         optimizer_seed=run_plan.optimizer_seed,
         planned_epochs=run_plan.planned_epochs,
         preparation=fitted,
+        objective=objective,
         optimizer_policy=optimizer_policy,
         target_train=target_train,
         monitor=monitor,
@@ -960,13 +1652,18 @@ def _build_post_selection_mace_execution_authority(
         return getattr(optimizer_policy, name, default)
 
     configured_ema = bool(executable_optimizer_value("ema", True))
+    training_mode = internal_payload.get("training_mode")
+    foundation = training_mode in FOUNDATION_ADAPTATION_TRAINING_MODES
     return build_mace_execution_authority(
         role="post_selection",
         config_digest=materialization.mace_config_digest,
         method_identity_digest=internal_payload.get("method_identity_digest"),
-        loss_family=executable_optimizer_value(
-            "loss", POST_SELECTION_MACE_LOSS_FAMILY
-        ),
+        training_mode=training_mode,
+        loss_family=executable_payload.get("loss"),
+        huber_delta=executable_payload.get("huber_delta") if foundation else None,
+        energy_weight=executable_payload.get("energy_weight") if foundation else None,
+        forces_weight=executable_payload.get("forces_weight") if foundation else None,
+        stress_weight=executable_payload.get("stress_weight") if foundation else None,
         learning_rate=float(executable_optimizer_value("lr", 1.0e-4)),
         ema=configured_ema,
         ema_decay=(
@@ -990,7 +1687,8 @@ def _build_post_selection_mace_execution_authority(
         batch_size=int(executable_optimizer_value("batch_size", 2)),
         target_updates_per_epoch=None,
         target_drop_last=None,
-        distributed_allowed=True,
+        # Foundation P5 is qualified only for the single-process loader.
+        distributed_allowed=not foundation,
         target_frame_uid_set_digest=target_uid_digest,
         replay_frame_uid_set_digest=replay_uid_digest,
         target_head_name=(
@@ -1970,6 +2668,7 @@ _MACE_CONFIG_PASSTHROUGH_KEYS = (
     "energy_weight",
     "forces_weight",
     "stress_weight",
+    "huber_delta",
     "batch_size",
     "valid_batch_size",
     "num_workers",
@@ -2030,6 +2729,15 @@ def post_selection_mace_run_configuration(
             "Post-selection MACE configuration carries a noncanonical "
             "fine-tuning head namespace."
         ) from exc
+    training_mode = config.get("training_mode")
+    if training_mode not in POST_SELECTION_TRAINING_MODES:
+        raise PostSelectionExecutionError(
+            "Post-selection MACE configuration does not carry a supported training mode."
+        )
+    if (training_mode in FOUNDATION_ADAPTATION_TRAINING_MODES) != ("huber_delta" in config):
+        raise PostSelectionExecutionError(
+            "Only foundation-P5 MACE configurations carry the UniversalLoss huber_delta."
+        )
     result: dict[str, Any] = {
         key: config[key] for key in _MACE_CONFIG_PASSTHROUGH_KEYS if key in config
     }

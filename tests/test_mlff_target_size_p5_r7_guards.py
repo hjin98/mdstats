@@ -98,6 +98,7 @@ from mdstats.training_data.train2_runtime import (
 )
 
 from tests._mlff_post_selection_fixture import (
+    context_monitor_kwargs,
     PostSelectionHarness,
     build_selected_campaign,
     fixture_config_text,
@@ -127,7 +128,13 @@ def _make_dummy_method_identity(training_mode: str = "multihead_replay") -> Post
     return PostSelectionMethodIdentity(
         method_recipe_version="v7",
         training_mode=training_mode,
-        common_training_policy_digest="11" * 32,
+        objective_policy_digest="11" * 32,
+        preparation_policy_digest="10" * 32,
+        exposure_policy=(
+            "mdstats.p5-scratch-exposure.native.v1"
+            if training_mode == "scratch"
+            else "mdstats.p5-foundation-exposure.single-process-shuffled-drop-last-replay-first.v1"
+        ),
         learning_rate_schedule_policy_digest="22" * 32,
         checkpoint_admissibility_policy_digest="33" * 32,
         checkpoint_selection_policy_digest="44" * 32,
@@ -377,18 +384,21 @@ def test_guard_p5_r7_07_replay_monitor_byte_tamper_fails_plan_validation(tmp_pat
             context.method,
             context.cv_policy,
             replay_lineage_digest=orig_digest,
+            **context_monitor_kwargs(context),
         )
         assert plan.replay_lineage_digest == orig_digest
 
         # Validate with unchanged digest passes
         validate_post_selection_cv_plan(
-            plan, context.selected, replay_lineage_digest=orig_digest
+            plan, context.selected, replay_lineage_digest=orig_digest,
+            **context_monitor_kwargs(context),
         )
 
         # Validate with tampered digest fails
         with pytest.raises(PostSelectionError) as exc_info:
             validate_post_selection_cv_plan(
-                plan, context.selected, replay_lineage_digest=tampered_digest
+                plan, context.selected, replay_lineage_digest=tampered_digest,
+                **context_monitor_kwargs(context),
             )
         assert "different replay lineage" in str(exc_info.value)
     finally:
@@ -408,10 +418,12 @@ def test_guard_p5_r7_08_replay_train_byte_tamper_fails_plan_validation(tmp_path:
             context.method,
             context.cv_policy,
             replay_lineage_digest=orig_digest,
+            **context_monitor_kwargs(context),
         )
         with pytest.raises(PostSelectionError) as exc_info:
             validate_post_selection_cv_plan(
-                plan, context.selected, replay_lineage_digest=tampered_digest
+                plan, context.selected, replay_lineage_digest=tampered_digest,
+                **context_monitor_kwargs(context),
             )
         assert "different replay lineage" in str(exc_info.value)
     finally:
@@ -424,6 +436,12 @@ def test_guard_p5_r7_08_replay_train_byte_tamper_fails_plan_validation(tmp_path:
 def test_guard_p5_r7_09_mace_post_selection_trainer_translates_internal_config():
     internal = {
         "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
+        "training_mode": "multihead_replay",
+        "loss": "universal",
+        "huber_delta": 0.01,
+        "energy_weight": 1.0,
+        "forces_weight": 10.0,
+        "stress_weight": 1.0,
         "name": "test_post_selection",
         "seed": 42,
         "atomic_numbers": [1, 6, 8],
@@ -493,6 +511,12 @@ exit 0
 
     internal_config = {
         "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
+        "training_mode": "multihead_replay",
+        "loss": "universal",
+        "huber_delta": 0.01,
+        "energy_weight": 1.0,
+        "forces_weight": 10.0,
+        "stress_weight": 1.0,
         "name": "test_run",
         "seed": 42,
         "target_train_file": "train.extxyz",
@@ -585,6 +609,12 @@ def test_guard_p5_r7_13_mace_post_selection_trainer_missing_or_mismatched_replay
 
     internal_config = {
         "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
+        "training_mode": "multihead_replay",
+        "loss": "universal",
+        "huber_delta": 0.01,
+        "energy_weight": 1.0,
+        "forces_weight": 10.0,
+        "stress_weight": 1.0,
         "name": "test_run",
         "seed": 42,
         "target_train_file": "train.extxyz",
@@ -676,6 +706,7 @@ def test_guard_p5_r7_15_mace_post_selection_trainer_loads_canonical_summary(tmp_
 
     internal_config = {
         "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
+        "training_mode": "scratch", "loss": "stress",
         "name": "test_run",
         "seed": 42,
         "target_train_file": "train.extxyz",
@@ -729,6 +760,7 @@ def test_guard_p5_r7_16_mace_post_selection_trainer_nonzero_exit_fails_closed(tm
 
     internal_config = {
         "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
+        "training_mode": "scratch", "loss": "stress",
         "name": "test_run",
         "seed": 42,
         "target_train_file": "train.extxyz",
@@ -781,6 +813,7 @@ def test_guard_p5_r7_17_mace_post_selection_trainer_plan_digest_mismatch_fails_c
 
     internal_config = {
         "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
+        "training_mode": "scratch", "loss": "stress",
         "name": "test_run",
         "seed": 42,
         "target_train_file": "train.extxyz",
@@ -837,6 +870,7 @@ def test_guard_p5_r7_18_mace_post_selection_trainer_tampered_internal_config_fai
 
     internal_config = {
         "schema": POST_SELECTION_MACE_CONFIG_SCHEMA,
+        "training_mode": "scratch", "loss": "stress",
         "name": "test_run",
         "seed": 42,
         "target_train_file": "train.extxyz",
@@ -1013,6 +1047,7 @@ def test_guard_p5_r7_23_final_production_plan_fails_closed_on_replay_lineage_mis
             cv_plan=plan,
             cv_acceptance=acceptance,
             replay_lineage_digest=plan.replay_lineage_digest,
+            **context_monitor_kwargs(context),
         )
         assert final_plan is not None
 
@@ -1025,6 +1060,7 @@ def test_guard_p5_r7_23_final_production_plan_fails_closed_on_replay_lineage_mis
                 cv_plan=plan,
                 cv_acceptance=acceptance,
                 replay_lineage_digest="1234567890abcdef" * 4,
+                **context_monitor_kwargs(context),
             )
         assert "different replay lineage" in str(exc_info.value)
     finally:

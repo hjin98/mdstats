@@ -199,7 +199,15 @@ def _balanced_quotas(capacities: Mapping[str, int], requested: int, *, seed: int
     quotas = {key: 0 for key in keys}
     # Rotate each equal-allocation pass deterministically so remainder frames do
     # not always favor lexicographically early conditions.
-    order = tuple(sorted(keys, key=lambda key: hashlib.sha256(f"{seed}\0quota\0{key}".encode()).hexdigest()))
+    order = tuple(
+        sorted(
+            keys,
+            key=lambda key: (
+                hashlib.sha256(f"{seed}\0quota\0{key}".encode("utf-8")).hexdigest(),
+                key,
+            ),
+        )
+    )
     assigned = 0
     while assigned < target:
         progressed = False
@@ -215,6 +223,42 @@ def _balanced_quotas(capacities: Mapping[str, int], requested: int, *, seed: int
     if assigned != target:
         raise TrainingDataInputError("Could not realize requested balanced monitor quota.")
     return quotas
+
+
+def _select_balanced_target_records(
+    strata: Mapping[str, list[Any]], requested: int, *, seed: int
+) -> tuple[list[Any], tuple[tuple[str, int, int], ...]]:
+    """The one condition/run-balanced time-systematic target sampler.
+
+    Frames inside a ``<condition_id>:<run_id>`` stratum are ordered by
+    ``(source_frame_index, frame_uid)``; quotas are equal allocation subject to
+    capacity in SHA-256 marker order; each stratum is sampled at deterministic
+    systematic positions.  Selected records are returned in canonical
+    ``(run_id, source_frame_index, frame_uid)`` order after membership is fixed.
+    """
+
+    ordered = {
+        key: sorted(values, key=lambda record: (record.source_frame_index, record.frame_uid))
+        for key, values in strata.items()
+    }
+    quotas = _balanced_quotas(
+        {key: len(values) for key, values in ordered.items()}, requested, seed=seed
+    )
+    selected_records: list[Any] = []
+    stratum_counts: list[tuple[str, int, int]] = []
+    for key in sorted(ordered):
+        values = ordered[key]
+        quota = quotas[key]
+        if quota:
+            positions = _systematic_positions(
+                len(values), quota, seed=seed, namespace=f"target:{key}"
+            )
+            selected_records.extend(values[position] for position in positions)
+        stratum_counts.append((key, len(values), quota))
+    selected_records.sort(
+        key=lambda record: (record.run_id, record.source_frame_index, record.frame_uid)
+    )
+    return selected_records, tuple(stratum_counts)
 
 
 def build_target_online_monitor(
@@ -236,29 +280,9 @@ def build_target_online_monitor(
         key = f"{unit.condition.condition_id}:{unit.run_id}"
         group = strata.setdefault(key, [])
         group.extend(frame_catalog.frame(uid) for uid in unit.frame_uids)
-    for values in strata.values():
-        values.sort(key=lambda record: (record.source_frame_index, record.frame_uid))
-
-    quotas = _balanced_quotas(
-        {key: len(values) for key, values in strata.items()},
-        policy.target_configurations,
-        seed=policy.seed,
+    selected_records, stratum_counts = _select_balanced_target_records(
+        strata, policy.target_configurations, seed=policy.seed
     )
-    selected_records: list[Any] = []
-    stratum_counts: list[tuple[str, int, int]] = []
-    for key in sorted(strata):
-        values = strata[key]
-        quota = quotas[key]
-        if quota:
-            positions = _systematic_positions(
-                len(values), quota, seed=policy.seed, namespace=f"target:{key}"
-            )
-            selected_records.extend(values[position] for position in positions)
-        stratum_counts.append((key, len(values), quota))
-
-    # Stable evidence/file order by physical source chronology, after balanced
-    # membership has already been decided.
-    selected_records.sort(key=lambda record: (record.run_id, record.source_frame_index, record.frame_uid))
     available = sum(len(values) for values in strata.values())
     fallback = () if available >= policy.target_configurations else ("target_parent_smaller_than_requested",)
     parent_digest = digest({
@@ -406,3 +430,158 @@ def materialize_replay_online_monitor(
     if artifact.label_identities != expected_labels:
         raise TrainingDataInputError("Replay monitor materialization changed true-label identity/order.")
     return artifact
+
+
+# ---------------------------------------------------------------------------
+# Current P5 common target checkpoint monitor
+# ---------------------------------------------------------------------------
+
+COMMON_TARGET_MONITOR_POLICY_SCHEMA = "mdstats.common-target-monitor-policy.v1"
+COMMON_TARGET_MONITOR_PARENT_SCHEMA = "mdstats.common-target-monitor-parent.v1"
+COMMON_TARGET_MONITOR_PARENT_ROLE = "neutral_outer_monitor"
+
+
+class CommonTargetMonitorInfeasibleError(TrainingDataInputError):
+    """The exact common target monitor cannot be realized from its parent."""
+
+
+@dataclass(frozen=True, slots=True)
+class OnlineTargetMonitorPolicy:
+    """The fixed campaign-common P5 target checkpoint-monitor policy.
+
+    Exactly 256 label-usable frames from the neutral ``OUTER_MONITOR`` role,
+    selected by the balanced condition/run time-systematic sampler under seed
+    161803.  There is no smaller-parent fallback: shortfall is infeasibility.
+    """
+
+    size: int = 256
+    seed: int = 161803
+    strategy: str = "balanced_condition_run_time_systematic"
+    parent_role: str = COMMON_TARGET_MONITOR_PARENT_ROLE
+    label_requirement: str = "authoritative_energy_and_forces"
+
+    def __post_init__(self) -> None:
+        if (
+            self.size != 256
+            or self.seed != 161803
+            or self.strategy != "balanced_condition_run_time_systematic"
+            or self.parent_role != COMMON_TARGET_MONITOR_PARENT_ROLE
+            or self.label_requirement != "authoritative_energy_and_forces"
+        ):
+            raise TrainingDataInputError(
+                "The current common target-monitor policy is fixed by the accepted "
+                "numerical method and has no configurable field."
+            )
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": COMMON_TARGET_MONITOR_POLICY_SCHEMA,
+            "size": self.size,
+            "seed": self.seed,
+            "strategy": self.strategy,
+            "parent_role": self.parent_role,
+            "label_requirement": self.label_requirement,
+            "shortfall": "infeasible",
+        }
+
+    @property
+    def policy_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "policy_digest": self.policy_digest}
+
+
+def build_common_target_monitor(
+    authorities: Any, policy: OnlineTargetMonitorPolicy | None = None
+) -> OnlineMonitorRecord:
+    """Construct the exact campaign-common target checkpoint monitor ``M_mon``.
+
+    The parent is the P1 neutral ``OUTER_MONITOR`` population after label
+    usability.  It depends on no selected size, fold, seed, or P3 ``M3``, so
+    every CV and final plan of one campaign generation reproduces the same
+    record.  Protected-relation separation from the target ladder is checked
+    by the plan-admission owner afterwards; a collision is never repaired here.
+    """
+
+    active = OnlineTargetMonitorPolicy() if policy is None else policy
+    base = authorities.neutral_base
+    frame_authority = authorities.frame_authority
+    unit_ids = tuple(sorted(base.outer_partition.unit_ids_for_role(OuterRole.OUTER_MONITOR)))
+    strata: dict[str, list[Any]] = {}
+    parent_frames: list[str] = []
+    excluded_unusable = 0
+    for unit_id in unit_ids:
+        unit = base.unit_catalog.unit(unit_id)
+        key = f"{unit.condition.condition_id}:{unit.run_id}"
+        for uid in unit.frame_uids:
+            record = frame_authority.frame(uid)
+            if not (
+                record.has_authoritative_label
+                and record.energy_present
+                and record.forces_present
+            ):
+                excluded_unusable += 1
+                continue
+            strata.setdefault(key, []).append(record)
+            parent_frames.append(str(uid))
+    if len(parent_frames) < active.size:
+        raise CommonTargetMonitorInfeasibleError(
+            f"The neutral OUTER_MONITOR role provides {len(parent_frames)} label-usable "
+            f"frame(s) ({excluded_unusable} unusable excluded), fewer than the exact "
+            f"{active.size}-frame common target monitor. Current P5 is infeasible for "
+            "this campaign; there is no smaller-monitor fallback."
+        )
+    selected_records, stratum_counts = _select_balanced_target_records(
+        strata, active.size, seed=active.seed
+    )
+    if len(selected_records) != active.size:
+        raise CommonTargetMonitorInfeasibleError(
+            "The common target-monitor sampler did not realize its exact size."
+        )
+    parent_digest = digest(
+        {
+            "schema": COMMON_TARGET_MONITOR_PARENT_SCHEMA,
+            "neutral_outer_partition_digest": base.outer_partition.content_digest,
+            "neutral_unit_catalog_digest": base.unit_catalog.content_digest,
+            "frame_authority_digest": frame_authority.content_digest,
+            "outer_monitor_unit_ids": list(unit_ids),
+            "label_usable_frame_uids": sorted(parent_frames),
+        }
+    )
+    return OnlineMonitorRecord(
+        role="target",
+        parent_digest=parent_digest,
+        policy_digest=active.policy_digest,
+        requested_size=active.size,
+        realized_size=len(selected_records),
+        selected_identities=tuple(record.frame_uid for record in selected_records),
+        source_indices=tuple(record.source_frame_index for record in selected_records),
+        stratum_counts=stratum_counts,
+        strategy=active.strategy,
+        seed=active.seed,
+        label_mode="true_dft",
+        parent_role=active.parent_role,
+    )
+
+
+def require_common_target_monitor_record(
+    record: Any, policy: OnlineTargetMonitorPolicy | None = None
+) -> OnlineMonitorRecord:
+    """Fail closed unless ``record`` is an exact current common target monitor."""
+
+    active = OnlineTargetMonitorPolicy() if policy is None else policy
+    if (
+        not isinstance(record, OnlineMonitorRecord)
+        or record.role != "target"
+        or record.policy_digest != active.policy_digest
+        or record.parent_role != active.parent_role
+        or record.requested_size != active.size
+        or record.realized_size != active.size
+        or record.fallback_reason_codes
+    ):
+        raise CommonTargetMonitorInfeasibleError(
+            "The target checkpoint monitor is not the exact current common "
+            f"{active.size}-frame neutral OUTER_MONITOR record."
+        )
+    return record

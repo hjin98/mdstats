@@ -33,12 +33,15 @@ from .acceleration import MaceAccelerationKernelMode
 from .foundation import FoundationInferenceIdentity, FoundationPotentialIdentity
 from .replay_index import ReplaySourceIndex, iter_indexed_replay_frames, replay_source_indices_for_identities
 from .replay import (
+    REPLAY_TRANSPORT_FIELDS,
+    REPLAY_TRANSPORT_WEIGHT_POLICY,
     ReplayLabelMode,
     ReplayLabelNamespace,
     ReplaySourceArtifact,
     ReplaySplitManifest,
     ReplaySplitRole,
     _BufferedReplayExtXYZWriter,
+    _replay_transport_frame,
     _split_role_geometry_identities,
     canonical_replay_geometry_identity,
     normalize_replay_prediction_batch_size,
@@ -52,8 +55,9 @@ REPLAY_FOUNDATION_PREDICTION_CACHE_SCHEMA = "mdstats.replay-foundation-predictio
 REPLAY_FOUNDATION_AUDIT_CACHE_SCHEMA = "mdstats.replay-foundation-audit-cache.v1"
 REPLAY_PSEUDOLABEL_QUALIFICATION_POLICY_SCHEMA = "mdstats.replay-pseudolabel-qualification-policy.v1"
 REPLAY_PSEUDOLABEL_QUALIFICATION_SCHEMA = "mdstats.replay-pseudolabel-qualification.v1"
-REPLAY_PSEUDOLABEL_VIEW_SCHEMA = "mdstats.replay-pseudolabel-view.v1"
-REPLAY_PSEUDOLABEL_VIEW_RECEIPT_SCHEMA = "mdstats.replay-pseudolabel-view-receipt.v1"
+# v2 views carry the canonical neutral/binary replay weight transport.
+REPLAY_PSEUDOLABEL_VIEW_SCHEMA = "mdstats.replay-pseudolabel-view.v2"
+REPLAY_PSEUDOLABEL_VIEW_RECEIPT_SCHEMA = "mdstats.replay-pseudolabel-view-receipt.v2"
 REPLAY_PSEUDOLABEL_CACHE_KEY_SCHEMA = "mdstats.replay-foundation-prediction-cache-key.v1"
 REPLAY_PSEUDOLABEL_ARRAY_SCHEMA = "mdstats.replay-pseudolabel-array.v1"
 
@@ -636,7 +640,8 @@ class ReplayPseudolabelViewArtifact:
                 "qualification_digest": self.qualification_digest,
                 "split_manifest_digest": self.split_manifest_digest,
                 "label_namespace": ReplayLabelNamespace.FOUNDATION_PSEUDOLABEL.value,
-                "transport_fields": ["REF_energy", "REF_forces", "REF_stress"],
+                "transport_fields": list(REPLAY_TRANSPORT_FIELDS),
+                "transport_weight_policy": REPLAY_TRANSPORT_WEIGHT_POLICY,
             }
         )
 
@@ -1373,7 +1378,8 @@ def _pseudo_view_expected(
             "qualification_digest": qualification.content_digest,
             "split_manifest_digest": split.content_digest,
             "label_namespace": ReplayLabelNamespace.FOUNDATION_PSEUDOLABEL.value,
-            "transport_fields": ["REF_energy", "REF_forces", "REF_stress"],
+            "transport_fields": list(REPLAY_TRANSPORT_FIELDS),
+            "transport_weight_policy": REPLAY_TRANSPORT_WEIGHT_POLICY,
         }
     )
     return logical, geometry_set_digest, label_set_digest, len(identities)
@@ -1411,20 +1417,9 @@ def _render_pseudo_frame(
     reader: _ReplayPredictionShardReader,
 ) -> Any:
     energy, forces, stress, prediction_identity = reader.prediction(geometry_identity)
-    frame = atoms.copy()
-    frame.calc = None
-    for key in (
-        "energy", "REF_energy", "stress", "REF_stress", "virial", "virials", "REF_virial", "REF_virials",
-        "corrected_total_energy",
-    ):
-        frame.info.pop(key, None)
-    for key in ("forces", "REF_forces"):
-        if key in frame.arrays:
-            del frame.arrays[key]
-    frame.info["REF_energy"] = energy
-    frame.arrays["REF_forces"] = forces
-    if stress is not None:
-        frame.info["REF_stress"] = stress
+    # Source truth and source weights never leak: the stress mask follows the
+    # pseudo stress payload, and absent pseudo stress stays absent.
+    frame = _replay_transport_frame(atoms, energy=energy, forces=forces, stress=stress)
     frame.info["replay_label_mode"] = ReplayLabelMode.FOUNDATION_PSEUDOLABEL.value
     frame.info["replay_label_namespace"] = ReplayLabelNamespace.FOUNDATION_PSEUDOLABEL.value
     frame.info["replay_geometry_identity"] = geometry_identity

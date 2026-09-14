@@ -44,14 +44,49 @@ from .training_settings import (
     shared_optimizer_settings_payload,
 )
 from .mace_compatibility import (
-    MACE_EXECUTABLE_LOSS_FAMILY,
+    FOUNDATION_ADAPTATION_TRAINING_MODES,
     MACE_EXECUTION_SEMANTICS_VERSION,
+    MACE_FOUNDATION_ENERGY_WEIGHT,
+    MACE_FOUNDATION_FORCES_WEIGHT,
+    MACE_FOUNDATION_HUBER_DELTA,
+    MACE_FOUNDATION_LOSS_FAMILY,
+    MACE_FOUNDATION_STRESS_WEIGHT,
     MACE_REPLAY_FORCE_MH_FT_LR,
     MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+    POST_SELECTION_TRAINING_MODES,
 )
 
-POST_SELECTION_METHOD_IDENTITY_SCHEMA = "mdstats.post-selection-method-identity.v1"
-CV_VALIDATION_POLICY_IDENTITY_SCHEMA = "mdstats.post-selection-cv-policy-identity.v1"
+# v2 replaces the whole P3 common-training-policy parent with mode-specific
+# objective, preparation, and exposure identities.
+POST_SELECTION_METHOD_IDENTITY_SCHEMA = "mdstats.post-selection-method-identity.v2"
+FOUNDATION_ADAPTATION_OBJECTIVE_POLICY_SCHEMA = (
+    "mdstats.post-selection-foundation-objective-policy.v1"
+)
+POST_SELECTION_PREPARATION_POLICY_SCHEMA = (
+    "mdstats.post-selection-preparation-policy.v1"
+)
+
+#: Accepted exposure semantics bound into method identity.  Foundation P5 runs
+#: the qualified single-process shuffled loader with ``drop_last=True`` over the
+#: native replay/``pt_head``-first combined corpus (target-only for naive
+#: fine-tuning).  P5 scratch keeps its separately accepted native exposure.
+POST_SELECTION_FOUNDATION_EXPOSURE_POLICY = (
+    "mdstats.p5-foundation-exposure.single-process-shuffled-drop-last-replay-first.v1"
+)
+POST_SELECTION_SCRATCH_EXPOSURE_POLICY = "mdstats.p5-scratch-exposure.native.v1"
+
+#: The accepted composition-level E0 transfer rule: every governed composition
+#: vector is orthogonal to the unanchored null space of the authorized fit
+#: count matrix.  No anchor is currently accepted.
+POST_SELECTION_COMPOSITION_TRANSFER_POLICY = (
+    "mdstats.p5-composition-transfer.unanchored-null-space-orthogonality.v1"
+)
+
+#: Configuration fields retired by the restored method.  They fail closed in
+#: current configuration rather than being read and ignored.
+RETIRED_POST_SELECTION_TRAINING_FIELDS = ("target_head_weight", "replay_head_weight")
+# v2 retires the selected-only fold checkpoint-monitor budget.
+CV_VALIDATION_POLICY_IDENTITY_SCHEMA = "mdstats.post-selection-cv-policy-identity.v2"
 FINAL_PRODUCTION_POLICY_IDENTITY_SCHEMA = (
     "mdstats.post-selection-final-production-policy-identity.v1"
 )
@@ -73,16 +108,23 @@ CV_DISPERSION_DIAGNOSTIC_ONLY = "diagnostic_only"
 #: production-only horizon edit invalidate accepted CV evidence.
 DEFAULT_CV_MAX_NUM_EPOCHS = 30
 
+#: The one current default outer-fold count.  An explicit override must be K>=2.
+DEFAULT_CV_FOLD_COUNT = 3
+
+#: Retired CV-policy fields that fail closed in current configuration.
+RETIRED_CV_POLICY_FIELDS = ("checkpoint_monitor_components_per_fold",)
+
 #: The current P5 fine-tuning head namespace.  Foundation-checkpoint heads are
 #: a separate identity owned by ``MaceFoundationSpec``; these names describe
 #: the target and replay heads created by the post-selection run itself.
 POST_SELECTION_TARGET_HEAD_NAME = "target_head"
 POST_SELECTION_REPLAY_HEAD_NAME = "pt_head"
 
-# The current method recipe is the method-level cutover token.  It advances
-# once for the repaired MACE execution semantics and is shared by scratch,
-# naive fine-tuning, and replay rather than being maintained per mode.
-POST_SELECTION_METHOD_RECIPE_VERSION = "mdstats.post-selection-method.2026-09.v4"
+# The current method recipe is the method-level cutover token, shared by
+# scratch, naive fine-tuning, and replay rather than maintained per mode.  v5 is
+# the restored foundation method: native UniversalLoss, selected-head residual
+# E0 with composition transfer, replay-first exposure, and a common monitor.
+POST_SELECTION_METHOD_RECIPE_VERSION = "mdstats.post-selection-method.2026-09.v5"
 
 
 def _table(config: Mapping[str, Any], *path: str) -> Mapping[str, Any]:
@@ -236,7 +278,17 @@ def resolve_post_selection_replay_training_label_mode(
         return None
 
     replay = _table(config, "replay")
-    raw_mode_value = replay.get("mode", ReplayMode.EXTERNAL_PSEUDOLABEL.value)
+    raw_mode_value = replay.get("mode")
+    if raw_mode_value in (None, ""):
+        # The historical split-file interface once defaulted an omitted mode to
+        # foundation pseudo-labels.  That omission is ambiguous for the
+        # restored method, whose canonical default is TRUE_DFT, so it fails.
+        raise PostSelectionError(
+            "Legacy split-file replay requires an explicit [replay].mode "
+            "(external_true_label or external_pseudolabel); an omitted mode has no "
+            "unambiguous P5 training-label semantic. Prefer [paths].replay_set, "
+            "whose omitted label_mode resolves to true_dft."
+        )
     raw_mode = str(getattr(raw_mode_value, "value", raw_mode_value)).strip().lower()
     try:
         mode = ReplayMode(raw_mode)
@@ -309,11 +361,19 @@ class PostSelectionMethodIdentity:
     different method, so both CV and final-production descendants are stale.
     Nothing role-specific belongs here: not the CV folds, not the CV budget, not
     the production horizon, not M3, and not any fitted product.
+
+    It binds only method-bearing P5 components.  In particular it does not bind
+    the whole P3 ``TargetSizeCommonTrainingPolicy``: a P3-only objective,
+    weighting, or harness edit leaves foundation P5 untouched, while the P5
+    objective, preparation, and exposure identities below move exactly when the
+    P5 method does.
     """
 
     method_recipe_version: str
     training_mode: str
-    common_training_policy_digest: str
+    objective_policy_digest: str
+    preparation_policy_digest: str
+    exposure_policy: str
     learning_rate_schedule_policy_digest: str
     checkpoint_admissibility_policy_digest: str
     checkpoint_selection_policy_digest: str
@@ -328,7 +388,8 @@ class PostSelectionMethodIdentity:
 
     def __post_init__(self) -> None:
         for name in (
-            "common_training_policy_digest",
+            "objective_policy_digest",
+            "preparation_policy_digest",
             "learning_rate_schedule_policy_digest",
             "checkpoint_admissibility_policy_digest",
             "checkpoint_selection_policy_digest",
@@ -343,6 +404,7 @@ class PostSelectionMethodIdentity:
         for name in (
             "method_recipe_version",
             "training_mode",
+            "exposure_policy",
             "default_dtype",
             "device",
             "acceleration_backend",
@@ -351,6 +413,20 @@ class PostSelectionMethodIdentity:
             if not value:
                 raise TrainingDataInputError(f"{name} must be non-empty.")
             object.__setattr__(self, name, value)
+        if self.training_mode not in POST_SELECTION_TRAINING_MODES:
+            raise TrainingDataInputError(
+                f"Unsupported post-selection training mode: {self.training_mode!r}."
+            )
+        expected_exposure = (
+            POST_SELECTION_FOUNDATION_EXPOSURE_POLICY
+            if self.training_mode in FOUNDATION_ADAPTATION_TRAINING_MODES
+            else POST_SELECTION_SCRATCH_EXPOSURE_POLICY
+        )
+        if self.exposure_policy != expected_exposure:
+            raise TrainingDataInputError(
+                f"Post-selection {self.training_mode} requires exposure policy "
+                f"{expected_exposure!r}."
+            )
         object.__setattr__(
             self,
             "checkpoint_interval_epochs",
@@ -364,7 +440,9 @@ class PostSelectionMethodIdentity:
             "schema": POST_SELECTION_METHOD_IDENTITY_SCHEMA,
             "method_recipe_version": self.method_recipe_version,
             "training_mode": self.training_mode,
-            "common_training_policy_digest": self.common_training_policy_digest,
+            "objective_policy_digest": self.objective_policy_digest,
+            "preparation_policy_digest": self.preparation_policy_digest,
+            "exposure_policy": self.exposure_policy,
             "learning_rate_schedule_policy_digest": (
                 self.learning_rate_schedule_policy_digest
             ),
@@ -393,19 +471,18 @@ class PostSelectionMethodIdentity:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PostSelectionMethodIdentity":
-        from .model_features import canonicalize_mace_candidate_architecture
-
+        # Only the current generation deserializes.  A pre-restoration payload
+        # authorized a materially different foundation method and is history.
         if payload.get("schema") != POST_SELECTION_METHOD_IDENTITY_SCHEMA:
             raise TrainingDataSerializationError(
                 "Unsupported post-selection method-identity schema."
             )
-        raw_arch_digest = payload.get("mace_architecture_digest")
-        if raw_arch_digest is None:
-            raw_arch_digest = digest(canonicalize_mace_candidate_architecture(None))
         result = cls(
             method_recipe_version=str(payload["method_recipe_version"]),
             training_mode=str(payload["training_mode"]),
-            common_training_policy_digest=str(payload["common_training_policy_digest"]),
+            objective_policy_digest=str(payload["objective_policy_digest"]),
+            preparation_policy_digest=str(payload["preparation_policy_digest"]),
+            exposure_policy=str(payload["exposure_policy"]),
             learning_rate_schedule_policy_digest=str(
                 payload["learning_rate_schedule_policy_digest"]
             ),
@@ -420,7 +497,7 @@ class PostSelectionMethodIdentity:
             ),
             replay_exposure_policy_digest=str(payload["replay_exposure_policy_digest"]),
             extxyz_policy_digest=str(payload["extxyz_policy_digest"]),
-            mace_architecture_digest=str(raw_arch_digest),
+            mace_architecture_digest=str(payload["mace_architecture_digest"]),
             checkpoint_interval_epochs=int(payload["checkpoint_interval_epochs"]),
             default_dtype=str(payload["default_dtype"]),
             device=str(payload["device"]),
@@ -431,6 +508,189 @@ class PostSelectionMethodIdentity:
                 "Post-selection method-identity digest mismatch."
             )
         return result
+
+
+@dataclass(frozen=True, slots=True)
+class FoundationAdaptationObjectivePolicy:
+    """The fixed foundation-P5 robust objective realized by native UniversalLoss.
+
+    It has no fields: the accepted numerical method fixes every value, and the
+    three dimensional Huber thresholds are interpretations of one numeric
+    parameter rather than independent knobs.  P3 ``[objective]`` and
+    ``[weighting]`` overrides never reach it.
+    """
+
+    @property
+    def loss_family(self) -> str:
+        return MACE_FOUNDATION_LOSS_FAMILY
+
+    @property
+    def huber_delta(self) -> float:
+        return MACE_FOUNDATION_HUBER_DELTA
+
+    @property
+    def energy_weight(self) -> float:
+        return MACE_FOUNDATION_ENERGY_WEIGHT
+
+    @property
+    def forces_weight(self) -> float:
+        return MACE_FOUNDATION_FORCES_WEIGHT
+
+    @property
+    def stress_weight(self) -> float:
+        return MACE_FOUNDATION_STRESS_WEIGHT
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": FOUNDATION_ADAPTATION_OBJECTIVE_POLICY_SCHEMA,
+            "loss_family": self.loss_family,
+            "huber_delta": self.huber_delta,
+            "dimensional_thresholds": {
+                "energy": "0.01 eV/atom",
+                "force_base": "0.01 eV/Angstrom",
+                "stress": "0.01 eV/Angstrom^3",
+            },
+            "force_threshold_regimes": {
+                "reference_force_norm_boundaries_ev_per_angstrom": [100.0, 200.0, 300.0],
+                "threshold_factors": [1.0, 0.7, 0.4, 0.1],
+            },
+            "stress_reduction": "mean_over_nine_stored_cartesian_entries",
+            "energy_reduction": "mean_over_configurations_of_per_atom_residual",
+            "energy_weight": self.energy_weight,
+            "forces_weight": self.forces_weight,
+            "stress_weight": self.stress_weight,
+            "property_masks": "binary_label_availability",
+            "configuration_weight": "neutral_transport",
+            "stage_two_phase": "disabled",
+        }
+
+    @property
+    def policy_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "policy_digest": self.policy_digest}
+
+
+@dataclass(frozen=True, slots=True)
+class PostSelectionPreparationPolicy:
+    """The P5 fitted-preparation policy, distinct from the P3 common policy.
+
+    One tagged, mode-disjoint type.  ``scratch`` binds its separately accepted
+    from-scratch E0 and configuration-weight policies.  Foundation modes bind
+    only the selected-head foundation-residual E0 method and the accepted
+    composition-transfer rule; a field that belongs to the other mode is a
+    validation failure, never a silently ignored default.
+    """
+
+    training_mode: str
+    atomic_reference_policy: Any
+    configuration_weight_policy: Any = None
+    foundation_checkpoint_digest: str | None = None
+    foundation_head: str | None = None
+    composition_transfer_policy: str | None = None
+
+    def __post_init__(self) -> None:
+        from .reference_fit import AtomicReferenceFitMode
+
+        mode = str(self.training_mode)
+        if mode not in POST_SELECTION_TRAINING_MODES:
+            raise TrainingDataInputError(
+                f"Unsupported post-selection training mode: {mode!r}."
+            )
+        object.__setattr__(self, "training_mode", mode)
+        fit_mode = self.atomic_reference_policy.fit_mode
+        if mode in FOUNDATION_ADAPTATION_TRAINING_MODES:
+            if fit_mode is not AtomicReferenceFitMode.FOUNDATION_RESIDUAL:
+                raise PostSelectionError(
+                    "Foundation-P5 preparation requires the foundation_residual E0 fit."
+                )
+            if (
+                self.atomic_reference_policy.ridge_lambda != 0.0
+                or self.atomic_reference_policy.prior_by_atomic_number
+            ):
+                raise PostSelectionError(
+                    "Foundation-P5 preparation has no accepted E0 prior/anchor; a "
+                    "ridge or prior would manufacture identifiability."
+                )
+            if not self.atomic_reference_policy.allow_rank_deficient_fixed_domain:
+                raise PostSelectionError(
+                    "Foundation-P5 preparation decides identifiability by composition "
+                    "transfer, not by rejecting every rank-deficient fit."
+                )
+            if self.configuration_weight_policy is not None:
+                raise PostSelectionError(
+                    "Foundation-P5 preparation cannot bind a configuration-weight policy."
+                )
+            if self.foundation_checkpoint_digest is None or not str(
+                self.foundation_head or ""
+            ).strip():
+                raise PostSelectionError(
+                    "Foundation-P5 preparation requires the selected foundation "
+                    "checkpoint and head."
+                )
+            object.__setattr__(
+                self,
+                "foundation_checkpoint_digest",
+                validate_digest(
+                    self.foundation_checkpoint_digest,
+                    name="foundation_checkpoint_digest",
+                ),
+            )
+            object.__setattr__(self, "foundation_head", str(self.foundation_head).strip())
+            if self.composition_transfer_policy != POST_SELECTION_COMPOSITION_TRANSFER_POLICY:
+                raise PostSelectionError(
+                    "Foundation-P5 preparation requires the accepted composition-"
+                    "transfer policy."
+                )
+        else:
+            if fit_mode is not AtomicReferenceFitMode.FROM_SCRATCH_TOTAL_ENERGY:
+                raise PostSelectionError(
+                    "P5 scratch preparation requires the from-scratch E0 fit."
+                )
+            if self.configuration_weight_policy is None:
+                raise PostSelectionError(
+                    "P5 scratch preparation requires its configuration-weight policy."
+                )
+            if (
+                self.foundation_checkpoint_digest is not None
+                or self.foundation_head is not None
+                or self.composition_transfer_policy is not None
+            ):
+                raise PostSelectionError(
+                    "P5 scratch preparation cannot bind foundation residual fields."
+                )
+
+    @property
+    def is_foundation(self) -> bool:
+        return self.training_mode in FOUNDATION_ADAPTATION_TRAINING_MODES
+
+    def _payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "schema": POST_SELECTION_PREPARATION_POLICY_SCHEMA,
+            "training_mode": self.training_mode,
+            "atomic_reference_policy": self.atomic_reference_policy.to_dict(),
+        }
+        if self.is_foundation:
+            payload.update(
+                {
+                    "foundation_checkpoint_digest": self.foundation_checkpoint_digest,
+                    "foundation_head": self.foundation_head,
+                    "composition_transfer_policy": self.composition_transfer_policy,
+                }
+            )
+        else:
+            payload["configuration_weight_policy"] = (
+                self.configuration_weight_policy.to_dict()
+            )
+        return payload
+
+    @property
+    def policy_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "policy_digest": self.policy_digest}
 
 
 # ---------------------------------------------------------------------------
@@ -452,7 +712,6 @@ class CvValidationPolicyIdentity:
     partition_seed: int
     seed_mode: str
     fold_construction_algorithm: str
-    checkpoint_monitor_components_per_fold: int
     purge_components_between_roles: int
     cv_max_num_epochs: int
     acceptance_metric: str
@@ -502,14 +761,6 @@ class CvValidationPolicyIdentity:
                 "Cross-fold dispersion is diagnostic-only unless a governing "
                 "scientific revision explicitly promotes it to a gate."
             )
-        object.__setattr__(
-            self,
-            "checkpoint_monitor_components_per_fold",
-            _positive_int(
-                self.checkpoint_monitor_components_per_fold,
-                name="checkpoint_monitor_components_per_fold",
-            ),
-        )
         purge = int(self.purge_components_between_roles)
         if purge < 0:
             raise TrainingDataInputError(
@@ -540,9 +791,6 @@ class CvValidationPolicyIdentity:
             "partition_seed": self.partition_seed,
             "seed_mode": self.seed_mode,
             "fold_construction_algorithm": self.fold_construction_algorithm,
-            "checkpoint_monitor_components_per_fold": (
-                self.checkpoint_monitor_components_per_fold
-            ),
             "purge_components_between_roles": self.purge_components_between_roles,
             "cv_max_num_epochs": self.cv_max_num_epochs,
             "acceptance_metric": self.acceptance_metric,
@@ -570,9 +818,6 @@ class CvValidationPolicyIdentity:
             partition_seed=int(payload["partition_seed"]),
             seed_mode=str(payload["seed_mode"]),
             fold_construction_algorithm=str(payload["fold_construction_algorithm"]),
-            checkpoint_monitor_components_per_fold=int(
-                payload["checkpoint_monitor_components_per_fold"]
-            ),
             purge_components_between_roles=int(
                 payload["purge_components_between_roles"]
             ),
@@ -742,6 +987,20 @@ def resolve_post_selection_foundation_identity(
     return identity
 
 
+#: The accepted multihead replay exposure shared by both replay interfaces:
+#: native UniversalLoss, authenticated LR/EMA, no ratio-driven duplication, and
+#: MACE's own replay/``pt_head``-first combined corpus before seeded shuffle.
+_REPLAY_TRAINING_EXPOSURE: dict[str, Any] = {
+    "execution_semantics_version": MACE_EXECUTION_SEMANTICS_VERSION,
+    "loss_family": MACE_FOUNDATION_LOSS_FAMILY,
+    "force_mh_ft_lr": MACE_REPLAY_FORCE_MH_FT_LR,
+    "real_pt_data_ratio_threshold": MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+    "target_duplication_factor": 1,
+    "training_head_scalar_weights": "none",
+    "pre_shuffle_corpus_layout": ["replay_head", "target_head"],
+}
+
+
 def resolve_post_selection_replay_policy_digest(
     *,
     single_replay: Any | None,
@@ -768,7 +1027,7 @@ def resolve_post_selection_replay_policy_digest(
                 "the canonical single-source configuration."
             )
         payload = {
-            "schema": "mdstats.post-selection-replay-policy.v2",
+            "schema": "mdstats.post-selection-replay-policy.v4",
             "enabled": True,
             "interface": "single_source",
             "training_exposure": "separate_multihead_replay",
@@ -778,10 +1037,7 @@ def resolve_post_selection_replay_policy_digest(
             "true_dft_monitor_required": True,
             "target_head_name": target_head_name,
             "replay_head_name": replay_head_name,
-            "execution_semantics_version": MACE_EXECUTION_SEMANTICS_VERSION,
-            "loss_family": MACE_EXECUTABLE_LOSS_FAMILY,
-            "force_mh_ft_lr": MACE_REPLAY_FORCE_MH_FT_LR,
-            "real_pt_data_ratio_threshold": MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+            **_REPLAY_TRAINING_EXPOSURE,
         }
     elif has_legacy_replay:
         if training_label_mode is None:
@@ -793,7 +1049,7 @@ def resolve_post_selection_replay_policy_digest(
             training_label_mode, name="legacy replay training label_mode"
         )
         payload = {
-            "schema": "mdstats.post-selection-replay-policy.v3",
+            "schema": "mdstats.post-selection-replay-policy.v4",
             "enabled": True,
             "interface": "legacy_split",
             "training_exposure": "separate_multihead_replay",
@@ -801,10 +1057,7 @@ def resolve_post_selection_replay_policy_digest(
             "true_dft_monitor_required": True,
             "target_head_name": target_head_name,
             "replay_head_name": replay_head_name,
-            "execution_semantics_version": MACE_EXECUTION_SEMANTICS_VERSION,
-            "loss_family": MACE_EXECUTABLE_LOSS_FAMILY,
-            "force_mh_ft_lr": MACE_REPLAY_FORCE_MH_FT_LR,
-            "real_pt_data_ratio_threshold": MACE_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD,
+            **_REPLAY_TRAINING_EXPOSURE,
         }
     else:
         payload = {
@@ -1008,7 +1261,9 @@ class PostSelectionMethodPolicies:
     claims to describe it cannot drift apart.
     """
 
-    common_training: Any
+    objective: Any
+    preparation: PostSelectionPreparationPolicy
+    replay_exposure_policy_digest: str
     learning_rate_schedule: Any
     checkpoint_admissibility: Any
     checkpoint_selection: Any
@@ -1054,11 +1309,8 @@ def resolve_post_selection_method_policies(
         resolve_training_objective_policy,
     )
     from .reference_fit import resolve_atomic_reference_fit_policy
-    from .replay import ReplayMode, single_source_replay_config_from_campaign
-    from .target_size_execution import (
-        REPLAY_EXPOSURE_NONE_DIGEST,
-        TargetSizeCommonTrainingPolicy,
-    )
+    from .reference_fit import AtomicReferenceFitMode, AtomicReferenceFitPolicy
+    from .replay import ReplayLabelMode, single_source_replay_config_from_campaign
     from .train2_policy import (
         CheckpointAdmissibilityPolicy,
         CheckpointSelectionPolicy,
@@ -1072,6 +1324,17 @@ def resolve_post_selection_method_policies(
     model = _table(config, "model")
     foundation = _table(config, "foundation")
     replay = _table(config, "replay")
+
+    retired = sorted(
+        name for name in RETIRED_POST_SELECTION_TRAINING_FIELDS if name in training
+    )
+    if retired:
+        raise PostSelectionError(
+            "Retired target/replay training-head scalar weights are not a current "
+            f"P5 method field: [training].{', [training].'.join(retired)}. Remove "
+            "them; checkpoint/adaptive-stop target/replay score weights are separate "
+            "and unchanged."
+        )
 
     # 1. Canonical replay-source presence.  A replay table with no source is
     # still a configuration error for scratch/naive methods; it must not be
@@ -1177,28 +1440,22 @@ def resolve_post_selection_method_policies(
                 "P5 multihead_replay requires an independent TRUE_DFT monitor "
                 "path."
             )
-        if single_replay is None:
-            replay_mode = str(
-                getattr(
-                    replay.get("mode", ReplayMode.EXTERNAL_PSEUDOLABEL.value),
-                    "value",
-                    replay.get("mode", ReplayMode.EXTERNAL_PSEUDOLABEL.value),
-                )
-            ).strip().lower()
-            if (
-                replay_mode == ReplayMode.EXTERNAL_PSEUDOLABEL.value
-                and not legacy_replay_true
-            ):
-                raise PostSelectionError(
-                    "P5 pseudolabel replay requires the independent TRUE_DFT "
-                    "monitor source root."
-                )
 
     replay_training_label_mode = resolve_post_selection_replay_training_label_mode(
         config,
         single_replay=single_replay,
         has_legacy_replay=has_legacy_replay,
     )
+    if (
+        training_mode == "multihead_replay"
+        and single_replay is None
+        and replay_training_label_mode is ReplayLabelMode.FOUNDATION_PSEUDOLABEL
+        and not legacy_replay_true
+    ):
+        raise PostSelectionError(
+            "P5 pseudolabel replay requires the independent TRUE_DFT monitor "
+            "source root."
+        )
 
     # 4. Replay exposure digest.  The compatibility matrix above guarantees
     # that an enabled replay digest can only describe executable multihead
@@ -1211,12 +1468,7 @@ def resolve_post_selection_method_policies(
         replay_head_name=replay_head_name,
     )
 
-    # 5. Objective, Configuration Weight, and Atomic Reference Policies
-    # These three owners are shared with target-size common preparation, so both
-    # sides resolve one objective meaning rather than two coincidental defaults.
-    objective_policy = resolve_training_objective_policy(config)
-    configuration_weight_policy = resolve_configuration_weight_policy(config)
-    atomic_reference_policy = resolve_atomic_reference_fit_policy(config)
+    configured_atomic_reference_policy = resolve_atomic_reference_fit_policy(config)
 
     # The learned-model dtype is resolved by the one binary precision authority
     # that executable optimizer construction uses.  Independently defaulting P5
@@ -1260,17 +1512,49 @@ def resolve_post_selection_method_policies(
         else None
     )
 
-    common_training = TargetSizeCommonTrainingPolicy(
-        objective_policy=objective_policy,
-        configuration_weight_policy=configuration_weight_policy,
-        atomic_reference_policy=atomic_reference_policy,
-        replay_exposure_policy_digest=replay_exposure_policy_digest,
-        foundation_checkpoint_digest=foundation_checkpoint_digest,
-        selected_head_name=target_head_name,
-        harness_validation_frame_count=int(
-            training.get("harness_validation_frame_count", 4)
-        ),
-    )
+    # 5. Mode-specific objective and preparation policies.  P5 scratch keeps
+    # its separately accepted weighted objective, configuration weights, and
+    # from-scratch E0 through the shared component owners.  Foundation P5 has a
+    # fixed objective independent of P3 [objective]/[weighting], and its E0 is
+    # the selected-head foundation residual with composition transfer.
+    if training_mode in FOUNDATION_ADAPTATION_TRAINING_MODES:
+        objective: Any = FoundationAdaptationObjectivePolicy()
+        atomic_table = config.get("atomic_references")
+        explicit_fit_mode = (
+            atomic_table.get("fit_mode")
+            if isinstance(atomic_table, Mapping)
+            else None
+        )
+        if explicit_fit_mode not in (
+            None,
+            AtomicReferenceFitMode.FOUNDATION_RESIDUAL.value,
+        ):
+            raise PostSelectionError(
+                "Foundation-model P5 fits selected-head foundation-residual E0 "
+                "corrections; [atomic_references].fit_mode = "
+                f"{explicit_fit_mode!r} is incompatible. Remove it or set "
+                "'foundation_residual'."
+            )
+        preparation = PostSelectionPreparationPolicy(
+            training_mode=training_mode,
+            atomic_reference_policy=AtomicReferenceFitPolicy(
+                fit_mode=AtomicReferenceFitMode.FOUNDATION_RESIDUAL,
+                ridge_lambda=configured_atomic_reference_policy.ridge_lambda,
+                allow_rank_deficient_fixed_domain=(
+                    configured_atomic_reference_policy.allow_rank_deficient_fixed_domain
+                ),
+            ),
+            foundation_checkpoint_digest=foundation_checkpoint_digest,
+            foundation_head=resolved_foundation_head,
+            composition_transfer_policy=POST_SELECTION_COMPOSITION_TRANSFER_POLICY,
+        )
+    else:
+        objective = resolve_training_objective_policy(config)
+        preparation = PostSelectionPreparationPolicy(
+            training_mode=training_mode,
+            atomic_reference_policy=configured_atomic_reference_policy,
+            configuration_weight_policy=resolve_configuration_weight_policy(config),
+        )
 
     # 6. MACE Architecture Resolution
     raw_arch = model.get("mace_architecture")
@@ -1306,7 +1590,9 @@ def resolve_post_selection_method_policies(
     )
     acceleration_backend = acc_policy.backend.value
     return PostSelectionMethodPolicies(
-        common_training=common_training,
+        objective=objective,
+        preparation=preparation,
+        replay_exposure_policy_digest=replay_exposure_policy_digest,
         learning_rate_schedule=LearningRateSchedulePolicy(
             # One canonical resolved value; never a second independent read of
             # ``[training].learning_rate``.
@@ -1379,7 +1665,13 @@ def resolve_post_selection_method_identity(
         # method.
         method_recipe_version=POST_SELECTION_METHOD_RECIPE_VERSION,
         training_mode=resolved.training_mode,
-        common_training_policy_digest=resolved.common_training.content_digest,
+        objective_policy_digest=resolved.objective.policy_digest,
+        preparation_policy_digest=resolved.preparation.policy_digest,
+        exposure_policy=(
+            POST_SELECTION_FOUNDATION_EXPOSURE_POLICY
+            if resolved.training_mode in FOUNDATION_ADAPTATION_TRAINING_MODES
+            else POST_SELECTION_SCRATCH_EXPOSURE_POLICY
+        ),
         learning_rate_schedule_policy_digest=(
             resolved.learning_rate_schedule.policy_digest
         ),
@@ -1390,9 +1682,7 @@ def resolve_post_selection_method_identity(
         shared_optimizer_settings_digest=digest(
             shared_optimizer_settings_payload(config)
         ),
-        replay_exposure_policy_digest=(
-            resolved.common_training.replay_exposure_policy_digest
-        ),
+        replay_exposure_policy_digest=resolved.replay_exposure_policy_digest,
         extxyz_policy_digest=resolved.extxyz.policy_digest,
         mace_architecture_digest=resolved.mace_architecture_digest,
         checkpoint_interval_epochs=resolved.checkpoint_interval_epochs,
@@ -1421,6 +1711,13 @@ def resolve_cv_validation_policy_identity(
     """
 
     cv = _table(config, "post_selection", "cv")
+    retired = sorted(name for name in RETIRED_CV_POLICY_FIELDS if name in cv)
+    if retired:
+        raise PostSelectionError(
+            f"[post_selection.cv].{retired[0]} is retired: current P5 checkpoint "
+            "control uses one campaign-common target monitor outside every fold, so "
+            "folds reserve no selected-only monitor components. Remove the field."
+        )
     for forbidden in ("max_num_epochs_from_training", "n3", "target_size"):
         if forbidden in cv:
             raise PostSelectionError(
@@ -1429,13 +1726,10 @@ def resolve_cv_validation_policy_identity(
                 "horizon."
             )
     return CvValidationPolicyIdentity(
-        fold_count=int(cv.get("fold_count", 5)),
+        fold_count=int(cv.get("fold_count", DEFAULT_CV_FOLD_COUNT)),
         partition_seed=int(cv.get("partition_seed", 104729)),
         seed_mode=str(cv.get("seed_mode", "explicit")),
         fold_construction_algorithm=CV_FOLD_CONSTRUCTION_ALGORITHM,
-        checkpoint_monitor_components_per_fold=int(
-            cv.get("checkpoint_monitor_components_per_fold", 1)
-        ),
         purge_components_between_roles=int(cv.get("purge_components_between_roles", 0)),
         cv_max_num_epochs=(
             int(max_num_epochs)
@@ -1527,15 +1821,24 @@ __all__ = [
     "CV_DISPERSION_DIAGNOSTIC_ONLY",
     "CV_FOLD_CONSTRUCTION_ALGORITHM",
     "CV_VALIDATION_POLICY_IDENTITY_SCHEMA",
+    "DEFAULT_CV_FOLD_COUNT",
     "DEFAULT_CV_MAX_NUM_EPOCHS",
     "FINAL_PRODUCTION_POLICY_IDENTITY_SCHEMA",
+    "FOUNDATION_ADAPTATION_OBJECTIVE_POLICY_SCHEMA",
+    "POST_SELECTION_COMPOSITION_TRANSFER_POLICY",
+    "POST_SELECTION_FOUNDATION_EXPOSURE_POLICY",
     "POST_SELECTION_METHOD_IDENTITY_SCHEMA",
+    "POST_SELECTION_PREPARATION_POLICY_SCHEMA",
+    "POST_SELECTION_SCRATCH_EXPOSURE_POLICY",
+    "RETIRED_POST_SELECTION_TRAINING_FIELDS",
     "POST_SELECTION_REPLAY_HEAD_NAME",
     "POST_SELECTION_TARGET_HEAD_NAME",
     "CvValidationPolicyIdentity",
     "FinalProductionPolicyIdentity",
+    "FoundationAdaptationObjectivePolicy",
     "PostSelectionMethodIdentity",
     "PostSelectionMethodPolicies",
+    "PostSelectionPreparationPolicy",
     "canonical_post_selection_head_names",
     "compute_replay_lineage_digest",
     "cv_training_budget_policy",

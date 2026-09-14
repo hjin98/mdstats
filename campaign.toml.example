@@ -148,12 +148,15 @@ reference_ema_decay = 0.99999
 
 [objective]
 # Global loss-component coefficients, applied exactly once at the MACE loss
-# layer for target-size screening, post-selection cross-validation, and fresh
-# final production alike. They are a different owner from [weighting] (the
-# per-configuration weight) and from the per-frame property weights, which are
-# local availability masks (1.0 present / 0.0 absent) and never carry this
-# ratio. Every generated MACE config emits these explicitly, so MACE's own
-# forces_weight=100 default is never in effect.
+# layer for target-size screening and the P5 scratch method. Foundation
+# fine-tuning (naive_fine_tuning, multihead_replay) cross-validation and final
+# production do not read this table: they use the fixed native UniversalLoss
+# (huber_delta 0.01, E:F:S 1:10:1). These coefficients are a different owner
+# from [weighting] (the per-configuration weight) and from the per-frame
+# property weights, which are local availability masks (1.0 present / 0.0
+# absent) and never carry this ratio. Every generated MACE config for these
+# consumers emits them explicitly, so MACE's forces_weight=100 default is never
+# in effect.
 energy_weight = 1.0
 forces_weight = 10.0
 stress_weight = 1.0
@@ -208,8 +211,6 @@ train2_adaptation_end_fraction = 0.80
 train2_initial_lr_multiplier = 0.10
 train2_refinement_start_lr_multiplier = 0.10
 train2_final_lr_multiplier = 0.01
-target_head_weight = 5.0
-replay_head_weight = 1.0
 
 # ADAPT-PREC1: model precision is binary and controls learned-model arithmetic only.
 # mdstats-owned scientific reductions/statistics and persistent MD bookkeeping remain FP64.
@@ -233,7 +234,8 @@ seeds = [1, 2]
 # the cross-validate command after the select-target-size command has frozen N
 # and T_selected. Its universe is exactly T_selected.
 # K >= 2 is required: there is no current zero-fold production bypass.
-fold_count = 5
+# The current default is K = 3.
+fold_count = 3
 partition_seed = 104729
 # Required CV seeds/variants. Every fold of every seed must pass.
 seeds = [0]
@@ -241,9 +243,9 @@ seeds = [0]
 # [training].max_num_epochs is the production horizon, and editing that must not
 # invalidate accepted cross-validation evidence.
 max_num_epochs = 30
-# One split-exclusion component per fold is reserved as that fold's own
-# checkpoint monitor; the held-out outer fold never controls checkpoint choice.
-checkpoint_monitor_components_per_fold = 1
+# Checkpoint choice uses one campaign-common exact 256-frame target monitor
+# drawn from the neutral OUTER_MONITOR role, outside every fold; the held-out
+# outer fold never controls checkpoint choice.
 purge_components_between_roles = 0
 # The target-only outer-fold acceptance predicate. Replay evidence gates
 # admissibility but contributes no acceptance or ranking credit.

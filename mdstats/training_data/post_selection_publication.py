@@ -10,9 +10,11 @@ evidence.
 
 This module is therefore the single owner of that decision.  It ranks nothing
 new: it reuses the already-frozen per-seed representative checkpoints and the
-accepted target-only EVAL2 ordering that chose them, over the common frozen
-``M3`` development evidence.  No target-size statistic, physical score, locked
-score, or qualification outcome participates, and there is deliberately no API
+accepted target-only EVAL2 ordering that chose them, over each representative's
+already-authenticated metric record on the exact campaign-common target
+monitor.  P3 ``M3`` is not evaluated and is not ranking or currentness
+ancestry.  No target-size statistic, physical score, locked score, or
+qualification outcome participates, and there is deliberately no API
 that adds, removes, or reorders a member after the decision is published.
 """
 
@@ -29,19 +31,20 @@ from ._common import (
     validate_digest,
 )
 from .campaign_post_selection import PostSelectionBinding, PostSelectionError
+from .online_monitor import OnlineMonitorRecord
 
 FINAL_PUBLICATION_SEED_EVIDENCE_SCHEMA = (
     "mdstats.post-selection-final-publication-seed-evidence.v1"
 )
 FINAL_PUBLICATION_DECISION_SCHEMA = (
-    "mdstats.post-selection-final-publication-decision.v1"
+    "mdstats.post-selection-final-publication-decision.v2"
 )
 
 #: Identity of the deterministic decision procedure itself.  Changing how the
 #: published member set is derived changes this string, which changes the
 #: decision digest and therefore stales every descendant.
 FINAL_PUBLICATION_DECISION_POLICY_IDENTITY = (
-    "mdstats.p5-final-publication-decision.frozen-representative-eval2-ordering.v1"
+    "mdstats.p5-final-publication-decision.frozen-common-monitor-eval2-ordering.v2"
 )
 
 COMMITTEE_ALL_QUALIFIED = "all_qualified_final_seeds"
@@ -158,7 +161,7 @@ class FinalProductionPublicationDecision:
     method_identity_digest: str
     cv_plan_digest: str
     cv_authorization_digest: str
-    m3_membership_digest: str
+    common_monitor_record_digest: str
     completion_digest: str
     target_head_name: str
     committee_policy: str
@@ -177,7 +180,7 @@ class FinalProductionPublicationDecision:
             "method_identity_digest",
             "cv_plan_digest",
             "cv_authorization_digest",
-            "m3_membership_digest",
+            "common_monitor_record_digest",
             "completion_digest",
         ):
             object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
@@ -245,7 +248,7 @@ class FinalProductionPublicationDecision:
             "method_identity_digest": self.method_identity_digest,
             "cv_plan_digest": self.cv_plan_digest,
             "cv_authorization_digest": self.cv_authorization_digest,
-            "m3_membership_digest": self.m3_membership_digest,
+            "common_monitor_record_digest": self.common_monitor_record_digest,
             "completion_digest": self.completion_digest,
             "target_head_name": self.target_head_name,
             "committee_policy": self.committee_policy,
@@ -295,7 +298,7 @@ class FinalProductionPublicationDecision:
             method_identity_digest=str(payload["method_identity_digest"]),
             cv_plan_digest=str(payload["cv_plan_digest"]),
             cv_authorization_digest=str(payload["cv_authorization_digest"]),
-            m3_membership_digest=str(payload["m3_membership_digest"]),
+            common_monitor_record_digest=str(payload["common_monitor_record_digest"]),
             completion_digest=str(payload["completion_digest"]),
             target_head_name=str(payload["target_head_name"]),
             committee_policy=str(payload["committee_policy"]),
@@ -325,10 +328,7 @@ def _seed_evidence_for_run(context: Any, plan: Any, evidence: Any) -> tuple[
         post_selection_checkpoint_catalog,
         post_selection_eval_role_digest,
     )
-    from .post_selection_production import (
-        build_final_production_run_plan,
-        frozen_m3_development_evidence,
-    )
+    from .post_selection_production import build_final_production_run_plan
 
     seed = _seed_for_run(plan, evidence)
     run_plan = build_final_production_run_plan(plan, optimizer_seed=seed)
@@ -355,29 +355,28 @@ def _seed_evidence_for_run(context: Any, plan: Any, evidence: Any) -> tuple[
         )
     if representative.target_metrics.content_digest != monitor_metrics.content_digest:
         raise PostSelectionError(
-            "The durable representative record does not carry its own M3 target "
-            "metric record."
+            "The durable representative record does not carry its own common-"
+            "monitor target metric record."
         )
-    # Re-authenticate the M3 role itself.  A metric digest alone is not enough:
-    # it must describe the exact frozen monitor artifact and its ordered frame
-    # membership from this run's materialization.
+    # Re-authenticate the monitor role itself.  A metric digest alone is not
+    # enough: it must describe the exact common monitor bound by the final plan.
     materialization = context.evidence_store.get(
         evidence.materialization_digest, PostSelectionMaterialization.from_dict
     )
     monitor_artifact = materialization.checkpoint_monitor_artifact
-    _m3_size, m3_membership, m3_digest = frozen_m3_development_evidence(
-        context.selected
+    common_monitor = context.evidence_store.get(
+        plan.common_monitor_record_digest, OnlineMonitorRecord.from_dict
     )
-    artifact_membership = tuple(str(value) for value in monitor_artifact.frame_uids)
+    membership = tuple(common_monitor.selected_identities)
     if (
-        artifact_membership != tuple(m3_membership)
+        tuple(str(value) for value in monitor_artifact.frame_uids) != membership
         or str(monitor_artifact.membership_digest)
-        != digest({"frame_uids": list(m3_membership)})
-        or int(monitor_artifact.configuration_count) != int(_m3_size)
+        != digest({"frame_uids": list(membership)})
+        or int(monitor_artifact.configuration_count) != len(membership)
     ):
         raise PostSelectionError(
-            "Final-production M3 evidence is not the exact frozen monitor role "
-            "authorized by the current predecessor lineage."
+            "Final-production checkpoint-monitor evidence is not the exact common "
+            "target monitor bound by the final plan."
         )
     expected_role_digest = post_selection_eval_role_digest(
         run_plan=run_plan,
@@ -386,8 +385,8 @@ def _seed_evidence_for_run(context: Any, plan: Any, evidence: Any) -> tuple[
     )
     if monitor_metrics.target_role_digest != expected_role_digest:
         raise PostSelectionError(
-            "Final-production M3 metrics are bound to a different evaluation role "
-            "than the authenticated checkpoint monitor artifact."
+            "Final-production monitor metrics are bound to a different evaluation "
+            "role than the authenticated checkpoint monitor artifact."
         )
     return (
         FinalPublicationSeedEvidence(
@@ -428,8 +427,8 @@ def _rank_single_best(
     """Choose the first canonical admissible representative across seeds.
 
     The ordering owner is the accepted target-only EVAL2 ordering that already
-    chose each seed's representative, applied over the *common* frozen M3
-    development evidence.  Replay evidence contributed admissibility only and
+    chose each seed's representative, applied over each representative's frozen
+    metric record on the exact common target monitor.  No evaluation is rerun.  Replay evidence contributed admissibility only and
     contributes no ranking weight here either.  Tie material descends from the
     final-production plan identity, so the answer does not depend on process
     order, completion order, or when the decision is taken.
@@ -464,8 +463,6 @@ def decide_final_production_publication(
 ) -> FinalProductionPublicationDecision:
     """Freeze the published member set from pre-qualification evidence alone."""
 
-    from .post_selection_production import frozen_m3_development_evidence
-
     plan = completion.plan
     context.selected.require_binding(plan.binding)
     policy = context.production_policy
@@ -499,7 +496,6 @@ def decide_final_production_publication(
         member_ids = (best.member_id,)
     else:  # pragma: no cover - FinalProductionPolicyIdentity restricts the vocabulary
         raise PostSelectionError(f"Unsupported committee policy {committee!r}.")
-    _m3_size, _m3_membership, m3_digest = frozen_m3_development_evidence(context.selected)
     return FinalProductionPublicationDecision(
         binding=plan.binding,
         final_plan_digest=plan.content_digest,
@@ -507,7 +503,7 @@ def decide_final_production_publication(
         method_identity_digest=plan.method_identity_digest,
         cv_plan_digest=plan.cv_plan_digest,
         cv_authorization_digest=plan.cv_authorization_digest,
-        m3_membership_digest=m3_digest,
+        common_monitor_record_digest=plan.common_monitor_record_digest,
         completion_digest=completion.content_digest,
         target_head_name=str(context.method_policies.target_head_name),
         committee_policy=committee,
@@ -566,14 +562,13 @@ def resolve_current_final_production_publication(
 
     ``None`` means no product has been published yet.  A decision that does not
     bind the currently resolved final plan, policy, method, CV authorization,
-    M3 lineage, committee policy, or completion is *not* current: it stays on
+    common monitor, committee policy, or completion is *not* current: it stays on
     disk as historical evidence and is unreachable as the current product.
     """
 
     from .campaign_post_selection_runtime import (
         resolve_current_final_production_completion,
     )
-    from .post_selection_production import frozen_m3_development_evidence
     from .post_selection_reclosure import (
         resolve_current_predecessor_reclosure,
     )
@@ -635,8 +630,10 @@ def resolve_current_final_production_publication(
             FINAL_PUBLICATION_DECISION_POLICY_IDENTITY,
         ),
     }
-    _m3_size, _m3_membership, m3_digest = frozen_m3_development_evidence(context.selected)
-    mismatches["m3_membership_digest"] = (decision.m3_membership_digest, m3_digest)
+    mismatches["common_monitor_record_digest"] = (
+        decision.common_monitor_record_digest,
+        plan.common_monitor_record_digest,
+    )
     stale = sorted(name for name, (stored, current) in mismatches.items() if stored != current)
     if stale:
         raise PostSelectionError(

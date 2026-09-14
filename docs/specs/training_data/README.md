@@ -2,9 +2,9 @@
 
 This directory contains narrow **current-generation** MLFF specifications plus a temporary residue of superseded documents being consolidated into `docs/history/mlff/` by `DOC-MLFF-ARCH-RESET1` A4.
 
-Only the specifications listed in this index are current normative owners. Unlisted release/gate/migration-era files do not override the architecture or this index and are scheduled for historical consolidation/removal.
+Only the specifications listed in this index are current normative owners. Unlisted release/gate/migration-era files do not override the current D1-D4 authority and are scheduled for historical consolidation/removal where applicable.
 
-The cross-cutting architecture is defined by the canonical chapters under `docs/arch_manuals/mlff_training_data/`. This specification layer owns exact current schemas, policy values, algorithms, failure modes, and runtime behavior.
+The cross-cutting D3 architecture is defined by `docs/arch_manuals/mlff_training_data_architecture.md` together with the canonical chapters under `docs/arch_manuals/mlff_training_data/`. This specification layer owns exact current schemas, policy values, algorithms, failure modes, and runtime behavior under accepted D1-D3 authority.
 
 ## Cross-cutting system contract
 
@@ -40,25 +40,31 @@ authorized pre-order selection evidence
 ```
 
 Pre-order descriptor/difficulty evidence may feed the one canonical order. The
-later P3 common training preparation (including current common E0/weights/model
+later P3 common training preparation (including current P3 E0/weights/model
 normalization) is a consumer of P1/P2 authority and is not an input to `pi_train`.
+It is also not the current foundation-P5 fitted-preparation authority.
 
-- `mlff_data_stage_plan_spec.md` — cross-cutting evidence-role, fitted-partition, target-size, protocol, currentness, and downstream-boundary invariants.
+- `mlff_data_stage_plan_spec.md` — cross-cutting evidence-role, fitted-partition, target-size, method/protocol, currentness, and downstream-boundary invariants.
 - `mlff_data5_partition_roles_spec.md` — statistical-role/protected-relation foundations and the current neutral-substrate clarification.
 - `mlff_data6_selection_descriptors_spec.md` — authorized descriptor/foundation evidence that may feed canonical ordering without owning membership.
 
 ## Monitoring, replay, training, checkpointing, and evaluation
 
-- `mlff_online_monitor_spec.md` — `OnlineTargetMonitorPolicy` and `ReplayMonitorPolicy`; monitor cardinalities are not target sizes.
-- `mlff_data8_mace_artifacts_spec.md` — current MACE target/replay artifact realization.
-- `mlff_data9b1_campaign_checkpoint_control_spec.md` — checkpoint control and candidate retention/evaluation orchestration.
+- `mlff_online_monitor_spec.md` — `OnlineTargetMonitorPolicy` and `ReplayMonitorPolicy`; restored P5 uses one exact 256-frame campaign-common target monitor with no short-parent success state; replay-monitor semantics remain separately owned.
+- `mlff_post_selection_p5_spec.md` — **sole current restored-P5 D4 handoff** for `PostSelectionMethodIdentity`, foundation UniversalLoss realization, common-monitor ancestry, selected-only CV folds, foundation-residual fitted preparation/transfer, final production/publication, currentness, and failure behavior.
+- `mlff_data8_mace_artifacts_spec.md` — current MACE artifact transport and broad `TrainingProtocolIdentity`/`Data8PreparationBundle` contracts for separately current non-P5 consumers and historical provenance. Its broad DATA8 protocol graph does **not** authorize restored P5.
+- `mlff_data9b1_campaign_checkpoint_control_spec.md` — checkpoint control and candidate retention/evaluation orchestration where consistent with the current owning method/specification.
 - `mlff_binary_model_precision_spec.md` — model precision policy.
 - `mlff_true_label_restart_lineage_spec.md` — true-label restart/source lineage.
 - `mlff_mace_torchscript_warning_compatibility_spec.md` — current warning handling where the locked runtime still emits the relevant warnings.
 
+For restored P5, `PostSelectionMethodIdentity` is the sole current method identity and the current lineage is `method -> role policy -> role plan -> fitted preparation -> PostSelectionMaterialization -> run evidence`. Broad `TrainingProtocolIdentity` records remain available only for separately current non-P5 consumers/history and cannot become current P5 through deserialization.
+
 ## Post-selection validation and campaign realization
 
-- `mlff_data9b3_campaign_cli_spec.md` — current campaign CLI contract.
+- `mlff_post_selection_p5_spec.md` — normative current P5 CV/final-production schema, failure, monitor, fitted-preparation, publication, and currentness contract.
+- `mlff_data9b3_campaign_cli_spec.md` — current campaign CLI contract; P5-specific replay defaults/retired fields/failure rules are constrained by the P5 specification.
+- `mlff_adaptive_training_stop_spec.md` — current adaptive-stop/checkpoint scoring semantics where still applicable; P5 target evidence is the exact common monitor and score weights remain distinct from retired training-head scalar weights.
 - `mlff_storage_management_spec.md` — owner-driven campaign storage and I/O management.
 
 The CLI's current implementation ends at selected-only method validation and
@@ -94,6 +100,8 @@ Profile-migration documents are historical rather than current extension contrac
 
 Performance documents that only record a historical gate, calibration experiment, hotfix, or release qualification are evidence/history rather than permanent current specifications and are intentionally omitted from this index.
 
+Production-scale GPU qualification for the present P5 restoration is deferred until the complete final release package is assembled, at which point one final user-side GPU qualification package is produced rather than iterating GPU qualification during development.
+
 ## Runtime/backend locks
 
 Runtime/backend specifications are current only while their exact dependency/adapter contract remains supported. The current index includes a runtime lock only when it is an actual accepted execution dependency, not merely because a past release qualified it.
@@ -107,15 +115,15 @@ Backend qualification reports, hotfix notes, parity diagnostics, and obsolete mi
 
 ## Authority and compatibility rules
 
-1. Architecture owns cross-subsystem scientific/statistical structure until the proposed D1/D2 reconstruction is formally accepted and the architecture is losslessly narrowed to D3.
-2. This index identifies narrow current specification owners.
-3. A narrow specification may strengthen its local current contract but cannot contradict the architecture.
-4. A workplan, audit, benchmark, release note, generated PDF, or historical document cannot override current architecture/specifications.
-5. Unsupported old campaign artifacts fail clearly and require re-preparation; historical readability is not a current product-semantic requirement.
-6. If two current listed specifications appear to own the same scientific decision, that is a documentation/design defect and must be resolved to one owner rather than patched with precedence prose.
+1. Accepted D1 method papers own scientific meaning; accepted D2 method papers own numerical algorithms/equivalence; current D3 architecture owns software ownership/topology; this index identifies narrow current D4 specification owners.
+2. `mlff_post_selection_p5_spec.md` is the sole current D4 P5 handoff for the restoration. Broad DATA8 protocol prose is explicitly scoped away from current P5 rather than resolved by runtime precedence.
+3. A narrow specification may strengthen its local current contract but cannot contradict accepted upstream authority.
+4. A workplan, audit, benchmark, release note, generated PDF, or historical document cannot override current D1-D4 authority.
+5. Unsupported old campaign artifacts fail clearly and require re-preparation; historical readability is not a current product-semantic authorization path.
+6. If two current listed specifications appear to own the same scientific/numerical/software decision, that is a documentation/design defect and must be resolved to one owner rather than patched with precedence prose.
 
 ## Publication rule
 
-Markdown is the editable semantic source for these specifications. Generated PDFs, when maintained for a current specification, must be regenerated from the current Markdown and visually/semantically checked under the repository documentation publication process. Superseded PDFs do not remain current merely because a file exists.
+Markdown is the editable semantic source for these specifications. Generated PDFs, when maintained for a current specification, must be regenerated from current Markdown and visually/semantically checked under the repository documentation publication process. Superseded PDFs do not remain current merely because a file exists.
 
 Retired pre-V7 target-size and lifecycle specifications were archived to `docs/history/mlff/retired_specs/` by the destructive target-size generation cutover. They are historical and are not current authority.

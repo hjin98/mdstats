@@ -2,12 +2,18 @@
 
 Active workplans are temporary engineering coordination contracts. They do not define current mdstats product behavior by repository presence alone; current behavior remains owned by accepted D1-D4 authority and conforming implementation.
 
-There is currently **no active MLFF D1/D2 reconstruction or target-order redesign workplan**. The accepted 2026-09-13 MLFF scientific and numerical method papers remain current authority. The later FPS/coverage Gate-A Revision 2-5 proposal lineage was withdrawn without promotion and is preserved under `workplans/archive/mlff-fps-coverage-method-reconciliation/` together with its parent workplan and scope-recovery record.
+## Current active MLFF work
 
-The reconstruction closure made no target-size method change. In particular, the accepted deterministic exact protected-component subset-sum split and accepted target-order behavior remain unchanged. The local-structure numerical specification reconciliation is retained as documentation-only recovery of formulas already implemented by the accepted analysis owner.
+There is currently **no active post-selection restoration repair workplan** on `fix/mlff-post-selection-method-restoration`.
 
-Future qualification evidence may independently trigger a new repair if it demonstrates a concrete defect; no speculative redesign is carried forward from the withdrawn Gate-A proposal.
+`MLFF_POST_SELECTION_UNIVERSAL_LOSS_MONITOR_AND_CV_METHOD_RESTORATION_WORKPLAN.md` was closed and archived on 2026-09-14 after independent Implementation/Integration Review R4 found no remaining D4 implementation/integration blocker and no Serious Challenge to D1/D2/D3. The lifecycle closeout record is `workplans/archive/MLFF_POST_SELECTION_UNIVERSAL_LOSS_MONITOR_AND_CV_METHOD_RESTORATION_CLOSEOUT_2026-09-14.md`; the historical workplan snapshot is archived beside it.
 
-Completed, superseded, and retired workplans belong under `workplans/archive/`. Current product behavior is governed by accepted authority and conforming implementation, not by historical workplan presence.
+The stakeholder is now running the **full MLFF campaign**. That campaign qualification is **IN PROGRESS** and is intentionally not represented as a synthetic G13 PASS. Its outputs are the next operational/scientific evidence source. Any newly observed failure or contradiction should be independently diagnosed and, when repair is required, opened as a new bounded workplan at the earliest owning D1/D2/D3/D4 layer rather than reopening the archived restoration plan by default.
 
-Production-scale GPU/CuEq/LAMMPS/MLIAP qualification remains deferred to the established final-release phase.
+If correctly restored TRUE_DFT replay still shows material forgetting comparable to the prior failure regime, route a Serious Challenge to D1/D2 rather than adding compensating D4 machinery.
+
+Production-scale GPU/CuEq/LAMMPS/MLIAP release qualification remains governed by the existing final-release policy.
+
+There is no active target-order redesign. The withdrawn FPS/coverage Gate-A lineage remains archived and does not alter the accepted target-size method.
+
+Completed/superseded workplans belong under `workplans/archive/`.

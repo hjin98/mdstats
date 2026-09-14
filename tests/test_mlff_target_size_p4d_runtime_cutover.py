@@ -110,8 +110,17 @@ def _fixture_campaign(
 
     training_root = tmp_path / "sources"
     training_root.mkdir(parents=True, exist_ok=True)
+    # A campaign that reserves more than one neutral outer-monitor unit (the
+    # post-selection fixture needs an exact 256-frame common target monitor)
+    # carries four trailing frames per reserved unit beyond the base run.
+    import re
+
+    monitor_units = int(
+        re.search(r"outer_monitor_minimum_independent_units = (\d+)", _CONFIG).group(1)
+    )
+    extra = {} if monitor_units <= 1 else {"n_frames": 48 + 4 * monitor_units}
     manifest, sources, frames, data4 = _data4_bundle(
-        training_root, regime=regime, elements=elements
+        training_root, regime=regime, elements=elements, **extra
     )
 
     workspace = tmp_path / "campaign"

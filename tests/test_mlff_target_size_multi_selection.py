@@ -25,6 +25,8 @@ Every campaign, CampaignStore and P4/P5 owner runs as production code.
 
 from __future__ import annotations
 
+from tests._mlff_post_selection_fixture import monitor_kwargs
+
 import dataclasses
 from pathlib import Path
 
@@ -527,6 +529,7 @@ def _cv_plan_digest(context, cfg, *, cv_max_num_epochs: int) -> str:
         resolve_cv_validation_policy_identity(
             cfg, max_num_epochs=cv_max_num_epochs
         ),
+        **monitor_kwargs(context),
     ).content_digest
 
 

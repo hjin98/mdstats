@@ -38,12 +38,20 @@ qualification outcome back into any of those authorities.
 The released product is decided by P5, not by P7. `train-production` publishes a
 `FinalProductionPublicationDecision` immediately after the required seeds
 complete: it binds the selected binding, final plan and policy, CV/method
-lineage, frozen M3 membership, every required seed's run evidence and
-already-frozen representative identity, the canonical target head, the committee
-policy, the exact ordered published member set, and a deterministic
-decision-policy identity. Both `all_qualified_final_seeds` and
-`single_best_final_seed` are decided there, using only pre-qualification
-evidence and the accepted target-only EVAL2 ordering.
+lineage, the campaign-common target monitor record
+(`common_monitor_record_digest`), every required seed's run evidence and
+already-frozen representative identity with its target metric record on that
+common monitor, the canonical target head, the committee policy, the exact
+ordered published member set, and a deterministic decision-policy identity. Both
+`all_qualified_final_seeds` and `single_best_final_seed` are decided there, using
+only those pre-qualification common-monitor records and the accepted target-only
+EVAL2 ordering; no second target evaluation and no M3 evaluation is performed.
+
+Target-size `M3` is not a parent of the P5 final plan, publication decision, or
+its currentness. Where a P7 component uses a bounded M3 development cohort (for
+example `deployment_parity` below), that is a separately authorized downstream
+use of the P3-owned cohort resolved from its own owner; it never makes M3 a P5
+publication parent.
 
 P7's `AuthenticatedFinalPublication` is a read-only view that copies that
 decision's ordered member set. It contains no ranking, no membership registry,

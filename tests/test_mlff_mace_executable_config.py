@@ -164,6 +164,13 @@ def _canonical_post_selection_config(*, multihead: bool) -> dict:
         "target_head_name": POST_SELECTION_TARGET_HEAD_NAME,
         "replay_head_name": POST_SELECTION_REPLAY_HEAD_NAME,
         "mace_architecture": architecture,
+        # Foundation P5 executes native UniversalLoss with its fixed parameters.
+        "training_mode": "multihead_replay" if multihead else "naive_fine_tuning",
+        "loss": "universal",
+        "huber_delta": 0.01,
+        "energy_weight": 1.0,
+        "forces_weight": 10.0,
+        "stress_weight": 1.0,
     }
     if multihead:
         config["multiheads_finetuning"] = True

@@ -50,11 +50,20 @@ seeds = [5]
 """
 
 
+#: The current P5 checkpoint monitor is an exact 256-frame sample of the neutral
+#: OUTER_MONITOR role.  The fixture reserves 72 four-frame outer-monitor units;
+#: the P4 campaign builder sizes the source run for that reservation.
+FIXTURE_OUTER_MONITOR_UNITS = 72
+
+
 def fixture_config_text(**overrides: str) -> str:
     """The P4 fixture campaign plus a resolved post-selection configuration."""
 
     text = (
         p4d._CONFIG.replace(
+            "outer_monitor_minimum_independent_units = 1",
+            f"outer_monitor_minimum_independent_units = {FIXTURE_OUTER_MONITOR_UNITS}",
+        ).replace(
             "seeds = [1, 2]",
             f"seeds = [1, 2]\nmax_num_epochs = {PRODUCTION_MAX_NUM_EPOCHS}",
         )
@@ -244,12 +253,37 @@ def record_child_mace_execution_evidence(authority):
     )
 
     multihead = bool(authority["multiheads_finetuning"])
+    role = authority.get("role", "post_selection")
+    foundation = authority.get("huber_delta") is not None
+    post_selection = {}
+    if role == "post_selection":
+        combined = authority["target_train_count"] + authority["replay_train_count"]
+        post_selection = {
+            "training_mode": authority["training_mode"],
+            "huber_delta": authority["huber_delta"],
+            "energy_weight": authority["energy_weight"],
+            "forces_weight": authority["forces_weight"],
+            "stress_weight": authority["stress_weight"],
+            "stage_two_enabled": False,
+            "ordered_head_layout": (
+                [authority["replay_head_name"], authority["target_head_name"]]
+                if multihead
+                else [authority["target_head_name"]]
+            ),
+            "combined_drop_last": True,
+            "combined_updates_per_epoch": combined // int(authority["batch_size"]),
+        }
     return record_mace_execution_evidence(
         authority,
         {
-            "role": authority.get("role", "post_selection"),
+            **post_selection,
+            "role": role,
             "loss_family": authority["loss_family"],
-            "loss_class": "mace.modules.loss.WeightedEnergyForcesStressLoss",
+            "loss_class": (
+                "mace.modules.loss.UniversalLoss"
+                if foundation
+                else "mace.modules.loss.WeightedEnergyForcesStressLoss"
+            ),
             "learning_rate": authority["learning_rate"],
             "ema": authority["ema"],
             "ema_decay": authority["ema_decay"],
@@ -535,6 +569,17 @@ class PostSelectionHarness:
         offset = self._offset_for(provider)
         predictions = []
         for atoms in atoms_list:
+            if policy.forces_key not in atoms.arrays:
+                # Unlabeled geometry (for example selected-head foundation
+                # residual inputs): a deterministic geometry-only prediction.
+                predictions.append(
+                    SimpleNamespace(
+                        energy_ev=-1.0 * len(atoms) + 1.0e-3 * float(atoms.positions.sum()),
+                        forces_ev_per_angstrom=np.zeros((len(atoms), 3)),
+                        stress_ev_per_angstrom3=None,
+                    )
+                )
+                continue
             forces = (
                 np.asarray(atoms.arrays[policy.forces_key], dtype=np.float64)
                 + offset
@@ -584,3 +629,32 @@ def run_train_production(
         _external_post_selection_trainer=active.train,
         _external_inference_evaluator=active.evaluate,
     )
+
+
+def common_monitor(context):
+    """``(M_mon record, separation evidence)`` through the real owners.
+
+    Owner-level tests that hold one ``CurrentSelectedTrainingContext`` resolve
+    the exact common target monitor exactly as the runtime does for a
+    single-size design.
+    """
+
+    from mdstats.training_data.online_monitor import build_common_target_monitor
+    from mdstats.training_data.post_selection_cv_plan import (
+        build_common_monitor_separation,
+    )
+
+    record = build_common_target_monitor(context.authorities)
+    return record, build_common_monitor_separation((context,), record)
+
+
+def monitor_kwargs(context) -> dict:
+    record, separation = common_monitor(context)
+    return {"common_monitor": record, "monitor_separation": separation}
+
+
+def context_monitor_kwargs(context) -> dict:
+    """Monitor keyword arguments from a runtime ``PostSelectionContext``."""
+
+    record, separation = context.common_target_monitor()
+    return {"common_monitor": record, "monitor_separation": separation}

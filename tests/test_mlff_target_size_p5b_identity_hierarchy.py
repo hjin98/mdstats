@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from tests._mlff_post_selection_fixture import (
+    monitor_kwargs,
     PRODUCTION_MAX_NUM_EPOCHS,
     build_selected_campaign,
     fixture_config_text,
@@ -110,9 +111,11 @@ def test_p5b_policy_serialization_contains_no_descendant_evidence():
 
     # Role-specific exclusions from the corrected hierarchy.
     for key in ("fold_count", "partition_seed", "cv_max_num_epochs",
-                "production_max_num_epochs", "m3_membership_digest"):
+                "production_max_num_epochs", "m3_membership_digest",
+                "common_monitor_record_digest", "common_training_policy_digest"):
         assert key not in method, key
-    for key in ("m3_membership_digest", "m3_evaluation_size", "production_max_num_epochs"):
+    for key in ("m3_membership_digest", "m3_evaluation_size", "production_max_num_epochs",
+                "checkpoint_monitor_components_per_fold"):
         assert key not in cv_policy, key
     for key in ("m3_membership_digest", "m3_evaluation_size", "cv_max_num_epochs",
                 "fold_count", "partition_seed"):
@@ -282,7 +285,7 @@ def test_p5b_cv_plan_moves_with_the_projection_while_the_policy_stands_still(
         policy = resolve_cv_validation_policy_identity(cfg)
         projection = build_selected_relation_projection(context)
         plan = build_post_selection_cv_plan(
-            context, method, policy, projection=projection
+            context, method, policy, projection=projection, **monitor_kwargs(context)
         )
 
         # Same method, same resolved CV configuration, different authenticated
@@ -309,6 +312,8 @@ def test_p5b_cv_plan_moves_with_the_projection_while_the_policy_stands_still(
             == policy.content_digest
         )
         with pytest.raises(PostSelectionError):
-            validate_post_selection_cv_plan(plan, context, projection=merged)
+            validate_post_selection_cv_plan(
+                plan, context, projection=merged, **monitor_kwargs(context)
+            )
     finally:
         store.close()

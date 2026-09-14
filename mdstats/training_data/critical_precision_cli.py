@@ -238,6 +238,24 @@ def _validate_mace_execution_arguments(
             raise RuntimeError(
                 f"MACE {stage} did not retain real_pt_data_ratio_threshold=0.0."
             )
+    if authority["huber_delta"] is not None:
+        # Foundation P5: the one numeric Huber parameter and the global
+        # coefficients reach native UniversalLoss exactly, with no stage-two
+        # phase able to swap them later and no distributed sampler.
+        for name in ("huber_delta", "energy_weight", "forces_weight", "stress_weight"):
+            if float(getattr(args, name, float("nan"))) != float(authority[name]):
+                raise RuntimeError(
+                    f"MACE {stage} {name} differs from the authenticated foundation-P5 "
+                    "UniversalLoss."
+                )
+        if bool(getattr(args, "swa", False)) or bool(getattr(args, "lbfgs", False)):
+            raise RuntimeError(
+                f"MACE {stage} enabled a stage-two or LBFGS phase for foundation P5."
+            )
+        if bool(getattr(args, "distributed", False)):
+            raise RuntimeError(
+                "Foundation-P5 execution is qualified only for the single-process path."
+            )
     if authority["role"] == "target_size" and bool(
         getattr(args, "distributed", False)
     ):
@@ -443,25 +461,53 @@ def _validate_mace_execution_loader(
     train_set: Any,
     head_configs: Any,
     train_sampler: Any,
+    train_sets: Any = None,
 ) -> dict[str, Any]:
     """Validate actual MACE collections/loaders and publish resolved evidence."""
 
     from .mace_compatibility import (
         MACE_EXECUTION_AUTHORITY_ENVIRONMENT_VARIABLE,
+        MACE_FOUNDATION_LOSS_CLASS,
+        MACE_WEIGHTED_LOSS_CLASS,
         mace_execution_authority_to_environment,
         mace_frame_uid_set_digest,
         record_mace_execution_evidence,
     )
 
     authority = _validate_mace_execution_arguments(args, stage="post-mutation")
+    foundation = authority["huber_delta"] is not None
     loss_class = (
         f"{type(loss_fn).__module__}.{type(loss_fn).__qualname__}"
     )
-    if loss_class != "mace.modules.loss.WeightedEnergyForcesStressLoss":
+    expected_loss_class = (
+        MACE_FOUNDATION_LOSS_CLASS if foundation else MACE_WEIGHTED_LOSS_CLASS
+    )
+    if loss_class != expected_loss_class:
         raise RuntimeError(
             "MACE resolved an unsupported loss implementation for the authenticated "
-            f"stress method: {loss_class}."
+            f"{authority['loss_family']} method: {loss_class}."
         )
+    realized_loss_parameters: dict[str, float | None] = {
+        "huber_delta": None,
+        "energy_weight": None,
+        "forces_weight": None,
+        "stress_weight": None,
+    }
+    if foundation:
+        # Read the constructed native loss object itself, after every pinned
+        # MACE mutation region, rather than trusting the parser arguments.
+        realized_loss_parameters = {
+            "huber_delta": float(loss_fn.huber_delta),
+            "energy_weight": float(loss_fn.energy_weight),
+            "forces_weight": float(loss_fn.forces_weight),
+            "stress_weight": float(loss_fn.stress_weight),
+        }
+        for name, value in realized_loss_parameters.items():
+            if value != float(authority[name]):
+                raise RuntimeError(
+                    f"MACE constructed UniversalLoss with {name}={value}, not the "
+                    f"authenticated {authority[name]}."
+                )
     target_name = str(authority["target_head_name"])
     replay_name = str(authority["replay_head_name"])
     by_head = {str(config.head_name): config for config in head_configs}
@@ -531,7 +577,37 @@ def _validate_mace_execution_loader(
                 "Target-size per-head and combined loaders disagree on batch count."
             )
 
+    post_selection_evidence: dict[str, Any] = {}
+    if authority["role"] == "post_selection":
+        # The pre-shuffle corpus layout is the head order of MACE's own
+        # concatenated dataset.  It is observed, never reordered here.
+        datasets = tuple(getattr(train_set, "datasets", ()))
+        by_identity = (
+            {}
+            if not isinstance(train_sets, dict)
+            else {id(value): str(key) for key, value in train_sets.items()}
+        )
+        ordered_head_layout = [by_identity.get(id(item)) for item in datasets]
+        if not ordered_head_layout or None in ordered_head_layout:
+            raise RuntimeError(
+                "MACE combined training dataset layout could not be attributed to "
+                "its per-head datasets."
+            )
+        if foundation and train_sampler is not None:
+            raise RuntimeError(
+                "Foundation-P5 execution received a distributed sampler."
+            )
+        post_selection_evidence = {
+            "training_mode": authority["training_mode"],
+            **realized_loss_parameters,
+            "stage_two_enabled": bool(getattr(args, "swa", False)),
+            "ordered_head_layout": ordered_head_layout,
+            "combined_drop_last": bool(getattr(train_loader, "drop_last", False)),
+            "combined_updates_per_epoch": int(len(train_loader)),
+        }
+
     evidence = {
+        **post_selection_evidence,
         "role": authority["role"],
         "loss_family": str(args.loss),
         "loss_class": loss_class,
@@ -568,10 +644,13 @@ def _validate_mace_execution_loader(
 def _install_mace_execution_semantics_patch(authority: dict[str, Any]) -> None:
     """Install the one source-qualified MACE execution-semantics repair.
 
-    MACE 0.3.16 unconditionally selects ``UniversalLoss`` for multi-head
-    fine-tuning and constructs all training loaders with ``drop_last`` tied to
-    the historical LBFGS flag.  The authenticated mdstats launch authority is
-    the only thing that enables this patch.  The exact source markers are
+    MACE 0.3.16 constructs all training loaders with ``drop_last`` tied to the
+    historical LBFGS flag, which only target-size complete-batch execution
+    rewrites.  Every other hook observes: MACE's own loss selection (including
+    its multi-head ``UniversalLoss`` selector, which is the accepted foundation
+    replay method) and loader construction are validated, never replaced.  The
+    authenticated mdstats launch authority is the only thing that enables this
+    patch.  The exact source markers are
     checked before rewriting so a future MACE source cannot silently receive a
     stale transformation.
     """
@@ -637,14 +716,9 @@ def _install_mace_execution_semantics_patch(authority: dict[str, Any]) -> None:
         + "    _validate_mace_execution_arguments(args, stage='parser')\n",
         1,
     )
-    # The native MACE call to get_loss_fn remains the owner of loss
-    # construction.  Only its forced UniversalLoss selector is removed.
-    source = source.replace(
-        forced_loss_marker,
-        "        # mdstats: retain the authenticated native executable loss.\n"
-        "        args.loss = 'stress'\n",
-        1,
-    )
+    # The native MACE multi-head selector of UniversalLoss is left untouched:
+    # it only runs for multihead replay, whose authenticated method is
+    # UniversalLoss.  The argument/loader validators reject any mismatch.
     source = source.replace(
         collection_marker,
         "        head_configs.append(head_config)\n\n"
@@ -663,7 +737,7 @@ def _install_mace_execution_semantics_patch(authority: dict[str, Any]) -> None:
         + "    _mdstats_mace_execution_evidence = _validate_mace_execution_loader(\n"
         + "        args=args, loss_fn=loss_fn, train_loader=train_loader,\n"
         + "        train_set=train_set, head_configs=head_configs,\n"
-        + "        train_sampler=train_sampler,\n"
+        + "        train_sampler=train_sampler, train_sets=train_sets,\n"
         + "    )\n",
         1,
     )

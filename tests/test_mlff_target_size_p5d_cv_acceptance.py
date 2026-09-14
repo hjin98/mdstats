@@ -17,6 +17,7 @@ import pytest
 import mdstats
 from tests.test_mlff_eval2 import point, target_metrics
 from tests._mlff_post_selection_fixture import (
+    monitor_kwargs,
     build_selected_campaign,
     load_context,
 )
@@ -50,7 +51,7 @@ def _plan_environment(tmp_path: Path):
     context = load_current_selected_training_context(cfg, paths, store)
     method = resolve_post_selection_method_identity(cfg)
     policy = resolve_cv_validation_policy_identity(cfg)
-    plan = build_post_selection_cv_plan(context, method, policy)
+    plan = build_post_selection_cv_plan(context, method, policy, **monitor_kwargs(context))
     return context, method, policy, plan, store
 
 
@@ -314,7 +315,7 @@ def test_p5d_all_required_seeds_must_pass(tmp_path: Path):
         context = load_current_selected_training_context(cfg, paths, store)
         method = resolve_post_selection_method_identity(cfg)
         policy = resolve_cv_validation_policy_identity(cfg)
-        plan = build_post_selection_cv_plan(context, method, policy)
+        plan = build_post_selection_cv_plan(context, method, policy, **monitor_kwargs(context))
         assert policy.required_cv_seeds == (11, 12)
 
         acceptances = [
