@@ -1,7 +1,7 @@
 # MLFF_POST_SELECTION_UNIVERSAL_LOSS_MONITOR_AND_CV_METHOD_RESTORATION — restore post-selection fine-tuning semantics
 
-**Status:** active — G0/G1/G1A/G1B CLOSED/PASS; Stages A–D implemented in the working tree (uncommitted, 2026-09-14) with focused tests, real-MACE assembled tests, and stashed-baseline affected regression (223 test files: no new failures); G13 pilot/full CV, independent Review, and closeout remain open  
-**Current authority:** accepted D1/D2 in `docs/methods/mlff_scientific_method.md` and `docs/methods/mlff_numerical_algorithmic_method.md`; current D3 in `docs/arch_manuals/mlff_training_data_architecture.md` plus canonical chapters; current D4 restored-P5 handoff in `docs/specs/training_data/mlff_post_selection_p5_spec.md`  
+**Status:** active — independent Protocol 6.3 implementation Review NO-PASS on 2026-09-14 for code candidate `521bc932ec9b52cc769db32a2561fa4cd1b8eba8` (derived-doc head `f71c5b9af34454940814445fd2e50b97265526d1`); G0/G1/G1A remain CLOSED/PASS; G1B is REOPENED for a D4 ancestry-direction contradiction; Stages A–D are implemented, but candidate-bound G11/G12 evidence, G13 pilot/full CV, and closeout remain open  
+**Current authority:** accepted D1/D2 in `docs/methods/mlff_scientific_method.md` and `docs/methods/mlff_numerical_algorithmic_method.md`; current D3 in `docs/arch_manuals/mlff_training_data_architecture.md` plus canonical chapters; current D4 restored-P5 handoff in `docs/specs/training_data/mlff_post_selection_p5_spec.md`, with G1B narrowly reopened as specified below  
 **Target branch/base:** `fix/mlff-post-selection-method-restoration` from `1b6b6f83918d31c4b27a0e60d7bc047ef58b6067`  
 **Protocol:** SSDP 6.3  
 **Pre-code closure evidence:** `audits/MLFF_POST_SELECTION_RESTORATION_G1_G1A_G1B_CLOSURE_2026-09-14.md`
@@ -10,11 +10,11 @@
 
 The upstream D1/D2 Serious Challenge is resolved for this restoration branch. The repaired D1/D2 pair passed independent falsification at `f310b4c15c6b0465b34013d329847abdb208bae2`, and the stakeholder authorized progression.
 
-G1 authority/API/evidence census, G1A D3 reconciliation, and G1B D4 handoff freeze are now closed PASS. The restoration can proceed to executable implementation without a second P5 method identity, monitor owner, E0 solver, publication selector, or currentness graph.
+G1 authority/API/evidence census and G1A D3 reconciliation remain closed PASS. Independent implementation Review found no D1/D2 Serious Challenge and no D3 architecture contradiction: the accepted D3 dependency direction remains acyclic (`role plan -> fitted P5 preparation -> materialization -> evidence`). G1B is, however, narrowly reopened because the normative D4 P5 specification later states that the CV/final plan itself binds `foundation fitted-preparation ancestry`, which reverses that dependency and would create a plan/preparation cycle if implemented literally. This is a D4 specification defect, not authority for a compensating runtime graph.
 
-The remaining task is a bounded D4 conformance restoration. Current code still contains descendants of the superseded method, including weighted-stress foundation P5 realization, selected-only fold target monitors, M3 final checkpoint/publication routing, inert/retired weighting layers, generic from-scratch E0 foundation routing, and stale currentness identities. Those are implementation defects against the now-reconciled D1-D4 authority.
+Stages A–D are implemented on code candidate `521bc932ec9b52cc769db32a2561fa4cd1b8eba8`. The assembled implementation inspected in Review is otherwise substantially aligned with the restored method: current foundation loss/exposure, common-monitor routing, selected-head residual E0/transfer, currentness, and M3-free publication all route through existing owners rather than parallel machinery. Closure is nevertheless blocked until the narrow G1B repair is reviewed/frozen and candidate-bound G11/G12 plus G13 evidence is produced.
 
-The repair remains deliberately reductive: remove wrong/retired semantics and rewire existing owners. Do not create a custom loss, second sampler, second E0 solver, shadow trainer, parallel method/protocol registry, second currentness system, or compatibility wrapper that merely preserves an obsolete current path.
+The repair remains deliberately reductive: remove wrong/retired semantics and rewire existing owners. Do not create a custom loss, second sampler, second E0 solver, shadow trainer, parallel method/protocol registry, second currentness system, compatibility wrapper that merely preserves an obsolete current path, or a reverse plan->preparation binding added only to satisfy contradictory wording.
 
 ## 2. Frozen restored foundation-P5 method
 
@@ -265,7 +265,7 @@ docs/arch_manuals/mlff_training_data/80_ownership_and_decisions.md
 
 The top-level manual is itself canonical D3 authority alongside the chapters; it is not a generated aggregate.
 
-### G1B — D4 handoff freeze — **CLOSED / PASS**
+### G1B — D4 handoff freeze — **REOPENED / REVIEW BLOCKER**
 
 Normative restored-P5 handoff: `docs/specs/training_data/mlff_post_selection_p5_spec.md`.
 
@@ -278,7 +278,17 @@ docs/specs/training_data/mlff_data8_mace_artifacts_spec.md
 docs/specs/training_data/README.md
 ```
 
-G1B freezes required/forbidden fields, failure/currentness semantics, monitor topology, final-publication ordering, config/public behavior, and stage dependency. Exact private helper decomposition and exact schema-token strings remain delegated D4 choices.
+Independent implementation Review found one internal contract contradiction in the normative P5 spec. Section 1 correctly freezes the acyclic chain `role plan -> PostSelectionFittedPreparation -> PostSelectionMaterialization`, matching accepted D3. Sections 11 and 13 nevertheless list `foundation fitted-preparation ancestry where applicable` as a parent that the CV/final plan itself SHALL bind. A plan cannot both own and descend from its fitted preparation without a cycle.
+
+**Required narrow repair:**
+
+1. Preserve the accepted D3/workplan direction: role plan first; fitted preparation binds its owning CV/final run-plan ancestry; materialization/run evidence then bind the fitted-preparation digest.
+2. Remove `foundation fitted-preparation ancestry where applicable` from the CV-plan/run-plan and final-plan parent lists in D4 sections 11 and 13. Do not add a reverse runtime edge, deferred placeholder, wrapper, second plan schema, or other machinery to make the contradictory text executable.
+3. State explicitly in the fitted-preparation/materialization contract that current foundation fitted preparation binds the owning role/run plan plus common-monitor/required-composition transfer ancestry, and that downstream materialization/run evidence binds the resulting preparation.
+4. Add/retain a real-owner D4 test that falsifies reverse ancestry: current CV/final plans must not carry a fitted-preparation parent, while a current foundation fitted preparation must authenticate its owning plan/run ancestry.
+5. Perform a narrow independent G1B re-review and freeze the corrected D4 handoff. Reopen D3 only if evidence shows the accepted acyclic dependency graph cannot represent the required lineage; current Review found no such evidence.
+
+No D1/D2 method change and no product-runtime modification is authorized by this G1B repair.
 
 ## 9. Implementation staging
 
@@ -526,6 +536,27 @@ retained downstream M3 probe resolves from P3 owner only
 Mocks may exist only below/outside the semantic owner being proved. Static source checks alone cannot close runtime realization claims.
 
 Production-scale GPU qualification remains deferred to final release.
+
+### Independent implementation Review R1 — 2026-09-14 — **NO-PASS**
+
+Reviewed assembled code candidate `521bc932ec9b52cc769db32a2561fa4cd1b8eba8` plus derived-document head `f71c5b9af34454940814445fd2e50b97265526d1` against this workplan, current D1/D2, current D3, the G1/G1A/G1B closure record, current P5 D4 specification, changed implementation/test surfaces, and applicable HAS entries.
+
+**Serious Challenge:** none to D1/D2 or D3. The accepted D3 dependency graph is coherent and directly supports the implemented plan->preparation direction.
+
+**Blocking findings:**
+
+1. **D4/G1B ancestry contradiction.** `mlff_post_selection_p5_spec.md` section 1 says `role plan -> PostSelectionFittedPreparation`, but sections 11 and 13 require the CV/final plan to bind fitted-preparation ancestry. G1B is reopened with the narrow repair above. Product code must not be changed to manufacture this cycle.
+2. **Candidate-bound G11/G12 evidence is not yet reusable closure evidence.** The workplan's prior status text referred to an uncommitted working-tree run and a 223-test-file regression, while the reviewed implementation is now commit `521bc932...` with a subsequent derived-doc commit. Repository-visible automation on the reviewed branch is documentation generation, not the required focused/affected/real-owner qualification transcript. Existing tests and static review provide strong coverage but do not substitute for an exact-candidate qualification record. Re-run and record G11/G12 plus affected regression against the repaired final candidate, including pinned MACE version/source qualification and unaffected P3/P5-scratch controls. Do not add product machinery to satisfy evidence; exercise the existing owners.
+3. **G13 remains intentionally open.** Run the bounded scientific pilot, record the prescribed baseline/restored metrics and exact method/monitor/E0/exposure identities, then run the required three-fold affected qualification. If correctly restored TRUE_DFT replay still shows material forgetting comparable to the prior failure regime, reopen D1/D2 rather than layering another D4 compensation.
+
+**Nonblocking observations:**
+
+- Current code inspection found one P5 method family, one current common-monitor construction owner, one existing atomic-reference solver reused for foundation residual E0, existing EVAL2 ordering reused for final single-best publication, and fail-closed historical/currentness boundaries; no second product owner is justified by this Review.
+- The common monitor is deterministically re-resolved per selected context but binds identical content identity/separation ancestry; this is not a semantic blocker while sibling-plan digest equality remains enforced. Do not add a new monitor cache/registry merely to make object construction singular.
+- Historical scheduler/resource regression tests removed only where their tested helper was itself retired; real scheduler/process/restart tests and memory-backoff/zero-admission owner tests remain. Do not restore obsolete helper-specific oracles merely for line-count parity.
+- Serena/Semgrep-specific execution was unavailable in the remote review environment; structural/symbol/file inspection was performed through the repository connector. This limits analyzer-specific completeness claims but does not relax any qualification gate.
+
+**Repair/closure order:** G1B spec correction + narrow re-review -> candidate-bound G11/G12 and affected regression -> G13 pilot -> required three-fold affected qualification -> independent implementation re-review -> documentation/history/dependency/learning closeout. Production-scale GPU qualification remains deferred to the final complete release package.
 
 ## 11. Stage E — bounded scientific pilot then full CV
 
