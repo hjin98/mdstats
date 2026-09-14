@@ -1,35 +1,48 @@
 # Gate A Revision 5 repair status
 
 Date: 2026-09-14
-Workplan: `MLFF_FPS_COVERAGE_METHOD_RECONCILIATION_AND_ORDERING_CONFORMANCE_WORKPLAN.md`
-Status: **structural review blockers repaired in proposal form; Gate A remains open for independent evidence/review and human ratification**.
+Parent workplan: `MLFF_FPS_COVERAGE_METHOD_RECONCILIATION_AND_ORDERING_CONFORMANCE_WORKPLAN.md`
+Implementation-repair workplan: `GATE_A_REVISION_5_IMPLEMENTATION_REPAIR_WORKPLAN.md`
+D1/D2 implementation subject: `hjin98/mdstats@029653d8f6a7001c766368bef1de6efdf2933aa8`
+Status: **implementation-materialization blockers repaired; Gate A remains open for required evidence, independent review, and human ratification**.
 
-## Repaired in this pass
+## Repaired after NO-PASS review of `7ae141f3...`
 
-1. Added `GATE_A_REVISION_5_D2_METHOD_AMENDMENT.md`, giving an apply-ready permanent-D2 delta parallel to the existing D1 overlay.
-2. Replaced the underspecified exact “completion oracle” with a reconstructible exact D2 reference recurrence for `J*` and completion admissibility using exact rational objective semantics.
-3. Removed any implied `O(C*m3)` complexity claim for the repaired constrained split; worst-case combinatorial state growth is now explicit and representative CPU/RAM feasibility remains a Gate-A requirement.
-4. Added `GATE_A_REVISION_5_WORKPLAN_RECONCILIATION.md` to resolve parent-workplan drift: exact full `M3` owns automatic decisions; diagnostic `pi_eval/M1/M2` no longer form the decision ladder.
-5. Added `GATE_A_REVISION_5_INDEPENDENT_REVIEW_HANDOFF.md` with explicit D1/D2 falsification, real-feature sensitivity, exact-solver reference, metamorphic, capability-transfer, resource-feasibility, and overlay-losslessness obligations.
-
-## Still open by design
-
-- independent real-feature family-weight sensitivity/ablation;
-- representative provider/aggregation precision sensitivity;
-- independent exhaustive `J*`/completion reference evidence;
-- representative exact-method CPU/RAM feasibility;
-- independent target-order metamorphics/reference checks;
-- independent capability-transfer/provider-lineage audit;
-- genuinely separate-context D1/D2 PASS;
-- explicit human ratification.
-
-A missing required realization remains blocking. No author-side record in this branch is acceptance evidence.
+1. Rebuilt canonical D1 and D2 from accepted baseline `e8d04144...` rather than editing the lossy whole-paper rewrite.
+2. Restored unaffected accepted D2 source/strain/stress/autocorrelation/common-training/optimizer/CV/replay/final-production/dependency/precision semantics, including explicit strain formulas.
+3. Preserved the Revision-5 target-order method without conceptual redesign.
+4. Restored structural-policy constraints: candidate-size powers of two, three fidelity epochs, ordered unique nonnegative seeds, and minimum qualified-candidate count.
+5. Defined configured diagnostic cardinalities `0 < m1 < m2 < m3`, all positive powers of two under current policy; `m1/m2` are diagnostic-only and `m3=|M3|` is the exact decision population.
+6. Restored the accepted tiny fixed floating-point comparison guard beyond scientific `epsilon`; no unbounded D4 tolerance delegation remains.
+7. Restored full post-selection CV failure handling and both accepted final-publication modes.
+8. Added the explicit D1 limitation that exact `M3` is a training-support-prioritized finite development/model-selection reserve and is not claimed to provide an unbiased broader physical/deployment-population error estimate.
+9. Added the current implementation-repair workplan and rebound the independent-review handoff to exact D1/D2 implementation commit `029653d8...`.
+10. Restored the accepted D2 bibliography provenance after final verification; this did not change method semantics.
 
 ## Authority state
 
-Permanent current authority remains:
+Accepted current D1/D2 authority remains the immutable 2026-09-13 baseline at `hjin98/mdstats@e8d04144f55c72d799ffcd3fe40c75e47078a66d` until the Gate-A proposal passes separate-context independent review and is explicitly ratified by the human owner.
 
-- D1: `docs/methods/mlff_scientific_method.md`;
-- D2: `docs/methods/mlff_numerical_algorithmic_method.md`.
+On branch `design/mlff-fps-coverage-method-reconciliation`, the canonical paths
 
-Revision-5 candidate/overlays remain proposed. Behavior-changing D3/D4 remains blocked until Gate A passes and the human owner ratifies the exact independently reviewed bundle.
+- `docs/methods/mlff_scientific_method.md`;
+- `docs/methods/mlff_numerical_algorithmic_method.md`
+
+contain the **proposed assembled Gate-A candidate**, not accepted current authority.
+
+The amendment overlays and combined Revision-5 candidate remain provenance/cross-check artifacts; they are not the primary review subject after materialization.
+
+## Still open by design
+
+- representative real-feature family-weight sensitivity/ablation;
+- representative provider/aggregation precision sensitivity;
+- independent exact-solver/reference evidence as required by the handoff;
+- representative exact-method CPU/RAM feasibility;
+- independent target-order metamorphics/reference checks;
+- independent capability-transfer/provider-lineage audit;
+- genuinely separate-context assembled D1/D2 review;
+- explicit human ratification after PASS FOR HUMAN RATIFICATION.
+
+The prior bounded author-side exhaustive checks narrow concern around the exact `J*`/completion recurrence but do not count as the required separate-context Gate-A review.
+
+Behavior-changing D3/D4 remains blocked until Gate A passes and the human owner ratifies the exact independently reviewed bundle. Production-scale GPU qualification remains deferred to final release.
