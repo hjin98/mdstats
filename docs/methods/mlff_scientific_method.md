@@ -1,9 +1,10 @@
 ---
 title: "mdstats MLFF Scientific Method"
 artifact_level: "D1 scientific formulation"
-status: "reconstructed current method - reviewed candidate pending human acceptance"
+status: "current normative D1 scientific/mathematical authority"
 reconstructed_against_commit: "9fd82b0ed40990d56716a393aa3f7db0a2ff44d0"
 review_date: "2026-09-13"
+accepted_date: "2026-09-13"
 ---
 
 # mdstats MLFF Scientific Method
@@ -23,7 +24,7 @@ The reconstruction concerns six linked questions:
 5. how foundation-model fine-tuning, replay, checkpoint selection, post-selection cross-validation, and fresh final production are interpreted; and
 6. what conclusions the resulting evidence does and does not support, including the separate role of downstream physical/deployment qualification.
 
-**Authority status.** This is a reviewed reconstruction candidate, not yet an accepted replacement for the current MLFF architecture/specification set. Until human acceptance and a lossless D1/D2/D3 reconciliation are completed, conflicting current normative documentation controls. This paper must therefore be read as a proposed upstream extraction of current semantics, not as permission to redesign them.
+**Authority status.** This document is the current normative D1 scientific/mathematical authority for the MLFF method. It was reconstructed losslessly from the cited current and historical evidence, independently reviewed, and explicitly accepted by the human owner on 2026-09-13. D2 must numerically realize these scientific semantics; D3 architecture and D4 specifications/implementation are downstream realizations and may not redefine them. The reconstruction evidence and review record remain provenance, not competing authority.
 
 ## 2. Scientific background
 

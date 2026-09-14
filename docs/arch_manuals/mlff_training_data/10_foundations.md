@@ -1,152 +1,24 @@
-# Part I - Foundations
+# Foundations and architectural invariants
 
-## What an MLFF learns
+## Layering invariant
 
-An energy-conserving machine-learned force field represents a potential-energy function
+The dependency direction is `D1 -> D2 -> D3 -> D4 -> runtime/generated evidence`. A lower layer may challenge an upstream contract with evidence but may not silently redefine it. Architecture changes that require a new scientific or numerical meaning must reopen the owning upstream document before implementation proceeds.
 
-$$
-E_\theta=E_\theta(\mathbf Z,\mathbf R,\mathbf H),
-$$
+## Core structural invariants
 
-where \(\mathbf Z\) contains atomic numbers, \(\mathbf R\) positions, \(\mathbf H\) the periodic cell, and \(\theta\) model parameters. Forces and stress follow from derivatives of the same energy,
+1. **Immutable evidence ancestry.** Once an upstream evidence identity is consumed downstream, descendants bind that identity rather than mutating it in place.
+2. **One semantic owner.** Shared sampling, selection, fitting, reduction, checkpoint, and publication semantics have one owner. Adapters and CLI composition reuse that owner rather than cloning the algorithm.
+3. **Candidate-independent work precedes candidate projection.** Shared preparation is fitted once on its authorized domain before per-candidate projection where D2 requires that separation.
+4. **P3/P5/P7 lifecycle separation.** Target-size screening, post-selection cross-validation, and final production/qualification are different stages with different evidence permissions.
+5. **Fresh production.** Final production is a fresh lineage; screening and CV checkpoints are evidence, not production warm starts.
+6. **Backend semantic invariance.** Sequential execution is the semantic reference. Parallel/distributed backends may change scheduling and resource use only when D1/D2 outputs and identities remain equivalent.
+7. **Source knowledge stays at the edge.** Source-specific parsing, normalization, and external-code conventions enter through D4 adapters and produce canonical evidence; central orchestration does not rediscover source semantics.
+8. **Missing evidence remains explicit.** An unavailable label, relation, artifact, or capability is represented as missing/infeasible/failure according to its owner. Architecture does not synthesize replacement evidence.
 
-$$
-\mathbf F_i=-\frac{\partial E_\theta}{\partial\mathbf R_i},
-\qquad
-\boldsymbol\sigma=-\frac{1}{V}\frac{\partial E_\theta}{\partial\boldsymbol\epsilon},
-$$
+## Dependency boundaries
 
-under the declared stress sign and strain convention of the label source. MACE constructs symmetry-aware local atomic representations and sums atomic-energy contributions [1]. A useful training/evaluation corpus must therefore constrain both the energy surface and its derivatives throughout the intended simulation domain.
+Control-plane components may coordinate owners but must not duplicate their rules. Persistence stores authoritative products and identities but does not infer scientific meaning. Caches accelerate reconstruction only when disposable without loss of authoritative evidence. Generated documents and reports are descendants of canonical sources and never become an independent authority.
 
-A low global force error is not sufficient. Common framework vibrations can dominate aggregate statistics while rare mobile-ion environments, strain states, migration geometries, interfaces, defects, or other declared focus physics remain poorly represented. The architecture separates broad numerical metrics, condition/group-resolved evidence, physical-observable validation, and explicit extrapolation/challenge evidence. The current P6 campaign ends at selected-only method validation and fresh final production; downstream qualification is separately activated.
+## Challenge routing
 
-## Why trajectory frames need statistical roles
-
-Molecular-dynamics frames are temporally correlated. Neighboring configurations can be near duplicates, so assigning them to nominally different roles can create leakage and overstate model quality.
-
-For observable \(x_t\), normalized autocorrelation at lag \(k\) is
-
-$$
-\rho_x(k)=
-\frac{\langle(x_t-\bar x)(x_{t+k}-\bar x)\rangle}
-     {\langle(x_t-\bar x)^2\rangle}.
-$$
-
-A truncated integrated autocorrelation time is
-
-$$
-\tau_{\mathrm{int},x}=\Delta t\left[\frac12+\sum_{k=1}^{k^\star}\rho_x(k)\right],
-$$
-
-with approximate effective sample count
-
-$$
-N_{\mathrm{eff},x}\approx\frac{T}{2\tau_{\mathrm{int},x}}.
-$$
-
-mdstats therefore uses autocorrelation-aware complete-frame blocks, purge semantics, and explicit independence grades rather than treating every frame as independent [3-5]. Exact estimators, truncation, block size, purge, and role-assignment rules are specification-owned.
-
-## Evidence-role model
-
-The architecture distinguishes evidence by what it is allowed to control.
-
-| Role | Supplies gradients? | May control fitted preparation/subset/size/checkpoint? | Purpose |
-|---|---:|---:|---|
-| development / training domain | Yes when selected | Yes, within the authorized training/model-selection contract | fitting and protocol development |
-| checkpoint / common target monitor | No | Yes, only for explicitly authorized development/model-control decisions | stopping/checkpoint and target-size development evidence |
-| held-out CV evaluation | No | No for the frozen protocol it evaluates | protocol validation |
-| calibration | No | No training/subset/checkpoint changes | final-committee uncertainty calibration |
-| locked interpolation/challenge test | No | No | sealed final evaluation |
-
-Calibration is not test data; held-out CV is not a checkpoint monitor; and a monitor cardinality is not a target-training cardinality.
-
-## Scope and ownership
-
-The MLFF subsystem owns dataset certification, evidence-role construction, fitted preparation, one global target-size study, training-artifact construction, current campaign orchestration, checkpoint/evaluation lineage, and active-learning lineage. Downstream deployment, physical, calibration, and locked-test consumers retain their product obligations without becoming P6 selection owners.
-
-Its current responsibilities include:
-
-- VASP source discovery/certification and source/label identities;
-- composition, thermodynamic condition, ensemble, reference-cell, strain/stress reconstruction;
-- electronic-structure compatibility and label-domain grouping;
-- energy/force/stress audit and atomic-reference identifiability/fitting lineage;
-- immutable frame facts, eligibility, and quality decisions;
-- generic raw structural features/events plus explicit optional material/profile extensions;
-- autocorrelation-aware complete-frame blocks and role feasibility;
-- fixed outer roles and independent CV job families;
-- neutral and authorized fold-local fitted descriptors, transforms, metrics, E0, objective/weight, and difficulty evidence;
-- the target-size development split, the canonical training/evaluation orders, the common preparation, and the paired optimizer-seed screen;
-- the ordered frozen target-size collection, its exact per-size prefix memberships, and role horizons;
-- MACE target/replay artifacts and explicit exposure realization;
-- replay-retention and checkpoint admissibility;
-- post-selection protocol-matched CV and fresh final training; downstream committee, calibration, sealed evaluation, and deployment verification are separate consumer boundaries;
-- active-learning candidate/DFT lineage where supported by current specifications.
-
-The subsystem does not silently merge incompatible electronic-structure levels, infer ambiguous scientific references, use held-out/locked evidence for forbidden model-control decisions, redefine analysis-owned physical-observable algorithms, create a second target selector, generate rescue target sizes, or migrate unsupported old campaign generations.
-
-LTA/zeolite ring, cage, site, crossing, and related semantics are optional profile extensions rather than generic defaults.
-
-## Reference application: Li/Na/K-LTA
-
-The principal reference application contains AIMD evidence spanning multiple cation compositions, temperatures, and strain conditions. It motivates—but does not hard-code into generic architecture—several requirements:
-
-1. framework atoms can outnumber mobile cations, so aggregate metrics must not hide declared mobile-species environments;
-2. strain conditions need not form a full Cartesian product with composition/temperature, so condition applicability may be hierarchical;
-3. one trajectory per condition supplies limited independence and must not be represented as an independent-replica test;
-4. fixed framework stoichiometry can make individual atomic reference-energy corrections non-identifiable without anchors;
-5. short trajectories may contain few rare transitions, so absent events are explicit coverage gaps rather than evidence of irrelevance.
-
-## Reuse of analysis and sampling capabilities
-
-The MLFF workflow orchestrates existing mdstats capabilities instead of duplicating them.
-
-| Capability | MLFF use |
-|---|---|
-| `mdstats.io.vasp.read_vasp_frames` | cells, coordinates, energies, forces, stress, temperature, provenance |
-| VASP control/ensemble readers | controls, energy-channel and ensemble evidence |
-| trajectory-quality / production-regime assessment | source and stationary-regime evidence |
-| analysis structural/topology modules | optional profile-owned raw evidence or post-training observables under analysis contracts |
-| sampling/cross-fit primitives | source-bound blocks, purge, and independence semantics |
-
-Physical observables remain owned by `mdstats.analysis`. The MLFF layer may orchestrate matched evaluation and retain analysis-owned result identities, but it does not redefine RDF, MSD, VACF, VDOS, diffusion, topology, conductivity, or related numerical algorithms.
-
-## Current controlling data flow
-
-```text
-source bytes / controls / trajectory collections
-  -> source and label-domain certification
-  -> immutable frame facts and eligibility
-  -> raw features/events before ordinary thinning
-  -> correlation-aware blocks and evidence-role feasibility
-  -> development / monitor / post-selection CV roles
-  -> neutral DATA6/DATA7 fitted preparation
-  -> P_train / M3 split -> pi_train / pi_eval
-  -> common target-size preparation
-  -> optional paired optimizer-seed diagnostic -> target-size reducer
-  -> target-size study using authorized development/model-selection evidence,
-     yielding a recommendation rather than a decision
-  -> operator-owned provisional design, frozen at cross-validate admission
-  -> ordered collection of frozen entries (N_selected, exact T_N = pi_train[:N_selected], and role horizons)
-  -> for each frozen size, protocol-matched CV partitions inside its exact T_N, with held-out folds inaccessible to size/checkpoint choice
-  -> accepted frozen protocol
-  -> independent final seeds and checkpoint admission
-  -> current final-production publication
-  -> separately activated downstream committee/physical/calibration/locked consumers where implemented
-  -> active-learning lineage where configured
-```
-
-No allowed dependency runs from held-out CV or locked-test evidence backward into fitted transforms, E0 fitting, target membership, target-size selection, checkpoint choice, or calibration-policy design.
-
-## Responsibility separation is more durable than module layout
-
-The implementation may reorganize Python modules while preserving the architecture. The durable separation is among:
-
-- physical/source facts;
-- evidence-role and policy decisions;
-- training-domain fitted products;
-- target-membership and target-size decisions;
-- runtime/execution realization;
-- validation/calibration/locked evidence;
-- external analysis-owned results.
-
-Current specifications control public/serialized current-generation contracts. Internal refactoring may reuse common sampling/execution primitives when externally owned scientific behavior and persisted current-generation identities remain conforming. Backward compatibility with superseded campaign generations is not an architectural requirement. The accepted current-generation P5A6 workspace remains a required unchanged reopen boundary; obsolete derived target-size generations are rejected before reuse and current preparation creates a fresh configurable authority.
+A discovered contradiction is routed upward to the layer that owns the disputed statement. D4 implementation defects are repaired in D4; D3 integration defects in D3; numerical-method defects in D2; scientific-formulation defects in D1. Lower-layer disagreement is recorded as evidence rather than resolved by weakening the upstream contract.

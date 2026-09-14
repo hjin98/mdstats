@@ -1,21 +1,21 @@
 # Method documents
 
-This directory contains human-facing scientific and numerical method documents for mdstats.
+This directory contains human-facing current method authority for mdstats.
 
-The intended authority split is:
+The MLFF authority split is:
 
-- **D1 scientific formulation** defines the scientific question, observables, model assumptions, evidence semantics, validity domain, uncertainty, and claims that the workflow is intended to support.
-- **D2 numerical algorithm design** defines the numerical realization of an accepted D1 formulation: deterministic constructions, fitting and reduction algorithms, approximation/error semantics, conditioning, failure handling, and computational equivalence requirements.
-- **D3 architecture** under `docs/arch_manuals/` defines software decomposition, dependency direction, ownership boundaries, interfaces, persistence, and integration consequences of D1/D2.
-- Current specifications under `docs/specs/` define exact schemas, configuration fields, constants, runtime contracts, and acceptance behavior.
+- **D1 scientific formulation** defines the scientific question, observables, assumptions, evidence semantics, validity domain, uncertainty, and claims the workflow supports.
+- **D2 numerical algorithm design** defines the numerical realization of D1: deterministic constructions, fitting/reduction algorithms, normalization, conditioning, stochastic semantics, failure handling, and numerical-equivalence requirements.
+- **D3 architecture** under `docs/arch_manuals/` defines software decomposition, dependency direction, ownership boundaries, lifecycle, persistence, concurrency/resources, and integration consequences of D1/D2.
+- **D4 specifications and implementation** under `docs/specs/` and source code define exact schemas, configuration fields, constants, source adapters, dependency/runtime contracts, and concrete realization.
 
-The MLFF D1/D2 documents on this reconstruction branch are **candidate reconstructed authorities pending human review**. Until accepted, the repository's current normative architecture/specification set remains controlling. Acceptance should promote the D1/D2 papers and then reduce the architecture chapters to D3 integration summaries without losing information.
-
-A D3 summary may repeat an accepted D1/D2 consequence for local comprehension, but it must not become an independently tunable scientific or numerical authority. Likewise, implementation code and tests are evidence that an accepted method is realized; they do not silently redefine the method.
+The dependency direction is `D1 -> D2 -> D3 -> D4`. A downstream layer may challenge an upstream contract with evidence but may not silently redefine it.
 
 ## MLFF method set
 
-- [`mlff_scientific_method.md`](mlff_scientific_method.md) — candidate D1 scientific formulation for the MLFF training-data, target-size, fine-tuning, and validation workflow.
-- [`mlff_numerical_algorithmic_method.md`](mlff_numerical_algorithmic_method.md) — candidate D2 numerical algorithms that realize that formulation.
+- [`mlff_scientific_method.md`](mlff_scientific_method.md) — current normative D1 scientific/mathematical authority for the MLFF training-data, target-size, fine-tuning, validation, and production method.
+- [`mlff_numerical_algorithmic_method.md`](mlff_numerical_algorithmic_method.md) — current normative D2 numerical/algorithmic authority that realizes the D1 formulation.
 
-Both MLFF papers were reconstructed from the current repository plus accepted historical evidence. Reconstruction provenance and superseded-design exclusions are recorded in `../history/mlff/MLFF_D1_D2_RECONSTRUCTION_EVIDENCE.md`.
+These papers were reconstructed losslessly from the accepted pre-promotion architecture/specification/code evidence, independently reviewed, and explicitly accepted by the human owner on 2026-09-13. Reconstruction provenance and review evidence remain under `../history/mlff/`; they explain how the authority was recovered but do not compete with the accepted current papers.
+
+The current D3 architecture may restate an upstream consequence where local comprehension requires it, but such restatement is not independently tunable authority. Exact D4 contracts likewise realize D1-D3 rather than overriding them.

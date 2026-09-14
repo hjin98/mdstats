@@ -1,9 +1,10 @@
 ---
 title: "mdstats MLFF Numerical Algorithmic Method"
 artifact_level: "D2 numerical algorithm design"
-status: "reconstructed current method - reviewed candidate pending human acceptance"
+status: "current normative D2 numerical/algorithmic authority"
 reconstructed_against_commit: "9fd82b0ed40990d56716a393aa3f7db0a2ff44d0"
 review_date: "2026-09-13"
+accepted_date: "2026-09-13"
 ---
 
 # mdstats MLFF Numerical Algorithmic Method
@@ -14,7 +15,7 @@ This paper reconstructs the D2 numerical method that realizes the scientific for
 
 D1 determines what scientific comparison is meaningful. D2 owns estimators, deterministic constructions, fitted numerical models, normalization, reduction, conditioning, stochastic semantics, and numerical-equivalence requirements. D3/D4 own module placement, persistence, process control, dependency adaptation, caches, and runtime scheduling.
 
-**Authority status.** This is a reviewed reconstruction candidate. Until human acceptance and lossless D1/D2/D3 reconciliation, the accepted architecture/specifications remain controlling. Exact schema names, file layouts, configuration defaults, runtime dependency locks, and serialization forms are specification/D3-D4 authority except where their value changes the numerical method itself.
+**Authority status.** This document is the current normative D2 numerical/algorithmic authority for the MLFF method. It was reconstructed losslessly from the cited current and historical evidence, independently reviewed, and explicitly accepted by the human owner on 2026-09-13. D1 constrains the scientific meaning of this document; D3 architecture and D4 specifications/implementation must realize these numerical semantics without redefining them. Exact schema names, file layouts, configuration defaults, runtime dependency locks, and serialization forms remain D3/D4 authority except where their value changes the numerical method itself.
 
 The core current D2 invariants are:
 
