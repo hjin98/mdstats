@@ -1,1 +1,0 @@
-Canonical D1/D2 restoration uses the exact accepted 2026-09-13 blobs from `e8d04144f55c72d799ffcd3fe40c75e47078a66d`. No Revision-5 replacement semantics are promoted. This note exists only to make the recovery discoverable from the active branch history.

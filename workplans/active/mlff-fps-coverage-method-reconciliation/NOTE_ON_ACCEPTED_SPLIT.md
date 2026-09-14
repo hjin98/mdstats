@@ -1,1 +1,0 @@
-The accepted reconstructed P_train/M3 split uses deterministic exact subset-sum over protected-component cardinalities with approximately O(C*m3) reachability work and O(m3) predecessor state. The withdrawn Revision-5 J*/OPT multidimensional solver is not current authority.

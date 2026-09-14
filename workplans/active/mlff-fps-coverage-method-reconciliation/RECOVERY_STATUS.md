@@ -1,1 +1,0 @@
-Status: Revision-5 redesign withdrawn. Accepted reconstructed D1/D2 are the only canonical method authority for this cycle. Local-structure formula documentation may remain as documentation-only reconciliation. The UID-priority fallback issue is isolated for a future narrow repair if needed.
