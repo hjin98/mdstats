@@ -278,11 +278,20 @@ DATA7 `AtomicReferenceFitRecord` values are serialized into the target head as
 an explicit mapping from atomic number to energy. Conceptual record names are
 never placed in the MACE `E0s` field. The target head also carries an explicit
 head-local `atomic_numbers` literal containing only elements present in target
-configurations. The top-level `atomic_numbers` remains the union of target and
-replay elements for model construction. This distinction is required by MACE
-0.3.16: without the head-local table, the target head inherits replay-only
-elements and incorrectly demands target E0 values for them. The fit-record
-digest remains in the applicable job manifest and identity.
+configurations. For the DATA8 fixed-file job directories this stage owns, the
+top-level `atomic_numbers` remains the union of target and replay elements for
+model construction. This distinction is required by MACE 0.3.16: without the
+head-local table, the target head inherits replay-only elements and incorrectly
+demands target E0 values for them. The fit-record digest remains in the
+applicable job manifest and identity.
+
+The union rule is not restored foundation-P5 authority. Current P5 materialization
+is governed by `mlff_post_selection_p5_spec.md`: its top-level and target-head
+`atomic_numbers` literal covers the target training/monitor elements that carry
+fitted residual E0s, and the executable model is reconstructed from the
+authenticated foundation checkpoint/head, so a replay-only species need not
+appear in that target-side literal to survive model reconstruction. DATA8 does
+not supply a second P5 model-construction policy.
 
 Restored foundation-P5 atomic-reference fit/selected-head residual/transfer
 semantics are owned by `mlff_post_selection_p5_spec.md`; DATA8 transport does
@@ -523,7 +532,8 @@ representation is still consumed:
   energy, forces, stress, config type, and all weights numerically;
 - replay inspection rejects nonfinite/misshaped labels and internal exact
   duplicates, records stress coverage, and binds pseudo-labels to a checkpoint;
-- top-level `atomic_numbers` is the union of target and replay elements;
+- top-level `atomic_numbers` in DATA8 job directories is the union of target
+  and replay elements (restored foundation P5 follows its own specification);
 - `heads.target_head.atomic_numbers` is the target-only element set, preventing
   replay-only species from becoming target-head E0 requirements; and
 - one explicit DATA7 ladder size is bound into every applicable protocol identity.

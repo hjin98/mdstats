@@ -234,6 +234,19 @@ A still-current legacy split-file route SHALL require unambiguous label semantic
 
 Changing TRUE_DFT versus pseudo label mode over the same prepared source/split SHALL NOT change replay geometry membership.
 
+### 9.1 Replay transport weights
+
+Source or user replay weight metadata has no current foundation-P5 scientific authority. Every replay transport current foundation P5 hands to MACE - training and monitor views, single-source TRUE_DFT and foundation-pseudolabel, and every supported legacy split-file route - SHALL resolve at the MACE loader boundary to:
+
+```text
+config_weight         = 1.0
+config_energy_weight  = 1.0 iff the rendered view carries a valid energy label, else 0.0
+config_forces_weight  = 1.0 iff the rendered view carries valid force labels, else 0.0
+config_stress_weight  = 1.0 iff the rendered view carries a valid stress label, else 0.0
+```
+
+The masks derive from the labels actually rendered into that view (for pseudo views, the pseudo stress payload), never from copied source metadata; absent stress stays absent with mask 0 and is not fabricated. The replay renderers owned by `replay.py`/`replay_pseudolabel.py` remove every inherited `config_weight`/`config_*_weight` value and write these masks; the transport field contract and weight policy (`mdstats.replay-transport-weights.neutral-binary-mask.v1`) are bound into the logical replay-view identity. A legacy split file consumed directly is never rewritten in place: replay inspection SHALL reject it before MACE when its MACE-resolved weights differ from the masks above, while a split used only as a geometry/order reference for true-label rematerialization is canonicalized in the derived view.
+
 ## 10. Common target-monitor policy and record
 
 Current P5 target checkpoint control uses one campaign-common monitor record.
@@ -435,6 +448,8 @@ The exact token strings are delegated D4 implementation details provided the cut
 
 Old foundation weighted-stress trajectories, fold-local checkpoint-monitor plans, M3-dependent P5 plans/publications, from-scratch-E0 foundation preparations, target-first replay exposure records, missing-transfer preparations, and broad DATA8/`TrainingProtocolIdentity` P5 records SHALL fail currentness before execution/restart reuse.
 
+Replay views and legacy true-label rematerializations produced before the section 9.1 transport contract (v1 view/receipt/materialization schemas) SHALL NOT be reused as current; they are rematerialized from their unchanged authenticated parents. That view-only cutover preserves the replay source, geometry split, true-label cache, foundation-prediction cache, and pseudo qualification, and SHALL NOT trigger foundation re-inference or a scientific resplit. The ordinary `prepare` publication converges the current replay aliases on the repaired views; post-selection readers rematerialize the same views from the published parents.
+
 Independent P1/P2/P3/T_selected evidence remains reusable when its real owner/semantics are unchanged. A P5-only cutover SHALL NOT blanket-stale unchanged P3 evidence.
 
 ## 18. MLCV monitor disposition
@@ -459,6 +474,7 @@ Current P5 SHALL fail closed, with typed/actionable errors, for at least:
 - fold/final monitor digest mismatch;
 - retired training-head scalar fields;
 - ambiguous legacy replay label mode;
+- a directly consumed replay transport whose MACE-resolved weights are not neutral/binary masks;
 - runtime loss/exposure mismatch;
 - implicit target duplication;
 - wrong replay/target pre-shuffle order;
@@ -498,8 +514,11 @@ At minimum, implementation tests/review SHALL reject these counterfactuals:
 24. final plan/publication still binds or evaluates M3 to choose seed;
 25. `single_best_final_seed` uses raw scalar-RMSE sorting rather than accepted ordering;
 26. final publication reruns target evaluation instead of consuming frozen common-monitor metrics;
-27. a P5-only generation change blanket-invalidates unchanged P3 evidence; and
-28. a true method-bearing change fails to invalidate dependent P5 evidence.
+27. a P5-only generation change blanket-invalidates unchanged P3 evidence;
+28. a true method-bearing change fails to invalidate dependent P5 evidence;
+29. inherited source `config_weight` or non-binary `config_{energy,forces,stress}_weight` survives into a current replay view or directly consumed legacy split file and reaches native UniversalLoss;
+30. a replay stress mask disagrees with the rendered stress label, or missing stress is fabricated; and
+31. a pre-contract replay view is reused as current, or its repair re-runs foundation inference or resplits replay.
 
 ## 21. Documentation boundary
 

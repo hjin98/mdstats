@@ -3127,7 +3127,7 @@ def _inspect_unified_replay_artifact(
             payload = json.loads(receipt.read_text(encoding="utf-8"))
             artifact = mdstats.ReplayFileArtifact.from_dict(payload["artifact"])
             if (
-                payload.get("schema") == "mdstats.replay-unified-transport-artifact-receipt.v1"
+                payload.get("schema") == "mdstats.replay-unified-transport-artifact-receipt.v2"
                 and artifact.sha256 == expected_sha
                 and Path(artifact.path).resolve() == source
                 and artifact.label_mode is label_mode
@@ -3145,7 +3145,7 @@ def _inspect_unified_replay_artifact(
     _atomic_json(
         receipt,
         {
-            "schema": "mdstats.replay-unified-transport-artifact-receipt.v1",
+            "schema": "mdstats.replay-unified-transport-artifact-receipt.v2",
             "artifact": artifact.to_dict(),
         },
     )
@@ -7221,12 +7221,15 @@ reference_ema_decay = 0.99999
 
 [objective]
 # Global loss-component coefficients, applied exactly once at the MACE loss
-# layer for target-size screening, post-selection cross-validation, and fresh
-# final production alike. They are a different owner from [weighting] (the
-# per-configuration weight) and from the per-frame property weights, which are
-# local availability masks (1.0 present / 0.0 absent) and never carry this
-# ratio. Every generated MACE config emits these explicitly, so MACE's own
-# forces_weight=100 default is never in effect.
+# layer for target-size screening and the P5 scratch method. Foundation
+# fine-tuning (naive_fine_tuning, multihead_replay) cross-validation and final
+# production do not read this table: they use the fixed native UniversalLoss
+# (huber_delta 0.01, E:F:S 1:10:1). These coefficients are a different owner
+# from [weighting] (the per-configuration weight) and from the per-frame
+# property weights, which are local availability masks (1.0 present / 0.0
+# absent) and never carry this ratio. Every generated MACE config for these
+# consumers emits them explicitly, so MACE's forces_weight=100 default is never
+# in effect.
 energy_weight = 1.0
 forces_weight = 10.0
 stress_weight = 1.0

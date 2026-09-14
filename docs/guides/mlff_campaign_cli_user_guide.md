@@ -92,14 +92,17 @@ Current post-selection CV settings are authored under one canonical section:
 
 ```toml
 [post_selection.cv]
-fold_count = 2
-partition_seed = 7
-seeds = [11]
-max_num_epochs = 2
-acceptance_maximum = 0.5
+fold_count = 3
+partition_seed = 104729
+seeds = [0]
+max_num_epochs = 30
+purge_components_between_roles = 0
+acceptance_metric = "target_force_rmse_ev_per_angstrom"
+acceptance_maximum = 0.030
 
 [post_selection.production]
-seeds = [5]
+seeds = [1]
+committee_policy = "all_qualified_final_seeds"
 ```
 
 Pre-target fold controls are not generated as target-size authority. Historical
@@ -352,12 +355,15 @@ forces_weight = 10.0
 stress_weight = 1.0
 ```
 
-These global coefficients are written into every generated MACE configuration -
-for the screen, for cross-validation, and for final production - so MACE's own
-`forces_weight = 100` default never applies. They are separate from `[weighting]`
-(the per-configuration weight) and from the per-frame property weights, which
-only mark whether a label is present. Editing `[objective]` changes preparation
-identity, so it requires a fresh `prepare`.
+These global coefficients are written into every generated target-size screen
+MACE configuration, and into the separately accepted P5 scratch method, so
+MACE's own `forces_weight = 100` default never applies there. Foundation
+fine-tuning cross-validation and final production (`naive_fine_tuning`,
+`multihead_replay`) do not read `[objective]`: they use the fixed native
+`UniversalLoss` described in section 5. The coefficients are separate from
+`[weighting]` (the per-configuration weight) and from the per-frame property
+weights, which only mark whether a label is present. Editing `[objective]`
+changes preparation identity, so it requires a fresh `prepare`.
 
 Replay metrics, post-selection CV, physical-observable evidence, and downstream
 qualification cannot rank or tie-break a size.

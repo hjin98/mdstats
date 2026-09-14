@@ -1073,3 +1073,153 @@ def test_current_single_source_replay_domain_fails_without_file_fallback(
     replay_item.positions[1, 0] += 1.0e-4
     with pytest.raises(RuntimeError, match="could not be authenticated"):
         _annotate_mace_collections_with_exported_uids(head_configs=heads)
+
+
+def _materialized_true_dft_replay_views(root: Path, *, source_weights: dict) -> dict:
+    """Render real single-source TRUE_DFT replay views from one weighted source."""
+
+    from ase.calculators.singlepoint import SinglePointCalculator
+    from ase.io import iread
+
+    from mdstats.training_data.replay import (
+        ReplaySplitRole,
+        build_replay_split_manifest,
+        build_replay_true_label_cache,
+        inspect_replay_source_extxyz,
+        materialize_replay_true_label_views,
+    )
+
+    root.mkdir(parents=True)
+    frames = []
+    for index in range(10):
+        atoms = Atoms(
+            "H2",
+            positions=((0.0, 0.0, 0.0), (0.75 + 0.01 * index, 0.0, 0.0)),
+            cell=(8.0, 8.0, 8.0),
+            pbc=True,
+        )
+        atoms.calc = SinglePointCalculator(
+            atoms,
+            energy=-1.0 - 0.02 * index,
+            forces=np.full((2, 3), 0.03 * index),
+            # Three stressless frames: at most two fit in the 2-frame monitor.
+            **({} if index in (1, 4, 7) else {"stress": np.full(6, 0.002 * index)}),
+        )
+        atoms.info.update(source_weights)
+        frames.append(atoms)
+    write(root / "source.extxyz", frames, format="extxyz")
+    source = inspect_replay_source_extxyz(root / "source.extxyz")
+    split = build_replay_split_manifest(source, split_ratio=(4, 1), split_seed=3)
+    views = materialize_replay_true_label_views(
+        source, build_replay_true_label_cache(source), split, root / "views"
+    )
+    return {
+        "train": Path(views[ReplaySplitRole.TRAIN].path),
+        "monitor": Path(views[ReplaySplitRole.MONITOR].path),
+        "identities": tuple(
+            canonical_replay_geometry_identity(atoms)
+            for atoms in iread(
+                views[ReplaySplitRole.TRAIN].path, index=":", format="extxyz"
+            )
+        ),
+    }
+
+
+def _replay_loss_through_real_loader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replay: dict
+) -> tuple[list, list]:
+    tmp_path.mkdir(parents=True)
+    target_uids = _write_frames(tmp_path / "target.extxyz", count=4, prefix="target")
+    _write_frames(tmp_path / "target-valid.extxyz", count=2, prefix="target-valid")
+    from tests._mlff_tiny_mace import _tiny_mace
+
+    torch = pytest.importorskip("torch")
+    foundation = tmp_path / "foundation.model"
+    torch.save(
+        _tiny_mace(atomic_numbers=(1,), heads=[POST_SELECTION_TARGET_HEAD_NAME], dtype=torch.float64),
+        foundation,
+    )
+    internal = _post_selection_internal_config(
+        target=tmp_path / "target.extxyz",
+        valid=tmp_path / "target-valid.extxyz",
+        replay=replay["train"],
+        replay_valid=replay["monitor"],
+        foundation=foundation,
+    )
+    authority = _foundation_authority(
+        training_mode="multihead_replay",
+        target_uids=target_uids,
+        replay_uids=replay["identities"],
+    )
+    _args, _evidence, captured = _run_with_real_parser_and_loader(
+        monkeypatch,
+        config=post_selection_mace_run_configuration(internal, foundation_model_path=foundation),
+        authority=authority,
+        config_path=tmp_path / "config.yaml",
+    )
+    loss_fn = captured["loss_fn"]
+    assert type(loss_fn).__qualname__ == "UniversalLoss"
+    masks, losses = [], []
+    for batch in captured["train_loader"]:
+        prediction = {
+            "energy": batch["energy"] + 0.3,
+            "forces": batch["forces"] + 0.005,
+            "stress": batch["stress"] + 0.02,
+        }
+        masks.append(
+            [
+                tuple(float(v) for v in getattr(batch, name))
+                for name in ("weight", "energy_weight", "forces_weight", "stress_weight")
+            ]
+        )
+        losses.append(float(loss_fn(ref=batch, pred=prediction, ddp=False)))
+    return masks, losses
+
+
+def test_real_mace_replay_masks_and_universal_loss_ignore_source_weight_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Varying only source weight metadata cannot change realized UniversalLoss."""
+
+    neutral = _materialized_true_dft_replay_views(tmp_path / "neutral", source_weights={})
+    contaminated = _materialized_true_dft_replay_views(
+        tmp_path / "contaminated",
+        source_weights={
+            "config_weight": 5.0,
+            "config_energy_weight": 0.2,
+            "config_forces_weight": 3.0,
+            "config_stress_weight": 0.4,
+        },
+    )
+    assert neutral["identities"] == contaminated["identities"]
+
+    neutral_masks, neutral_losses = _replay_loss_through_real_loader(
+        tmp_path / "run-neutral", monkeypatch, neutral
+    )
+    contaminated_masks, contaminated_losses = _replay_loss_through_real_loader(
+        tmp_path / "run-contaminated", monkeypatch, contaminated
+    )
+    assert contaminated_masks == neutral_masks
+    assert contaminated_losses == neutral_losses
+    flat = [value for batch in neutral_masks for field in batch for value in field]
+    assert set(flat) <= {0.0, 1.0}
+    stress_masks = [value for batch in neutral_masks for value in batch[3]]
+    assert 0.0 in stress_masks and 1.0 in stress_masks
+
+    # Oracle sensitivity: the same contamination copied directly into a replay
+    # file does change the native loss, so equality above is not vacuous.
+    from ase.io import read
+
+    direct = tmp_path / "direct"
+    direct.mkdir()
+    for role in ("train", "monitor"):
+        frames = read(neutral[role], index=":", format="extxyz")
+        for atoms in frames:
+            atoms.info.update({"config_energy_weight": 0.2, "config_forces_weight": 3.0})
+        write(direct / f"{role}.extxyz", frames, format="extxyz")
+    _direct_masks, direct_losses = _replay_loss_through_real_loader(
+        tmp_path / "run-direct",
+        monkeypatch,
+        {"train": direct / "train.extxyz", "monitor": direct / "monitor.extxyz", "identities": neutral["identities"]},
+    )
+    assert direct_losses != neutral_losses

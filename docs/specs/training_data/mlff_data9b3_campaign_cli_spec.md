@@ -19,7 +19,7 @@ python tools/mdstats-mlff-campaign.py --config campaign.toml <command>
 
 ## Public command surface
 
-The parser exposes exactly these commands:
+The parser exposes exactly these top-level commands:
 
 ```text
 init
@@ -28,10 +28,11 @@ prepare
 select-target-size
 cross-validate
 train-production
+storage {report,cleanup,archive {create,list,verify,restore,reclaim},deduplicate}
+qualification {status,run,activate-locked}
 status
 advance
 guide
-storage
 ```
 
 The scientific lifecycle is:
@@ -42,8 +43,12 @@ init -> doctor -> prepare -> select-target-size -> cross-validate -> train-produ
 
 `storage` is orthogonal artifact management. `status` and `advance` derive
 their projection from the same current owners. The current campaign has no
-separate pre-screen gate or downstream physical-test command; downstream
-qualification is a later product boundary and is not dispatched by P6.
+separate pre-screen gate. `qualification` is the separate downstream
+post-production lifecycle (P7, `mlff_p7_post_production_qualification_spec.md`)
+over the exact frozen final publication: `status` is observational, `run`
+executes or resumes the nonlocked components, and `activate-locked` is the only,
+never-automatic path to the reserved locked test. It is not a training-lifecycle
+stage and cannot feed back into any P1-P6 authority.
 
 The downstream design is an ordered collection of distinct qualified target
 sizes, so `select-target-size`, `cross-validate` and `train-production` each
@@ -91,14 +96,17 @@ evaluation_size_powers = [8, 9, 10]
 fidelity_epochs = [1, 3, 10]
 
 [post_selection.cv]
-fold_count = 2
-partition_seed = 7
-seeds = [11]
-max_num_epochs = 2
-acceptance_maximum = 0.5
+fold_count = 3
+partition_seed = 104729
+seeds = [0]
+max_num_epochs = 30
+purge_components_between_roles = 0
+acceptance_metric = "target_force_rmse_ev_per_angstrom"
+acceptance_maximum = 0.030
 
 [post_selection.production]
-seeds = [5]
+seeds = [1]
+committee_policy = "all_qualified_final_seeds"
 ```
 
 The configured power ceiling is not a fixed scientific constant. Candidates
@@ -370,7 +378,8 @@ subset.
 After admission it runs the existing fresh final-production methodology for
 every frozen size: fresh start from the accepted foundation on that size's
 complete exact `T_N`, under **its own** frozen production horizon, its own
-accepted cross-validation ancestry, its existing M3 lineage, production seeds,
+accepted cross-validation ancestry, the campaign-common target monitor record
+shared with cross-validation (no target-size M3 parent), production seeds,
 representative selection and committee policy, publishing one binding-scoped
 final-production decision per size. A screen or CV checkpoint is never a
 production parent, and no size may consume another size's membership, horizons,
