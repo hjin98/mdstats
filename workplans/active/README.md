@@ -1,13 +1,13 @@
 # Active workplans
 
-Active workplans are temporary engineering coordination contracts. They do not define current mdstats product behavior by repository presence alone; current behavior remains owned by accepted architecture/specification and conforming implementation.
+Active workplans are temporary engineering coordination contracts. They do not define current mdstats product behavior by repository presence alone; current behavior remains owned by accepted D1-D4 authority and conforming implementation.
 
-## Current MLFF implementation state
+There is currently **no active MLFF D1/D2 reconstruction or target-order redesign workplan**. The accepted 2026-09-13 MLFF scientific and numerical method papers remain current authority. The later FPS/coverage Gate-A Revision 2-5 proposal lineage was withdrawn without promotion and is preserved under `workplans/archive/mlff-fps-coverage-method-reconciliation/` together with its parent workplan and scope-recovery record.
 
-No MLFF implementation workplan is currently active in this directory.
+The reconstruction closure made no target-size method change. In particular, the accepted deterministic exact protected-component subset-sum split and accepted target-order behavior remain unchanged. The local-structure numerical specification reconciliation is retained as documentation-only recovery of formulas already implemented by the accepted analysis owner.
 
-The P5 CV no-admissible-checkpoint outcome repair lineage has passed independent SSDP 6.3 re-review and is archived under `workplans/archive/`, including its parent workplan, implementation Review reopen, implementation evidence, and final Review closure. The closure accepts the repaired canonical CV outcome/recovery flow without changing target/replay thresholds, replay semantics, target-only ranking, fold/seed/horizon policy, final-production success evidence, or GPU scheduling architecture.
+Future qualification evidence may independently trigger a new repair if it demonstrates a concrete defect; no speculative redesign is carried forward from the withdrawn Gate-A proposal.
 
-Completed, superseded, and retired MLFF workplans belong under `workplans/archive/`. Current product behavior is governed by accepted architecture/specification and conforming implementation, not by historical workplan presence.
+Completed, superseded, and retired workplans belong under `workplans/archive/`. Current product behavior is governed by accepted authority and conforming implementation, not by historical workplan presence.
 
-Production-scale GPU/CuEq/LAMMPS/MLIAP qualification remains owned by the applicable current release/qualification contract; historical workplans do not create a second active qualification authority.
+Production-scale GPU/CuEq/LAMMPS/MLIAP qualification remains deferred to the established final-release phase.
