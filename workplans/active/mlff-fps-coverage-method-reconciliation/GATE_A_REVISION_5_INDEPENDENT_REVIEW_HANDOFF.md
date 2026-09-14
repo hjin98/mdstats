@@ -3,23 +3,24 @@
 Date: 2026-09-14
 Workplan: `MLFF_FPS_COVERAGE_METHOD_RECONCILIATION_AND_ORDERING_CONFORMANCE_WORKPLAN.md`
 Implementation-repair workplan: `GATE_A_REVISION_5_IMPLEMENTATION_REPAIR_WORKPLAN.md`
-Assembled D1/D2 implementation subject: `hjin98/mdstats@029653d8f6a7001c766368bef1de6efdf2933aa8`
+Assembled D1/D2 implementation subject: `hjin98/mdstats@df587cb161080fdc6b3f63656e2051a2708dbe47`
 Accepted D1/D2 baseline: `hjin98/mdstats@e8d04144f55c72d799ffcd3fe40c75e47078a66d`
 Accepted PEM basis: `hjin98/mdstats@4eabe2ae9783c7ff92f3a1093c37502a01380812:PROJECT-ENGINEERING-MEMORY.md`
 Lifecycle: review handoff; **not acceptance evidence and not D1/D2 authority**
 
 ## 1. Review subject and independence rule
 
-Review the assembled canonical candidate at exact commit `029653d8f6a7001c766368bef1de6efdf2933aa8`, principally:
+Review the assembled canonical candidate at exact commit `df587cb161080fdc6b3f63656e2051a2708dbe47`, principally:
 
 - `docs/methods/mlff_scientific_method.md`;
 - `docs/methods/mlff_numerical_algorithmic_method.md`;
-- `GATE_A_REVISION_5_IMPLEMENTATION_REPAIR_WORKPLAN.md`;
+- `docs/specs/analysis/local_structure_features_spec.md` as the analysis-owned numerical contract bound by the D2 candidate;
+- `GATE_A_REVISION_5_IMPLEMENTATION_REPAIR_WORKPLAN.md`; and
 - the applicable Gate-A evidence records for the exact reviewed subject.
 
-Use the Revision-5 combined candidate, D1/D2 amendment overlays, capability-transfer map, earlier workplan reconciliation, and prior review records as provenance/cross-check aids. They are **not** substitutes for reviewing the assembled canonical D1/D2 files.
+Use the Revision-5 combined candidate, D1/D2 amendment overlays, capability-transfer map, earlier workplan reconciliation, and prior author-side review records as provenance/cross-check aids. They are **not** substitutes for reviewing the assembled canonical D1/D2 files and their bound numerical owner.
 
-Reconstruct the accepted baseline independently from `e8d04144f55c72d799ffcd3fe40c75e47078a66d`. Do not inherit author-side conclusions or the prior review's belief that any blocker is closed. A separate-context reviewer must attempt to falsify the assembled candidate itself.
+Reconstruct the accepted baseline independently from `e8d04144f55c72d799ffcd3fe40c75e47078a66d`. Do not inherit author-side conclusions or prior beliefs that any blocker is closed. A separate-context reviewer must attempt to falsify the assembled candidate itself.
 
 ## 2. Disposition rule
 
@@ -27,10 +28,11 @@ Gate A may receive **PASS FOR HUMAN RATIFICATION** only if:
 
 1. all required Gate-A D1/D2 evidence is available, applicable, and sufficient;
 2. the assembled candidate is lossless with respect to unaffected accepted D1/D2 authority;
-3. no material D1/D2 Challenge or blocker remains; and
-4. the exact proposed method is reconstructible and operationally feasible in the supported CPU/RAM regime.
+3. the proposed D2 method and bound analysis numerical contract are reconstructible without reverse-engineering implementation code;
+4. no material D1/D2 Challenge or blocker remains; and
+5. the exact proposed method is operationally feasible in the supported CPU/RAM regime.
 
-Use **NO PASS** if any required realization is unavailable; if resource feasibility is not demonstrated; if unaffected accepted D1/D2 semantics drifted; if a counterexample changes the intended target-size scientific meaning; or if the exact D2 method is ambiguous/unreconstructible.
+Use **NO PASS** if any required realization is unavailable; if resource feasibility is not demonstrated; if unaffected accepted D1/D2 semantics drifted; if occurrence/component identity is non-injective or traversal-dependent; if the local-feature numerical contract remains ambiguous; if coordinate accumulation order is not uniquely reconstructible; if a counterexample changes the intended target-size scientific meaning; or if the exact D2 method is otherwise ambiguous/unreconstructible.
 
 Human ratification is not part of this independent review. PASS means only that the exact reviewed proposal is ready for the designated human decision.
 
@@ -50,7 +52,23 @@ A material ambiguity that permits a scientifically different descendant is a D1 
 
 ## 4. Required D2 reference/falsification pass
 
-### 4.1 Exact split solver
+### 4.1 Occurrence and component identity
+
+Independently reconstruct the `mdstats.target-order-scientific-occurrence-key.v4` encoding and verify that it uses accepted `source_occurrence_signature`, not source-content identity alone.
+
+Construct at least one pair of exact frames with:
+
+- identical `source_identity_signature`/source content;
+- identical frame index;
+- identical neutral condition;
+- identical geometry fingerprint; but
+- different declared `source_occurrence_signature` values through distinct run/source-locator occurrence identity.
+
+Require distinct `kappa` values. Verify exact `U_size` `kappa` uniqueness and fail-closed behavior on a duplicate rather than traversal-order tie resolution.
+
+Independently reconstruct `mdstats.target-order-component-tie-key.v1` from sorted member `kappa` values, including singleton and multi-member components. Confirm that the numerical tie key does not depend on lexical `frame_uid`, relation-group spelling, or the UID-derived P1 component digest, while the P1 split-exclusion authority identity/currentness remains separately bound and capable of staling the split.
+
+### 4.2 Exact split solver
 
 Implement or independently derive a bounded direct exhaustive reference over protected-component subsets. Compare against the exact dynamic-programming/reference recurrence for:
 
@@ -63,11 +81,11 @@ Implement or independently derive a bounded direct exhaustive reference over pro
 
 Use exact rational arithmetic for the governing depletion objective. A floating optimization result is not by itself a reference oracle. Construct at least one counterexample where a component is hard-feasible locally but cannot participate in any `J*` completion; it must be rejected by completion admissibility.
 
-### 4.2 Retained-set redundancy
+### 4.3 Retained-set redundancy
 
 Exercise a mutual-redundancy pattern where two components appear redundant relative to each other. Verify that after removing the first, the second is rescored against the new retained set and cannot rely on stale reciprocal coverage. Check canonical `H_mean` reduction and exact-score tie behavior.
 
-### 4.3 Metric transform
+### 4.4 Metric transform and canonical coordinate order
 
 Independently verify:
 
@@ -79,40 +97,69 @@ Independently verify:
 - finite nonzero small variation -> active, with no generic `sqrt(u)` suppression;
 - all-inactive family -> zero contribution without diluting other families.
 
-### 4.4 Provider and aggregation lineage
+Then independently construct the canonical semantic coordinate-order tuple and verify all declared orders:
 
-Audit the bound local-structure numerical contract at its immutable accepted specification/blob. Confirm that every target-order local feature family/coordinate exists with the asserted semantics and that material/profile extensions are excluded from baseline membership. Verify canonical element aggregation with an independently simple scalar implementation, including type-7 quantiles and missing masks.
+- family rank;
+- global versus element scope;
+- ascending atomic number;
+- family-local feature order;
+- `mean,std,min,max,q10,q50,q90` statistic order; and
+- numerical coordinate before varying missingness indicator.
 
-### 4.5 Order construction and structural policy
+Permute serialized/provider feature columns and require the canonical left-to-right binary64 accumulation order and downstream discrete result to remain unchanged after semantic reconstruction.
+
+### 4.5 Provider and aggregation lineage
+
+Audit the analysis-owned local-structure numerical contract at exact specification blob
+`ee7ecb7deb0412bdec5ca24b81d539e2d8ee6569` in `docs/specs/analysis/local_structure_features_spec.md`.
+
+Confirm independently that the specification now reconstructs the already implemented:
+
+- covalent-radius fallback and smooth cosine switch;
+- weighted distance mean/std, smooth coordination, hard-neighbor count, weighted-degree norm, and species entropy;
+- radial and local-density Gaussian kernels;
+- weighted Legendre angular moments;
+- weighted Steinhardt/bond-orientational `q_l` normalization;
+- coincident-neighbor handling;
+- missing-mask/zero-fill rules;
+- stable feature order and default policy values; and
+- binary64/backend-equivalence boundary.
+
+Cross-check the formulas against the immutable accepted implementation at baseline `e8d04144...` as evidence that the specification reconciliation did not silently change feature values. Confirm that material/profile extensions are excluded from baseline target-order membership.
+
+Verify canonical MLFF element aggregation with an independently simple scalar implementation, including left-to-right mean/std reference arithmetic, type-7 quantiles, and missing masks.
+
+### 4.6 Order construction and structural policy
 
 Independently verify:
 
-- condition medoid calculation;
+- condition **median-nearest representative** calculation (nearest observed frame to the coordinate-wise type-7 median vector; not minimum-total-pairwise-distance medoid);
 - condition-local FPS against a simple scalar maximin reference;
 - exact integer proportional deficit scheduling;
-- deterministic condition-ID and `kappa` ties;
+- deterministic condition-ID, `kappa`, and `component_key` ties;
 - exact `pi_train` permutation and `T_N=pi_train[:N]` for every configured size;
 - `N_min >= number of represented P_train conditions`;
 - at least three strictly increasing positive power-of-two candidate sizes;
 - configured `0 < m1 < m2 < m3`, all positive powers of two, with `m1/m2` diagnostic-only and `m3=|M3|` the full decision population;
 - exactly three strictly increasing positive fidelity epochs;
-- ordered unique nonnegative optimizer seeds;
+- ordered unique nonnegative optimizer seeds; and
 - at least three qualified candidates before automatic screening.
 
-### 4.6 Practical-equivalence numerical semantics
+### 4.7 Practical-equivalence numerical semantics
 
 Verify that reducer equivalence uses scientific `epsilon` plus only the accepted tiny fixed floating-point comparison guard. Confirm no lower layer can widen that decision-affecting guard as generic implementation tolerance and that machine epsilon is not substituted for the scientific policy.
 
-### 4.7 Metamorphics
+### 4.8 Metamorphics
 
 Where their preconditions hold, test:
 
 - source/input traversal reorder invariance;
-- non-semantic `frame_uid` spelling change invariance outside genuine governing ties;
-- serialized feature-column permutation invariance after canonical semantic naming;
+- non-semantic `frame_uid` spelling change invariance outside genuine semantic-occurrence changes;
+- P1 relation serialization/path spelling change leaves numerical component ties unchanged when projected semantic member occurrences are unchanged, while ancestry/currentness identity still changes as appropriate;
+- serialized feature-column permutation invariance after canonical semantic ordering;
 - diagnostic `pi_eval` realization change leaves full-`M3` reducer input and recommendation unchanged for frozen predictions.
 
-Do not assert invariance where source occurrence identity or another semantically governing field genuinely changed.
+Do not assert invariance where `source_occurrence_signature`, protected-component membership, or another semantically governing field genuinely changed.
 
 ## 5. Real-feature sensitivity and precision evidence
 
@@ -151,15 +198,19 @@ Production-scale GPU qualification remains intentionally deferred to the establi
 
 For every row in `GATE_A_REVISION_5_CAPABILITY_TRANSFER_MAP.md`, verify the historical source, current disposition, replacement capability, absence of retired constants/topologies, and acceptance/oracle route.
 
-Then compare assembled D1/D2 at `029653d8...` against accepted baseline `e8d04144...` and confirm:
+Then compare assembled D1/D2 at `df587cb1...` against accepted baseline `e8d04144...` and confirm:
 
 - unaffected source, strain/stress, autocorrelation, common-training, optimizer, replay, post-selection CV, checkpoint, final-production, dependency-realization, numerical-failure/precision, and reference semantics are preserved;
 - no empty-evidence/UID-order baseline survives;
+- scientific occurrence identity distinguishes declared occurrences rather than only source content;
+- component numerical tie identity is separated from P1 ancestry/currentness serialization;
 - no automatic boundary uses `M1/M2` for decisions;
 - old `O(C*m3)` split complexity is removed for the repaired exact solver;
 - accepted candidate-size/fidelity/seed structural restrictions remain;
 - practical-equivalence floating-guard semantics remain;
-- Section-21 falsification and Section-22 reproducibility are updated consistently;
+- the bound local-structure numerical owner is reconstructible at its specification rather than only in code;
+- canonical target-order coordinate accumulation order is fully explicit;
+- Section-21 falsification and Section-22 reproducibility are updated consistently; and
 - reconstruction provenance is retained and later Gate-A provenance is not falsely backdated.
 
 A material loss in an unaffected accepted section is a blocker even when the Revision-5 target-order text itself is correct.
@@ -168,13 +219,14 @@ A material loss in an unaffected accepted section is a blocker even when the Rev
 
 Record:
 
-- exact reviewed implementation commit `029653d8f6a7001c766368bef1de6efdf2933aa8`;
+- exact reviewed implementation commit `df587cb161080fdc6b3f63656e2051a2708dbe47`;
+- exact bound local-structure specification blob `ee7ecb7deb0412bdec5ca24b81d539e2d8ee6569`;
 - evidence realization identities and environment/input identities;
 - PASS/NO-PASS disposition;
 - any Serious Challenge before ordinary findings;
 - each blocker with owning D1/D2 layer and precise repair requirement;
 - earlier evidence judged still applicable and why;
-- stale/rejected/inapplicable evidence and why;
+- stale/rejected/inapplicable evidence and why; and
 - whether the exact bundle is ready for human ratification.
 
 Do not mutate D1/D2 or authorize behavior-changing D3/D4 in the review record itself.
