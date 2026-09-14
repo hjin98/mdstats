@@ -1,0 +1,1 @@
+For this reconstruction cycle, do not replace demonstrated target-size algorithms with speculative alternatives. Repair only concrete correctness/reconstructibility defects with the minimum bounded change. Qualification-driven redesign, if ever needed, is a separate future repair triggered by actual evidence.
