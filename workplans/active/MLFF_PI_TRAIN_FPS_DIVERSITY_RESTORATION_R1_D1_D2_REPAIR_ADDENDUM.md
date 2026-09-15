@@ -13,7 +13,7 @@ supersedes_conflicting_R1_text: true
 
 ## 1. Authority and scope
 
-This addendum repairs the blocking findings from the first independent review of the proposed R1 D1/D2 reconstruction. It is part of the proposed R1 candidate and is **not accepted-current authority**. Where this addendum conflicts with the earlier R1 proposed D1 amendment, D2 amendment, reconstruction evidence, or handoff, this addendum controls the proposed candidate.
+This addendum repairs the blocking findings from independent review of the proposed R1 D1/D2 reconstruction. It is part of the proposed R1 candidate and is **not accepted-current authority**. Where this addendum conflicts with any earlier proposed R1 text — including the D1 amendment, D2 amendment, reconstruction evidence, exact reconstruction ledger, prior handoffs, status summaries, or current-pointer prose — this addendum controls the proposed candidate.
 
 Accepted-current D1/D2 remains exactly the method papers at `e72090e21cec5311ce87745b03603f8783cd15a7`. R2/D3/D4 implementation remains unauthorized until independent re-review passes, the stakeholder ratifies the exact candidate, and the accepted method papers are explicitly promoted/reconciled.
 
@@ -56,78 +56,136 @@ A future named-family override requires newly accepted D1/D2 policy authority th
 
 ## 4. D1/D2 repair — canonical hard-obligation semantics
 
-The canonical restored obligation set is defined before any obligation ID is assigned:
+The restored target-order method has one canonical hard-obligation authority. The scientific **support locus** and the **required minimum count** are separate concepts.
+
+A current explicit P2 hard-support obligation may intentionally strengthen an automatic restored baseline requirement on the same support locus. Such strengthening is valid current policy and must not be rejected merely because its required minimum is larger.
+
+The canonical restored set is therefore formed as:
 
 ```text
-O_canonical = semantic_dedup(
-    O_automatic_restored
-    union O_current_explicit
-    minus O_retired_topology
-)
+retained = project_to_current_P_train(
+    O_automatic_restored union O_current_explicit
+) minus O_retired_topology
+
+O_canonical = canonicalize_by_support_locus(retained)
 ```
 
-where `O_retired_topology` includes obligations whose meaning exists only because of removed historical label-domain/fold target-size fan-out.
+where `O_retired_topology` contains obligations whose meaning exists only because of removed historical label-domain/fold target-size fan-out.
 
-### 4.1 Semantic identity
+### 4.1 Canonical support-locus identity
 
-For each obligation, define a normalized semantic key
+For each retained source obligation `o`, define a normalized support-locus key
 
 ```text
-K(o) = (
+L(o) = (
   obligation_kind,
   applicability_scope,
   family_identity_or_none,
-  target_identity,
+  target_selector_or_identity,
   relation_or_side,
-  normalized_required_minimum,
   applicability_domain
 )
 ```
 
-with the following interpretation:
+and separately define:
 
-- `obligation_kind` distinguishes condition support, structural-event support, profile-environment support, extent support, P1 correlation-unit support, and an accepted explicit support kind;
-- `applicability_scope` is the current exact `P_train` scope plus any accepted narrower provider-defined applicability;
-- `family_identity_or_none` is present for family/extent obligations and absent otherwise;
-- `target_identity` is the canonical current condition/event/profile class/extent channel/correlation-unit/explicit target identity;
-- `relation_or_side` distinguishes semantics such as lower versus upper extent support;
-- `normalized_required_minimum` is the positive integer minimum selected count after current policy normalization;
-- `applicability_domain` binds the current policy/provider identity needed to interpret the target.
+```text
+A(o) = exact candidate-incidence set on current P_train
+k(o) = normalized positive required minimum count
+```
 
-Source display names, source-local obligation IDs and source file/stage names are **not** part of semantic identity.
+Interpretation:
+
+- `obligation_kind` distinguishes condition support, structural-event support, profile-environment support, extent support, P1 correlation-unit support, and accepted explicit P2 support kinds;
+- `applicability_scope` is exact current `P_train` plus any accepted narrower provider-defined applicability;
+- `family_identity_or_none` is present when family identity is part of the scientific locus and absent otherwise;
+- `target_selector_or_identity` is the canonical condition/event/profile class/extent channel/correlation-unit identity, or the current explicit selector semantic identity such as `(attribute,value)`;
+- `relation_or_side` distinguishes lower versus upper extent support or another accepted directional relation;
+- `applicability_domain` binds the accepted policy/provider identity needed to interpret the locus;
+- `k(o)` is **not part of `L(o)`**. Requirement strength is a property of the canonical obligation at that locus, not a different scientific support locus.
+
+Source display names, source-local obligation IDs, source file/stage names and source ordering are not part of the scientific support-locus identity.
+
+Two obligations that happen to have equal candidate incidence but different scientific selectors or target identities remain distinct loci. Incidence equality alone never aliases semantically different obligations.
 
 ### 4.2 Canonicalization algorithm
 
-1. Project every retained automatic obligation and every current explicit `ResolvedTargetSizePolicy.hard_support_obligations` entry into current `P_train` semantics.
+1. Project every retained automatic obligation and every current explicit `ResolvedTargetSizePolicy.hard_support_obligations` entry into exact current `P_train` semantics.
 2. Drop any obligation whose only meaning is retired target-size topology.
-3. Normalize each remaining obligation into `K(o)` plus exact candidate-incidence semantics.
-4. Group by `K(o)` **before** assigning canonical obligation IDs.
-5. Exact semantic aliases — same normalized key and same incidence semantics — collapse to one canonical obligation. Preserve all contributing source aliases only as provenance.
-6. If two source records reuse the same supplied source ID but normalize to different semantics, preparation fails closed.
-7. If records refer to the same semantic locus but disagree on minimum count, incidence, applicability, family, side, or other requirement semantics, they are not silently merged. Preparation fails closed until the owning policy is adjudicated.
-8. Assign one deterministic canonical ID per surviving semantic record after deduplication.
-9. Build MVIDX obligation incidence and all selector/repair/qualification counts from this canonical set only.
+3. Normalize every surviving source record into `(L(o), A(o), k(o))` plus source provenance.
+4. If the same supplied source ID is reused for different `L`, different incidence, or different source requirement semantics, fail closed as contradictory source identity.
+5. Group records by `L(o)` before assigning canonical obligation IDs.
+6. Inside one locus group, all records must have the same exact candidate-incidence set `A`. If incidence differs, fail closed: the sources disagree about what the same scientific locus means.
+7. For a valid same-locus group, define one canonical requirement strength
 
-### 4.3 Numerical consequence
+   ```text
+   k_canonical(L) = max_o_in_group k(o)
+   ```
 
-MVSEL2 hard gain remains
+   The stronger accepted requirement therefore subsumes weaker aliases/baselines. In particular, an automatic minimum-one condition requirement plus a current explicit minimum-two requirement for that same condition becomes **one** canonical condition obligation with minimum two.
+8. Preserve all source aliases and source minima as provenance, but do not let them create extra hard-gain votes.
+9. Assign one deterministic canonical locus ID after grouping. The canonical obligation content/identity also binds `k_canonical`, exact incidence, applicability and governing policy identity so a strengthened requirement cannot be replayed as the weaker one.
+10. Build MVIDX obligation incidence and all MVSEL2/REPAIR2/MVQUAL counts from this canonical set only.
+
+### 4.3 Conflict versus strengthening
+
+The following are **valid strengthening**, not conflict:
+
+```text
+automatic condition A, minimum 1
+explicit condition_id=A, minimum 2
+=> one canonical locus, minimum 2
+```
+
+or more generally multiple accepted records for one locus with the same exact incidence and minima `k_1,...,k_r`, which compose to `max(k_i)`.
+
+The following remain fail-closed conflicts:
+
+- same source ID reused for different semantics;
+- same support locus but different candidate incidence;
+- incompatible applicability/provider identity presented as the same locus;
+- incompatible family/side/target identity collapsed under one purported locus;
+- an explicit selector that cannot be projected unambiguously to current `P_train`.
+
+Different scientific loci remain separate even when their incidence sets overlap or are accidentally identical.
+
+### 4.4 Numerical consequence
+
+For canonical obligation `o`, selected count is
+
+```text
+q_o(S) = |S intersect A_o|
+```
+
+and satisfaction is
+
+```text
+q_o(S) >= k_o.
+```
+
+MVSEL2 hard gain remains one vote per unsatisfied **canonical locus**:
 
 $$
-H(c)=\#\{o\in O_{canonical}: o\text{ required, unsatisfied, and }c\text{ helps }o\}.
+H(c)=\#\{o\in O_{canonical}: q_o(S)<k_o\text{ and }c\in A_o\}.
 $$
 
-Thus source aliases cannot change `H(c)`, candidate rank, repair behavior, or qualification.
+It is deliberately not multiplied by source aliases and is not proportional to deficit magnitude. REPAIR2/MVQUAL use the same canonical `k_o` and incidence.
 
-### 4.4 Mandatory metamorphic falsification
+Thus a stronger explicit requirement changes how long the canonical locus remains unsatisfied, but it does not manufacture duplicate hard-gain votes for the same support concept.
 
-Adding, removing, renaming, or reordering an **exact semantic alias** must leave all of the following bit-for-bit/identity-equivalent under unchanged canonical inputs:
+### 4.5 Mandatory metamorphic and strengthening falsification
 
-- canonical obligation set;
-- `pi_train` selection history;
-- configured REPAIR2 trace/result;
-- MVQUAL pass/fail and unsatisfied canonical-obligation set.
+Under unchanged canonical inputs:
 
-Failure is a D2 method violation.
+1. adding/removing/renaming/reordering an exact semantic alias with the same locus, incidence and minimum must leave the canonical set, `pi_train` history, REPAIR2 trace/result and MVQUAL result identity-equivalent;
+2. adding a weaker same-locus requirement beneath an existing stronger one must be equivalent to the stronger requirement alone;
+3. adding the automatic minimum-one baseline to an otherwise identical current explicit minimum-`k>1` requirement must be equivalent to the single explicit minimum-`k` canonical obligation;
+4. source-ID renaming must not change scientific behavior when source semantics are unchanged;
+5. same source ID with changed semantics must fail closed;
+6. same purported support locus with changed incidence must fail closed;
+7. two different scientific loci with identical incidence must remain two obligations.
+
+Failure of any case is a D2 method violation.
 
 ## 5. D2 repair — certified-lazy MVSEL2 numerical contract
 
@@ -197,7 +255,7 @@ Heap layout, queue implementation, mmap strategy, worker scheduling, OpenMP/nati
 
 ## 6. D2 repair — exact restored policy dispositions
 
-The following recovered policy fields are explicitly classified for the proposed current reconstruction. Detailed immutable evidence is in `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_EXACT_RECONSTRUCTION_LEDGER.md`.
+The following recovered policy fields are explicitly classified for the proposed current reconstruction. Detailed immutable evidence is in `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_EXACT_RECONSTRUCTION_LEDGER.md`; Section 4 of this addendum supersedes the ledger wherever its older obligation-minimum reconciliation text differs.
 
 ### 6.1 TargetCoveragePolicy
 
@@ -257,22 +315,25 @@ Clustering is not promoted to selection authority.
 
 RESTORE independent direct coverage/obligation qualification and FAIL* -> PASS* monotonicity. REBIND the candidate-size universe from historical fixed powers of two to current strictly increasing configured `ResolvedTargetSizePolicy.candidate_sizes`. Direct TargetCoverage scoring is the qualification oracle; MVIDX recomputation is a secondary exactness cross-check with absolute tolerance `5e-12`, not an alternate selector.
 
-## 7. Required independent re-review questions added by this repair
+## 7. Required independent re-review questions
 
 The next independent reviewer must explicitly falsify:
 
-1. whether semantic obligation dedup occurs before IDs and hard-gain scoring and is alias-invariant;
-2. whether conflicting same-locus obligations fail closed rather than silently merge;
-3. whether exactly one fitted selector numeric owner remains (`TargetCoverageReference`);
-4. whether any required historical DATA7 semantic input was lost when duplicate numeric ownership was rejected;
-5. whether the threshold census justifies uniform 0.95 and correctly classifies the override hook as dormant rather than active;
-6. whether the lazy certification invariant is sufficient to derive the same UID at every rank as full-forward MVSEL2;
-7. whether REPAIR2 invalidates/reconstructs all stale post-swap lazy state before suffix continuation;
-8. whether the field-by-field reconstruction ledger accounts for every policy field relevant to scientific/numerical behavior.
+1. whether obligation support-locus identity excludes requirement strength and source-local IDs;
+2. whether a stronger current explicit minimum on the same exact support locus composes by `max(k)` rather than failing or creating duplicate hard-gain votes;
+3. whether semantic aliases are removed before canonical IDs and hard-gain scoring;
+4. whether true same-locus incidence/applicability contradictions still fail closed;
+5. whether different scientific loci remain separate even when candidate incidence overlaps or is identical;
+6. whether exactly one fitted selector numeric owner remains (`TargetCoverageReference`);
+7. whether any required historical DATA7 semantic input was lost when duplicate numeric ownership was rejected;
+8. whether the threshold census justifies uniform 0.95 and correctly classifies the override hook as dormant rather than active;
+9. whether the lazy certification invariant is sufficient to derive the same UID at every rank as full-forward MVSEL2;
+10. whether REPAIR2 invalidates/reconstructs all stale post-swap lazy state before suffix continuation;
+11. whether the field-by-field reconstruction ledger, as corrected by this controlling addendum, accounts for every policy field relevant to scientific/numerical behavior.
 
 ## 8. Gate disposition
 
-This repair closes the authoring defects identified by the first independent review, but the repair author does **not** self-approve the candidate. The repaired R1 state is:
+This repair resolves the remaining authoring defect found by the second independent review, but the repair author does **not** self-approve the candidate. The repaired R1 state is:
 
 ```text
 PROPOSED_D1_D2_REPAIRED_AWAITING_INDEPENDENT_REREVIEW

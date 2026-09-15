@@ -29,20 +29,23 @@ Current `TargetTrainingOrder` is a complete permutation owner, so the optimized 
 
 ## Current R1 gate state
 
-The **authoring/reconstruction half of R1 is complete**. Proposed artifacts are:
+The R1 D1/D2 reconstruction is **proposed and repaired, awaiting independent re-review**. The effective candidate consists of:
 
-- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_D1_D2_RECONSTRUCTION_EVIDENCE.md`;
 - `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_D1_METHOD_AMENDMENT.md`;
 - `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_D2_METHOD_AMENDMENT.md`;
-- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_INDEPENDENT_REVIEW_HANDOFF.md`;
-- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_STATUS.md`.
+- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_D1_D2_RECONSTRUCTION_EVIDENCE.md`;
+- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_EXACT_RECONSTRUCTION_LEDGER.md`;
+- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_D1_D2_REPAIR_ADDENDUM.md`, which controls wherever earlier proposed R1 text conflicts; and
+- active review handoff `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_INDEPENDENT_REREVIEW_HANDOFF_2.md`.
 
-R1 reconstructs the latest mature scientific/numerical method as one exact-`P_train`, correlation-balanced multi-view coverage order with hard family coverage/extents, canonical hard obligations, exact two-phase MVSEL2, configured-shell REPAIR2, independent MVQUAL, and same-method completion through all `P_train`.
+R1 reconstructs the latest mature scientific/numerical method as one exact-`P_train`, correlation-balanced multi-view coverage order with hard family coverage/extents, one canonical hard-obligation authority, exact two-phase MVSEL2, configured-shell REPAIR2, independent MVQUAL, and same-method completion through all `P_train`.
 
-**These R1 documents are PROPOSED, not accepted-current D1/D2 authority.** Independent D1/D2 falsification and stakeholder ratification are still required. R2 and production restoration remain blocked until those gates close and the current method papers are promoted/reconciled.
+The obligation reconciliation now preserves current configurable P2 policy: automatic baseline and explicit same-locus requirements with identical current incidence compose into one canonical obligation whose minimum is the strongest accepted minimum. Source aliases cannot create extra hard-gain votes; genuine semantic/incidence contradictions still fail closed.
+
+**No accepted D1/D2 authority has changed.** Independent D1/D2 falsification and stakeholder ratification are still required. R2 and production restoration remain blocked until those gates close and the current method papers are promoted/reconciled.
 
 Known rejected execution experiments remain retired, including eager MVSEL1 inverse candidate-marginal machinery, failed Python candidate-thread MVSEL2 parallelism, G4c/G4d refault-regressive page release, MVQUAL P1 direct prepass, fixed host-specific worker ceilings, approximate selection, obsolete target-size topology, and independent nested schedulers that oversubscribe the campaign budget.
 
-The product's current UID-capable target-order method remains under **SERIOUS CHALLENGE**. Workplan PASS and R1 authoring completion do not self-ratify the restored scientific/numerical method.
+The product's current UID-capable target-order method remains under **SERIOUS CHALLENGE** until the proposed reconstructed authority is independently accepted through the R1 gate. Workplan PASS does not self-ratify the restored scientific/numerical method.
 
-Earlier workplan revisions and reviews are superseded branch-local history only.
+Earlier workplan revisions and prior review handoffs remain branch-local historical evidence only.

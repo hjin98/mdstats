@@ -9,64 +9,70 @@ accepted_current_authority_changed: false
 implementation_authorized: false
 basis_commit: e72090e21cec5311ce87745b03603f8783cd15a7
 recovery_snapshot: 3937881ef00222e80845aa81f5471d89a4a7736c
+active_handoff: MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_INDEPENDENT_REREVIEW_HANDOFF_2.md
 ---
 
 # R1 status — D1/D2 reconstruction repaired; independent re-review pending
 
 ## Disposition
 
-The first independent R1 D1/D2 review returned **NO-PASS** for the proposed candidate while leaving the governing Revision-8 workplan itself PASS. The review identified five authoring/reconstruction blockers. Those blockers have now been repaired in proposed R1 evidence; they have **not** been self-approved.
+The latest independent R1 D1/D2 review returned **NO-PASS** for one remaining obligation-reconciliation defect while leaving the governing Revision-8 workplan itself PASS. That defect has now been repaired in proposed R1 evidence; it has **not** been self-approved.
 
-The repaired R1 evidence set is:
+The effective repaired R1 evidence set is:
 
 - `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_D1_METHOD_AMENDMENT.md`;
 - `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_D2_METHOD_AMENDMENT.md`;
 - `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_D1_D2_RECONSTRUCTION_EVIDENCE.md`;
-- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_D1_D2_REPAIR_ADDENDUM.md` — controlling repair text where older proposed R1 text conflicts;
-- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_EXACT_RECONSTRUCTION_LEDGER.md` — immutable field/input `RESTORE/REBIND/DROP` ledger;
-- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_INDEPENDENT_REREVIEW_HANDOFF.md`.
+- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_EXACT_RECONSTRUCTION_LEDGER.md`;
+- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_D1_D2_REPAIR_ADDENDUM.md` — controlling repair text wherever earlier proposed R1 text conflicts;
+- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_INDEPENDENT_REREVIEW_HANDOFF_2.md` — active independent re-review handoff.
 
-The earlier `R1_INDEPENDENT_REVIEW_HANDOFF.md` remains historical evidence for the first review and is not the active re-review handoff.
+Prior handoffs remain historical review evidence only.
 
-## Repaired blockers
+## Latest repaired blocker — support locus versus requirement strength
 
-### 1. Canonical hard-obligation semantic deduplication
+The prior repair incorrectly treated a larger explicit current P2 minimum on the same automatic restored support locus as a contradiction. That would have rejected valid current policy, for example:
 
-Automatic restored obligations and current explicit hard-support obligations are now normalized into one semantic identity space, retired-topology-only obligations are removed, exact semantic aliases are deduplicated **before canonical ID assignment and hard-gain scoring**, and same-locus semantic conflicts fail closed.
+```text
+automatic condition=A minimum 1
+explicit condition_id=A minimum 2
+```
 
-An alias-invariance metamorphic qualification is mandatory: adding an exact semantic alias may not change the canonical obligation set, MVSEL2 order, REPAIR2 trace, or MVQUAL result.
+The proposed authority now separates:
 
-### 2. Lossless reconstruction ledger
+```text
+L(o) = scientific support-locus identity
+A(o) = exact current-P_train candidate incidence
+k(o) = required minimum
+```
 
-The repair adds an immutable recovery ledger bound directly to `3937881ef00222e80845aa81f5471d89a4a7736c`, including:
+`k(o)` is not part of support-locus identity. Same-locus records are admissible only when their exact incidence agrees, and their one canonical requirement is:
 
-- exact historical paths and blob identities;
-- DATA6/DATA7 selector-input mapping;
-- TargetCoverage, FEAS1, NEIGHBOR1/MVIDX1, MVSEL2, REPAIR2 and MVQUAL field dispositions;
-- discrepancy adjudications;
-- family-threshold census;
-- explicit `RESTORE`, `REBIND`, or `DROP` ownership for selector-relevant fields.
+```text
+k_canonical(L) = max k(o).
+```
 
-### 3. DATA7 / TargetCoverageReference ownership contradiction
+Thus a stronger current explicit requirement subsumes the weaker automatic baseline rather than failing preparation or receiving duplicate hard-gain votes. Different scientific loci remain distinct even when incidence overlaps or is identical. True same-locus incidence/applicability contradictions and source-ID semantic collisions still fail closed.
 
-For the target-order subchain, `TargetCoverageReference` is now the sole fitted selector numerical owner. DATA7 retains logical lineage/input semantics but does not introduce a second fitted selector metric/scaler/PCA/reference owner. This follows the mature executable path at the coherent recovery snapshot and avoids reconstructing duplicate authority.
+Mandatory falsification now includes alias invariance, weaker/stronger same-locus composition, automatic-minimum-one plus explicit-minimum-k equivalence, source-ID rename/collision, same-locus incidence conflict, and different-locus identical-incidence cases.
 
-### 4. Certified-lazy MVSEL2 numerical contract
+## Previously repaired blockers retained
 
-D2 now specifies the numerical lazy-certification invariant rather than merely demanding output equivalence:
+### 1. Lossless reconstruction ledger
 
-- exact all-candidate Phase-B rebase;
-- outward-rounded conservative bounds;
-- stale-score refresh and monotonicity guard;
-- exact contender certification using `B_max < R_best - 1e-14`;
-- full-forward per-rank oracle/fallback;
-- mandatory lazy-state invalidation/reconstruction after accepted REPAIR2 swaps.
+The immutable recovery ledger remains bound directly to `3937881ef00222e80845aa81f5471d89a4a7736c`, with DATA6/DATA7 input mapping, TargetCoverage/FEAS1/NEIGHBOR1/MVIDX1/MVSEL2/REPAIR2/MVQUAL field dispositions, discrepancy adjudications and family-threshold census. Its older obligation-minimum wording is subordinate to the controlling repair addendum.
 
-Execution queues, native/OpenMP layout, batching, mmap and cache placement remain D3/D4 choices only within that exact D2 contract.
+### 2. DATA7 / TargetCoverageReference ownership
 
-### 5. Named-family threshold override adjudication
+For the target-order subchain, `TargetCoverageReference` remains the sole fitted selector numerical owner. DATA7 retains logical lineage/input semantics without introducing a second fitted selector metric/scaler/PCA/reference owner.
 
-The recovery census finds one instantiated scalar `coverage_threshold = 0.95` across TargetCoverage, MVSEL2/MVQUAL inputs and qualification evidence, with no active material/profile family-threshold policy map at the coherent recovery snapshot. The historical named-family override clause is therefore classified as a dormant/uninstantiated extension point, not an active recovered override. Every restored required family maps to threshold 0.95 unless a future accepted D1/D2 revision explicitly defines otherwise.
+### 3. Certified-lazy MVSEL2 numerical contract
+
+D2 retains exact all-candidate Phase-B rebase, outward conservative bounds, stale-score refresh and monotonicity guard, exact contender certification using `B_max < R_best - 1e-14`, full-forward per-rank oracle/fallback, and mandatory lazy-state invalidation/reconstruction after accepted REPAIR2 swaps.
+
+### 4. Named-family threshold adjudication
+
+The recovered instantiated baseline remains one scalar `coverage_threshold = 0.95`; no active named-family threshold policy map was found. The historical override sentence remains dormant/uninstantiated capability requiring a future accepted D1/D2 change before use.
 
 ## Repaired proposed chain
 
@@ -75,7 +81,7 @@ exact current P_train
  -> authenticated selector input lineage
  -> sole fitted TargetCoverageReference on exact P_train
  -> FEAS1
- -> exact NEIGHBOR1 / semantically deduplicated MVIDX1 obligations
+ -> exact NEIGHBOR1 / canonicalized MVIDX1 obligations
  -> exact MVSEL2 + certified-lazy equivalent execution
  -> configured-shell REPAIR2
  -> post-repair exact state reconstruction
@@ -106,4 +112,4 @@ Final production GPU qualification remains deferred to the final-release qualifi
 PROPOSED_D1_D2_REPAIRED_AWAITING_INDEPENDENT_REREVIEW
 ```
 
-This status is not a PASS claim. It records only that the identified first-review authoring blockers have been repaired sufficiently to request independent re-review.
+This status is not a PASS claim. It records only that the known authoring blockers have been repaired sufficiently to request independent re-review.
