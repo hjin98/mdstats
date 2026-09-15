@@ -52,7 +52,8 @@ foundation checkpoint + selected foundation head when applicable
 foundation-P5 objective identity when applicable
 P5 atomic-reference/preparation-policy identity
 learning-rate schedule policy
-checkpoint admissibility policy
+shared checkpoint constraints (replay retention budget/TRUE_DFT requirement,
+  finite metrics, required physical gates) - never a role target-force ceiling
 checkpoint selection policy
 shared optimizer settings
 replay training-label/exposure policy
@@ -314,6 +315,23 @@ Held-out labels SHALL remain unavailable to fitting, checkpoint selection, adapt
 
 ## 12. Checkpoint/adaptive-stop policy
 
+### 12.1 Role-effective checkpoint admissibility
+
+Target-force checkpoint ceilings are role policy, not method identity. `CvValidationPolicyIdentity` (schema `mdstats.post-selection-cv-policy-identity.v3`) and `FinalProductionPolicyIdentity` (schema `mdstats.post-selection-final-production-policy-identity.v2`) each carry `checkpoint_maximum_target_force_rmse_ev_per_angstrom` in eV/angstrom. `PostSelectionMethodIdentity` (schema `mdstats.post-selection-method-identity.v3`) carries `shared_checkpoint_constraints_digest` instead of the retired target-bearing `checkpoint_admissibility_policy_digest`.
+
+Resolution SHALL be:
+
+| Mode | CV checkpoint ceiling | CV `acceptance_maximum` default | Production checkpoint ceiling |
+|---|---|---|---|
+| `naive_fine_tuning`, `multihead_replay` | fixed `0.045` | `0.045` | `[acceptance].maximum_target_force_rmse_ev_per_angstrom`, default `0.030` |
+| `scratch` | `[acceptance].maximum_target_force_rmse_ev_per_angstrom`, default `0.030` | `0.030` | same key, default `0.030` |
+
+An explicit `[post_selection.cv].acceptance_maximum` is used as written. Its units follow `acceptance_metric`; it never supplies the checkpoint ceiling. `[acceptance].maximum_target_force_rmse_ev_per_angstrom` keeps its generic/non-P5 meaning and is not rewritten.
+
+Each run SHALL be judged under one effective `CheckpointAdmissibilityPolicy` composed from the method's shared constraints and its role policy's ceiling. Before a run's preparation/training and before its checkpoint candidates are evaluated, the runtime SHALL verify that the run plan's `method_identity_digest` and role-policy digest (`cv_policy_identity_digest` or `final_production_policy_digest`) equal current authority and SHALL fail closed otherwise; a run of one role can never be judged under the other role's policy.
+
+P5 binds that effective policy through the existing per-run lineage rather than a DATA8 `TrainingProtocolIdentity` or a generic `Eval2EvaluationPlan`: the role plan binds the method and role-policy digests, run identity and run root derive from the plan, and fold acceptance/run evidence bind the run-plan digest. Checkpoint records carry no additional role field. A role-ceiling change therefore yields a different plan and run position; stored candidate classifications are never re-thresholded under another ceiling.
+
 Retired target/replay **training-head scalar** weights have no current P5 field in config, plan, materialization, runtime evidence, or content identity.
 
 Existing target/replay checkpoint/adaptive-stop score weights remain separate current owners. Their semantics are not changed by retirement of training-head weights.
@@ -424,6 +442,7 @@ Current configuration behavior is frozen as follows:
 - canonical replay omission resolves TRUE_DFT;
 - ambiguous omitted legacy split-file replay semantics fail closed;
 - current P5 fold default resolves to 3 and explicit overrides require `K >= 2`;
+- role target-force ceilings and the CV outer default resolve as in section 12.1, and an explicit `acceptance_maximum` is never rewritten;
 - foundation distributed execution fails closed;
 - exact-monitor shortfall, relation collision, unusable monitor labels, or failed composition transfer are typed infeasibility/failure, not fallback paths.
 
@@ -445,6 +464,8 @@ restart/currentness stamps
 ```
 
 The exact token strings are delegated D4 implementation details provided the cutover is unambiguous and tested.
+
+The threshold-separation cutover advances `PostSelectionMethodIdentity` to v3, the CV policy to v3, and the final-production policy to v2. Pre-cutover P5 CV/final plans, fold verdicts, and run evidence become stale once; unaffected P1/P2/P3, frozen-selection, common-monitor, replay, and source/cache evidence remain reusable. Plan, run-plan, fold-acceptance, checkpoint-record, and EVAL2 schemas do not advance because only ancestor digest values change.
 
 Old foundation weighted-stress trajectories, fold-local checkpoint-monitor plans, M3-dependent P5 plans/publications, from-scratch-E0 foundation preparations, target-first replay exposure records, missing-transfer preparations, and broad DATA8/`TrainingProtocolIdentity` P5 records SHALL fail currentness before execution/restart reuse.
 
@@ -518,7 +539,12 @@ At minimum, implementation tests/review SHALL reject these counterfactuals:
 28. a true method-bearing change fails to invalidate dependent P5 evidence;
 29. inherited source `config_weight` or non-binary `config_{energy,forces,stress}_weight` survives into a current replay view or directly consumed legacy split file and reaches native UniversalLoss;
 30. a replay stress mask disagrees with the rendered stress label, or missing stress is fabricated; and
-31. a pre-contract replay view is reused as current, or its repair re-runs foundation inference or resplits replay.
+31. a pre-contract replay view is reused as current, or its repair re-runs foundation inference or resplits replay;
+32. a foundation CV checkpoint at 42 meV/angstrom fails because a 30 meV/angstrom ceiling survives in method, run, or evaluation ancestry, or a foundation production checkpoint at 42 meV/angstrom is admitted;
+33. default scratch begins admitting 42 meV/angstrom because foundation CV changed;
+34. a role-only ceiling edit moves `PostSelectionMethodIdentity`, or a shared replay-constraint edit does not;
+35. a non-target-force outer metric threshold becomes the checkpoint ceiling; and
+36. a run is judged under a role policy its plan does not bind.
 
 ## 21. Documentation boundary
 

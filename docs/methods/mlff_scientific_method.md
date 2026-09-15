@@ -1,12 +1,11 @@
 ---
-title: "mdstats MLFF Scientific Method — post-selection foundation-adaptation revision"
+title: "mdstats MLFF Scientific Method — foundation CV competence / production quality separation revision"
 artifact_level: "D1 scientific formulation"
-status: "accepted D1 authority for the post-selection restoration on fix/mlff-post-selection-method-restoration; independent review PASS and stakeholder ratification 2026-09-14; pending repository integration"
-baseline_accepted_date: "2026-09-13"
+status: "proposed D1 revision on fix/mlff-cv-competence-threshold-separation; pending independent D1 review and stakeholder ratification. The post-selection restoration revision (accepted 2026-09-14) is repository-integrated at 8553ebe9ed86b24dfe910c9e43acc6230d3ece90 and remains the accepted baseline until this revision is accepted."
+baseline_accepted_date: "2026-09-14"
+baseline_integrated_commit: "8553ebe9ed86b24dfe910c9e43acc6230d3ece90"
 candidate_revision_date: "2026-09-14"
-review_date: "2026-09-14"
-accepted_date: "2026-09-14"
-candidate_against_commit: "421e23aaed0a13443e984327bc903fc4cf4bc82e"
+candidate_against_commit: "8553ebe9ed86b24dfe910c9e43acc6230d3ece90"
 ---
 
 # mdstats MLFF Scientific Method
@@ -15,7 +14,7 @@ candidate_against_commit: "421e23aaed0a13443e984327bc903fc4cf4bc82e"
 
 This paper states the scientific formulation of the machine-learned force-field (MLFF) branch of mdstats: the scientific questions, evidence roles, physical conventions, target-size experiment, foundation-model adaptation, replay semantics, cross-validation, fresh final production, validity limits, and falsification conditions that downstream numerical and software layers must preserve.
 
-This 2026-09-14 accepted branch revision changes only the scientific semantics materially implicated by the post-selection restoration. It preserves the accepted target-size population, order, evaluation ladder, reducer, replay geometry lineage, target/replay acceptance thresholds, downstream qualification separation, and all other unaffected P1/P2/P3 scientific semantics. In particular, it does **not** change the P2/P3 target-size method or silently broaden the restoration to post-selection training from scratch.
+The integrated 2026-09-14 post-selection restoration changed only the scientific semantics materially implicated by that restoration. It preserved the accepted target-size population, order, evaluation ladder, reducer, replay geometry lineage, target/replay acceptance thresholds, downstream qualification separation, and all other unaffected P1/P2/P3 scientific semantics. In particular, it does **not** change the P2/P3 target-size method or silently broaden the restoration to post-selection training from scratch.
 
 The revision changes the scientific method for **foundation-model post-selection adaptation**—`naive_fine_tuning` and `multihead_replay`—in four coupled respects:
 
@@ -28,7 +27,9 @@ Foundation-residual elemental reference-energy fitting remains mandatory and is 
 
 The numerical method is delegated to `mlff_numerical_algorithmic_method.md`. D3 architecture and D4 specifications/implementation own software decomposition, persisted schemas, runtime control, dependency adaptation, caches, and interfaces. They may not redefine the scientific semantics below.
 
-This branch document is the accepted D1 authority for this restoration cycle after independent review and stakeholder ratification on 2026-09-14. The 2026-09-13 paper remains the repository-integrated baseline until this branch is integrated; branch acceptance authorizes downstream D3/D4 concretization against this revision but does not by itself merge or publish it to the integration branch.
+The restoration revision above was independently reviewed, ratified by the stakeholder on 2026-09-14, and integrated at `8553ebe9ed86b24dfe910c9e43acc6230d3ece90`.
+
+**Proposed revision (threshold separation).** A subsequent proposed revision on `fix/mlff-cv-competence-threshold-separation` separates, for foundation adaptation only, three claims that the integrated text had joined under “the same shared checkpoint method”: the **shared foundation-adaptation method**, the **foundation-CV competence policy** (§10.3), and the **fresh-production checkpoint-quality policy** (§11). The shared method, the common monitor, checkpoint-selection mechanics, replay retention, held-out semantics, scratch semantics, and downstream qualification are unchanged. That revision remains proposed until independent D1 review and stakeholder ratification are complete; it carries the stakeholder-authorized calibration premise stated in §10.3 rather than new repository evidence.
 
 ## 2. Scientific background
 
@@ -349,6 +350,8 @@ Checkpoint choice is not “lowest one scalar at any cost.” The active policy 
 
 Held-out CV evidence does not participate in checkpoint choice. A required run with no admissible checkpoint is a methodological failure, not a reason to evaluate whichever checkpoint happens to exist.
 
+Mandatory constraints have two different owners. Replay retention, true-reference replay evidence, finite-metric, physical, and integrity constraints are part of the shared adaptation method and apply identically wherever that method runs. The **target-force ceiling** a checkpoint must meet is a role-specific evidence-policy claim: it states what quality the run's role must demonstrate, not how the model is trained. For foundation adaptation, CV and fresh production therefore apply the same admissibility mechanics with different role ceilings (§10.3, §11). Every run is judged under exactly one role-effective admissibility policy, resolved and bound before its checkpoints are evaluated.
+
 ## 8. Foundation-model adaptation and replay
 
 ### 8.1 Target-size screen is target-only
@@ -392,7 +395,7 @@ No generic minimum number of runs or units is invented here. Parent adequacy is 
 
 ### 9.3 One monitor across CV and final production
 
-Exact `M_mon` membership is shared across every selected size, required CV fold, CV seed, and fresh final-production seed/run using this foundation-adaptation method. A fold-specific, selected-size-specific, final-specific, or M3-specific target checkpoint parent would define a different checkpoint method.
+Exact `M_mon` membership is shared across every selected size, required CV fold, CV seed, and fresh final-production seed/run using this foundation-adaptation method. A fold-specific, selected-size-specific, final-specific, or M3-specific target checkpoint parent would define a different checkpoint method. “Same checkpoint method” here means the same monitor, metric, admissibility mechanics and selection rule; it does not mean an identical role target ceiling (§7.3).
 
 Sharing one monitor makes checkpoint/model-control decisions across folds statistically correlated. This is an explicit limitation, not independent replicate evidence. Post-selection held-out folds remain the evidence used for cross-validation acceptance after each fold representative is frozen.
 
@@ -400,7 +403,7 @@ Sharing one monitor makes checkpoint/model-control decisions across folds statis
 
 ### 10.1 Question being answered
 
-Post-selection cross-validation (CV) asks whether the **complete frozen foundation-adaptation method** associated with an admitted target membership performs acceptably on held-out development evidence whose independence strength and limitations are explicit.
+Post-selection cross-validation (CV) asks whether the **complete frozen shared foundation-adaptation method** associated with an admitted target membership **consistently reaches a clearly competent regime** on held-out development evidence whose independence strength and limitations are explicit. It is judged under the CV competence policy of §10.3, not under the fresh-production checkpoint-quality criterion of §11: a disposable fold model is not required to traverse the late slow-convergence regime that production quality demands.
 
 “Held out” does not guarantee the strongest possible physical independence. A fold may rely on purged temporal evidence when stronger replicas/runs are unavailable; the associated limitation remains part of the claim.
 
@@ -422,11 +425,27 @@ The current default design is **three folds**. Explicit policy may choose anothe
 
 CV can accept or reject the frozen method. It cannot change `N`, `T_N`, the target-size order, or earlier P3 evidence.
 
+### 10.3 Foundation-CV competence and consistency
+
+For foundation adaptation (`naive_fine_tuning`, `multihead_replay`) the current CV competence policy is:
+
+- **checkpoint competence:** a fold checkpoint is target-admissible only if its target-force root-mean-square error (RMSE) on `M_mon` is at most **45 meV/angstrom** (`0.045 eV/angstrom`), in addition to every shared mandatory constraint of §7.3;
+- **held-out acceptance (default):** the frozen fold representative passes when its held-out target-force RMSE is at most **45 meV/angstrom**. An explicitly configured alternative outer metric carries its own units and threshold and never supplies the checkpoint target-force ceiling;
+- **consistency:** every required fold of every required seed must independently satisfy both predicates. A mean, majority or best-seed aggregate cannot rescue a failing position, and missing or failed required positions are not discarded. Cross-fold/cross-seed dispersion is recorded as a diagnostic and is not a gate.
+
+Checkpoint competence and held-out acceptance share a numeric value but are different evaluations on different evidence: `M_mon` controls checkpoint choice; the held-out fold judges the frozen representative. Equal ceilings never permit substituting one population for the other or letting held-out labels influence model control.
+
+Training remains fixed-budget; reaching 45 meV/angstrom does not stop a run. A deliberately shorter CV horizon remains a separately recorded frozen-design choice and is only adequate if every required position reaches the competence predicate.
+
+**Calibration provenance.** The 45 meV/angstrom value is a stakeholder-authorized calibration from recalled historical foundation-adaptation learning curves: rapid initial target-force error reduction, then markedly slower convergence through roughly 40–20 meV/angstrom, with the 30 meV/angstrom production criterion deliberately inside that slow regime. It is not a recovered repository study and has no stated confidence interval. Applicable evidence that healthy foundation folds routinely plateau above 45 meV/angstrom, that no relevant knee exists, or that the recalled behavior applies only to different training semantics reopens this section.
+
+This policy does not apply to post-selection training from scratch, whose checkpoint and held-out target criteria remain separately governed and unchanged.
+
 ## 11. Fresh final production and product membership
 
 Acceptance does not promote a target-size or CV checkpoint into production. Final production starts a fresh model/optimizer lineage from the accepted foundation checkpoint/head and trains complete exact `T_selected` under the frozen production horizon and same shared foundation-adaptation/checkpoint method validated by CV.
 
-Final production therefore uses the same campaign-common `M_mon` for target checkpoint control and the same independent true-reference replay-retention semantics where replay is enabled. P3 `M3` remains target-size model-selection evidence and is **not** repurposed as the final-production checkpoint monitor.
+Final production therefore uses the same campaign-common `M_mon` for target checkpoint control and the same independent true-reference replay-retention semantics where replay is enabled. Its **checkpoint-quality policy** differs from CV competence: for foundation adaptation a production checkpoint is target-admissible only if its `M_mon` target-force RMSE is at most **30 meV/angstrom** (`0.030 eV/angstrom`). This is checkpoint/model-control evidence on the protected common monitor; it is not external adequacy, a locked test, or release qualification (§12). A production run with no admissible checkpoint under that criterion fails; CV competence at 45 meV/angstrom never authorizes a production checkpoint above 30 meV/angstrom. P3 `M3` remains target-size model-selection evidence and is **not** repurposed as the final-production checkpoint monitor.
 
 All final-training fitted quantities use the complete authorized final target-training membership only. Monitor, held-out, calibration, locked, and downstream qualification labels cannot enter those fits. Every governed target composition whose energy is consumed by final training or monitor control must satisfy the same composition-level E0 identifiability rule.
 
@@ -460,7 +479,7 @@ It supports an operator decision among qualified configured memberships. It does
 
 ### 14.2 Post-selection CV
 
-Post-selection CV supports a separate statement about the frozen foundation-adaptation method over the specific held-out folds and recorded independence regime. The checkpoint monitor is not part of the held-out estimand. Because the same `M_mon` is reused across folds, checkpoint decisions are correlated; fold evaluation remains the required held-out evidence after representative freeze.
+Post-selection CV supports a separate statement about the frozen foundation-adaptation method over the specific held-out folds and recorded independence regime: that every required fold/seed reached the CV competence regime of §10.3. It does not claim that fold models reached production checkpoint quality, and neither the CV nor the production monitor criterion is downstream release qualification. The checkpoint monitor is not part of the held-out estimand. Because the same `M_mon` is reused across folds, checkpoint decisions are correlated; fold evaluation remains the required held-out evidence after representative freeze.
 
 ### 14.3 What the method does not establish by itself
 
@@ -520,6 +539,7 @@ A reproducible claim binds, as applicable:
 - foundation-residual target-head E0 fit identity, accepted anchors if any, null-space evidence, and composition-level identifiability evidence;
 - protected common target-monitor parent, policy, exact 256-frame membership, condition/run/time coverage evidence, and protected-relation separation;
 - replay training/true-monitor lineage;
+- the role-effective checkpoint-admissibility policy (shared constraints plus role target ceiling) of each CV and production run;
 - CV fold/seed evidence; and
 - fresh final-publication identity for downstream claims.
 
@@ -529,7 +549,9 @@ Content digests bind exact content and ancestry. They are identity/provenance me
 
 The 2026-09-13 baseline was reconstructed against repository commit `9fd82b0ed40990d56716a393aa3f7db0a2ff44d0`. This 2026-09-14 revision was prepared on `fix/mlff-post-selection-method-restoration` after reconstruction showed that historically successful foundation multi-head adaptation used native MACE `UniversalLoss`, while current P5 forced a different loss family and had replaced the earlier common protected monitor with fold/final-local monitor constructions. The branch workplan records the triggering replay-forgetting evidence, historical applicability set, and dependent D2-D4 impact closure.
 
-The first independent review found two authority defects: composition-level E0 identifiability had been overstated as individual elemental identifiability, and compression of unchanged baseline prose had hidden several still-current P1/P2/P3 constraints. Those defects were repaired without changing the intended P5 restoration. A subsequent independent re-review passed the repaired D1/D2 pair, and the stakeholder ratified the branch authority on 2026-09-14 by directing downstream D3/D4 closure to proceed. Repository integration remains a separate lifecycle step.
+The first independent review found two authority defects: composition-level E0 identifiability had been overstated as individual elemental identifiability, and compression of unchanged baseline prose had hidden several still-current P1/P2/P3 constraints. Those defects were repaired without changing the intended P5 restoration. A subsequent independent re-review passed the repaired D1/D2 pair, and the stakeholder ratified the branch authority on 2026-09-14 by directing downstream D3/D4 closure to proceed. That restoration was integrated at `8553ebe9ed86b24dfe910c9e43acc6230d3ece90`.
+
+The restoration preserved target/replay thresholds because threshold revision was outside its scope; that is not evidence that CV and production ceilings must be identical. Later review found that one target ceiling was represented as part of the shared method, coupling foundation CV to production late convergence. The proposed threshold-separation revision (§1, §7.3, §10.3, §11) separates those role claims for foundation adaptation, keeps foundation production at 30 meV/angstrom and scratch unchanged, and is recorded in `workplans/active/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_WORKPLAN.md`. Pre-separation pass/fail outcomes are not reinterpreted by threshold monotonicity.
 
 ## 17. D1 to D2 handoff
 
@@ -542,8 +564,9 @@ D2 concretizes, without silently strengthening or weakening, at least these revi
 5. Replay geometry/source/label lineage remains separate from target membership; true-reference replay is the default, pseudo-label replay remains opt-in, and replay retention remains an admissibility constraint.
 6. One deterministic coverage-oriented 256-frame target checkpoint monitor is drawn only from protected neutral `OUTER_MONITOR` evidence, is separated from every configured `T_N` by the full P1 relation authority, is common across CV/final runs, and has no gradient/fitting role.
 7. Post-selection CV folds partition only frozen `T_N` among gradient, held-out evaluation, and accepted purge/exclusion roles. The current default is three folds, with explicit `K>=2` override permitted.
-8. Fresh final production uses complete `T_selected`, the same common target monitor/checkpoint method, and fresh fitted/training state; P3 `M3` is not its checkpoint monitor.
+8. Fresh final production uses complete `T_selected`, the same common target monitor and checkpoint-selection/admissibility mechanics, and fresh fitted/training state; P3 `M3` is not its checkpoint monitor.
 9. Failure to realize required monitor support, composition-level E0 identifiability, protected separation, or the authenticated objective/exposure is a method infeasibility/nonconformance result, not permission for a silent fallback.
+10. *(Proposed threshold separation.)* For foundation adaptation, CV and production share the adaptation method and shared mandatory constraints but consume different role target-force ceilings: CV checkpoint competence `<= 45 meV/angstrom` on `M_mon`, default CV held-out target-force acceptance `<= 45 meV/angstrom`, and production checkpoint quality `<= 30 meV/angstrom` on `M_mon`. Consistency is all required folds/seeds passing; dispersion is diagnostic-only; training is fixed-budget; alternate outer metrics keep their own units; scratch is unchanged; none of these criteria is downstream qualification.
 
 ## 18. References
 

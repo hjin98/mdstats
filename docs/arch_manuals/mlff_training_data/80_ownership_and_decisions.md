@@ -25,6 +25,7 @@ A lower layer may produce evidence that challenges an upstream contract, but it 
 | frozen target bindings | `cross-validate` admission / `CampaignStore` | atomically freeze and expose immutable per-size target identities | D1/D2 consequence |
 | common post-selection target monitor | P5 common-monitor owner over neutral `OUTER_MONITOR` | construct one immutable exact monitor record reused by all current CV/final P5 plans | D1/D2 |
 | post-selection method identity | `PostSelectionMethodIdentity` owner | one current P5 method authority projected from real component owners | D1/D2 |
+| role checkpoint admissibility | method (shared constraints) + CV/final role policy (target ceiling), composed once per authenticated run plan | one effective admissibility policy per run; no second threshold owner | D1/D2 |
 | post-selection CV | P5 CV owner | build selected-only train/eval/purge fold plans, bind external common monitor, and publish per-size acceptance | D1/D2 |
 | P5 fitted preparation | existing atomic-reference fit owner + P5 preparation owner | realize mode-correct fit ancestry and foundation composition-transfer evidence | D2 |
 | fresh final production | P5 production owner | run fresh production using same common monitor and decide publication membership before qualification | D1/D2 |

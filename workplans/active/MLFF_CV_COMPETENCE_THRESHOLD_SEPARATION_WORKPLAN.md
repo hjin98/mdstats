@@ -35,6 +35,19 @@ The `30 meV/angstrom` production value is checkpoint/model-control evidence on t
 
 This change is specific to restored **foundation adaptation**. P5 `scratch` remains separately governed and retains its pre-change target-threshold/default semantics, currently `0.030 eV/angstrom`, unless separately reopened.
 
+### Implementation reconciliation (Gate C/D, pending Gate E review)
+
+Reconstruction of the actual P5 surface showed that invariants 19-20 and falsification cases 17-19 name seams P5 does not have: accepted D3 (`40_training_evaluation.md`, `80_ownership_and_decisions.md`) states that `TrainingProtocolIdentity` cannot authorize P5, P5's TRAIN2 runtime plan uses the method-identity digest as its protocol digest, and P5 constructs no `Eval2EvaluationPlan`. Constructing either record for P5 would add the duplicate machinery §2 forbids and contradict accepted D3.
+
+The candidate therefore concretizes the same ownership/invalidation graph through the existing per-run lineage, as §3 permits for an equivalent decomposition:
+
+- `PostSelectionMethodIdentity` v3 binds `shared_checkpoint_constraints_digest`; CV policy v3 and final-production policy v2 bind `checkpoint_maximum_target_force_rmse_ev_per_angstrom`;
+- `post_selection_checkpoint_admissibility(policies, role_policy)` is the one composition owner;
+- `PostSelectionContext.checkpoint_admissibility(run_plan)` authenticates the run plan's method and role-policy digests before preparation/training and before candidate evaluation, failing closed on mismatch or foreign role;
+- the role plan (binding both digests) determines run identity/root, and fold acceptance/run evidence bind the run-plan digest, so the TRAIN2 state and EVAL2 candidate classifications of a run are bound to exactly one effective policy and are never re-thresholded.
+
+Gate E review must decide whether this equivalent concretization satisfies invariants 18-21 or whether D3 must be reopened.
+
 ## 1. Outcome and authority
 
 ### Protected stakeholder outcome

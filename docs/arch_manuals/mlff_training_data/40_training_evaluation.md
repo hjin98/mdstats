@@ -67,6 +67,8 @@ Checkpoint selection is a dedicated owner downstream of training evidence and up
 
 Target checkpoint/adaptive-stop evidence consumes the common `M_mon`. Target/replay score weights and replay-degradation/admissibility policy remain separately owned and are not the retired target/replay training-head scalars.
 
+Checkpoint admissibility is split along the P5 lineage. `PostSelectionMethodIdentity` owns only the shared constraints (replay retention and TRUE_DFT evidence, finite metrics, physical/integrity gates); the CV and final-production role policies each own their checkpoint target-force ceiling. One owner composes shared constraints and the role ceiling into the single effective admissibility policy of a run, after authenticating that the run's role plan binds the current method and role-policy digests; it does so before preparation/training and again before candidate evaluation. That plan-bound lineage (role plan -> run identity/root -> fold acceptance or run evidence) is P5's per-run protocol ancestry: no `TrainingProtocolIdentity`, generic EVAL2 plan, or per-checkpoint role field duplicates it. A role-only ceiling edit therefore moves one role policy and its descendants; a shared-constraint edit moves the method and both roles. *(Proposed with the threshold-separation D1/D2 revision.)*
+
 The EVAL2 owner authenticates the selected checkpoint, exact evaluation membership, target head, prediction inputs, and metric lineage before durable publication. Device batching and provider reuse are execution strategies only when they preserve the D2 numerical result under its equivalence contract.
 
 A no-admissible-checkpoint outcome remains a typed method failure. D3 does not provide a fallback route to an inadmissible checkpoint.

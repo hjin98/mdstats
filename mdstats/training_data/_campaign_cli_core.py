@@ -7310,9 +7310,14 @@ max_num_epochs = 30
 # outer fold never controls checkpoint choice.
 purge_components_between_roles = 0
 # The target-only outer-fold acceptance predicate. Replay evidence gates
-# admissibility but contributes no acceptance or ranking credit.
+# admissibility but contributes no acceptance or ranking credit. The threshold
+# has the units of acceptance_metric. Foundation CV (naive_fine_tuning,
+# multihead_replay) asks whether every required fold/seed reaches a competent
+# regime: its held-out default is 0.045 eV/angstrom and its checkpoint
+# competence ceiling is a fixed 0.045 eV/angstrom, independent of this value.
+# Scratch defaults to 0.030. An explicit value is used as written.
 acceptance_metric = "target_force_rmse_ev_per_angstrom"
-acceptance_maximum = 0.030
+acceptance_maximum = 0.045
 
 [post_selection.production]
 # Fresh final training on the full exact T_selected, run by `train-production`
@@ -7562,7 +7567,10 @@ allow_unspecified_label_provenance = false
 [acceptance]
 # TRAIN2A target qualification boundary plus foundation-relative TRUE_DFT replay
 # retention budget. Replay is a hard admissibility constraint only; extra replay
-# margin earns zero checkpoint or seed ranking credit.
+# margin earns zero checkpoint or seed ranking credit. In post-selection the
+# target ceiling is the final-production checkpoint quality criterion (and the
+# scratch CV checkpoint ceiling); foundation CV checkpoints use their own 0.045
+# eV/angstrom competence ceiling. The replay budget is shared by CV and production.
 maximum_target_force_rmse_ev_per_angstrom = 0.030
 allowed_replay_degradation_mev_per_a = 30.0
 # Other safety thresholds remain independent hard/diagnostic gates.

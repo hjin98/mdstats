@@ -102,12 +102,23 @@ seeds = [0]
 max_num_epochs = 30
 purge_components_between_roles = 0
 acceptance_metric = "target_force_rmse_ev_per_angstrom"
-acceptance_maximum = 0.030
+acceptance_maximum = 0.045
 
 [post_selection.production]
 seeds = [1]
 committee_policy = "all_qualified_final_seeds"
 ```
+
+The generated campaign is a foundation (`multihead_replay`) campaign, so it
+exposes the foundation-CV held-out default `acceptance_maximum = 0.045`
+(eV/angstrom under the default metric). Foundation-CV checkpoint competence is a
+fixed, identity-bound `0.045` eV/angstrom that no configuration key supplies;
+fresh production checkpoints use `[acceptance].maximum_target_force_rmse_ev_per_angstrom`
+(generated `0.030`). When `acceptance_maximum` is omitted it defaults to `0.045`
+for foundation modes and `0.030` for scratch; scratch CV checkpoints keep the
+`[acceptance]` ceiling. An explicit value is never rewritten, and its units follow
+`acceptance_metric`. The exact resolution table is owned by the P5 specification
+section 12.1.
 
 The configured power ceiling is not a fixed scientific constant. Candidates
 are additionally bounded by the available `P_train` population and the

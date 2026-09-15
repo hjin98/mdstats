@@ -20,12 +20,20 @@ directly:
 
 - changing only ``[training].max_num_epochs`` moves the production policy alone;
 - changing only fold count/seed/CV budget moves the CV policy alone;
-- changing a shared method field moves both, and stale CV can no longer
+- changing only a role's checkpoint target-force ceiling moves that role's
+  policy alone;
+- changing a shared method field - including a shared checkpoint constraint
+  such as the replay-degradation budget - moves both, and stale CV can no longer
   authorize final production.
+
+A run is judged under exactly one role-effective checkpoint-admissibility
+policy: the shared constraints bound by the method plus the target ceiling
+bound by the run's role policy (``post_selection_checkpoint_admissibility``).
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -56,9 +64,13 @@ from .mace_compatibility import (
     POST_SELECTION_TRAINING_MODES,
 )
 
-# v2 replaces the whole P3 common-training-policy parent with mode-specific
-# objective, preparation, and exposure identities.
-POST_SELECTION_METHOD_IDENTITY_SCHEMA = "mdstats.post-selection-method-identity.v2"
+# v2 replaced the whole P3 common-training-policy parent with mode-specific
+# objective, preparation, and exposure identities.  v3 binds only the shared
+# checkpoint constraints: the target-force ceiling is role policy, not method.
+POST_SELECTION_METHOD_IDENTITY_SCHEMA = "mdstats.post-selection-method-identity.v3"
+POST_SELECTION_SHARED_CHECKPOINT_CONSTRAINTS_SCHEMA = (
+    "mdstats.post-selection-shared-checkpoint-constraints.v1"
+)
 FOUNDATION_ADAPTATION_OBJECTIVE_POLICY_SCHEMA = (
     "mdstats.post-selection-foundation-objective-policy.v1"
 )
@@ -85,10 +97,11 @@ POST_SELECTION_COMPOSITION_TRANSFER_POLICY = (
 #: Configuration fields retired by the restored method.  They fail closed in
 #: current configuration rather than being read and ignored.
 RETIRED_POST_SELECTION_TRAINING_FIELDS = ("target_head_weight", "replay_head_weight")
-# v2 retires the selected-only fold checkpoint-monitor budget.
-CV_VALIDATION_POLICY_IDENTITY_SCHEMA = "mdstats.post-selection-cv-policy-identity.v2"
+# v2 retired the selected-only fold checkpoint-monitor budget.  v3 (and final
+# production v2) own their role's checkpoint target-force ceiling.
+CV_VALIDATION_POLICY_IDENTITY_SCHEMA = "mdstats.post-selection-cv-policy-identity.v3"
 FINAL_PRODUCTION_POLICY_IDENTITY_SCHEMA = (
-    "mdstats.post-selection-final-production-policy-identity.v1"
+    "mdstats.post-selection-final-production-policy-identity.v2"
 )
 
 #: Stable identity of the fold-construction algorithm owned by this package.
@@ -110,6 +123,22 @@ DEFAULT_CV_MAX_NUM_EPOCHS = 30
 
 #: The one current default outer-fold count.  An explicit override must be K>=2.
 DEFAULT_CV_FOLD_COUNT = 3
+
+#: Foundation-CV checkpoint competence: a fixed, identity-bound role value.  It
+#: is deliberately not the production ceiling and not ``acceptance_maximum``,
+#: whose units follow the configured outer metric.
+FOUNDATION_CV_CHECKPOINT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM = 0.045
+
+#: Default foundation-CV held-out target-force acceptance ceiling.
+FOUNDATION_CV_DEFAULT_ACCEPTANCE_MAXIMUM_EV_PER_ANGSTROM = 0.045
+
+#: Pre-separation target ceiling that scratch keeps for both roles and that
+#: foundation production keeps; ``[acceptance]`` may set it explicitly.
+DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM = 0.030
+
+#: The default CV outer metric.  Only under this metric does
+#: ``acceptance_maximum`` have target-force units.
+CV_DEFAULT_ACCEPTANCE_METRIC = "target_force_rmse_ev_per_angstrom"
 
 #: Retired CV-policy fields that fail closed in current configuration.
 RETIRED_CV_POLICY_FIELDS = ("checkpoint_monitor_components_per_fold",)
@@ -148,6 +177,13 @@ def _positive_int(value: Any, *, name: str) -> int:
     if result != value or result <= 0:
         raise TrainingDataInputError(f"{name} must be a positive integer.")
     return result
+
+
+def _finite_positive_threshold(value: Any, *, name: str) -> float:
+    threshold = float(value)
+    if not math.isfinite(threshold) or threshold <= 0.0:
+        raise TrainingDataInputError(f"{name} must be a finite positive threshold.")
+    return threshold
 
 
 def _seed_tuple(value: Any, *, name: str) -> tuple[int, ...]:
@@ -360,7 +396,8 @@ class PostSelectionMethodIdentity:
     Changing any field here means cross-validation validated a scientifically
     different method, so both CV and final-production descendants are stale.
     Nothing role-specific belongs here: not the CV folds, not the CV budget, not
-    the production horizon, not M3, and not any fitted product.
+    the production horizon, not a role's checkpoint target-force ceiling, not
+    M3, and not any fitted product.
 
     It binds only method-bearing P5 components.  In particular it does not bind
     the whole P3 ``TargetSizeCommonTrainingPolicy``: a P3-only objective,
@@ -375,7 +412,7 @@ class PostSelectionMethodIdentity:
     preparation_policy_digest: str
     exposure_policy: str
     learning_rate_schedule_policy_digest: str
-    checkpoint_admissibility_policy_digest: str
+    shared_checkpoint_constraints_digest: str
     checkpoint_selection_policy_digest: str
     shared_optimizer_settings_digest: str
     replay_exposure_policy_digest: str
@@ -391,7 +428,7 @@ class PostSelectionMethodIdentity:
             "objective_policy_digest",
             "preparation_policy_digest",
             "learning_rate_schedule_policy_digest",
-            "checkpoint_admissibility_policy_digest",
+            "shared_checkpoint_constraints_digest",
             "checkpoint_selection_policy_digest",
             "shared_optimizer_settings_digest",
             "replay_exposure_policy_digest",
@@ -446,8 +483,8 @@ class PostSelectionMethodIdentity:
             "learning_rate_schedule_policy_digest": (
                 self.learning_rate_schedule_policy_digest
             ),
-            "checkpoint_admissibility_policy_digest": (
-                self.checkpoint_admissibility_policy_digest
+            "shared_checkpoint_constraints_digest": (
+                self.shared_checkpoint_constraints_digest
             ),
             "checkpoint_selection_policy_digest": (
                 self.checkpoint_selection_policy_digest
@@ -486,8 +523,8 @@ class PostSelectionMethodIdentity:
             learning_rate_schedule_policy_digest=str(
                 payload["learning_rate_schedule_policy_digest"]
             ),
-            checkpoint_admissibility_policy_digest=str(
-                payload["checkpoint_admissibility_policy_digest"]
+            shared_checkpoint_constraints_digest=str(
+                payload["shared_checkpoint_constraints_digest"]
             ),
             checkpoint_selection_policy_digest=str(
                 payload["checkpoint_selection_policy_digest"]
@@ -706,6 +743,11 @@ class CvValidationPolicyIdentity:
     memberships they produce do not.  Membership is a deterministic descendant
     of this policy plus the current selected data and the current P1 relation
     authority, so it belongs to the CV plan.
+
+    ``checkpoint_maximum_target_force_rmse_ev_per_angstrom`` is the CV role's
+    checkpoint target ceiling on the common monitor, always in eV/angstrom.  It
+    is independent of ``acceptance_maximum``, the held-out outer threshold whose
+    units follow ``acceptance_metric``.
     """
 
     fold_count: int
@@ -714,6 +756,7 @@ class CvValidationPolicyIdentity:
     fold_construction_algorithm: str
     purge_components_between_roles: int
     cv_max_num_epochs: int
+    checkpoint_maximum_target_force_rmse_ev_per_angstrom: float
     acceptance_metric: str
     acceptance_maximum: float
     aggregation_rule: str
@@ -772,12 +815,13 @@ class CvValidationPolicyIdentity:
             "cv_max_num_epochs",
             _positive_int(self.cv_max_num_epochs, name="cv_max_num_epochs"),
         )
-        threshold = float(self.acceptance_maximum)
-        if not (threshold > 0.0) or threshold != threshold or threshold == float("inf"):
-            raise TrainingDataInputError(
-                "acceptance_maximum must be a finite positive threshold."
+        for name in (
+            "checkpoint_maximum_target_force_rmse_ev_per_angstrom",
+            "acceptance_maximum",
+        ):
+            object.__setattr__(
+                self, name, _finite_positive_threshold(getattr(self, name), name=name)
             )
-        object.__setattr__(self, "acceptance_maximum", threshold)
         object.__setattr__(
             self,
             "required_cv_seeds",
@@ -793,6 +837,9 @@ class CvValidationPolicyIdentity:
             "fold_construction_algorithm": self.fold_construction_algorithm,
             "purge_components_between_roles": self.purge_components_between_roles,
             "cv_max_num_epochs": self.cv_max_num_epochs,
+            "checkpoint_maximum_target_force_rmse_ev_per_angstrom": (
+                self.checkpoint_maximum_target_force_rmse_ev_per_angstrom
+            ),
             "acceptance_metric": self.acceptance_metric,
             "acceptance_maximum": self.acceptance_maximum,
             "aggregation_rule": self.aggregation_rule,
@@ -822,6 +869,9 @@ class CvValidationPolicyIdentity:
                 payload["purge_components_between_roles"]
             ),
             cv_max_num_epochs=int(payload["cv_max_num_epochs"]),
+            checkpoint_maximum_target_force_rmse_ev_per_angstrom=float(
+                payload["checkpoint_maximum_target_force_rmse_ev_per_angstrom"]
+            ),
             acceptance_metric=str(payload["acceptance_metric"]),
             acceptance_maximum=float(payload["acceptance_maximum"]),
             aggregation_rule=str(payload["aggregation_rule"]),
@@ -850,12 +900,16 @@ class FinalProductionPolicyIdentity:
 
     M3 is deliberately absent.  It is inherited P2/P4 development evidence that
     binds the final *plan*, not a production knob an operator may set.
+
+    ``checkpoint_maximum_target_force_rmse_ev_per_angstrom`` is the production
+    role's checkpoint target ceiling on the common monitor (eV/angstrom).
     """
 
     production_max_num_epochs: int
     production_seeds: tuple[int, ...]
     committee_policy: str
     allow_performance_driven_termination: bool
+    checkpoint_maximum_target_force_rmse_ev_per_angstrom: float
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -881,6 +935,14 @@ class FinalProductionPolicyIdentity:
             "allow_performance_driven_termination",
             bool(self.allow_performance_driven_termination),
         )
+        object.__setattr__(
+            self,
+            "checkpoint_maximum_target_force_rmse_ev_per_angstrom",
+            _finite_positive_threshold(
+                self.checkpoint_maximum_target_force_rmse_ev_per_angstrom,
+                name="checkpoint_maximum_target_force_rmse_ev_per_angstrom",
+            ),
+        )
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -890,6 +952,9 @@ class FinalProductionPolicyIdentity:
             "committee_policy": self.committee_policy,
             "allow_performance_driven_termination": (
                 self.allow_performance_driven_termination
+            ),
+            "checkpoint_maximum_target_force_rmse_ev_per_angstrom": (
+                self.checkpoint_maximum_target_force_rmse_ev_per_angstrom
             ),
         }
 
@@ -912,6 +977,9 @@ class FinalProductionPolicyIdentity:
             committee_policy=str(payload["committee_policy"]),
             allow_performance_driven_termination=bool(
                 payload["allow_performance_driven_termination"]
+            ),
+            checkpoint_maximum_target_force_rmse_ev_per_angstrom=float(
+                payload["checkpoint_maximum_target_force_rmse_ev_per_angstrom"]
             ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
@@ -1265,7 +1333,8 @@ class PostSelectionMethodPolicies:
     preparation: PostSelectionPreparationPolicy
     replay_exposure_policy_digest: str
     learning_rate_schedule: Any
-    checkpoint_admissibility: Any
+    replay_enabled: bool
+    replay_degradation_budget_ev_per_angstrom: float | None
     checkpoint_selection: Any
     extxyz: Any
     training_mode: str
@@ -1281,6 +1350,94 @@ class PostSelectionMethodPolicies:
     target_head_name: str = POST_SELECTION_TARGET_HEAD_NAME
     replay_head_name: str = POST_SELECTION_REPLAY_HEAD_NAME
     replay_training_label_mode: Any = None
+
+    def _shared_checkpoint_constraints(self) -> dict[str, Any]:
+        """The method-level checkpoint constraints every role applies identically."""
+
+        return {
+            "replay_enabled": bool(self.replay_enabled),
+            "replay_degradation_budget_ev_per_angstrom": (
+                self.replay_degradation_budget_ev_per_angstrom
+            ),
+            "replay_label_requirement": "true_dft",
+            "required_physical_gates": (),
+        }
+
+    @property
+    def shared_checkpoint_constraints_digest(self) -> str:
+        from .train2_policy import CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA
+
+        constraints = self._shared_checkpoint_constraints()
+        return digest(
+            {
+                "schema": POST_SELECTION_SHARED_CHECKPOINT_CONSTRAINTS_SCHEMA,
+                "admissibility_policy_schema": CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA,
+                **constraints,
+                "require_finite_metrics": True,
+                "required_physical_gates": list(constraints["required_physical_gates"]),
+            }
+        )
+
+
+def post_selection_checkpoint_admissibility(
+    policies: PostSelectionMethodPolicies,
+    role_policy: CvValidationPolicyIdentity | FinalProductionPolicyIdentity,
+) -> Any:
+    """Compose the one role-effective checkpoint-admissibility policy of a run.
+
+    The shared constraints come from the method and the target-force ceiling
+    from the run's role policy; there is no other source of either.
+    """
+
+    from .train2_policy import CheckpointAdmissibilityPolicy
+
+    if not isinstance(
+        role_policy, (CvValidationPolicyIdentity, FinalProductionPolicyIdentity)
+    ):
+        raise PostSelectionError(
+            "Checkpoint admissibility requires a CV or final-production role policy."
+        )
+    return CheckpointAdmissibilityPolicy(
+        maximum_target_force_rmse_ev_per_angstrom=(
+            role_policy.checkpoint_maximum_target_force_rmse_ev_per_angstrom
+        ),
+        **policies._shared_checkpoint_constraints(),
+    )
+
+
+def resolve_post_selection_training_mode(config: Mapping[str, Any]) -> str:
+    """Resolve the one enabled P5 training mode from configuration alone."""
+
+    training = _table(config, "training")
+    paths = _table(config, "paths")
+    model = _table(config, "model")
+    modes = training.get("modes")
+    if isinstance(modes, (tuple, list)) and modes:
+        if len(modes) != 1:
+            raise PostSelectionError(
+                "Post-selection work requires exactly one enabled training method."
+            )
+        training_mode = str(modes[0])
+    elif "mode" in training and str(training["mode"]).strip():
+        training_mode = str(training["mode"]).strip()
+    elif "training_mode" in training and str(training["training_mode"]).strip():
+        training_mode = str(training["training_mode"]).strip()
+    elif any(
+        str(paths.get(key, "")).strip()
+        for key in ("replay_set", "replay_train", "replay_monitor", "replay_true_labels")
+    ):
+        training_mode = "multihead_replay"
+    elif paths.get("foundation_model") or paths.get("model") or model.get(
+        "foundation_model"
+    ):
+        training_mode = "naive_fine_tuning"
+    else:
+        training_mode = "scratch"
+    if training_mode not in POST_SELECTION_TRAINING_MODES:
+        raise TrainingDataInputError(
+            f"Unsupported training mode: '{training_mode}'. Accepted values are 'scratch', 'naive_fine_tuning', or 'multihead_replay'."
+        )
+    return training_mode
 
 
 def resolve_post_selection_method_policies(
@@ -1312,7 +1469,6 @@ def resolve_post_selection_method_policies(
     from .reference_fit import AtomicReferenceFitMode, AtomicReferenceFitPolicy
     from .replay import ReplayLabelMode, single_source_replay_config_from_campaign
     from .train2_policy import (
-        CheckpointAdmissibilityPolicy,
         CheckpointSelectionPolicy,
         LearningRateSchedulePolicy,
     )
@@ -1367,33 +1523,7 @@ def resolve_post_selection_method_policies(
     target_head_name, replay_head_name = resolve_post_selection_head_names(config)
 
     # 2. Canonical training-mode resolution.
-    modes = training.get("modes")
-    if isinstance(modes, (tuple, list)) and modes:
-        if len(modes) != 1:
-            raise PostSelectionError(
-                "Post-selection work requires exactly one enabled training method."
-            )
-        training_mode = str(modes[0])
-    elif "mode" in training and str(training["mode"]).strip():
-        training_mode = str(training["mode"]).strip()
-    elif "training_mode" in training and str(training["training_mode"]).strip():
-        training_mode = str(training["training_mode"]).strip()
-    else:
-        if replay_enabled:
-            training_mode = "multihead_replay"
-        elif (
-            paths.get("foundation_model")
-            or paths.get("model")
-            or model.get("foundation_model")
-        ):
-            training_mode = "naive_fine_tuning"
-        else:
-            training_mode = "scratch"
-
-    if training_mode not in {"scratch", "naive_fine_tuning", "multihead_replay"}:
-        raise TrainingDataInputError(
-            f"Unsupported training mode: '{training_mode}'. Accepted values are 'scratch', 'naive_fine_tuning', or 'multihead_replay'."
-        )
+    training_mode = resolve_post_selection_training_mode(config)
 
     foundation_model_value = paths.get("foundation_model")
     if foundation_model_value in (None, ""):
@@ -1574,12 +1704,21 @@ def resolve_post_selection_method_policies(
     mace_architecture = canonicalize_mace_candidate_architecture(raw_arch)
     mace_architecture_digest = digest(mace_architecture)
 
-    # 7. Checkpoint Admissibility and LR Schedule
+    # 7. Shared checkpoint constraints and LR schedule.  The target-force
+    # ceiling is not resolved here: it belongs to each run's role policy.
     replay_budget_mev = float(
         acceptance.get(
             "allowed_replay_degradation_mev_per_a",
             training.get("replay_degradation_budget_mev_per_a", 30.0),
         )
+    )
+    replay_degradation_budget = (
+        _finite_positive_threshold(
+            replay_budget_mev / 1000.0,
+            name="replay degradation budget",
+        )
+        if replay_enabled
+        else None
     )
     from .acceleration import MaceAccelerationBackend, MaceAccelerationPolicy
     source_backend = str(acceleration.get("backend", "e3nn")).strip().lower()
@@ -1614,17 +1753,8 @@ def resolve_post_selection_method_policies(
             validation_can_mutate_schedule=False,
             native_adaptive_scheduler_enabled=False,
         ),
-        checkpoint_admissibility=CheckpointAdmissibilityPolicy(
-            maximum_target_force_rmse_ev_per_angstrom=float(
-                acceptance.get("maximum_target_force_rmse_ev_per_angstrom", 0.030)
-            ),
-            replay_enabled=replay_enabled,
-            replay_degradation_budget_ev_per_angstrom=(
-                replay_budget_mev / 1000.0 if replay_enabled else None
-            ),
-            replay_label_requirement="true_dft",
-            required_physical_gates=(),
-        ),
+        replay_enabled=replay_enabled,
+        replay_degradation_budget_ev_per_angstrom=replay_degradation_budget,
         checkpoint_selection=CheckpointSelectionPolicy(),
         extxyz=MaceExtxyzPolicy(),
         training_mode=training_mode,
@@ -1675,8 +1805,8 @@ def resolve_post_selection_method_identity(
         learning_rate_schedule_policy_digest=(
             resolved.learning_rate_schedule.policy_digest
         ),
-        checkpoint_admissibility_policy_digest=(
-            resolved.checkpoint_admissibility.policy_digest
+        shared_checkpoint_constraints_digest=(
+            resolved.shared_checkpoint_constraints_digest
         ),
         checkpoint_selection_policy_digest=resolved.checkpoint_selection.policy_digest,
         shared_optimizer_settings_digest=digest(
@@ -1696,6 +1826,7 @@ def resolve_cv_validation_policy_identity(
     config: Mapping[str, Any],
     *,
     max_num_epochs: int | None = None,
+    training_mode: str | None = None,
 ) -> CvValidationPolicyIdentity:
     """Resolve ``[post_selection.cv]`` into the CV-only policy identity.
 
@@ -1708,6 +1839,12 @@ def resolve_cv_validation_policy_identity(
     experiment, so a later configuration edit must not silently rewrite it.
     Every other field still comes from its existing configuration owner: this is
     one field substitution, not a second policy resolver.
+
+    Target ceilings are method-aware.  Foundation adaptation uses the fixed CV
+    competence ceiling for checkpoints and defaults its held-out target-force
+    ceiling to the same value; scratch keeps its pre-separation behavior, the
+    ``[acceptance]`` target ceiling and a 0.030 outer default.  An explicit
+    ``acceptance_maximum`` is always used as written.
     """
 
     cv = _table(config, "post_selection", "cv")
@@ -1725,6 +1862,25 @@ def resolve_cv_validation_policy_identity(
                 "budget is independent of both target-size n3 and the production "
                 "horizon."
             )
+    mode = (
+        resolve_post_selection_training_mode(config)
+        if training_mode is None
+        else str(training_mode)
+    )
+    if mode in FOUNDATION_ADAPTATION_TRAINING_MODES:
+        checkpoint_ceiling = (
+            FOUNDATION_CV_CHECKPOINT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM
+        )
+        default_acceptance_maximum = (
+            FOUNDATION_CV_DEFAULT_ACCEPTANCE_MAXIMUM_EV_PER_ANGSTROM
+        )
+    elif mode in POST_SELECTION_TRAINING_MODES:
+        checkpoint_ceiling = _configured_maximum_target_force_rmse(config)
+        default_acceptance_maximum = DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM
+    else:
+        raise TrainingDataInputError(
+            f"Unsupported post-selection training mode: {mode!r}."
+        )
     return CvValidationPolicyIdentity(
         fold_count=int(cv.get("fold_count", DEFAULT_CV_FOLD_COUNT)),
         partition_seed=int(cv.get("partition_seed", 104729)),
@@ -1736,10 +1892,13 @@ def resolve_cv_validation_policy_identity(
             if max_num_epochs is not None
             else int(cv.get("max_num_epochs", DEFAULT_CV_MAX_NUM_EPOCHS))
         ),
+        checkpoint_maximum_target_force_rmse_ev_per_angstrom=checkpoint_ceiling,
         acceptance_metric=str(
-            cv.get("acceptance_metric", "target_force_rmse_ev_per_angstrom")
+            cv.get("acceptance_metric", CV_DEFAULT_ACCEPTANCE_METRIC)
         ),
-        acceptance_maximum=float(cv.get("acceptance_maximum", 0.030)),
+        acceptance_maximum=float(
+            cv.get("acceptance_maximum", default_acceptance_maximum)
+        ),
         aggregation_rule=CV_AGGREGATION_ALL_REQUIRED,
         dispersion_policy=CV_DISPERSION_DIAGNOSTIC_ONLY,
         required_cv_seeds=cv.get("seeds", (0,)),
@@ -1755,6 +1914,9 @@ def resolve_final_production_policy_identity(
 
     ``[training].max_num_epochs`` is read exactly once, here.  Nothing derives
     it from target-size ``n3`` and nothing derives ``n3`` from it.
+
+    The production checkpoint target ceiling is the ``[acceptance]`` target
+    ceiling for every training mode.
 
     ``max_num_epochs`` is the frozen effective production horizon admitted with
     the target selection, and it substitutes for the configured value alone.  It
@@ -1783,6 +1945,24 @@ def resolve_final_production_policy_identity(
         allow_performance_driven_termination=bool(
             production.get("allow_performance_driven_termination", False)
         ),
+        checkpoint_maximum_target_force_rmse_ev_per_angstrom=(
+            _configured_maximum_target_force_rmse(config)
+        ),
+    )
+
+
+def _configured_maximum_target_force_rmse(config: Mapping[str, Any]) -> float:
+    """The pre-separation ``[acceptance]`` target ceiling (eV/angstrom).
+
+    Production reads it for every mode and scratch CV reads it; foundation CV
+    never does.
+    """
+
+    return float(
+        _table(config, "acceptance").get(
+            "maximum_target_force_rmse_ev_per_angstrom",
+            DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM,
+        )
     )
 
 
@@ -1817,6 +1997,13 @@ def final_production_training_budget_policy(
 
 
 __all__ = [
+    "CV_DEFAULT_ACCEPTANCE_METRIC",
+    "DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM",
+    "FOUNDATION_CV_CHECKPOINT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM",
+    "FOUNDATION_CV_DEFAULT_ACCEPTANCE_MAXIMUM_EV_PER_ANGSTROM",
+    "POST_SELECTION_SHARED_CHECKPOINT_CONSTRAINTS_SCHEMA",
+    "post_selection_checkpoint_admissibility",
+    "resolve_post_selection_training_mode",
     "CV_AGGREGATION_ALL_REQUIRED",
     "CV_DISPERSION_DIAGNOSTIC_ONLY",
     "CV_FOLD_CONSTRUCTION_ALGORITHM",

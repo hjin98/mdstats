@@ -301,7 +301,7 @@ def test_r10a_exact_mode_matrix_and_executable_head_parity(tmp_path: Path, monke
         multi_cfg, policies=multi_policies
     )
     assert multi_policies.replay_training_label_mode is ReplayLabelMode.FOUNDATION_PSEUDOLABEL
-    assert multi_policies.checkpoint_admissibility.replay_enabled
+    assert multi_policies.replay_enabled
 
     preparation, target_train, monitor = _minimal_materialization_inputs()
     optimizer = _minimal_optimizer()
