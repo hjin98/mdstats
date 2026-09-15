@@ -6,10 +6,13 @@ protocol_version: 6.3.0
 status: active
 basis_commit: e72090e21cec5311ce87745b03603f8783cd15a7
 reviewed_r1_candidate: 815823494c88969944eee8f58a6cf107d97bcc09
-reviewed_r3_candidate: e24aef905fc09ccfc6c9d148b839bada28310200
 repaired_r3_candidate_commit: c7db32b4c9f2487450ae18d8d9dd5b948905a9ed
+r3_rereview_commit: d575feb36f80f1d8e6abe434005237b410830163
+canonical_d3_promotion_commit: 3789e11ed9d652aff29cd61dc3158556f27e4644
+d4_authorization_commit: bd3b37832ced3bbe28162592ac4630082fb8c881
 r3_rereview_verdict: PASS
-current_gate: R3_CANONICAL_D3_PROMOTION
+current_gate: D4_IMPLEMENTATION_AUTHORIZED
+d4_authorized: true
 ---
 
 # MLFF `pi_train` restoration - current pointer
@@ -20,35 +23,24 @@ current_gate: R3_CANONICAL_D3_PROMOTION
 R1 D1/D2 reconstruction:     PASS / ACCEPTED / COMPLETE
 R2 dependency recovery:      PASS / CLOSED
 R3 first D3 candidate:       NO-PASS / SUPERSEDED
-R3 repaired D3 candidate:    PASS / ACCEPTED FOR CANONICAL D3 PROMOTION
-Canonical D3 promotion:      REQUIRED BEFORE D4
-D4 product implementation:   BLOCKED UNTIL CANONICAL D3 PROMOTION + CONSISTENCY CHECK
+R3 repaired D3 candidate:    PASS / ACCEPTED
+Canonical D3 promotion:      PASS / PROMOTED / CURRENT
+D4 product implementation:   AUTHORIZED
 ```
 
-A fresh independent Protocol-6.3 D3 re-review has passed the repaired R3 candidate. The review did not reopen R1 or R2 and found no Serious Challenge.
+The repaired R3 candidate passed fresh independent Protocol-6.3 review and has been reconciled directly into canonical current D3. The promotion consistency/stale-owner check passed. No Serious Challenge is open against the accepted R1/R2/R3 authority chain.
 
-## Current accepted method authority
+## Current accepted authority
 
-General MLFF authority remains with the existing general method papers. For the restored target-training-order scope the sole accepted owners are:
+For the restored target-training-order scope:
 
 - D1: `docs/methods/mlff_target_training_order_scientific_method.md`
 - D2: `docs/methods/mlff_target_training_order_numerical_algorithmic_method.md`
+- D3: `docs/arch_manuals/mlff_training_data/45_target_training_order.md` plus the reconciled canonical MLFF Architecture Manual chapters and dependency graph
 
-R1 and R2 remain closed.
+General MLFF method/architecture authority remains current for every unaffected surface.
 
-## Accepted R3 design candidate
-
-The accepted-for-promotion R3 design is:
-
-- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R3_D3_D4_IMPLEMENTATION_HANDOFF_REPAIRED.md`
-
-Independent PASS record:
-
-- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R3_D3_REREVIEW_PASS.md`
-
-The first R3 candidate and its NO-PASS review remain historical provenance only.
-
-## Accepted R3 architecture
+## Current target-order architecture
 
 ```text
 exact P_train
@@ -69,20 +61,17 @@ exact P_train
 
 Pre-adoption MVSTATE/history/checkpoint state is subordinate authenticated reconstructible `prepare`/prepared-storage state. It is not CampaignStore currentness and is never a downstream scientific input.
 
-## Canonical D3 promotion gate
+## D4 implementation authority
 
-The repaired candidate has passed review but is not yet current canonical D3. Before any D4 product mutation, reconcile the exact accepted design directly into the Architecture Manual and verify that no stale competing target-order architecture remains.
+D4 implementation may now proceed under:
 
-At minimum promotion covers:
+- accepted scoped D1/D2 target-order method papers;
+- closed R2 dependency/provenance map;
+- promoted canonical D3 target-order architecture;
+- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R3_D3_D4_IMPLEMENTATION_HANDOFF_REPAIRED.md`;
+- composed workplan Revisions 5-8.
 
-- `docs/arch_manuals/mlff_training_data_architecture.md`
-- `docs/arch_manuals/mlff_training_data/30_statistical_design.md`
-- `docs/arch_manuals/mlff_training_data/50_target_size_selection.md`
-- `docs/arch_manuals/mlff_training_data/60_execution_performance.md`
-- `docs/arch_manuals/mlff_training_data/80_ownership_and_decisions.md`
-- any additional current D3 passage found to encode the superseded target-order topology.
-
-Do not preserve conflicting current target-order architecture as a permanent amendment overlay.
+The first product mutations must preserve the existing current owner boundary and must not partially activate the restored selector. The new policy/schema/currentness cutover becomes current only when the restored path is complete enough to satisfy the accepted prepared-generation publication/currentness contract. Do not add old/new selector routers, hidden UID fallbacks, alternate suffix selectors, or a selector-specific currentness/GC system.
 
 ## Protected current architecture
 
@@ -98,8 +87,10 @@ Preserve:
 - prepared-generation/CampaignStore as sole completed-generation currentness/adoption owner;
 - final production-scale GPU qualification deferred to final release.
 
+## D4 acceptance focus
+
+Implementation review must prove, at minimum, exact full-forward/optimized selector equivalence, shared FEAS/NEIGHBOR construction, canonical-obligation behavior, independent MVQUAL, post-repair reconstruction, complete-order suffix, authenticated restart/currentness, OOC/FD/resource closure, clean package/native equivalence when retained, and representative current-scale performance without weakening D1/D2.
+
 ## Next gate
 
-Promote the accepted R3 architecture into canonical current D3 and run the required internal-consistency/stale-owner check.
-
-Do not modify product code, activate a new target-order policy token, or set `d4_authorized: true` before that promotion closes. After successful promotion verification, D4 implementation may begin under the accepted R3 contract.
+Proceed with bounded D4 implementation against the accepted R3 handoff. After implementation, perform an independent D4 review against the accepted D1/D2/D3 authority and workplan. Final production-scale GPU qualification remains deferred to the final release package on the stakeholder machine.
