@@ -6,23 +6,26 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 `MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_WORKPLAN.md` remains the parent workplan on branch `fix/mlff-cv-competence-threshold-separation`, based on accepted `main` state `8553ebe9ed86b24dfe910c9e43acc6230d3ece90`.
 
-The implementation candidate at `473437e2605f366a1c2c12dd121d6f9b1cf2ba2f` received an independent assembled review and is **NO-PASS / reopened**. The governing repair amendment is `MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_IMPLEMENTATION_REVIEW_REOPEN.md`.
+The earlier assembled implementation review reopened the cycle through `MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_IMPLEMENTATION_REVIEW_REOPEN.md`. Its architectural finding remains valid: restored P5 is authorized through shared method + role-policy + role-plan/run-plan ancestry; broad DATA8 `TrainingProtocolIdentity` and a generic `Eval2EvaluationPlan` are not P5 authority and must not be added merely to restate ancestry.
 
-The principal architectural finding is reductive rather than additive: accepted D3 already says broad DATA8 `TrainingProtocolIdentity` cannot authorize restored P5, and current P5 does not require a generic `Eval2EvaluationPlan`. The parent workplan's contradictory generic TRAIN2-protocol/EVAL2-plan requirements have now been superseded in its binding text by the method + role-policy + role-plan/run-plan lineage, without adding wrappers or parallel authority.
+The first independent D1/D2 review, recorded in `MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_D1_D2_REVIEW.md`, found one remaining authority mismatch: production `30 meV/angstrom` had been written as immutable even though the production role already had a configurable policy input.
 
-D4 repair status: the temporary methods placeholder is removed; the threshold-separation delta is appended, marked proposed, to `docs/history/mlff/post_selection_method_restoration_evolution.md`; and focused, affected-regression and real-path evidence is recorded in the reopen amendment's repair realization record. Independent implementation re-review found no remaining D3/D4 product blocker.
+On 2026-09-15 the stakeholder clarified and ratified the intended design: **all three foundation post-selection thresholds are configurable policy parameters**, with generated/current defaults `45 / 45 / 30 meV/angstrom` for CV checkpoint competence / default held-out target-force acceptance / fresh-production checkpoint quality. Independent re-review now records **D1 PASS / D2 PASS** in `MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_D1_D2_REREVIEW.md`.
 
-Independent D1/D2 Review R1 is recorded in `MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_D1_D2_REVIEW.md` and is **NO-PASS** on one upstream authority mismatch. The proposed papers currently present the foundation-production checkpoint ceiling as an unconditional fixed `30 meV/angstrom`, while the preserved public production role policy resolves `[acceptance].maximum_target_force_rmse_ev_per_angstrom` with generated/default `30 meV/angstrom` and supports an identity-bound explicit production-only override. Repair D1/D2 by parameterizing the production role ceiling while preserving the current/default 30-meV policy; do not change working D3/D4 or add another threshold/protocol owner. Stakeholder ratification remains pending until the repaired D1/D2 pair independently passes.
+The threshold-policy authority for this branch is now:
 
-The proposed scientific outcome remains foundation-CV competence at `45 meV/angstrom` target-force RMSE for the current cycle, generated/default fresh-production checkpoint quality at `30 meV/angstrom`, unchanged scratch/replay/shared hard gates, fixed-budget training, and downstream qualification separation. None of those proposed semantics are accepted-current until the D1/D2 acceptance gates complete.
+- D1: `docs/methods/mlff_post_selection_threshold_policy.md`
+- D2: `docs/methods/mlff_post_selection_threshold_numerical_policy.md`
+- D3: `docs/arch_manuals/mlff_training_data/85_post_selection_threshold_policy_ownership.md`
+- D4 specification: `docs/specs/training_data/mlff_post_selection_threshold_policy_spec.md`
 
-Closeout learning remains deferred until accepted repair. The accepted PEM basis has not advanced, so the workplan HAS remains unchanged unless that project-governed basis changes before closeout.
+`MLFF_CV_COMPETENCE_THRESHOLD_PARAMETERIZATION_ALIGNMENT.md` is the active D3/D4 handoff. It requires one missing public knob to be wired through the existing owner: foundation `[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom`, default `0.045`. The existing `[post_selection.cv].acceptance_maximum` remains the configurable outer threshold and `[acceptance].maximum_target_force_rmse_ev_per_angstrom` remains the configurable production threshold, default `0.030`.
 
-The preceding post-selection restoration workplan remains closed and archived. This threshold-separation cycle does not reopen that archived implementation by default; it addresses a newly identified authority/identity coupling in the accepted restored baseline.
+The previously reviewed D4 candidate is therefore no longer final-conforming solely because foundation CV checkpoint competence is still hard-coded at `0.045` instead of optionally configurable. Repair must alter the existing resolver/config path and generated/public configuration surfaces; it must not add a threshold registry, synchronized alias, wrapper, compatibility translator, P5 protocol identity, generic EVAL2 plan, or second checkpoint engine.
 
-`MLFF_POST_SELECTION_UNIVERSAL_LOSS_MONITOR_AND_CV_METHOD_RESTORATION_WORKPLAN.md` was closed and archived on 2026-09-14 after independent Implementation/Integration Review R4 found no remaining D4 implementation/integration blocker and no Serious Challenge to its accepted D1/D2/D3 scope. Its lifecycle closeout record is `workplans/archive/MLFF_POST_SELECTION_UNIVERSAL_LOSS_MONITOR_AND_CV_METHOD_RESTORATION_CLOSEOUT_2026-09-14.md`.
+Scratch/replay/shared hard gates, fixed-budget training, common-monitor semantics, frozen target selection, and downstream qualification separation remain unchanged. Production-scale GPU/CuEq/LAMMPS/MLIAP release qualification remains governed by the standing final-release policy and is not an intermediate gate for this cycle.
 
-Production-scale GPU/CuEq/LAMMPS/MLIAP release qualification remains governed by the standing final-release policy and is not an intermediate gate for the active threshold-separation cycle.
+The preceding post-selection restoration workplan remains closed and archived. This threshold-parameterization cycle does not reopen that archived implementation by default.
 
 There is no active target-order redesign. The withdrawn FPS/coverage Gate-A lineage remains archived and does not alter the accepted target-size method.
 
