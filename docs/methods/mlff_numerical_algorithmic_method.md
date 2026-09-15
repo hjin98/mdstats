@@ -720,13 +720,13 @@ $$
 A_\rho(c) \;=\; S(c) \;\wedge\; r_{\mathrm{mon}}(c) \le \tau_\rho ,
 $$
 
-with inclusive boundaries, compared in IEEE-754 double precision against the double nearest the stated decimal ceiling. For foundation adaptation (`naive_fine_tuning`, `multihead_replay`):
+with inclusive boundaries, compared in IEEE-754 double precision against the double nearest the resolved decimal ceiling. For foundation adaptation (`naive_fine_tuning`, `multihead_replay`), the role thresholds are independently resolved policy parameters (`docs/methods/mlff_post_selection_threshold_numerical_policy.md`):
 
-| Role | Predicate | Ceiling |
+| Role | Predicate | Resolved ceiling / default |
 |---|---|---|
-| CV checkpoint competence | `r_mon(c) <= τ_CV` | `τ_CV = 0.045 eV/Å` |
-| CV outer acceptance, default metric `target_force_rmse_ev_per_angstrom` | `r_out <= θ_CV` | `θ_CV = 0.045 eV/Å` |
-| Production checkpoint quality | `r_mon(c) <= τ_prod` | `τ_prod = 0.030 eV/Å` |
+| CV checkpoint competence | `r_mon(c) <= τ_CV` | `τ_CV`, default `0.045 eV/Å` |
+| CV outer acceptance, default metric `target_force_rmse_ev_per_angstrom` | `r_out <= θ_CV` | `θ_CV`, default `0.045 eV/Å` |
+| Production checkpoint quality | `r_mon(c) <= τ_prod` | `τ_prod`, default `0.030 eV/Å` |
 
 Required properties:
 
@@ -926,7 +926,7 @@ Runtime caches and scratch state need not be preserved when exactly reconstructi
 
 The 2026-09-13 accepted D2 baseline remains the source of all unaffected P1/P2/P3 semantics. The first independent review found that the initial rewrite had accidentally compressed out several still-current baseline invariants and had conflated elemental-coefficient identifiability with composition-energy identifiability. That review repair restored the baseline invariants explicitly, narrowed the new E0 feasibility rule to the scientifically consumed composition-weighted corrections, and made the shared numeric Huber parameter dimensionally explicit per property channel. A subsequent re-review found one remaining D2 reproducibility defect: the candidate had written the combined multi-head corpus as target-first/replay-second even though pinned MACE orders `pt_head` first and shuffles the resulting replay-first/target-second combined index space. That ordering was corrected and bound to exposure identity/oracles. Final independent re-review then passed the repaired D1/D2 pair, and the stakeholder ratified the branch authority on 2026-09-14 by directing D3/D4 closure to proceed. It was integrated at `8553ebe9ed86b24dfe910c9e43acc6230d3ece90`.
 
-The proposed role-predicate revision (Sections 17.1, 23.7, handoff item 9) follows a later finding that one target-force ceiling had been represented as shared method content, forcing foundation CV through production-level late convergence. It keeps `τ_prod=0.030 eV/Å`, sets foundation `τ_CV=θ_CV=0.045 eV/Å` from a stakeholder-authorized calibration premise (D1 §10.3), leaves scratch unchanged, and is coordinated by `workplans/active/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_WORKPLAN.md`.
+The role-predicate parameterization (Sections 17.1, 23.7, handoff item 9) follows stakeholder ratification that all three foundation post-selection thresholds are configurable policy parameters (`docs/methods/mlff_post_selection_threshold_numerical_policy.md`). It establishes foundation defaults `τ_CV=θ_CV=0.045 eV/Å` and `τ_prod=0.030 eV/Å` from a stakeholder-authorized calibration premise (D1 §10.3), leaves scratch unchanged, and is coordinated by `workplans/active/MLFF_CV_COMPETENCE_THRESHOLD_PARAMETERIZATION_ALIGNMENT.md`.
 
 Reference realization evidence:
 

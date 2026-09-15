@@ -17,7 +17,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from mdstats.training_data._common import TrainingDataSerializationError
+from mdstats.training_data._common import (
+    TrainingDataInputError,
+    TrainingDataSerializationError,
+)
 from mdstats.training_data.campaign_post_selection import PostSelectionError
 from mdstats.training_data.campaign_post_selection_runtime import (
     PostSelectionContext,
@@ -106,6 +109,19 @@ def test_scratch_roles_keep_pre_separation_ceilings():
         resolve_cv_validation_policy_identity(raised).checkpoint_maximum_target_force_rmse_ev_per_angstrom
         == 0.02
     )
+    # The foundation-only CV checkpoint knob fails closed under scratch.
+    with pytest.raises(PostSelectionError, match="valid only for foundation"):
+        resolve_cv_validation_policy_identity(
+            _config(
+                "scratch",
+                foundation=None,
+                post_selection={
+                    "cv": {
+                        "checkpoint_maximum_target_force_rmse_ev_per_angstrom": 0.045
+                    }
+                },
+            )
+        )
 
 
 def test_mode_is_resolved_from_configuration_when_not_supplied(foundation: Path):
@@ -141,6 +157,9 @@ def test_generated_and_shipped_configuration_resolve_45_45_30(tmp_path: Path):
         "shipped": (root / "campaign.toml.example").read_text(encoding="utf-8"),
     }
     for name, text in texts.items():
+        assert (
+            "checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.045" in text
+        ), name
         path = tmp_path / f"{name}.toml"
         path.write_text(text, encoding="utf-8")
         cfg, _paths = cli._load_config(path)
@@ -157,9 +176,112 @@ def test_generated_and_shipped_configuration_resolve_45_45_30(tmp_path: Path):
         "docs/specs/training_data/mlff_data9b3_campaign_cli_spec.md",
         "docs/guides/mlff_campaign_cli_user_guide.md",
     ):
-        assert "acceptance_maximum = 0.045" in (root / document).read_text(
-            encoding="utf-8"
+        doc_text = (root / document).read_text(encoding="utf-8")
+        assert "acceptance_maximum = 0.045" in doc_text, document
+        assert (
+            "checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.045" in doc_text
         ), document
+
+
+@pytest.mark.parametrize("mode", FOUNDATION_MODES)
+def test_explicit_cv_checkpoint_ceiling_honored_and_changes_cv_identity(
+    foundation: Path, mode: str
+):
+    base = _config(mode, foundation=foundation)
+    policies, method, cv_base, prod_base = _resolved(base)
+
+    # Configured below default (0.040 < 0.045)
+    config_low = _config(
+        mode,
+        foundation=foundation,
+        post_selection={
+            "cv": {"checkpoint_maximum_target_force_rmse_ev_per_angstrom": 0.040}
+        },
+    )
+    p_low, m_low, cv_low, prod_low = _resolved(config_low)
+    assert cv_low.checkpoint_maximum_target_force_rmse_ev_per_angstrom == 0.040
+    assert cv_low.acceptance_maximum == 0.045
+    assert prod_low.checkpoint_maximum_target_force_rmse_ev_per_angstrom == 0.030
+    assert m_low.content_digest == method.content_digest
+    assert prod_low.content_digest == prod_base.content_digest
+    assert cv_low.content_digest != cv_base.content_digest
+
+    # Real checkpoint admissibility assessment
+    eff_base = post_selection_checkpoint_admissibility(policies, cv_base)
+    eff_low = post_selection_checkpoint_admissibility(p_low, cv_low)
+    replay = (
+        {"replay_degradation_ev_per_angstrom": 0.0, "replay_label_mode": "true_dft"}
+        if policies.replay_enabled
+        else {"replay_degradation_ev_per_angstrom": None}
+    )
+    # 0.042 passes default 0.045 ceiling, but fails tightened 0.040 ceiling
+    assert eff_base.candidate_admissible(
+        target_force_rmse_ev_per_angstrom=0.042, **replay
+    )
+    assert not eff_low.candidate_admissible(
+        target_force_rmse_ev_per_angstrom=0.042, **replay
+    )
+    # Exact boundary at 0.040
+    assert eff_low.candidate_admissible(
+        target_force_rmse_ev_per_angstrom=0.040, **replay
+    )
+    assert not eff_low.candidate_admissible(
+        target_force_rmse_ev_per_angstrom=_above(0.040), **replay
+    )
+
+    # Configured above default (0.050 > 0.045)
+    config_high = _config(
+        mode,
+        foundation=foundation,
+        post_selection={
+            "cv": {"checkpoint_maximum_target_force_rmse_ev_per_angstrom": 0.050}
+        },
+    )
+    p_high, _m, cv_high, _p = _resolved(config_high)
+    eff_high = post_selection_checkpoint_admissibility(p_high, cv_high)
+    # 0.048 fails default 0.045 ceiling, but passes relaxed 0.050 ceiling
+    assert not eff_base.candidate_admissible(
+        target_force_rmse_ev_per_angstrom=0.048, **replay
+    )
+    assert eff_high.candidate_admissible(
+        target_force_rmse_ev_per_angstrom=0.048, **replay
+    )
+    assert eff_high.candidate_admissible(
+        target_force_rmse_ev_per_angstrom=0.050, **replay
+    )
+    assert not eff_high.candidate_admissible(
+        target_force_rmse_ev_per_angstrom=_above(0.050), **replay
+    )
+
+
+def test_explicit_default_vs_omission_identity_equivalence(foundation: Path):
+    omitted = _config("naive_fine_tuning", foundation=foundation)
+    explicit = _config(
+        "naive_fine_tuning",
+        foundation=foundation,
+        post_selection={
+            "cv": {"checkpoint_maximum_target_force_rmse_ev_per_angstrom": 0.045}
+        },
+    )
+    cv_omitted = resolve_cv_validation_policy_identity(omitted)
+    cv_explicit = resolve_cv_validation_policy_identity(explicit)
+    assert cv_omitted == cv_explicit
+    assert cv_omitted.content_digest == cv_explicit.content_digest
+
+
+@pytest.mark.parametrize("invalid_val", (-0.01, 0.0, math.nan, math.inf, "invalid"))
+def test_cv_checkpoint_invalid_threshold_raises_input_error(
+    foundation: Path, invalid_val: object
+):
+    cfg = _config(
+        "naive_fine_tuning",
+        foundation=foundation,
+        post_selection={
+            "cv": {"checkpoint_maximum_target_force_rmse_ev_per_angstrom": invalid_val}
+        },
+    )
+    with pytest.raises(TrainingDataInputError):
+        resolve_cv_validation_policy_identity(cfg)
 
 
 def test_alternate_outer_metric_cannot_donate_its_threshold(foundation: Path):
@@ -206,10 +328,18 @@ def test_role_only_ceiling_edits_do_not_move_shared_method(foundation: Path, mod
     assert cv3.content_digest != cv.content_digest
 
     # A CV-only checkpoint-ceiling change is a CV-policy change alone.
-    moved = dataclasses.replace(
-        cv, checkpoint_maximum_target_force_rmse_ev_per_angstrom=0.05
+    cv_checkpoint_edit = _config(
+        mode,
+        foundation=foundation,
+        post_selection={
+            "cv": {"checkpoint_maximum_target_force_rmse_ev_per_angstrom": 0.05}
+        },
     )
-    assert moved.content_digest != cv.content_digest
+    _p4, method4, cv4, production4 = _resolved(cv_checkpoint_edit)
+    assert method4.content_digest == method.content_digest
+    assert production4.content_digest == production.content_digest
+    assert cv4.content_digest != cv.content_digest
+    assert cv4.checkpoint_maximum_target_force_rmse_ev_per_angstrom == 0.05
 
 
 def test_shared_replay_constraint_moves_method_and_both_roles(foundation: Path):
@@ -513,10 +643,26 @@ def test_assembled_foundation_cv_passes_42_mev_and_production_refuses_it(
     assert run_train_production(config, authorized) == 0
     assert authorized.runs and not set(authorized.runs) & set(refused.runs)
 
-    # A CV-only edit stales the CV evidence, so it no longer authorizes production.
+    # A CV outer-only edit stales the CV evidence, so it no longer authorizes production.
     rewrite_config(config, "partition_seed = 7", "partition_seed = 7\nacceptance_maximum = 0.04")
     with pytest.raises(PostSelectionError, match="different cross-validation policy"):
         run_train_production(config, PostSelectionHarness(force_offset=0.042))
+
+    # A CV checkpoint-ceiling edit stales the CV evidence as well.
+    rewrite_config(
+        config,
+        "acceptance_maximum = 0.04",
+        "checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.040",
+    )
+    with pytest.raises(PostSelectionError, match="different cross-validation policy"):
+        run_train_production(config, PostSelectionHarness(force_offset=0.042))
+
+    # Re-running CV under the tightened 0.040 ceiling rejects the 0.042 meV candidate.
+    from mdstats.training_data.post_selection_cv_acceptance import (
+        PostSelectionCvRejectedError,
+    )
+    with pytest.raises(PostSelectionCvRejectedError):
+        run_cross_validate(config, PostSelectionHarness(force_offset=0.042))
 
 
 @pytest.mark.slow
@@ -572,17 +718,25 @@ _ceilings = st.floats(min_value=1.0e-4, max_value=1.0, allow_nan=False)
 def test_property_role_ceiling_is_the_only_role_difference(
     cv_ceiling: float, production_ceiling: float
 ):
-    config = _config("scratch", foundation=None)
-    policies = resolve_post_selection_method_policies(config)
+    base_config = _config("scratch", foundation=None)
+    policies = resolve_post_selection_method_policies(base_config)
     shared_digest = policies.shared_checkpoint_constraints_digest
-    cv = dataclasses.replace(
-        resolve_cv_validation_policy_identity(config),
-        checkpoint_maximum_target_force_rmse_ev_per_angstrom=cv_ceiling,
+    cv_config = _config(
+        "naive_fine_tuning",
+        foundation=None,
+        post_selection={
+            "cv": {"checkpoint_maximum_target_force_rmse_ev_per_angstrom": cv_ceiling}
+        },
     )
-    production = dataclasses.replace(
-        resolve_final_production_policy_identity(config),
-        checkpoint_maximum_target_force_rmse_ev_per_angstrom=production_ceiling,
+    prod_config = _config(
+        "scratch",
+        foundation=None,
+        acceptance={"maximum_target_force_rmse_ev_per_angstrom": production_ceiling},
     )
+    cv = resolve_cv_validation_policy_identity(
+        cv_config, training_mode="naive_fine_tuning"
+    )
+    production = resolve_final_production_policy_identity(prod_config)
     effective = [
         post_selection_checkpoint_admissibility(policies, role) for role in (cv, production)
     ]

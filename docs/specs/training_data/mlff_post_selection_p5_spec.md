@@ -323,10 +323,10 @@ Resolution SHALL be:
 
 | Mode | CV checkpoint ceiling | CV `acceptance_maximum` default | Production checkpoint ceiling |
 |---|---|---|---|
-| `naive_fine_tuning`, `multihead_replay` | fixed `0.045` | `0.045` | `[acceptance].maximum_target_force_rmse_ev_per_angstrom`, default `0.030` |
+| `naive_fine_tuning`, `multihead_replay` | `[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom`, default `0.045` | `0.045` | `[acceptance].maximum_target_force_rmse_ev_per_angstrom`, default `0.030` |
 | `scratch` | `[acceptance].maximum_target_force_rmse_ev_per_angstrom`, default `0.030` | `0.030` | same key, default `0.030` |
 
-An explicit `[post_selection.cv].acceptance_maximum` is used as written. Its units follow `acceptance_metric`; it never supplies the checkpoint ceiling. `[acceptance].maximum_target_force_rmse_ev_per_angstrom` keeps its generic/non-P5 meaning and is not rewritten.
+An explicit `[post_selection.cv].acceptance_maximum` is used as written. Its units follow `acceptance_metric`; it never supplies the checkpoint ceiling. An explicit `[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom` is valid for foundation modes, always has target-force RMSE units (eV/angstrom), and defaults to `0.045` when omitted. P5 scratch keeps its pre-separation resolution and fails closed if the foundation CV checkpoint field is configured under `[post_selection.cv]`. `[acceptance].maximum_target_force_rmse_ev_per_angstrom` keeps its generic/non-P5 meaning and is not rewritten.
 
 Each run SHALL be judged under one effective `CheckpointAdmissibilityPolicy` composed from the method's shared constraints and its role policy's ceiling. Before a run's preparation/training and before its checkpoint candidates are evaluated, the runtime SHALL verify that the run plan's `method_identity_digest` and role-policy digest (`cv_policy_identity_digest` or `final_production_policy_digest`) equal current authority and SHALL fail closed otherwise; a run of one role can never be judged under the other role's policy.
 

@@ -7,6 +7,7 @@ accepted_baseline_commit: 8553ebe9ed86b24dfe910c9e43acc6230d3ece90
 reviewed_candidate_commit: 6745778adb3647b47efebf9eefdca08fc4fca166
 review_disposition: PASS
 stakeholder_ratification: "2026-09-15: all three values configurable by design; defaults 45/45/30 meV/angstrom"
+closeout_record: workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_AND_PARAMETERIZATION_CLOSEOUT_2026-09-15.md
 ---
 
 # MLFF CV threshold policy — D1/D2 independent re-review

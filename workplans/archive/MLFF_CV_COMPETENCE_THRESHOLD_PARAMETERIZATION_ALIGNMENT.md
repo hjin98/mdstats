@@ -1,11 +1,12 @@
 ---
 kind: authority-alignment-and-d3-d4-handoff
 protocol_version: 6.3.0
-status: active
+status: closed
 branch: fix/mlff-cv-competence-threshold-separation
-parent_workplan: workplans/active/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_WORKPLAN.md
+parent_workplan: workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_WORKPLAN.md
 accepted_baseline_commit: 8553ebe9ed86b24dfe910c9e43acc6230d3ece90
-highest_open_owner: D3
+highest_open_owner: D4
+closeout_record: workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_AND_PARAMETERIZATION_CLOSEOUT_2026-09-15.md
 ---
 
 # MLFF configurable 45/45/30 threshold alignment

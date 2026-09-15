@@ -1,12 +1,13 @@
 ---
 kind: independent-d1-d2-review
 protocol_version: 6.3.0
-status: no-pass
+status: superseded
 branch: fix/mlff-cv-competence-threshold-separation
 accepted_baseline_commit: 8553ebe9ed86b24dfe910c9e43acc6230d3ece90
 reviewed_candidate_commit: eb4a09119e6a595dd94af77fdf4714ad9c0ba954
 highest_open_owner: D1
-review_disposition: NO-PASS
+review_disposition: SUPERSEDED
+superseded_by: workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_D1_D2_REREVIEW.md
 ---
 
 # MLFF CV Competence Threshold Separation — Independent D1/D2 Review

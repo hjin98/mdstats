@@ -1,13 +1,14 @@
 ---
 kind: implementation-review-reopen-amendment
 protocol_version: 6.3.0
-status: reopened
-parent_workplan: workplans/active/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_WORKPLAN.md
+status: resolved
+parent_workplan: workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_WORKPLAN.md
 branch: fix/mlff-cv-competence-threshold-separation
 accepted_baseline_commit: 8553ebe9ed86b24dfe910c9e43acc6230d3ece90
 reviewed_candidate_commit: 473437e2605f366a1c2c12dd121d6f9b1cf2ba2f
-review_disposition: NO-PASS
-highest_open_owner: D1
+review_disposition: RESOLVED
+highest_open_owner: D4
+closeout_record: workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_AND_PARAMETERIZATION_CLOSEOUT_2026-09-15.md
 ---
 
 # MLFF CV Competence Threshold Separation — Implementation Review Reopen

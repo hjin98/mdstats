@@ -1,12 +1,12 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.3.0
-status: proposed
+status: closed
 branch: fix/mlff-cv-competence-threshold-separation
 baseline_commit: 8553ebe9ed86b24dfe910c9e43acc6230d3ece90
 highest_affected_domain: D1
-review_state: implementation-review-reopened
-reopen_amendment: workplans/active/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_IMPLEMENTATION_REVIEW_REOPEN.md
+review_state: closed-pass
+closeout_record: workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_AND_PARAMETERIZATION_CLOSEOUT_2026-09-15.md
 ---
 
 # MLFF CV Competence Threshold Separation Workplan

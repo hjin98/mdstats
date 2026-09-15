@@ -180,7 +180,10 @@ def _positive_int(value: Any, *, name: str) -> int:
 
 
 def _finite_positive_threshold(value: Any, *, name: str) -> float:
-    threshold = float(value)
+    try:
+        threshold = float(value)
+    except (TypeError, ValueError):
+        raise TrainingDataInputError(f"{name} must be a finite positive threshold.")
     if not math.isfinite(threshold) or threshold <= 0.0:
         raise TrainingDataInputError(f"{name} must be a finite positive threshold.")
     return threshold
@@ -1840,8 +1843,9 @@ def resolve_cv_validation_policy_identity(
     Every other field still comes from its existing configuration owner: this is
     one field substitution, not a second policy resolver.
 
-    Target ceilings are method-aware.  Foundation adaptation uses the fixed CV
-    competence ceiling for checkpoints and defaults its held-out target-force
+    Target ceilings are method-aware.  Foundation adaptation reads optional
+    ``[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom``
+    (default 0.045) for checkpoints and defaults its held-out target-force
     ceiling to the same value; scratch keeps its pre-separation behavior, the
     ``[acceptance]`` target ceiling and a 0.030 outer default.  An explicit
     ``acceptance_maximum`` is always used as written.
@@ -1868,13 +1872,20 @@ def resolve_cv_validation_policy_identity(
         else str(training_mode)
     )
     if mode in FOUNDATION_ADAPTATION_TRAINING_MODES:
-        checkpoint_ceiling = (
-            FOUNDATION_CV_CHECKPOINT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM
+        checkpoint_ceiling = cv.get(
+            "checkpoint_maximum_target_force_rmse_ev_per_angstrom",
+            FOUNDATION_CV_CHECKPOINT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM,
         )
         default_acceptance_maximum = (
             FOUNDATION_CV_DEFAULT_ACCEPTANCE_MAXIMUM_EV_PER_ANGSTROM
         )
     elif mode in POST_SELECTION_TRAINING_MODES:
+        if "checkpoint_maximum_target_force_rmse_ev_per_angstrom" in cv:
+            raise PostSelectionError(
+                "[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom "
+                "is valid only for foundation adaptation modes. Scratch CV reads its "
+                "checkpoint target-force ceiling from [acceptance]."
+            )
         checkpoint_ceiling = _configured_maximum_target_force_rmse(config)
         default_acceptance_maximum = DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM
     else:
@@ -1896,9 +1907,7 @@ def resolve_cv_validation_policy_identity(
         acceptance_metric=str(
             cv.get("acceptance_metric", CV_DEFAULT_ACCEPTANCE_METRIC)
         ),
-        acceptance_maximum=float(
-            cv.get("acceptance_maximum", default_acceptance_maximum)
-        ),
+        acceptance_maximum=cv.get("acceptance_maximum", default_acceptance_maximum),
         aggregation_rule=CV_AGGREGATION_ALL_REQUIRED,
         dispersion_policy=CV_DISPERSION_DIAGNOSTIC_ONLY,
         required_cv_seeds=cv.get("seeds", (0,)),
