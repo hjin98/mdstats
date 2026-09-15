@@ -2,13 +2,18 @@
 
 The current active workplan for this cycle is:
 
-`workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_3.md`
+`workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_4.md`
 
-It supersedes:
+Revision 4 supersedes the original workplan and Revisions 2-3. It records the stakeholder decision to restore the latest mature pre-V7 selection path:
 
-- `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN.md`;
-- `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_2.md`.
+`DATA7 -> FEAS1/MVIDX1 -> MVSEL2/MVSTATE2 -> REPAIR2 -> MVQUAL2`
 
-`MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_REVISION_2_REVIEW.md` is review evidence explaining the Revision-3 repairs; it is not an additional workplan authority.
+under the current one-`P_train` / P2 / prepared-generation architecture, dropping only concretely incompatible historical target-size topology.
 
-The superseded files remain only as branch-local revision history until the cycle is accepted/closed and repository hygiene can archive the transition artifacts. Repository presence does not restore their superseded decisions.
+Review evidence:
+
+`workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_REVISION_4_REVIEW.md`
+
+Disposition: **PASS AS WORKPLAN**.
+
+Superseded workplans/reviews remain branch-local history only and do not retain current authority.
