@@ -6,7 +6,8 @@ protocol_version: 6.3.0
 status: active
 basis_commit: e72090e21cec5311ce87745b03603f8783cd15a7
 reviewed_r1_candidate: 815823494c88969944eee8f58a6cf107d97bcc09
-current_gate: R3_D3_REVIEW
+reviewed_r3_candidate: e24aef905fc09ccfc6c9d148b839bada28310200
+current_gate: R3_D3_REPAIR
 ---
 
 # MLFF `pi_train` restoration — current pointer
@@ -16,11 +17,11 @@ current_gate: R3_D3_REVIEW
 ```text
 R1 D1/D2 reconstruction:     PASS / ACCEPTED / COMPLETE
 R2 dependency recovery:      PASS / CLOSED
-R3 D3 architecture contract: PREPARED / AWAITING INDEPENDENT D3 REVIEW
-D4 product implementation:   BLOCKED UNTIL D3 PASS/ACCEPTANCE
+R3 D3 architecture contract: NO-PASS / REOPENED FOR REPAIR
+D4 product implementation:   BLOCKED UNTIL REPAIRED D3 PASS + CANONICAL D3 PROMOTION
 ```
 
-Stakeholder ratified the independently reviewed R1 candidate on 2026-09-15.
+Stakeholder ratified the independently reviewed R1 candidate on 2026-09-15. The first independent R3 D3 review of candidate `e24aef905fc09ccfc6c9d148b839bada28310200` returned **NO-PASS** without reopening accepted D1/D2.
 
 ## Current accepted method authority
 
@@ -56,21 +57,32 @@ R1 reconstruction/review artifacts remain historical provenance/evidence. The cu
 
 The exact reconstruction ledger is evidence only where accepted method papers now own the proposition.
 
-## Active next artifact
+## Active R3 artifacts
 
-`MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R3_D3_D4_IMPLEMENTATION_HANDOFF.md`
+Proposed D3 contract:
 
-is the proposed current-architecture contract. It binds the accepted method and recovered performance/storage closure to current preparation/P2/CampaignStore owners and provides the bounded D4 sequence and qualification requirements.
+- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R3_D3_D4_IMPLEMENTATION_HANDOFF.md`
 
-It requires a fresh independent Protocol-6.3 D3 Review/Challenge before D4 code mutation.
+Independent review/reopen:
+
+- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R3_D3_REVIEW_REOPEN.md`
+
+The review identified four blocking D3 repairs:
+
+1. restore one shared NEIGHBOR1 construction consumed by FEAS1 and adopted by MVIDX rather than permitting duplicate geometry work;
+2. make one canonical membership-obligation authority an explicit parent of FEAS1, MVIDX, MVSEL2/REPAIR2 and independent MVQUAL semantics;
+3. define pre-adoption MVSTATE/rank-history/checkpoint ownership and recovery beneath existing prepare/prepared-storage ownership without creating selector currentness;
+4. require canonical Architecture Manual promotion immediately after repaired D3 PASS and before any D4 product-code mutation.
+
+The repaired R3 candidate requires a fresh independent Protocol-6.3 D3 re-review. This NO-PASS does not approve its future repair.
 
 ## Current implementation state
 
-Product source remains unchanged by the R1/R2 acceptance transition. In particular, current executable target-order policy still uses `candidate_independent_priority.v1` until an accepted D3-guided D4 cutover replaces it.
+Product source remains unchanged by the R1/R2 acceptance and R3 review. Current executable target-order policy still uses `candidate_independent_priority.v1` until a future accepted D3-guided D4 cutover replaces it.
 
-This is intentional. Do not partially activate the restored selector by changing policy tokens, schemas, prepared generations, or individual modules before D3 acceptance.
+Do not partially activate the restored selector by changing policy tokens, schemas, prepared generations, or individual modules while R3 is reopened.
 
-At D4 cutover, old `candidate_independent_priority.v1` prepared target-order products are stale/reconstructible under the new semantic policy and must rebuild through existing preparation/currentness ownership. Do not migrate old ranks into the new method and do not add a parallel compatibility selector.
+At eventual D4 cutover, old `candidate_independent_priority.v1` prepared target-order products are stale/reconstructible under the new semantic policy and must rebuild through existing preparation/currentness ownership. Do not migrate old ranks into the new method and do not add a parallel compatibility selector.
 
 ## Protected current architecture
 
@@ -85,16 +97,13 @@ The restoration must preserve:
 - current P3 training/evaluation/reducer semantics;
 - current post-selection CV/replay/production lifecycle;
 - `prepare` as live selector-input/build/publication orchestration owner;
-- current campaign/prepared-generation store as currentness/adoption owner;
+- current campaign/prepared-generation store as completed-generation currentness/adoption owner;
 - final production-scale GPU qualification deferred to the final release package.
 
 ## Next gate instruction
 
-Perform an independent Protocol-6.3 D3 review of the prepared R3 contract against:
+Repair the proposed R3 D3 contract at its owning architecture layer using the exact requirements in `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R3_D3_REVIEW_REOPEN.md`.
 
-- the accepted scoped D1/D2 papers;
-- Revision 5-8 workplan requirements;
-- R2 dependency/provenance map;
-- current architecture/owners at the active code base.
+Do not change D1/D2, do not begin D4 implementation, and do not promote the unrepaired R3 into canonical D3.
 
-If genuine D3 blockers exist, amend the R3 contract at the owning architecture layer. If none exist, record D3 PASS/acceptance and authorize D4 implementation. Do not reopen accepted R1 merely for implementation preferences or execution-only tuning.
+After repair, perform a fresh independent Protocol-6.3 D3 review. If that review passes, promote the exact accepted design into the canonical D3 Architecture Manual (`mlff_training_data_architecture.md` plus affected chapter owners) before authorizing D4 product mutation.
