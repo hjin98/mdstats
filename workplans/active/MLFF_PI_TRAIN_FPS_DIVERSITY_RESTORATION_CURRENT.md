@@ -1,30 +1,100 @@
-# Canonical active `pi_train` / MVSEL2 restoration workplan
+---
+kind: restoration-current-pointer
+workplan_id: MLFF-PI-TRAIN-FPS-DIVERSITY-RESTORATION-1
+plan_revision: 8
+protocol_version: 6.3.0
+status: active
+basis_commit: e72090e21cec5311ce87745b03603f8783cd15a7
+reviewed_r1_candidate: 815823494c88969944eee8f58a6cf107d97bcc09
+current_gate: R3_D3_REVIEW
+---
 
-The current active workplan is the exact Revision-8 composition of immutable Revisions 5, 6, and 7 plus `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_8.md`. Final workplan disposition remains **PASS AS WORKPLAN**.
+# MLFF `pi_train` restoration — current pointer
 
-Revision 8 retains the restored mature chain under current ownership:
+## Current lifecycle
 
-`DATA6 -> selector-relevant DATA7 lineage -> TargetCoverageReference -> FEAS1 -> NEIGHBOR1/MVIDX1 -> optimized exact MVSEL2/MVSTATE2 -> optimized REPAIR2 -> independent MVQUAL -> current P2 TargetTrainingOrder`.
+```text
+R1 D1/D2 reconstruction:     PASS / ACCEPTED / COMPLETE
+R2 dependency recovery:      PASS / CLOSED
+R3 D3 architecture contract: PREPARED / AWAITING INDEPENDENT D3 REVIEW
+D4 product implementation:   BLOCKED UNTIL D3 PASS/ACCEPTANCE
+```
 
-Current `TargetTrainingOrder` is a complete permutation owner, so the same exact optimized MVSEL2 method continues from the final repaired configured prefix through all of `P_train`; historical-rung-only or UID/scalar-only suffix completion is prohibited.
+Stakeholder ratified the independently reviewed R1 candidate on 2026-09-15.
 
-## Current R1 gate state
+## Current accepted method authority
 
-Independent D1/D2 re-review has returned **PASS**. The candidate is now **awaiting stakeholder ratification**, not further technical repair.
+General MLFF method authority remains:
 
-The effective proposed authority is intentionally reduced to two readable owner-facing files:
+- `docs/methods/mlff_scientific_method.md`
+- `docs/methods/mlff_numerical_algorithmic_method.md`
 
-- D1: `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_D1_METHOD_AMENDMENT.md`;
-- D2: `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_D2_METHOD_AMENDMENT.md`.
+For the restored target-training-order scope, the sole current owners are:
 
-Supporting evidence is carried by the reconstruction-evidence file and exact reconstruction ledger. The former repair addendum and review handoffs are historical evidence only; they do not override the consolidated D1/D2 text.
+- D1: `docs/methods/mlff_target_training_order_scientific_method.md`
+- D2: `docs/methods/mlff_target_training_order_numerical_algorithmic_method.md`
 
-The proposed method reconstructs one exact-`P_train`, correlation-balanced multi-view coverage order with required scientific families/extents, one canonical hard-obligation authority, exact two-phase MVSEL2, certified-lazy/full-forward equivalence, configured-shell REPAIR2, independent MVQUAL, and same-method completion through all `P_train`.
+The scoped papers supersede conflicting old target-order passages in the general papers while leaving all unrelated current method contracts unchanged.
 
-Hard-obligation reconciliation preserves current configurable P2 policy: automatic baselines and explicit same-locus requirements with identical current incidence compose into one canonical obligation whose effective minimum is the maximum accepted minimum. Source aliases cannot create extra hard-gain votes; genuine semantic/incidence contradictions fail closed.
+## Governing workplan stack
 
-**No accepted D1/D2 authority has changed yet.** Accepted-current method papers at `e72090e21cec5311ce87745b03603f8783cd15a7` remain authoritative. R2/D3/D4 remains blocked until the stakeholder ratifies the exact proposed pair and the canonical method papers are explicitly promoted/reconciled.
+Revision 8 remains the exact compatible composition of:
 
-The accepted-current weak UID-capable target-order method remains under the workplan's Serious Challenge until that authority transition completes; the proposed reconstructed candidate itself has no remaining review blocker.
+1. `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_5.md`
+2. `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_6.md`
+3. `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_7.md`
+4. `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_8.md`
 
-Final production-scale GPU qualification remains deferred to the final-release qualification package.
+R1 reconstruction/review artifacts remain historical provenance/evidence. The current accepted method is not an amendment stack.
+
+## Closed R1/R2 records
+
+- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_STATUS.md`
+- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_RECONSTRUCTED_EVIDENCE.md`
+- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_EXACT_RECONSTRUCTION_LEDGER.md`
+- `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R2_DEPENDENCY_PROVENANCE_MAP.md`
+
+The exact reconstruction ledger is evidence only where accepted method papers now own the proposition.
+
+## Active next artifact
+
+`MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R3_D3_D4_IMPLEMENTATION_HANDOFF.md`
+
+is the proposed current-architecture contract. It binds the accepted method and recovered performance/storage closure to current preparation/P2/CampaignStore owners and provides the bounded D4 sequence and qualification requirements.
+
+It requires a fresh independent Protocol-6.3 D3 Review/Challenge before D4 code mutation.
+
+## Current implementation state
+
+Product source remains unchanged by the R1/R2 acceptance transition. In particular, current executable target-order policy still uses `candidate_independent_priority.v1` until an accepted D3-guided D4 cutover replaces it.
+
+This is intentional. Do not partially activate the restored selector by changing policy tokens, schemas, prepared generations, or individual modules before D3 acceptance.
+
+At D4 cutover, old `candidate_independent_priority.v1` prepared target-order products are stale/reconstructible under the new semantic policy and must rebuild through existing preparation/currentness ownership. Do not migrate old ranks into the new method and do not add a parallel compatibility selector.
+
+## Protected current architecture
+
+The restoration must preserve:
+
+- one current `U_size -> P_train + M3` split;
+- one training population `P_train`;
+- one complete `TargetTrainingOrder` / `pi_train`;
+- exact nested `T_N=pi_train[:N]` memberships;
+- current configurable target-size ladder;
+- current `pi_eval/M1/M2/M3`;
+- current P3 training/evaluation/reducer semantics;
+- current post-selection CV/replay/production lifecycle;
+- `prepare` as live selector-input/build/publication orchestration owner;
+- current campaign/prepared-generation store as currentness/adoption owner;
+- final production-scale GPU qualification deferred to the final release package.
+
+## Next gate instruction
+
+Perform an independent Protocol-6.3 D3 review of the prepared R3 contract against:
+
+- the accepted scoped D1/D2 papers;
+- Revision 5-8 workplan requirements;
+- R2 dependency/provenance map;
+- current architecture/owners at the active code base.
+
+If genuine D3 blockers exist, amend the R3 contract at the owning architecture layer. If none exist, record D3 PASS/acceptance and authorize D4 implementation. Do not reopen accepted R1 merely for implementation preferences or execution-only tuning.

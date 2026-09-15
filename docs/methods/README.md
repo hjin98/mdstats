@@ -13,9 +13,19 @@ The dependency direction is `D1 -> D2 -> D3 -> D4`. A downstream layer may chall
 
 ## MLFF method set
 
-- [`mlff_scientific_method.md`](mlff_scientific_method.md) — current normative D1 scientific/mathematical authority for the MLFF training-data, target-size, fine-tuning, validation, and production method.
-- [`mlff_numerical_algorithmic_method.md`](mlff_numerical_algorithmic_method.md) — current normative D2 numerical/algorithmic authority that realizes the D1 formulation.
+The current MLFF method authority is a scoped method-paper family:
 
-These papers were reconstructed losslessly from the accepted pre-promotion architecture/specification/code evidence, independently reviewed, and explicitly accepted by the human owner on 2026-09-13. Reconstruction provenance and review evidence remain under `../history/mlff/`; they explain how the authority was recovered but do not compete with the accepted current papers.
+- [`mlff_scientific_method.md`](mlff_scientific_method.md) — general current normative D1 authority for MLFF training-data, target-size experiment, fine-tuning, validation, and production semantics outside the specialized target-order surface below.
+- [`mlff_numerical_algorithmic_method.md`](mlff_numerical_algorithmic_method.md) — general current normative D2 authority realizing the general D1 formulation outside the specialized target-order surface below.
+- [`mlff_target_training_order_scientific_method.md`](mlff_target_training_order_scientific_method.md) — sole current D1 owner for `TargetTrainingOrder` / `pi_train` membership design, multi-view coverage/support, configured-shell repair meaning, complete-order continuation, and membership qualification.
+- [`mlff_target_training_order_numerical_algorithmic_method.md`](mlff_target_training_order_numerical_algorithmic_method.md) — sole current D2 owner for TargetCoverage/FEAS1/NEIGHBOR1/MVIDX1/MVSEL2/REPAIR2/MVQUAL numerical semantics and exact-equivalent optimized execution.
+
+### Scoped precedence
+
+The target-training-order papers were independently reviewed and stakeholder-ratified on 2026-09-15 under `MLFF-PI-TRAIN-FPS-DIVERSITY-RESTORATION-1`. For their explicitly declared target-order scope, they supersede conflicting older target-order passages in the two general papers. The general papers remain current for every unaffected contract.
+
+This is a permanent subject-matter decomposition of the current method family, not an amendment replay chain. Workplan reconstruction/addendum/review artifacts remain provenance and evidence only after promotion.
+
+The original general papers were reconstructed losslessly from accepted pre-promotion architecture/specification/code evidence and accepted by the human owner on 2026-09-13, with later accepted revisions recorded in their own provenance. The target-order papers record the later 2026-09-15 MVSEL2 restoration separately so that earlier reviews are not retroactively represented as having covered it.
 
 The current D3 architecture may restate an upstream consequence where local comprehension requires it, but such restatement is not independently tunable authority. Exact D4 contracts likewise realize D1-D3 rather than overriding them.
