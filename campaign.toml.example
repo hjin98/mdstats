@@ -115,9 +115,9 @@ sizes = [512]
 structural_workers = 0
 
 [target_data.size_convergence]
-# Candidate target sizes are powers from target_size_power_min through
-# target_size_power_max. The configured range is the scientific ladder; it is
-# not a hidden fixed-size universe.
+# Candidate sizes are exact prefixes of the one prepare-owned pi_train order;
+# this ladder is an experiment definition, not a second membership selector or
+# a hidden fixed-size universe.
 target_size_power_min = 7
 target_size_power_max = 14
 evaluation_size_powers = [8, 9, 10]

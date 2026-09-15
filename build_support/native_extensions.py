@@ -17,11 +17,19 @@ class NativeExtensionSpec:
     language: str | None = None
 
 
-#: The package currently ships no in-tree compiled extension.  The retired
-#: MVSEL2 selection kernel was removed with the destructive target-size
-#: generation cutover; the registry itself remains the canonical place to
-#: declare a future native extension and its portable build requirements.
-_NATIVE_EXTENSION_SPECS: tuple[NativeExtensionSpec, ...] = ()
+#: The restored target-order MVSEL2 candidate-row scorer.  It is an exact
+#: execution primitive only: strict FP (no reassociation/contraction), OpenMP
+#: over independent rows, optional so an unavailable build selects the exact
+#: serial NumPy path and never changes selection semantics.
+_NATIVE_EXTENSION_SPECS: tuple[NativeExtensionSpec, ...] = (
+    NativeExtensionSpec(
+        module="mdstats._mvsel2_native",
+        sources=("mdstats/_mvsel2_native.c",),
+        strict_fp=True,
+        openmp=True,
+        optional=True,
+    ),
+)
 
 
 def registered_native_extension_specs() -> tuple[NativeExtensionSpec, ...]:

@@ -4,10 +4,11 @@ The implementation lives in :mod:`_campaign_cli_core`.  The facade re-exports
 that module surface so ``mdstats.training_data.campaign_cli`` remains the stable
 public entry point for the campaign commands.
 
-The retired MVSEL2/REPAIR2/MVQUAL2/MVIDX1 selection runtimes that this facade
-used to install into the core module were removed with the destructive
-target-size generation cutover: the current runtime has exactly one target-size
-architecture and no installable alternative selection engine.
+Historical pre-cutover selector runtimes are not installed through this facade.
+The current runtime has exactly one target-size architecture: `prepare` owns the
+restored `P_train -> TargetCoverageReference -> FEAS1/NEIGHBOR1 -> MVIDX ->
+MVSEL2/REPAIR2 -> pi_train -> MVQUAL` chain, and downstream commands consume its
+authenticated compact projection.
 """
 from __future__ import annotations
 

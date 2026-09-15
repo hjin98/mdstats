@@ -66,3 +66,34 @@ def deterministic_density_runtime_budget(request):
     )
     with density_resource_budget_scope(budget):
         yield
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "real_target_order: reach prepare's real multi-view target-order owner instead of the "
+        "below-claim downstream substitute",
+    )
+
+
+@pytest.fixture(autouse=True)
+def substitute_target_order_owner_for_downstream_campaign_tests(request, monkeypatch):
+    """Downstream MLFF campaign fixtures are far below the target-order method's scale.
+
+    Their claims concern P2/P3/publication/post-selection behavior, not how
+    ``pi_train`` is built, so ``prepare`` receives the deterministic substitute
+    from ``tests/support/target_order_substitute.py``.  Suites that claim the
+    target-order chain itself opt out with ``@pytest.mark.real_target_order``.
+    """
+
+    path = Path(str(request.fspath))
+    if not path.name.startswith("test_mlff_") or request.node.get_closest_marker("real_target_order"):
+        yield
+        return
+    from tests.support.target_order_substitute import substitute_prepare_target_order
+
+    monkeypatch.setattr(
+        "mdstats.training_data.campaign_target_size_runtime._build_current_target_training_order",
+        substitute_prepare_target_order,
+    )
+    yield

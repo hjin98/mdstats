@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any
@@ -49,7 +49,16 @@ CONFIGURED_CEILING_NONCONVERGENCE_REASON_CODE = "nonconverged_at_configured_ceil
 TARGET_SIZE_POPULATION_SCHEMA = "mdstats.target-size-population.v1"
 TARGET_SIZE_POPULATION_FRAME_SCHEMA = "mdstats.target-size-population-frame.v1"
 TARGET_SIZE_SPLIT_SCHEMA = "mdstats.target-size-population-split.v1"
-TARGET_TRAINING_ORDER_SCHEMA = "mdstats.target-training-order.v1"
+#: The one current target-order method: the restored multi-view MVSEL2 order
+#: with configured-shell REPAIR2, complete ``P_train`` continuation and
+#: independent MVQUAL (docs/methods/mlff_target_training_order_*_method.md).
+TARGET_TRAINING_ORDER_POLICY = "multi_view_mvsel2_repair2.v1"
+#: Retired priority/condition-round-robin order.  It is reproduced only under
+#: the retired v1 policy schema to authenticate preserved pre-rework
+#: workspaces; it is never an executable current order.
+LEGACY_TRAINING_ORDER_POLICY = "candidate_independent_priority.v1"
+TARGET_TRAINING_ORDER_V1_SCHEMA = "mdstats.target-training-order.v1"
+TARGET_TRAINING_ORDER_SCHEMA = "mdstats.target-training-order.v2"
 TARGET_EVALUATION_ORDER_SCHEMA = "mdstats.target-evaluation-order.v1"
 TARGET_SIZE_DEFINITION_SCHEMA = "mdstats.target-size-experiment-definition.v1"
 TARGET_SIZE_METRIC_SCHEMA = "mdstats.target-size-boundary-metric.v1"
@@ -57,7 +66,8 @@ TARGET_SIZE_FAILURE_SCHEMA = "mdstats.target-size-numerical-failure.v1"
 TARGET_SIZE_REDUCER_SCHEMA = "mdstats.target-size-reducer-state.v1"
 TARGET_SIZE_AGGREGATE_SCHEMA = "mdstats.target-size-statistical-aggregate.v1"
 TARGET_SIZE_HARD_OBLIGATION_SCHEMA = "mdstats.target-size-hard-support-obligation.v1"
-TARGET_SIZE_QUALIFICATION_SCHEMA = "mdstats.target-size-candidate-qualification.v1"
+TARGET_SIZE_QUALIFICATION_V1_SCHEMA = "mdstats.target-size-candidate-qualification.v1"
+TARGET_SIZE_QUALIFICATION_SCHEMA = "mdstats.target-size-candidate-qualification.v2"
 TARGET_SIZE_FUNNEL_POLICY_SCHEMA = "mdstats.target-size-funnel.v1"
 TARGET_SIZE_FUNNEL_TRANSITION = "q->min(q,4)->2->1"
 
@@ -225,7 +235,7 @@ class ResolvedTargetSizePolicy:
     paired_seed_aggregation: str = "arithmetic_mean"
     ranking_metric: str = "target_force_rmse_mev_per_a"
     practical_equivalence_mev_per_a: float = 1.0
-    training_order_policy: str = "candidate_independent_priority.v1"
+    training_order_policy: str = TARGET_TRAINING_ORDER_POLICY
     split_policy: str = "training_priority_exact_reserve.v1"
     evaluation_order_policy: str = "candidate_independent_representative.v1"
     terminal_decision_policy: str = TARGET_SIZE_TERMINAL_DECISION_POLICY
@@ -325,6 +335,17 @@ class ResolvedTargetSizePolicy:
             raise TrainingDataInputError(
                 "Only the current target-size terminal-decision policy "
                 f"{TARGET_SIZE_TERMINAL_DECISION_POLICY!r} is supported."
+            )
+        expected_order_policy = (
+            LEGACY_TRAINING_ORDER_POLICY
+            if self.schema_version == TARGET_SIZE_POLICY_V1_SCHEMA
+            else TARGET_TRAINING_ORDER_POLICY
+        )
+        if self.training_order_policy != expected_order_policy:
+            raise TrainingDataInputError(
+                f"training_order_policy {self.training_order_policy!r} is not executable under "
+                f"{self.schema_version}; the current target-order method is "
+                f"{TARGET_TRAINING_ORDER_POLICY!r}."
             )
         # Canonical normalization participates in policy identity: stable
         # ordering, validated selectors, no contradictory aliases.
@@ -439,7 +460,7 @@ def resolve_target_size_policy(
     optimizer_seeds: Sequence[int] = (1, 2),
     ranking_metric: str = "target_force_rmse_mev_per_a",
     practical_equivalence_mev_per_a: float = 1.0,
-    training_order_policy: str = "candidate_independent_priority.v1",
+    training_order_policy: str | None = None,
     split_policy: str = "training_priority_exact_reserve.v1",
     evaluation_order_policy: str = "candidate_independent_representative.v1",
     terminal_decision_policy: str = TARGET_SIZE_TERMINAL_DECISION_POLICY,
@@ -468,7 +489,15 @@ def resolve_target_size_policy(
         optimizer_seeds=tuple(optimizer_seeds),
         ranking_metric=ranking_metric,
         practical_equivalence_mev_per_a=practical_equivalence_mev_per_a,
-        training_order_policy=training_order_policy,
+        training_order_policy=(
+            (
+                LEGACY_TRAINING_ORDER_POLICY
+                if schema_version == TARGET_SIZE_POLICY_V1_SCHEMA
+                else TARGET_TRAINING_ORDER_POLICY
+            )
+            if training_order_policy is None
+            else training_order_policy
+        ),
         split_policy=split_policy,
         evaluation_order_policy=evaluation_order_policy,
         terminal_decision_policy=terminal_decision_policy,
@@ -555,8 +584,10 @@ def resolve_target_size_policy_from_config(
         practical_equivalence_mev_per_a=float(
             size.get("practical_equivalence_mev_per_a", 1.0)
         ),
-        training_order_policy=str(
-            size.get("training_order_policy", "candidate_independent_priority.v1")
+        training_order_policy=(
+            None
+            if "training_order_policy" not in size
+            else str(size["training_order_policy"])
         ),
         split_policy=str(
             size.get("split_policy", "training_priority_exact_reserve.v1")
@@ -1116,8 +1147,13 @@ class TargetTrainingOrder:
     selection_evidence_digest: str
     frame_uids: tuple[str, ...]
     diagnostics: tuple[tuple[str, int], ...] = ()
+    #: v2 binds ``selection_evidence_digest`` to the prepared target-order
+    #: build; v1 is the retired priority order of preserved workspaces.
+    schema_version: str = TARGET_TRAINING_ORDER_SCHEMA
 
     def __post_init__(self) -> None:
+        if self.schema_version not in (TARGET_TRAINING_ORDER_SCHEMA, TARGET_TRAINING_ORDER_V1_SCHEMA):
+            raise TrainingDataInputError("Unsupported target-training-order schema.")
         for name in (
             "population_digest",
             "split_digest",
@@ -1155,7 +1191,7 @@ class TargetTrainingOrder:
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": TARGET_TRAINING_ORDER_SCHEMA,
+            "schema": self.schema_version,
             "population_digest": self.population_digest,
             "split_digest": self.split_digest,
             "policy_digest": self.policy_digest,
@@ -1173,7 +1209,8 @@ class TargetTrainingOrder:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> TargetTrainingOrder:
-        if payload.get("schema") != TARGET_TRAINING_ORDER_SCHEMA:
+        schema = payload.get("schema")
+        if schema not in (TARGET_TRAINING_ORDER_SCHEMA, TARGET_TRAINING_ORDER_V1_SCHEMA):
             raise TrainingDataSerializationError(
                 "Unsupported target-training-order schema."
             )
@@ -1186,6 +1223,7 @@ class TargetTrainingOrder:
             diagnostics=tuple(
                 (str(k), int(v)) for k, v in payload.get("diagnostics", {}).items()
             ),
+            schema_version=str(schema),
         )
         _checked_dict_digest(
             payload, result.content_digest, name="Target training order"
@@ -1197,9 +1235,56 @@ def build_target_training_order(
     population: TargetSizePopulation,
     split: TargetSizePopulationSplit,
     policy: ResolvedTargetSizePolicy,
+    target_order: Any,
+) -> TargetTrainingOrder:
+    """Project one prepared complete multi-view order into the P2 record.
+
+    ``target_order`` is the prepare-owned target-order build (see
+    ``mdstats.training_data.target_order``).  P2 authenticates lineage and the
+    exact ``P_train`` permutation; it never reorders or completes the order.
+    """
+
+    if (
+        split.population_digest != population.content_digest
+        or split.policy_digest != policy.content_digest
+    ):
+        raise TrainingDataInputError("Target-training order parent lineage mismatch.")
+    if policy.schema_version == TARGET_SIZE_POLICY_V1_SCHEMA:
+        raise TrainingDataInputError(
+            "The retired v1 target-size policy has no current target-training order."
+        )
+    preparation = target_order.preparation
+    if (
+        preparation.population_digest != population.content_digest
+        or preparation.split_digest != split.content_digest
+        or tuple(preparation.configured_sizes) != policy.candidate_sizes
+    ):
+        raise TrainingDataInputError("Prepared target-order build does not bind this P2 split/ladder.")
+    order = tuple(str(uid) for uid in target_order.frame_uids)
+    if len(order) != len(split.training_frame_uids) or set(order) != set(split.training_frame_uids):
+        raise TrainingDataInputError("Prepared target-order build is not a complete P_train permutation.")
+    return TargetTrainingOrder(
+        population_digest=population.content_digest,
+        split_digest=split.content_digest,
+        policy_digest=policy.content_digest,
+        selection_evidence_digest=preparation.content_digest,
+        frame_uids=order,
+        diagnostics=(
+            ("ordered_configuration_count", len(order)),
+            ("repair_swap_count", int(target_order.repair_plan.total_swaps)),
+        ),
+    )
+
+
+def _legacy_priority_training_order(
+    population: TargetSizePopulation,
+    split: TargetSizePopulationSplit,
+    policy: ResolvedTargetSizePolicy,
     *,
     selection_evidence: Mapping[str, Sequence[float] | float] | None = None,
 ) -> TargetTrainingOrder:
+    """Retired v1 priority order, reproduced only for preserved workspaces."""
+
     if (
         split.population_digest != population.content_digest
         or split.policy_digest != policy.content_digest
@@ -1218,6 +1303,7 @@ def build_target_training_order(
         selection_evidence_digest=evidence_digest,
         frame_uids=order,
         diagnostics=(("ordered_configuration_count", len(order)),),
+        schema_version=TARGET_TRAINING_ORDER_V1_SCHEMA,
     )
 
 
@@ -1345,17 +1431,20 @@ def build_target_evaluation_order(
 class TargetSizeCandidateQualification:
     """Derived per-N qualification evidence for one exact candidate prefix.
 
-    Qualification is exactly:
+    Current (v2) qualification is the P2 projection of independent MVQUAL:
 
         qualified(N) = prefix_exists(N)
                        AND labels_training_usable(T_N)
-                       AND all_configured_hard_support_obligations_satisfied(T_N)
+                       AND every required coverage family passes (0.95)
+                       AND every required extent passes
+                       AND every canonical hard obligation is satisfied
 
-    It never reorders, repairs, swaps, or constructs a different prefix, and it
-    never depends on optimizer seed results, evaluation outcomes, survivor
-    state, selection diagnostics, or P3 runtime accidents.  Persisted
-    qualification evidence is derived/checkable state, not an editable
-    authority.
+    where ``unsatisfied_obligation_ids`` name canonical obligations.  The
+    retired v1 record (explicit hard-support counts only) is reproduced solely
+    for preserved pre-rework workspaces.  Qualification never reorders,
+    repairs, swaps, or constructs a different prefix, and never depends on
+    optimizer seed results, evaluation outcomes, survivor state, or P3 runtime
+    accidents.
     """
 
     target_size: int
@@ -1363,6 +1452,13 @@ class TargetSizeCandidateQualification:
     labels_training_usable: bool
     obligation_counts: tuple[tuple[str, int], ...]
     unsatisfied_obligation_ids: tuple[str, ...]
+    coverage_passed: bool = True
+    extent_passed: bool = True
+    failed_coverage_family_ids: tuple[str, ...] = ()
+    failed_extent_family_ids: tuple[str, ...] = ()
+    minimum_family_coverage: float | None = None
+    mvqual_rung_digest: str | None = None
+    schema_version: str = TARGET_SIZE_QUALIFICATION_SCHEMA
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -1376,6 +1472,37 @@ class TargetSizeCandidateQualification:
             raise TrainingDataInputError(
                 "A prefix with unusable training labels cannot carry qualification counts."
             )
+        if self.schema_version == TARGET_SIZE_QUALIFICATION_V1_SCHEMA:
+            if (
+                not self.coverage_passed
+                or not self.extent_passed
+                or self.failed_coverage_family_ids
+                or self.failed_extent_family_ids
+                or self.minimum_family_coverage is not None
+                or self.mvqual_rung_digest is not None
+            ):
+                raise TrainingDataInputError(
+                    "Retired v1 qualification carries no coverage evidence."
+                )
+        elif self.schema_version == TARGET_SIZE_QUALIFICATION_SCHEMA:
+            object.__setattr__(
+                self,
+                "mvqual_rung_digest",
+                validate_digest(self.mvqual_rung_digest, name="mvqual_rung_digest"),
+            )
+            if self.minimum_family_coverage is not None:
+                coverage = float(self.minimum_family_coverage)
+                if not math.isfinite(coverage):
+                    raise TrainingDataInputError("minimum_family_coverage must be finite.")
+                object.__setattr__(self, "minimum_family_coverage", coverage)
+            if bool(self.coverage_passed) == bool(self.failed_coverage_family_ids) or bool(
+                self.extent_passed
+            ) == bool(self.failed_extent_family_ids):
+                raise TrainingDataInputError(
+                    "Qualification pass flags disagree with the failed families."
+                )
+        else:
+            raise TrainingDataInputError("Unsupported target-size qualification schema.")
         object.__setattr__(
             self,
             "obligation_counts",
@@ -1386,20 +1513,38 @@ class TargetSizeCandidateQualification:
             "unsatisfied_obligation_ids",
             tuple(str(v) for v in self.unsatisfied_obligation_ids),
         )
+        for name in ("failed_coverage_family_ids", "failed_extent_family_ids"):
+            object.__setattr__(self, name, tuple(sorted(str(v) for v in getattr(self, name))))
 
     @property
     def qualified(self) -> bool:
-        return not self.unsatisfied_obligation_ids
+        return (
+            self.coverage_passed
+            and self.extent_passed
+            and not self.unsatisfied_obligation_ids
+        )
 
     def _payload(self) -> dict[str, Any]:
-        return {
-            "schema": TARGET_SIZE_QUALIFICATION_SCHEMA,
+        payload: dict[str, Any] = {
+            "schema": self.schema_version,
             "target_size": self.target_size,
             "prefix_exists": self.prefix_exists,
             "labels_training_usable": self.labels_training_usable,
             "obligation_counts": dict(self.obligation_counts),
             "unsatisfied_obligation_ids": list(self.unsatisfied_obligation_ids),
         }
+        if self.schema_version == TARGET_SIZE_QUALIFICATION_SCHEMA:
+            payload.update(
+                {
+                    "coverage_passed": self.coverage_passed,
+                    "extent_passed": self.extent_passed,
+                    "failed_coverage_family_ids": list(self.failed_coverage_family_ids),
+                    "failed_extent_family_ids": list(self.failed_extent_family_ids),
+                    "minimum_family_coverage": self.minimum_family_coverage,
+                    "mvqual_rung_digest": self.mvqual_rung_digest,
+                }
+            )
+        return payload
 
     @property
     def content_digest(self) -> str:
@@ -1410,10 +1555,16 @@ class TargetSizeCandidateQualification:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> TargetSizeCandidateQualification:
-        if payload.get("schema") != TARGET_SIZE_QUALIFICATION_SCHEMA:
+        schema = payload.get("schema")
+        if schema not in (
+            TARGET_SIZE_QUALIFICATION_SCHEMA,
+            TARGET_SIZE_QUALIFICATION_V1_SCHEMA,
+        ):
             raise TrainingDataSerializationError(
                 "Unsupported target-size qualification schema."
             )
+        current = schema == TARGET_SIZE_QUALIFICATION_SCHEMA
+        minimum = payload.get("minimum_family_coverage") if current else None
         result = cls(
             target_size=int(payload["target_size"]),
             prefix_exists=bool(payload["prefix_exists"]),
@@ -1424,6 +1575,17 @@ class TargetSizeCandidateQualification:
             unsatisfied_obligation_ids=tuple(
                 str(v) for v in payload["unsatisfied_obligation_ids"]
             ),
+            coverage_passed=bool(payload["coverage_passed"]) if current else True,
+            extent_passed=bool(payload["extent_passed"]) if current else True,
+            failed_coverage_family_ids=(
+                tuple(payload["failed_coverage_family_ids"]) if current else ()
+            ),
+            failed_extent_family_ids=(
+                tuple(payload["failed_extent_family_ids"]) if current else ()
+            ),
+            minimum_family_coverage=None if minimum is None else float(minimum),
+            mvqual_rung_digest=str(payload["mvqual_rung_digest"]) if current else None,
+            schema_version=str(schema),
         )
         _checked_dict_digest(
             payload, result.content_digest, name="Target-size qualification"
@@ -1431,18 +1593,80 @@ class TargetSizeCandidateQualification:
         return result
 
 
+def project_target_size_qualification(
+    population: TargetSizePopulation,
+    training_order: TargetTrainingOrder,
+    policy: ResolvedTargetSizePolicy,
+    target_order: Any,
+) -> tuple[TargetSizeCandidateQualification, ...]:
+    """Project prepared independent MVQUAL evidence into current P2 records.
+
+    MVQUAL is the sole qualification authority; this projection only binds its
+    configured-prefix rungs to the exact ``pi_train`` prefixes and bound labels.
+    """
+
+    # Keep the definition-only downstream path light: manual
+    # ``select-target-size N`` authenticates the already-published definition
+    # and exact membership digest, but it must not import the selector owner or
+    # reopen selector/MVIDX artifacts.  The selector digest helper is needed
+    # only while the prepare-owned MVQUAL result is projected.
+    from .target_order.selector import prefix_digest as target_order_prefix_digest
+
+    plan = target_order.qualification
+    if training_order.selection_evidence_digest != target_order.preparation.content_digest:
+        raise TrainingDataInputError("MVQUAL evidence does not belong to this training order.")
+    if tuple(item.target_size for item in plan.rungs) != policy.candidate_sizes:
+        raise TrainingDataInputError(
+            "MVQUAL rungs do not match the configured candidate ladder."
+        )
+    by_uid = population._by_uid
+    result: list[TargetSizeCandidateQualification] = []
+    for rung in plan.rungs:
+        prefix = training_order.candidate_membership(rung.target_size)
+        if rung.frame_uids_digest != target_order_prefix_digest(prefix):
+            raise TrainingDataInputError(
+                f"MVQUAL rung n{rung.target_size} does not qualify the exact pi_train prefix."
+            )
+        if not all(uid in by_uid for uid in prefix):
+            raise TrainingDataInputError(
+                "A configured candidate prefix contains frames without usable canonical labels."
+            )
+        result.append(
+            TargetSizeCandidateQualification(
+                target_size=rung.target_size,
+                prefix_exists=True,
+                labels_training_usable=True,
+                obligation_counts=(),
+                unsatisfied_obligation_ids=rung.unsatisfied_obligation_ids,
+                coverage_passed=rung.coverage_passed,
+                extent_passed=rung.extent_passed,
+                failed_coverage_family_ids=tuple(
+                    item.family_id for item in rung.family_reports if not item.coverage_passed
+                ),
+                failed_extent_family_ids=tuple(
+                    item.family_id for item in rung.family_reports if not item.extent_passed
+                ),
+                minimum_family_coverage=(
+                    rung.minimum_family_coverage if rung.family_reports else None
+                ),
+                mvqual_rung_digest=digest(rung.to_dict()),
+            )
+        )
+    return tuple(result)
+
+
 def qualify_target_size_candidates(
     population: TargetSizePopulation,
     training_order: TargetTrainingOrder,
     policy: ResolvedTargetSizePolicy,
 ) -> tuple[TargetSizeCandidateQualification, ...]:
-    """Qualify each configured exact prefix under the resolved policy.
+    """Retired v1 explicit-obligation qualification of preserved workspaces."""
 
-    Only explicitly configured hard-support obligations gate a prefix.
-    Coverage, novelty, residual, balance, and other diagnostics remain
-    ordering/observational evidence and never enter this decision.
-    """
-
+    if policy.schema_version != TARGET_SIZE_POLICY_V1_SCHEMA:
+        raise TrainingDataInputError(
+            "Current target-size qualification is the MVQUAL projection; "
+            "explicit-count qualification is retired."
+        )
     by_uid = population._by_uid
     result: list[TargetSizeCandidateQualification] = []
     for size in policy.candidate_sizes:
@@ -1477,6 +1701,7 @@ def qualify_target_size_candidates(
                 labels_training_usable=labels_usable,
                 obligation_counts=tuple(counts),
                 unsatisfied_obligation_ids=tuple(unsatisfied),
+                schema_version=TARGET_SIZE_QUALIFICATION_V1_SCHEMA,
             )
         )
     return tuple(result)
@@ -1539,9 +1764,27 @@ class TargetSizeExperimentDefinition:
             raise TrainingDataInputError(
                 "M ladder memberships do not match exact pi_eval prefixes."
             )
+        qualification = tuple(self.candidate_qualification)
+        legacy = self.policy.schema_version == TARGET_SIZE_POLICY_V1_SCHEMA
+        expected_order_schema = (
+            TARGET_TRAINING_ORDER_V1_SCHEMA if legacy else TARGET_TRAINING_ORDER_SCHEMA
+        )
+        expected_qualification_schema = (
+            TARGET_SIZE_QUALIFICATION_V1_SCHEMA if legacy else TARGET_SIZE_QUALIFICATION_SCHEMA
+        )
+        if self.training_order.schema_version != expected_order_schema or any(
+            item.schema_version != expected_qualification_schema for item in qualification
+        ):
+            raise TrainingDataInputError(
+                "Target-size definition mixes target-order/qualification schemas of different policies."
+            )
+        if tuple(item.target_size for item in qualification) != self.policy.candidate_sizes:
+            raise TrainingDataInputError(
+                "Candidate qualification does not cover the configured candidate ladder."
+            )
         object.__setattr__(self, "candidate_membership_digests", candidates)
         object.__setattr__(self, "evaluation_membership_digests", evaluations)
-        object.__setattr__(self, "candidate_qualification", tuple(self.candidate_qualification))
+        object.__setattr__(self, "candidate_qualification", qualification)
 
     @property
     def funnel_policy(self) -> dict[str, str]:
@@ -1658,6 +1901,8 @@ def build_target_size_experiment_definition(
     training_order: TargetTrainingOrder,
     evaluation_order: TargetEvaluationOrder,
     policy: ResolvedTargetSizePolicy,
+    *,
+    target_order: Any | None = None,
 ) -> TargetSizeExperimentDefinition:
     expected_train = set(split.training_frame_uids)
     expected_eval = set(split.evaluation_reserve_frame_uids)
@@ -1673,11 +1918,20 @@ def build_target_size_experiment_definition(
         raise TrainingDataInputError(
             "Target training and evaluation populations overlap."
         )
-    qualification = qualify_target_size_candidates(population, training_order, policy)
+    if policy.schema_version == TARGET_SIZE_POLICY_V1_SCHEMA:
+        qualification = qualify_target_size_candidates(population, training_order, policy)
+    else:
+        if target_order is None:
+            raise TrainingDataInputError(
+                "Current target-size qualification requires the prepared MVQUAL evidence."
+            )
+        qualification = project_target_size_qualification(
+            population, training_order, policy, target_order
+        )
     qualified_sizes = tuple(item.target_size for item in qualification if item.qualified)
     if len(qualified_sizes) < REQUIRED_QUALIFIED_CANDIDATE_COUNT:
         raise TrainingDataInputError(
-            "Hard-support qualification leaves "
+            "Membership qualification leaves "
             f"{len(qualified_sizes)} qualified candidate(s) {list(qualified_sizes)}; "
             f"the {TARGET_SIZE_FUNNEL_TRANSITION} funnel requires at least "
             f"{REQUIRED_QUALIFIED_CANDIDATE_COUNT} qualified candidate sizes."
@@ -2436,19 +2690,25 @@ class TargetSizeStatisticalAggregate:
             raise TrainingDataInputError(
                 "Aggregate definition/policy lineage mismatch."
             )
-        # Derived candidate qualification is freshly re-derivable from the
-        # exact prefixes, the bound population, and the normalized hard-support
-        # obligations; stored qualified=true can never survive a policy or
-        # prefix change.
-        derived_qualification = qualify_target_size_candidates(
-            self.population, self.definition.training_order, self.policy
-        )
-        if tuple(item.content_digest for item in derived_qualification) != tuple(
-            item.content_digest for item in self.definition.candidate_qualification
-        ):
+        if self.policy.schema_version == TARGET_SIZE_POLICY_V1_SCHEMA:
+            # Retired v1 qualification is freshly re-derivable from the exact
+            # prefixes, the bound population, and the explicit obligations.
+            derived_qualification = qualify_target_size_candidates(
+                self.population, self.definition.training_order, self.policy
+            )
+            if tuple(item.content_digest for item in derived_qualification) != tuple(
+                item.content_digest for item in self.definition.candidate_qualification
+            ):
+                raise TrainingDataInputError(
+                    "Persisted candidate qualification does not match deterministic "
+                    "re-derivation from the exact prefixes and bound policy."
+                )
+        elif training_evidence:
+            # The multi-view order is prepared selector evidence bound through
+            # the training order's target-order build digest, not a priority
+            # vector.
             raise TrainingDataInputError(
-                "Persisted candidate qualification does not match deterministic "
-                "re-derivation from the exact prefixes and bound policy."
+                "The current target-training order accepts no priority evidence."
             )
         validate_target_size_reducer_state(self.definition, self.reducer_state)
         object.__setattr__(self, "training_priority_evidence", training_evidence)
@@ -2498,6 +2758,17 @@ class TargetSizeStatisticalAggregate:
             raise TrainingDataSerializationError(
                 "Unsupported target-size aggregate schema."
             )
+        if payload.get("frame_authority_digest") != frame_authority.content_digest:
+            raise TrainingDataSerializationError(
+                "Target-size aggregate P1 frame authority mismatch."
+            )
+        if (
+            payload.get("neutral_statistical_base_digest")
+            != neutral_base.content_digest
+        ):
+            raise TrainingDataSerializationError(
+                "Target-size aggregate P1 neutral base mismatch."
+            )
         serialized_population = TargetSizePopulation.from_dict(payload["population"])
         serialized_policy = ResolvedTargetSizePolicy.from_dict(payload["policy"])
         serialized_split = TargetSizePopulationSplit.from_dict(payload["split"])
@@ -2531,33 +2802,56 @@ class TargetSizeStatisticalAggregate:
                 "authority does not match the accepted P1 owners; the stale "
                 "split and all descendants are rejected."
             )
-        rebuilt = build_target_size_statistical_aggregate(
-            frame_authority,
-            neutral_base,
-            policy=serialized_policy,
-            training_priority_evidence=_evidence_mapping(training_evidence),
-            evaluation_priority_evidence=_evidence_mapping(evaluation_evidence),
-        )
-        for name, serialized, derived in (
-            (
-                "population",
-                serialized_population.content_digest,
+        if serialized_policy.schema_version == TARGET_SIZE_POLICY_V1_SCHEMA:
+            rebuilt = build_target_size_statistical_aggregate(
+                frame_authority,
+                neutral_base,
+                policy=serialized_policy,
+                training_priority_evidence=_evidence_mapping(training_evidence),
+                evaluation_priority_evidence=_evidence_mapping(evaluation_evidence),
+            )
+            derived_digests = (
                 rebuilt.population.content_digest,
-            ),
-            ("split", serialized_split.content_digest, rebuilt.split.content_digest),
-            (
-                "definition",
-                serialized_definition.content_digest,
+                rebuilt.split.content_digest,
                 rebuilt.definition.content_digest,
-            ),
+            )
+        else:
+            # The prepared multi-view order and its MVQUAL projection are
+            # immutable prepared evidence: re-derive only the cheap P1/P2
+            # population, split and pi_eval, never target-order science.
+            population, _, split = _target_size_split_substrate(
+                frame_authority, neutral_base, serialized_policy
+            )
+            evaluation_order = build_target_evaluation_order(
+                population,
+                split,
+                serialized_policy,
+                ordering_evidence=_evidence_mapping(evaluation_evidence),
+            )
+            if (
+                evaluation_order.content_digest
+                != serialized_definition.evaluation_order.content_digest
+            ):
+                raise TrainingDataSerializationError(
+                    "Target-size aggregate pi_eval does not match deterministic derivation."
+                )
+            derived_digests = (
+                population.content_digest,
+                split.content_digest,
+                serialized_definition.content_digest,
+            )
+        for name, serialized, derived in (
+            ("population", serialized_population.content_digest, derived_digests[0]),
+            ("split", serialized_split.content_digest, derived_digests[1]),
+            ("definition", serialized_definition.content_digest, derived_digests[2]),
         ):
             if serialized != derived:
                 raise TrainingDataSerializationError(
                     f"Target-size aggregate {name} does not match deterministic derivation."
                 )
         result = cls(
-            frame_authority_digest=rebuilt.frame_authority_digest,
-            neutral_statistical_base_digest=rebuilt.neutral_statistical_base_digest,
+            frame_authority_digest=frame_authority.content_digest,
+            neutral_statistical_base_digest=neutral_base.content_digest,
             population=serialized_population,
             policy=serialized_policy,
             split=serialized_split,
@@ -2583,36 +2877,81 @@ class TargetSizeStatisticalAggregate:
         return result
 
 
+def _target_size_split_substrate(
+    frame_authority: CanonicalFrameAuthority,
+    neutral_base: NeutralStatisticalBase,
+    policy: ResolvedTargetSizePolicy,
+) -> tuple[TargetSizePopulation, NeutralSplitExclusionEvidence, TargetSizePopulationSplit]:
+    population = build_target_size_population(frame_authority, neutral_base)
+    split_exclusion = build_neutral_split_exclusion_evidence(
+        frame_authority, neutral_base
+    )
+    return population, split_exclusion, split_target_size_population(
+        population, policy, split_exclusion
+    )
+
+
 def build_target_size_statistical_aggregate(
     frame_authority: CanonicalFrameAuthority,
     neutral_base: NeutralStatisticalBase,
     *,
     policy: ResolvedTargetSizePolicy | None = None,
+    target_order_builder: (
+        Callable[[TargetSizePopulation, TargetSizePopulationSplit], Any] | None
+    ) = None,
     training_priority_evidence: Mapping[str, Sequence[float] | float] | None = None,
     evaluation_priority_evidence: Mapping[str, Sequence[float] | float] | None = None,
 ) -> TargetSizeStatisticalAggregate:
+    """Construct the P2 graph.
+
+    ``target_order_builder`` is prepare's target-order construction for the
+    exact split P2 hands it (``prepare_target_training_order``); P2 owns that
+    split and the projection of the returned order and MVQUAL evidence.  Only
+    the retired v1 policy reproduces its priority order without one.
+    """
+
     active = ResolvedTargetSizePolicy() if policy is None else policy
-    population = build_target_size_population(frame_authority, neutral_base)
-    split_exclusion = build_neutral_split_exclusion_evidence(
-        frame_authority, neutral_base
+    population, _, split = _target_size_split_substrate(
+        frame_authority, neutral_base, active
     )
-    split = split_target_size_population(population, active, split_exclusion)
-    training_items = _evidence_items(
-        split.training_frame_uids,
-        training_priority_evidence,
-        name="training_priority_evidence",
+    if (
+        active.schema_version != TARGET_SIZE_POLICY_V1_SCHEMA
+        and training_priority_evidence is not None
+    ):
+        raise TrainingDataInputError(
+            "The current target-training order accepts no priority evidence."
+        )
+    training_items = (
+        _evidence_items(
+            split.training_frame_uids,
+            training_priority_evidence,
+            name="training_priority_evidence",
+        )
+        if active.schema_version == TARGET_SIZE_POLICY_V1_SCHEMA
+        else ()
     )
     evaluation_items = _evidence_items(
         split.evaluation_reserve_frame_uids,
         evaluation_priority_evidence,
         name="evaluation_priority_evidence",
     )
-    training_order = build_target_training_order(
-        population,
-        split,
-        active,
-        selection_evidence=_evidence_mapping(training_items),
-    )
+    target_order = None
+    if active.schema_version == TARGET_SIZE_POLICY_V1_SCHEMA:
+        training_order = _legacy_priority_training_order(
+            population,
+            split,
+            active,
+            selection_evidence=_evidence_mapping(training_items),
+        )
+    else:
+        if target_order_builder is None:
+            raise TrainingDataInputError(
+                "The current target-training order is built only by prepare's target-order owner."
+            )
+        target_order = target_order_builder(population, split)
+        training_order = build_target_training_order(
+            population, split, active, target_order
+        )
     evaluation_order = build_target_evaluation_order(
         population,
         split,
@@ -2620,7 +2959,12 @@ def build_target_size_statistical_aggregate(
         ordering_evidence=_evidence_mapping(evaluation_items),
     )
     definition = build_target_size_experiment_definition(
-        population, split, training_order, evaluation_order, active
+        population,
+        split,
+        training_order,
+        evaluation_order,
+        active,
+        target_order=target_order,
     )
     return TargetSizeStatisticalAggregate(
         frame_authority_digest=frame_authority.content_digest,
@@ -2658,6 +3002,8 @@ __all__ = (
     "TargetSizePopulationSplit",
     "TargetSizeReducerState",
     "TargetSizeStatisticalAggregate",
+    "LEGACY_TRAINING_ORDER_POLICY",
+    "TARGET_TRAINING_ORDER_POLICY",
     "TargetTrainingOrder",
     "advance_target_size_reducer",
     "bind_target_size_execution_context",
@@ -2667,6 +3013,7 @@ __all__ = (
     "build_target_size_statistical_aggregate",
     "build_target_training_order",
     "initial_target_size_reducer",
+    "project_target_size_qualification",
     "qualify_target_size_candidates",
     "reference_exact_split_feasible",
     "resolve_target_size_policy",

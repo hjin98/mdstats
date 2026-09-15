@@ -47,7 +47,10 @@ from ._common import (
     sha256_file_cached,
 )
 
-PREPARED_GENERATION_SCHEMA = "mdstats.mlff-prepared-generation.v1"
+#: v2 adds the prepared multi-view target-order build.  A v1 generation was
+#: prepared under the retired priority order and is stale: it is rebuilt by
+#: ``prepare``, never migrated.
+PREPARED_GENERATION_SCHEMA = "mdstats.mlff-prepared-generation.v2"
 PREPARED_OBJECT_DIRECTORY = "objects"
 PREPARED_MANIFEST_DIRECTORY = "generations"
 
@@ -62,6 +65,7 @@ PREPARED_COMPONENT_NAMES = (
     "feature_evidence",
     "neutral_base",
     "split_exclusion",
+    "target_order",
     "aggregate",
     "common",
 )
@@ -154,6 +158,7 @@ def _component_types() -> dict[str, Any]:
         NeutralStatisticalBase,
         SourceAuthority,
     )
+    from .target_order.preparation import TargetOrderPreparation
     from .target_size_execution import TargetSizeCommonPreparation
     from .target_size_experiment import TargetSizeStatisticalAggregate
 
@@ -166,6 +171,7 @@ def _component_types() -> dict[str, Any]:
         "feature_evidence": NeutralFeatureEvidence,
         "neutral_base": NeutralStatisticalBase,
         "split_exclusion": NeutralSplitExclusionEvidence,
+        "target_order": TargetOrderPreparation,
         "aggregate": TargetSizeStatisticalAggregate,
         "common": TargetSizeCommonPreparation,
     }
@@ -364,7 +370,15 @@ def read_prepared_generation_manifest(
         raise PreparedGenerationError(
             "The published prepared-generation manifest is unreadable."
         ) from exc
-    return PreparedGenerationManifest.from_dict(payload)
+    try:
+        return PreparedGenerationManifest.from_dict(payload)
+    except TrainingDataSerializationError as exc:
+        raise PreparedGenerationMissingError(
+            "The prepared scientific substrate bound to this campaign generation was "
+            f"published by an earlier implementation ({exc}). It is stale under the "
+            "current target-training order and is not reinterpreted. Run `prepare` to "
+            "bind a fresh canonical generation."
+        ) from exc
 
 
 def _read_component(root: Path, name: str, digest_value: str) -> Mapping[str, Any]:
@@ -409,6 +423,15 @@ def load_prepared_generation_components(
             raise PreparedGenerationError(
                 f"Prepared component {name!r} failed its owner validation: {exc}"
             ) from exc
+    target_order = loaded["target_order"]
+    training_order = loaded["aggregate"].definition.training_order
+    if (
+        training_order.selection_evidence_digest != target_order.content_digest
+        or target_order.split_digest != loaded["aggregate"].split.content_digest
+    ):
+        raise PreparedGenerationError(
+            "The prepared target-training order does not bind the prepared target-order build."
+        )
     return loaded
 
 
@@ -500,6 +523,23 @@ def prepared_generation_protected_paths(paths: Any, manifest_digests: Any) -> se
             continue
         for digest_value in manifest.component_digests.values():
             protected.add(_object_path(root, digest_value))
+        try:
+            from .target_order.preparation import (
+                TargetOrderPreparation,
+                target_order_protected_paths,
+            )
+
+            target_order = TargetOrderPreparation.from_dict(
+                json.loads(
+                    _object_path(
+                        root, manifest.component_digests["target_order"]
+                    ).read_text(encoding="utf-8")
+                )
+            )
+        except Exception:
+            pass
+        else:
+            protected.update(target_order_protected_paths(root, target_order))
         for record in manifest.frame_records:
             member = cache_root / str(record["relative_path"])
             protected.add(member)

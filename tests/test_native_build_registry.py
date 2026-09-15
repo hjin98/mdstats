@@ -30,14 +30,18 @@ def test_native_registry_is_unique_and_sources_exist() -> None:
             assert (ROOT / source).is_file(), source
 
 
-def test_retired_mvsel2_native_kernel_is_unregistered_and_absent() -> None:
-    """The retired selection kernel left no registry entry or source behind."""
+def test_restored_mvsel2_native_kernel_is_registered_and_present() -> None:
+    """The restored MVSEL2 execution primitive is a registered package owner."""
 
-    modules = tuple(
-        spec.module for spec in native_extensions.registered_native_extension_specs()
+    specs = native_extensions.registered_native_extension_specs()
+    spec = next(
+        spec for spec in specs if spec.module == "mdstats._mvsel2_native"
     )
-    assert "mdstats._mvsel2_native" not in modules
-    assert not (ROOT / "mdstats" / "_mvsel2_native.c").exists()
+    assert spec.sources == ("mdstats/_mvsel2_native.c",)
+    assert spec.strict_fp
+    assert spec.openmp
+    assert spec.optional
+    assert (ROOT / spec.sources[0]).is_file()
 
 
 def test_setup_py_delegates_all_native_targets_to_registry_without_bootstrap_import() -> None:

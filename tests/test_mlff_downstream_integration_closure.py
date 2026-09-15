@@ -883,10 +883,12 @@ def test_foreign_sibling_continuation_with_equal_runtime_shape_fails_before_eval
     import shutil
 
     # This partition seed gives both folds equal gradient-training sizes on
-    # the fixture's selected set, so their TRAIN2 runtime plans are equal.
+    # the restored fixture's selected set, so their TRAIN2 runtime plans are
+    # equal.  The restored pi_train order is part of the authenticated
+    # membership identity, so the old seed-0 coincidence is no longer true.
     config, _foundation, paused_root, _pauser = _paused_foundation_workspace(
         tmp_path,
-        cv_text="fold_count = 2\npartition_seed = 0",
+        cv_text="fold_count = 2\npartition_seed = 2",
     )
     staged = _ResumeFirstThenFailSecond()
     with pytest.raises(AssertionError, match="after materialization"):
