@@ -4,6 +4,8 @@
 
 This chapter owns the D3 integration structure that carries accepted D1 evidence semantics and D2 constructions into executable MLFF products. Scientific meanings such as independence, leakage, target-size interpretation, objective semantics, and validity are owned by D1. Numerical definitions such as correlation units, deterministic orders, common fitting, weighting algorithms, fold construction, common-monitor construction, and transfer-identifiability tests are owned by D2.
 
+For `TargetTrainingOrder` / `pi_train`, the accepted scoped method owners are `docs/methods/mlff_target_training_order_scientific_method.md` and `docs/methods/mlff_target_training_order_numerical_algorithmic_method.md`, and the canonical D3 subsystem owner is `45_target_training_order.md`.
+
 D3 therefore answers a narrower question: which software owner may create, persist, consume, or invalidate each product, and in what dependency direction?
 
 ## Evidence-role pipeline
@@ -13,8 +15,12 @@ The architectural flow is:
 ```text
 canonical frame/evidence authority
   -> neutral statistical substrate and protected-relation authority
-  -> pre-order fitted selection evidence
-  -> target-size split/order owner
+  -> exact P_train + M3 split
+  -> selector input lineage on exact P_train
+  -> sole fitted TargetCoverageReference
+  -> canonical target-order obligations
+  -> shared FEAS1/NEIGHBOR1 -> MVIDX -> MVSEL2/REPAIR2 -> independent MVQUAL
+  -> one complete TargetTrainingOrder and exact configured prefixes
   -> common target-size training preparation
   -> target-size execution/reducer evidence
   -> operator-owned provisional design
@@ -24,19 +30,23 @@ canonical frame/evidence authority
   -> final-production products
 ```
 
-Each arrow is one-way. A downstream consumer may challenge an upstream product with evidence, but it cannot mutate or reinterpret the upstream product in place.
+`pi_eval/M1/M2/M3` remain under their existing current owners. Each arrow is one-way. A downstream consumer may challenge an upstream product with evidence, but it cannot mutate or reinterpret the upstream product in place.
 
 The canonical D1 role semantics and D2 relation/allocation algorithms are not repeated here. Their D3 consequence is that role-bearing and membership-bearing artifacts must bind exact parent identities, and consumers must reject stale, foreign, or incomplete ancestry rather than reconstructing a convenient substitute.
 
-## Pre-order evidence versus common training preparation
+## Target-order fitted evidence versus common training preparation
 
 Two fitted stages exist on opposite sides of the target-order boundary and are separate architectural owners.
 
-### Pre-order selection evidence
+### Target-order selector evidence
 
-DATA6/DATA7-style providers may publish candidate-independent descriptors, fitted feature transforms or metrics, foundation predictions, difficulty evidence, condition/event/environment evidence, and other authorized ordering inputs. Every fitted product binds its fit domain and recipe identity. The target-order owner consumes these products through their canonical interfaces; it does not refit them inside candidate execution.
+DATA6/DATA7-era surfaces may provide authenticated raw descriptors, provider outputs, condition/event/environment evidence, and lineage needed by the current target-order method. They do **not** own a current fitted selector metric/reference.
 
-These providers do not own target membership, candidate qualification, target size, or post-selection cross-validation.
+On exact current `P_train`, `TargetCoverageReference` is the sole selector-specific fitted numerical product. It owns the fitted statistics/reference state consumed by FEAS1, NEIGHBOR1/MVIDX, MVSEL2/REPAIR2, and independent MVQUAL under the accepted scoped D2 method. Historical DATA7 scaler/PCA/metric/reference ownership is retired as current authority and may survive only as lineage/input provenance where explicitly consumed.
+
+The canonical membership-obligation authority is constructed once from accepted automatic evidence, TargetCoverageReference-derived extent semantics, and current P2 explicit support requirements. FEAS1, MVIDX, MVSEL2, REPAIR2, and MVQUAL consume or represent this one authority rather than projecting their own obligation semantics.
+
+These selector-evidence owners do not own candidate model outcomes, target size, P3 reducer decisions, post-selection CV, replay, or production.
 
 ### Common target-size training preparation
 
@@ -103,12 +113,14 @@ A fitted product identity binds, as applicable:
 - transfer/separation evidence required for admission; and
 - the representation version needed for authenticated reuse.
 
-Invalidation follows semantic dependency rather than pathname proximity. A P5-only method-generation change does not invalidate unchanged P3 evidence. A P3-only objective/weighting edit does not invalidate foundation P5 when no real shared owner changed. Conversely, a true P5 method, common-monitor, foundation-head, fitted-preparation, or transfer-evidence change invalidates the descendants that consume it.
+For the target-order subsystem, `TargetCoverageReference` binds exact `P_train` and its accepted selector-input/provider parents. The canonical obligation authority, NEIGHBOR1/MVIDX, final order/repair ancestry, and MVQUAL evidence bind their true semantic parents as defined in `45_target_training_order.md`; execution-only queue/cache/mmap choices do not become fitted identity.
 
-Historical weight-bearing foundation preparations, fold-local checkpoint-monitor schemas, M3-dependent P5 publication records, and broad `TrainingProtocolIdentity` payloads may remain readable as historical provenance where supported, but they cannot become current restored-P5 authority merely because they deserialize.
+Invalidation follows semantic dependency rather than pathname proximity. A target-order D1/D2/policy-parent change invalidates the dependent restored selector generation, while an obligation-only change need not invalidate an authenticated NEIGHBOR relation whose true geometry/reference parents are unchanged. A P5-only method-generation change does not invalidate unchanged P3 evidence. A P3-only objective/weighting edit does not invalidate foundation P5 when no real shared owner changed. Conversely, a true P5 method, common-monitor, foundation-head, fitted-preparation, or transfer-evidence change invalidates the descendants that consume it.
+
+Historical weight-bearing foundation preparations, fold-local checkpoint-monitor schemas, M3-dependent P5 publication records, broad `TrainingProtocolIdentity` payloads, and retired DATA7 fitted-selector references may remain readable as historical provenance where supported, but they cannot become current authority merely because they deserialize.
 
 ## Failure routing
 
-D3 routes typed failure rather than converting it into another evidence role. Typical examples include unavailable labels, incompatible ancestry, exact-monitor infeasibility, protected-relation collision, failed fitted preparation, failed composition transfer, stale lineage, unsupported distributed foundation execution, and unavailable execution capability.
+D3 routes typed failure rather than converting it into another evidence role. Typical examples include unavailable labels, incompatible ancestry, target-order global/rung infeasibility, exact-monitor infeasibility, protected-relation collision, failed fitted preparation, failed composition transfer, stale lineage, unsupported distributed foundation execution, and unavailable execution capability.
 
 If the failure exposes a contradiction in scientific meaning, route to D1. If it exposes a numerical-method contradiction, route to D2. If accepted D1/D2 is coherent but component ownership or dependency flow is defective, it is a D3 issue. Schema/parser/implementation defects under a coherent architecture remain D4.

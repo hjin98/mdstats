@@ -9,6 +9,8 @@ The MLFF documentation stack is layered:
 3. D3 owns software ownership, dependency/control flow, lifecycle, persistence, concurrency, resource, and deployment structure.
 4. D4 specifications/code own exact schemas, constants, parser behavior, source-specific rules, runtime adapters, and implementation details under those upstream constraints.
 
+For the `TargetTrainingOrder` / `pi_train` surface, the accepted scoped D1/D2 owners are `docs/methods/mlff_target_training_order_scientific_method.md` and `docs/methods/mlff_target_training_order_numerical_algorithmic_method.md`; the canonical detailed D3 owner is `45_target_training_order.md`.
+
 A lower layer may produce evidence that challenges an upstream contract, but it cannot silently redefine that contract. Historical documents, workplans, reports, and generated publications are not alternate current authorities.
 
 ## Ownership table
@@ -18,8 +20,14 @@ A lower layer may produce evidence that challenges an upstream contract, but it 
 | source and canonical label evidence | DATA2-family source adapters/contracts | normalize external inputs into canonical evidence and immutable identity | D1/D2 |
 | conditions, eligibility, raw feature/event evidence | DATA3/DATA4 families | publish canonical evidence products without selecting target membership | D1/D2 |
 | evidence roles and protected relations | DATA5/P1 family | persist neutral role/relation authority for downstream consumers | D1/D2 |
-| pre-order fitted selection evidence | DATA6/DATA7 family | publish fit-domain-bound ordering inputs | D2 |
-| target-size split, orders, and common preparation | P2/P3 owners | persist one generation and one common P3 preparation consumed by candidate execution | D2 |
+| target-order raw/provider lineage inputs | DATA6/DATA7-era input surfaces under `prepare` | publish authenticated selector inputs/lineage without owning fitted selector metrics or membership | scoped target-order D1/D2 |
+| target-order fitted reference | `TargetCoverageReference` owner | sole selector-specific fitted numerical product over exact `P_train` | scoped target-order D2 |
+| canonical target-order obligations | prepare-derived canonical obligation owner | define one canonical locus/incidence/effective-minimum authority for FEAS/MVIDX/MVSEL/REPAIR/MVQUAL | scoped target-order D1/D2 + current P2 explicit policy |
+| FEAS1 / exact neighborhood relation | shared FEAS1/NEIGHBOR1 preparation owner | compute exact geometry once on the normal path, reduce feasibility/capacity, publish authenticated NEIGHBOR1 relation | scoped target-order D2 |
+| target-order sparse representation | MVIDX owner | represent exact NEIGHBOR1 and canonical-obligation incidence/correlation codes without redefining semantics | scoped target-order D2 |
+| target-training order | MVSEL2/REPAIR2 under P2 preparation | construct one complete `pi_train`, repair configured shells, reconstruct exact continuation | scoped target-order D2 |
+| configured-prefix membership qualification | independent MVQUAL owner feeding P2 | independently verify accepted membership predicates; no size ranking | scoped target-order D1/D2 |
+| target-size split, public order/qualification projection, and common preparation | P2/P3 owners | persist one generation/public P2 definition and one common P3 preparation consumed by candidate execution | D2 |
 | automatic target-size screen/reducer | P3 execution/reducer owner | schedule authorized work, persist evidence, expose recommendation/no-recommendation | D1/D2 |
 | provisional design | operator through `select-target-size` / `CampaignStore` | maintain pre-freeze ordered design collection | D1 policy consequence + D3 control plane |
 | frozen target bindings | `cross-validate` admission / `CampaignStore` | atomically freeze and expose immutable per-size target identities | D1/D2 consequence |
@@ -32,10 +40,19 @@ A lower layer may produce evidence that challenges an upstream contract, but it 
 | replay construction | replay `prepare` owner | construct/authenticate replay authority and monitor products | D1/D2 |
 | training/evaluation adapter | training/MACE adapter and EVAL2 owners | realize accepted mode-specific method against external dependency/runtime | D2/D4 |
 | execution/provider lifetime | stage/process owners | own schedulers, processes, providers, temporary accelerator state, restartable execution state | D3 |
+| target-order pre-adoption continuation | existing `prepare` / prepared-storage lifecycle | own authenticated reconstructible MVSTATE/history/checkpoint build state without creating currentness | target-order D3/D2 identity constraints |
 | storage and I/O management | `mdstats.training_data.storage` | inventory, retention, archive, deduplication, cleanup, and storage admission over owner-declared artifacts | D3/D4 |
 | downstream production qualification | `mdstats.training_data.qualification` | consume one frozen final publication and publish release evidence | D1 method boundary + D3 |
 
 A specification may refine the realization of a row but may not create a second semantic owner for the same product.
+
+## Target-order ownership boundary
+
+The restored target-order architecture has one direct current chain beneath `prepare`: exact `P_train` -> sole `TargetCoverageReference` -> one canonical obligation authority -> one shared FEAS1/NEIGHBOR1 construction -> MVIDX representation -> MVSEL2/configured REPAIR2/exact reconstruction -> one complete `TargetTrainingOrder` -> independent MVQUAL -> current P2 projection.
+
+DATA6/DATA7 fitted selector metric/reference ownership is retired. MVIDX is representation, not obligation or geometry meaning. MVQUAL is admissibility evidence, not target-size model ranking. `CampaignStore` is the sole completed-generation currentness owner; pre-adoption selector checkpoints are reconstructible build state and cannot become a second currentness plane.
+
+Manual and automatic target-size selection consume the compact prepared P2 definition. They do not reconstruct selector science. P3 screen evidence, M3, CV, replay, production, and qualification have no reverse control edge into target-order membership.
 
 ## Current P5 authority versus DATA8 historical/general identity
 
@@ -121,13 +138,17 @@ Key rules are architectural:
 - audit state and storage control-plane records do not become scientific authority; and
 - ambiguous ownership is retained/fail-closed rather than guessed.
 
+Target-order OOC/packed sparse artifacts and pre-adoption checkpoints remain subordinate owner-declared prepared/storage products. Storage may inventory or reclaim them only through their real owner boundaries; it cannot infer selector currentness from their path or content-address alone.
+
 Exact filesystem layouts, record schemas, leases, manifests, archive codecs, and integrity procedures are D4 specification/implementation details under these constraints.
 
 ## Unsupported generations and compatibility
 
 Obsolete target-size or campaign-derived generations are historical evidence, not alternate current execution formats. Current loaders may use narrow detection logic to reject/quarantine them before semantic reuse, but may not translate their scientific meaning into a current generation without an explicitly accepted migration design.
 
-For restored P5 this includes, at minimum, historical weighted-stress foundation trajectories, fold-local target checkpoint-monitor records, M3-dependent P5 final plans/publications, foundation preparations missing selected-head residual/transfer evidence, incompatible replay-layout/exposure records, and broad `TrainingProtocolIdentity` payloads used as purported current P5 authority.
+For the restored target order, current `candidate_independent_priority.v1` order products become stale/reconstructible at the multi-view cutover. They are rebuilt from current parents; their ranks are not migrated and no old/new selector router remains after cutover.
+
+For restored P5, unsupported historical state includes historical weighted-stress foundation trajectories, fold-local target checkpoint-monitor records, M3-dependent P5 final plans/publications, foundation preparations missing selected-head residual/transfer evidence, incompatible replay-layout/exposure records, and broad `TrainingProtocolIdentity` payloads used as purported current P5 authority.
 
 Independent lower-level caches or source products may be reused only through their current owners and current validation rules. A historical file existing on disk is never sufficient evidence of currentness.
 
@@ -145,14 +166,17 @@ The architecture must preserve these structural properties:
 
 1. one current authority per semantic product;
 2. immutable authenticated ancestry for downstream evidence;
-3. no downstream feedback path that silently changes frozen target selection or method identity;
-4. distinct target-size screening, post-selection CV, fresh production, and qualification lifecycles;
-5. one external campaign-common target checkpoint monitor for current P5, shared by CV and final production;
-6. selected-fold membership contains train/eval/purge, not target checkpoint-monitor membership;
-7. one current P5 method identity and no competing DATA8 protocol authority;
-8. foundation-P5 fitted preparation carries only semantically consumed P5 ancestry/evidence and validates composition transfer;
-9. final P5 publication has no M3 selection/currentness ancestry;
-10. final publication membership is decided before qualification;
-11. currentness is re-established from authoritative parents rather than caller-held snapshots;
-12. execution/storage/resource mechanisms cannot change D1/D2 results merely to fit a machine; and
-13. unsupported historical state is rejected or kept historical rather than becoming a compatibility backdoor into current authority.
+3. one current `P_train` and one complete target-training order whose configured memberships are exact prefixes;
+4. sole `TargetCoverageReference` fitted selector ownership, one canonical target-order obligation authority, one shared normal-path exact neighborhood build, and MVIDX as representation rather than semantic owner;
+5. pre-adoption target-order restart state subordinate to `prepare`/prepared-storage and never a second CampaignStore currentness plane;
+6. no downstream feedback path that silently changes frozen target selection or method identity;
+7. distinct target-size screening, post-selection CV, fresh production, and qualification lifecycles;
+8. one external campaign-common target checkpoint monitor for current P5, shared by CV and final production;
+9. selected-fold membership contains train/eval/purge, not target checkpoint-monitor membership;
+10. one current P5 method identity and no competing DATA8 protocol authority;
+11. foundation-P5 fitted preparation carries only semantically consumed P5 ancestry/evidence and validates composition transfer;
+12. final P5 publication has no M3 selection/currentness ancestry;
+13. final publication membership is decided before qualification;
+14. currentness is re-established from authoritative parents rather than caller-held snapshots;
+15. execution/storage/resource mechanisms cannot change D1/D2 results merely to fit a machine; and
+16. unsupported historical state is rejected or kept historical rather than becoming a compatibility backdoor into current authority.
