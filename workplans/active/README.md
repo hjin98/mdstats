@@ -20,7 +20,13 @@ The restoration explicitly includes current-compatible performance machinery: sh
 
 Current `TargetTrainingOrder` is a complete permutation owner. Therefore assembled acceptance must run the optimized MVSEL path through all of `P_train`, not merely the largest configured target-size rung, and must exercise restart in that suffix when `|P_train| > Nmax_current`.
 
-The current UID-capable target-order product method remains under **SERIOUS CHALLENGE**. Implementation must begin at R1 D1/D2 historical reconstruction, independent falsification and required human ratification, followed by the R2 exact semantic + performance + provenance dependency-closure census before production restoration. PASS of the workplan is not acceptance of the restored scientific/numerical method.
+#### R1 status
+
+The authoring/reconstruction half of R1 is complete. The branch now contains proposed reconstruction evidence, exact proposed D1 and D2 overlays, an independent-review handoff, and `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_STATUS.md`.
+
+The proposed method restores the final mature multi-view semantics under current one-`P_train` ownership: correlation-unit-balanced hard family coverage at 0.95, q01/q99 extents, canonical condition/event/profile/extent/correlation/current-user obligations, exact two-phase MVSEL2, configured active-shell REPAIR2, independent MVQUAL, and same-method continuation through the complete `P_train` order.
+
+**No D1/D2 promotion has occurred.** Independent D1/D2 falsification and stakeholder human ratification remain mandatory before accepted-current method-paper promotion and before R2 begins. The current UID-capable product method therefore remains under **SERIOUS CHALLENGE**.
 
 ## Recently closed MLFF work
 
