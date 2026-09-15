@@ -12,13 +12,15 @@ Canonical workplan pointer:
 
 - `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_CURRENT.md`
 
-The active plan is the exact Revision-7 composition of immutable Revision 5, immutable Revision 6, and `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_7.md`. Final independent workplan review is `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_REVISION_7_REVIEW.md` with disposition **PASS AS WORKPLAN**.
+The active plan is the exact Revision-8 composition of immutable Revision 5, immutable Revision 6, immutable Revision 7, and `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_8.md`. Final independent workplan review is `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_REVISION_8_REVIEW.md` with disposition **PASS AS WORKPLAN**.
 
 The stakeholder direction is to restore the latest mature pre-P6 selection path — selector-relevant DATA7 -> TargetCoverageReference/FEAS1 -> NEIGHBOR1/MVIDX1 -> optimized MVSEL2/MVSTATE2 -> optimized REPAIR2 -> bounded/progressive independent MVQUAL — beneath the current one-P_train/P2/prepared-generation architecture, dropping only concretely incompatible historical target-size topology and historically rejected execution experiments.
 
-The restoration explicitly includes current-compatible performance machinery: shared resource budgeting, deterministic bounded scheduling, exact file-backed/OOC MVIDX, locality/native MVSEL2 kernels, certified lazy execution, authenticated restart/history, REPAIR2 factorization/parallel proposal scoring/checkpoint reuse, and bounded/progressive parallel MVQUAL. Scientific outputs remain invariant to execution width/backend/chunk/queue/restart choices.
+The restoration explicitly includes current-compatible performance machinery: shared resource budgeting, deterministic bounded scheduling, exact file-backed/OOC sparse construction with disk and descriptor bounds, locality/native MVSEL2 kernels, certified lazy execution, the final recovered native worker-preflight policy, authenticated restart/history and post-repair invalidation, REPAIR2 factorization/parallel proposal scoring/checkpoint reuse, and serial-rung/parallel-family progressive MVQUAL. Scientific outputs remain invariant to execution width/backend/chunk/queue/restart choices.
 
-The current UID-capable target-order product method remains under **SERIOUS CHALLENGE**. Implementation must begin at R1 D1/D2 historical reconstruction, independent falsification and required human ratification, followed by the R2 exact semantic + performance dependency-closure census before production restoration. PASS of the workplan is not acceptance of the restored scientific/numerical method.
+Current `TargetTrainingOrder` is a complete permutation owner. Therefore assembled acceptance must run the optimized MVSEL path through all of `P_train`, not merely the largest configured target-size rung, and must exercise restart in that suffix when `|P_train| > Nmax_current`.
+
+The current UID-capable target-order product method remains under **SERIOUS CHALLENGE**. Implementation must begin at R1 D1/D2 historical reconstruction, independent falsification and required human ratification, followed by the R2 exact semantic + performance + provenance dependency-closure census before production restoration. PASS of the workplan is not acceptance of the restored scientific/numerical method.
 
 ## Recently closed MLFF work
 
