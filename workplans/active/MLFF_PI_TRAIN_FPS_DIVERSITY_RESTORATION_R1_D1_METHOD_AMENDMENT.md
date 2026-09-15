@@ -117,7 +117,7 @@ $$
 
 for every required family. The exact local-neighborhood construction and numerical boundary semantics are D2-owned.
 
-For family channels designated as **extent-bearing**, coverage also requires selected support reaching both the lower and upper 1% reference quantiles of the channel. This protects distributional tails that a pure local mass criterion could otherwise miss.
+For family channels designated as **extent-bearing**, coverage also requires selected support reaching both the lower 1% and upper 99% reference quantiles of the channel. This protects distributional tails that a pure local mass criterion could otherwise miss.
 
 These are training-membership support criteria. They are not target-force accuracy thresholds and do not imply deployment adequacy.
 
@@ -173,13 +173,9 @@ Because configured prefixes are nested and these predicates are positive support
 
 Coverage qualification may reject an inadmissible membership, but among qualified candidates it has no ranking/tie-break authority. The current P3 target-force reducer and practical-equivalence rule remain the sole target-size comparison authority.
 
-## 6. Amend Section 6.3 opening sentence only
+## 6. Preserve Section 6.3 and all later target-size evaluation semantics unchanged
 
-Preserve the existing `pi_eval/M1/M2/M3` method. Replace any wording that could imply that multi-view `pi_train` changes evaluation-order authority with:
-
-> The restored multi-view training order changes only `pi_train` and its qualified training prefixes. The independent evaluation order `pi_eval` and nested `M1/M2/M3` populations retain their accepted current construction and role.
-
-No other Section 6.3 semantics change.
+Current Section 6.3 already states that one independent `pi_eval` over `M3` defines nested direct `M1 subset M2 subset M3` evaluation populations. No Section-6.3 textual or semantic change is proposed. Sections 6.4–6.7 likewise remain current except that their candidate memberships now come from the restored, independently qualified `T_N` prefixes above.
 
 ## 7. Amend Section 15 falsification and reopen conditions
 
@@ -224,7 +220,7 @@ D2 must preserve:
 1. one exact `P_train` target-order domain and one complete deterministic `pi_train`;
 2. separate configuration-count, correlation-balanced coverage, training-loss and evaluation measures;
 3. the accepted required multi-view family roles and their applicability conditions;
-4. the uniform 0.95 hard family coverage criterion and lower/upper 1% extent-support meaning;
+4. the uniform 0.95 hard family coverage criterion and lower-1%/upper-99% extent-support meaning;
 5. the canonical automatic + explicit hard-obligation set, with current P2 condition identity and separate P1 correlation-unit identity;
 6. exact candidate-independent MVSEL2 ordering semantics, deterministic tie behavior and complete-order continuation;
 7. active-shell-only repair preserving lower configured prefixes and non-regressing hard coverage/support;
