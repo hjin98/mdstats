@@ -4,116 +4,126 @@ protocol_version: 6.3.0
 status: reopened
 branch: fix/mlff-cv-competence-threshold-separation
 accepted_baseline_commit: 8553ebe9ed86b24dfe910c9e43acc6230d3ece90
-implementation_commit: 00d8b20659ee63830eab6d1b3400287af3caaa55
-reviewed_candidate_commit: c632521f6aace258d68406afa1cc9f4c4290c9ac
+prior_review_commit: 0fe85e9f67e90a7577edfa2f7a8180f169b553a2
+repaired_implementation_commit: a0f477ef2a3a60660b98b357078a2944e3628126
+reviewed_candidate_commit: 48a99a77a59232edc71b29a3f9a932ddec141778
 parent_handoff: workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_PARAMETERIZATION_ALIGNMENT.md
 supersedes_closeout_for_current_state: workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_AND_PARAMETERIZATION_CLOSEOUT_2026-09-15.md
 review_disposition: NO-PASS
-highest_open_owner: D1-representation-and-D4
+highest_open_owner: D4-evidence
 ---
 
-# MLFF configurable-threshold implementation — independent review reopen
+# MLFF configurable-threshold implementation — independent re-review
 
-## 0. Disposition
+## 0. Current disposition
 
-Independent assembled re-review is **NO-PASS**. No Serious Challenge is raised against the accepted D1/D2 configurable-threshold semantics, and no D3 architecture defect is found in the implemented role-policy split. The implemented resolver correctly reuses `CvValidationPolicyIdentity` for the foundation CV checkpoint threshold and preserves the existing production/shared-method ownership graph; that shape should be preserved.
+Independent re-review of repaired candidate `48a99a77` is **NO-PASS on one remaining evidence gate only**. No Serious Challenge is raised against D1/D2. D3 ownership remains coherent. Static review closes the three prior blockers B1-B3 and finds the repaired D4 shape conforming.
 
-Closure was premature. Three blocking defects remain in canonical authority representation, public configuration validation, and the required real-owner currentness oracle. The archived closeout remains historical evidence of the attempted closure but does not govern current state until these findings are repaired and independently re-reviewed PASS.
+The cycle remains open because the repair changed executable validation semantics in `post_selection_identity.py` and materially strengthened the assembled currentness oracle, but no fresh focused/affected regression realization for repaired implementation commit `a0f477ef` is recoverable from the repository or CI. The only repository-hosted workflow after that commit is the successful documentation-PDF build. Protocol 6.3 does not permit carrying the older pre-repair test realization forward as a PASS for changed executable behavior.
 
-## 1. B1 — canonical authority/lifecycle consolidation is incomplete
+## 1. Prior blocker closure
 
-The branch claims that broad canonical documentation was consolidated and that D1/D2/D3/D4 are closed, but current canonical authority still says otherwise.
+### B1 — canonical authority/lifecycle representation: CLOSED
 
-### D1 drift
+The accepted parameterized semantics are now incorporated into the broad canonical owners:
 
-`docs/methods/mlff_scientific_method.md` still declares the threshold revision **proposed**, pending independent D1 review and stakeholder ratification, even though the independent re-review passed and the stakeholder explicitly ratified all three configurable thresholds on 2026-09-15. Its body repeats that proposed state.
+- D1: `docs/methods/mlff_scientific_method.md` §10.3/§11;
+- D2: `docs/methods/mlff_numerical_algorithmic_method.md` §17.1/§23.7;
+- D3: `docs/arch_manuals/mlff_training_data/40_training_evaluation.md`;
+- D4: `docs/specs/training_data/mlff_post_selection_p5_spec.md` §12.1.
 
-The same paper also retains fixed-default wording where the accepted invariant is now parameterized. In particular:
+D1/D2 identify the revision as accepted/current and stakeholder-ratified, normative statements use configured `tau_cv`, `theta_cv`, and `tau_prod` with 45/45/30 only as generated defaults/calibration, and provenance routes to archived cycle records. The four temporary threshold-delta authority files were incorporated and removed, eliminating parallel current authority. Semantic-history routing was updated accordingly.
 
-- “reaching 45 meV/angstrom does not stop a run” must refer to reaching the configured `tau_cv` rather than promote the default into the invariant;
-- “CV competence at 45 ... never authorizes a production checkpoint above 30” must instead state that CV acceptance never substitutes for or overrides the configured `tau_prod`; and
-- the D1->D2 handoff still labels the threshold separation proposed and hard-codes 45/45/30 as predicates rather than configurable parameters with those defaults.
+Archived review/workplan records may retain candidate-relative historical wording where their opening context makes that historical scope explicit; they are not current authority.
 
-Its revision provenance also still describes the threshold separation as proposed and routes to the former active workplan path.
+### B2 — fail-closed threshold typing: CLOSED statically
 
-### D2 drift
+The existing `_finite_positive_threshold(...)` owner now rejects booleans and all non-`int`/`float` values before conversion, then rejects non-finite/nonpositive numeric values. `_configured_maximum_target_force_rmse(...)` returns the raw `[acceptance]` value so `FinalProductionPolicyIdentity` validates its original type rather than a pre-coerced float.
 
-`docs/methods/mlff_numerical_algorithmic_method.md` likewise still declares the role-predicate revision **proposed**, pending D2 review and stakeholder ratification. Sections 17.1 and 23.7 remain explicitly tagged “(proposed)”, D2->D3 handoff item 9 still calls the accepted role thresholds proposed, and revision provenance still points to `workplans/active/MLFF_CV_COMPETENCE_THRESHOLD_PARAMETERIZATION_ALIGNMENT.md`, which is archived.
+The focused test now drives real TOML through `_load_config` for all three public knobs and includes `true`, quoted numeric `"0.040"`, invalid string, nonpositive, `nan`, and `inf` counterexamples, plus positive integer/float acceptance. No parallel parser or compatibility layer was added.
 
-The default-value numerical oracles are valid as default-policy tests, but they must not be worded as universal fixed-threshold oracles after acceptance of parameterization.
+### B3 — assembled `tau_cv`-only currentness oracle: CLOSED statically
 
-### D4/lifecycle drift
+The slow assembled test now performs a true checkpoint-only edit: it changes `tau_cv` while holding `theta_cv`, shared method inputs, and production policy fixed. It asserts:
 
-`docs/specs/training_data/mlff_post_selection_threshold_policy_spec.md` still says `implementation reconciliation required` although implementation reconciliation is claimed complete. The archived parent workplan frontmatter says closed while its opening body still says the assembled implementation review is NO-PASS/reopened and that the active index advertises that state.
+- shared method digest unchanged;
+- production-policy digest unchanged;
+- CV policy digest changed only by `tau_cv`;
+- `theta_cv` remains unchanged;
+- prior accepted CV plan becomes stale and cannot authorize production;
+- rerunning CV under tightened `tau_cv=0.040` rejects the 0.042 candidate; and
+- rejected current CV does not authorize production.
 
-These contradictions violate the one-current-owner/lossless-representation requirement and make the current lifecycle state unrecoverable without knowing which file to ignore.
+A separate outer-only edit then changes `theta_cv`, preserving the dimension/ownership distinction.
 
-**Repair:** consolidate the accepted configurable-threshold semantics into the broad canonical D1/D2/D4 documents and lifecycle prose. Mark D1/D2 accepted/ratified, parameterize normative sentences while retaining 45/45/30 strictly as defaults/calibration, repair provenance/routes to archived records, update the D4 threshold specification to implemented/current status, and reconcile archived coordination prose where it is presented as current disposition. Do not create another semantic owner. If the dedicated threshold-delta documents remain, make their relation to the broad canonical owners unambiguously subordinate or incorporated rather than parallel current authority.
+## 2. Remaining blocker B4 — repaired executable evidence unavailable
 
-No new D1/D2 scientific review is required if this repair is representational only and preserves the already accepted semantics.
+The repair modifies executable behavior and executable oracles. The older recorded realization (25 fast + 2 slow + 96 affected tests, and the earlier 19-test/transitive-regression realization) predates this repair and is not admissible confirmation of `a0f477ef`/`48a99a77`.
 
-## 2. B2 — threshold configuration accepts booleans and quoted numerics contrary to the public contract
+The current review environment cannot execute the repository test suite because the repository is not mounted locally and outbound Git access is unavailable. GitHub exposes only the successful `Build documentation PDFs` workflow for `a0f477ef`; no current test/check status is present. Therefore required D4 acceptance is **UNAVAILABLE**, not PASS.
 
-The canonical CLI specification requires finite real configuration fields to reject booleans and strings before identity/execution. The existing threshold validator instead calls `float(value)` and therefore accepts values such as `true -> 1.0` and `"0.040" -> 0.04`.
+Before final re-review, execute and durably record against the repaired candidate at minimum:
 
-This affects the three configurable threshold surfaces:
+```text
+pytest -q tests/test_mlff_p5_cv_competence_threshold_separation.py
+pytest -q \
+  tests/test_mlff_target_size_p5_r7_guards.py \
+  tests/test_mlff_target_size_p5_r8_guards.py \
+  tests/test_mlff_target_size_p5_r10_guards.py \
+  tests/test_mlff_target_size_p5_r11_guards.py \
+  tests/test_mlff_target_size_p5d_cv_acceptance.py \
+  tests/test_mlff_target_size_p5e_production_and_restart.py \
+  tests/test_mlff_target_size_p5g_assembled_integration.py \
+  tests/test_mlff_p5_cv_no_admissible_outcome.py \
+  tests/test_mlff_campaign_cli.py \
+  tests/test_mlff_downstream_integration_closure.py
+python -m compileall -q mdstats/training_data
+git diff --check 8553ebe9ed86b24dfe910c9e43acc6230d3ece90...HEAD
+```
 
-- `tau_cv`, through `CvValidationPolicyIdentity.__post_init__`;
-- `theta_cv`, through the same validator; and
-- `tau_prod`, where `_configured_maximum_target_force_rmse(...)` first calls `float(...)`, erasing the original TOML type before `FinalProductionPolicyIdentity` validates it.
+If the maintained transitive affected closure used in the previous realization is broader, rerun that broader closure. PDF-only trailing-space behavior may be assessed consistently with the prior accepted evidence; non-PDF diff-check must pass. GPU/production-scale qualification remains deferred to the final complete-release package and is not required here.
 
-The focused negative test covers nonpositive/nonfinite values and one nonnumeric string, but does not cover boolean or quoted-numeric counterexamples. The public contract is therefore stronger than the actual parser/resolver behavior.
+The focused realization must actually execute the new real-TOML boolean/quoted-numeric cases and the repaired `tau_cv`-only assembled path; merely collecting those tests is insufficient.
 
-**Repair by altering the existing validation path:**
+## 3. Preserved PASS findings
 
-1. make the existing finite-positive threshold validator reject booleans and non-numeric types before conversion/canonicalization;
-2. pass the raw `[acceptance].maximum_target_force_rmse_ev_per_angstrom` value through that strict owner rather than coercing it with `float(...)` first;
-3. preserve accepted integer/float finite-positive values and current defaults;
-4. add real-TOML `_load_config` counterexamples for each of the three threshold knobs covering `true`, a quoted numeric such as `"0.040"`, and an invalid string; and
-5. run affected regression for other callers of the shared validator/coercion path rather than adding a threshold-specific parallel parser.
+Static re-review preserves these findings:
 
-Do not add a schema, wrapper, alias, registry, or compatibility translator for this repair.
+- all three foundation thresholds are independently configurable, default 45/45/30 meV/angstrom;
+- each threshold has exactly one configuration source and existing role-policy owner;
+- `PostSelectionMethodIdentity` carries no role target threshold;
+- `post_selection_checkpoint_admissibility(...)` remains the one shared-constraints + authenticated-role-ceiling composition path;
+- scratch remains separately governed and rejects the foundation-only CV checkpoint knob;
+- explicit default and omission resolve identical policy identity;
+- role-only changes preserve selective invalidation/currentness;
+- no schema bump, threshold registry, synchronized production alias, P5 `TrainingProtocolIdentity`, generic `Eval2EvaluationPlan`, compatibility translator, wrapper, or second checkpoint engine was introduced;
+- canonical D1-D4 authority is consolidated rather than split; and
+- the documentation-PDF build for `a0f477ef` succeeded and generated current tracked PDFs at `48a99a77`.
 
-## 3. B3 — assembled `tau_cv` currentness evidence is confounded by a simultaneous `theta_cv` edit
+## 4. Non-blocking cleanup
 
-The handoff requires real `cross-validate -> persisted acceptance -> train-production` evidence that a **CV checkpoint-only** threshold edit moves CV policy/run identity, stales dependent production authorization, and leaves shared method and production policy unchanged.
+`mdstats/training_data/post_selection_identity.py` still comments that `FOUNDATION_CV_CHECKPOINT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM` is a “fixed, identity-bound role value.” The constant is now the **default** for a configurable identity-bound role value. Correcting that comment is recommended before final closeout, but it does not alter executable semantics and is not a PASS blocker.
 
-The current slow test first sets `acceptance_maximum = 0.04`. Its subsequent “CV checkpoint-ceiling edit” replaces that line with `checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.040`. That operation changes two CV policy fields at once: it adds/tightens `tau_cv` and simultaneously removes the explicit `theta_cv=0.04`, restoring `theta_cv` to its default `0.045`. The resulting stale-CV refusal therefore does not discriminate checkpoint-only invalidation.
+## 5. PEM/HAS and closeout state
 
-The focused identity test correctly isolates `tau_cv`, and the later CV rerun correctly shows that `0.042` is rejected under `tau_cv=0.040`; those are useful evidence but do not close the required assembled real-owner currentness claim.
+Accepted PEM basis remains `4eabe2ae9783c7ff92f3a1093c37502a01380812`; the branch does not mutate `PROJECT-ENGINEERING-MEMORY.md`. Current HAS remains materially consistent with the prior closeout assessment:
 
-**Repair:** in the assembled harness, change only `tau_cv` while holding `theta_cv`, shared method inputs, and production policy fixed. Assert from the rebuilt real context that method digest and production-policy digest remain unchanged, old CV acceptance/plan is stale under the new CV policy, and a rerun under the new `tau_cv` produces the expected acceptance/rejection and downstream production authorization state.
+- FF-002: APPLICABLE — exact role-policy ancestry/currentness remains fail-closed;
+- SP-001: APPLICABLE — repair alters the existing owner rather than adding synchronized machinery;
+- SP-002: APPLICABLE — strict typed threshold validation strengthens the authenticated boundary;
+- SP-003: APPLICABLE — independent upstream/source/replay/common-monitor identities remain preserved;
+- SP-004: APPLICABLE — the strengthened assembled test targets the real `cross-validate -> persisted CV acceptance -> train-production` path.
 
-## 4. Evidence assessment
+No new PEM family/application episode is admitted by this bounded repair. Final closeout/HAS statement should be reconciled only after B4 has executed and this review returns PASS.
 
-The closeout records 25 focused fast tests, two slow assembled tests, and 96 affected regression tests as passing. Those realizations remain historical evidence for the candidate and support the many conforming behaviors they actually discriminate. The documentation-PDF workflow for implementation commit `00d8b206...` also completed successfully and produced head `c632521...`.
+## 6. Final re-review acceptance
 
-They do not close B1, B2, or B3: B1 is contradicted directly by current canonical files; B2 has concrete untested public-input counterexamples; and B3's relevant assembled oracle changes two policy dimensions simultaneously. No production-scale GPU qualification is required for this cycle under the standing final-release policy.
+Return PASS and re-close/archive when:
 
-## 5. Preserved PASS findings
+1. focused + affected regression + compile/static checks above execute against the repaired candidate with no candidate-attributable failure;
+2. the new strict-type and `tau_cv`-only assembled counterfactuals are observed passing, not merely present in source;
+3. documentation generation remains current;
+4. no repair introduces duplicate threshold/protocol/checkpoint machinery; and
+5. active lifecycle/closeout state is reconciled after, not before, independent PASS.
 
-Unless repair evidence falsifies them, preserve these implementation choices:
-
-- foundation CV resolves optional `[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom` through the existing CV policy owner with default `0.045`;
-- the outer threshold remains independently owned by `acceptance_maximum` and the production threshold by `[acceptance].maximum_target_force_rmse_ev_per_angstrom`;
-- scratch rejects the foundation-only CV checkpoint field and otherwise keeps pre-separation behavior;
-- role-only threshold changes do not enter `PostSelectionMethodIdentity`;
-- `post_selection_checkpoint_admissibility(...)` remains the one composition path for shared constraints plus the authenticated role ceiling;
-- explicit default and omitted default produce the same resolved CV identity;
-- no schema bump, threshold registry, synchronized production alias, P5 `TrainingProtocolIdentity`, generic `Eval2EvaluationPlan`, or second checkpoint engine was introduced; and
-- the 45/45/30 generated defaults and selective role-policy ownership remain correct.
-
-## 6. Re-review acceptance
-
-Return PASS and re-close/archive only when all of the following are true:
-
-- canonical D1/D2/D4 and lifecycle/provenance representations agree that the configurable-threshold policy is accepted and implemented;
-- fixed-default wording is replaced by parameterized invariants wherever it currently overstates 45/45/30 as immutable behavior, while default-policy examples/oracles remain explicit;
-- all three public threshold knobs reject boolean and string TOML values and accept only the supported finite-positive numeric domain;
-- a real assembled checkpoint-only `tau_cv` edit independently demonstrates exact selective invalidation/currentness;
-- focused plus affected regression executes against the repaired candidate with no candidate-attributable failure;
-- documentation generation remains consistent after canonical repairs;
-- no repair introduces duplicate threshold/protocol/checkpoint machinery; and
-- closeout/HAS/PEM state is reconciled only after this independent re-review passes.
-
-Until then the threshold-parameterization cycle is **reopened / NO-PASS**.
+Until then the threshold-parameterization cycle remains **reopened / NO-PASS**.
