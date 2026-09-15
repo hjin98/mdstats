@@ -97,8 +97,9 @@ partition_seed = 104729
 seeds = [0]
 max_num_epochs = 30
 purge_components_between_roles = 0
+checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.045
 acceptance_metric = "target_force_rmse_ev_per_angstrom"
-acceptance_maximum = 0.030
+acceptance_maximum = 0.045
 
 [post_selection.production]
 seeds = [1]
@@ -428,6 +429,27 @@ common monitor, and evaluates the held-out partition only afterwards. Held-out
 fold results cannot change `N_selected`, membership, checkpoint policy, or the
 method definition. Replay remains a separate admissibility/retention concern and
 supplies no ranking credit.
+
+Cross-validation and final production use different target-force checkpoint
+ceilings for foundation fine-tuning. All three foundation post-selection
+thresholds are configurable policy parameters, with generated defaults
+0.045 / 0.045 / 0.030 eV/Angstrom. CV asks whether every required fold and
+seed reaches a clearly competent regime: a fold checkpoint must reach at most
+`[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom`
+(0.045 eV/Angstrom by default) on the common monitor, and by default its
+held-out target-force RMSE must also be at most 0.045
+(`[post_selection.cv].acceptance_maximum`). Fresh production keeps the stricter
+checkpoint criterion `[acceptance].maximum_target_force_rmse_ev_per_angstrom`
+(0.030 by default), so under the defaults a model that passed CV at
+42 meV/Angstrom is still refused as a production checkpoint. This lets a shorter fixed CV horizon
+(`[post_selection.cv].max_num_epochs`) avoid the slow late-convergence region
+that production must reach; training is never stopped early by either ceiling.
+Neither ceiling is release qualification. Scratch campaigns keep 0.030 for both
+roles. An explicit value for any of the three thresholds must be a finite positive
+number (a boolean or quoted string such as `"0.040"` is rejected), stays as written, and
+changing a role ceiling invalidates only that role's evidence. Campaigns
+cross-validated before this separation must rerun `cross-validate` and
+`train-production` once.
 
 For foundation fine-tuning (`naive_fine_tuning` and `multihead_replay`) the
 training objective is fixed: pinned MACE's native `UniversalLoss` with

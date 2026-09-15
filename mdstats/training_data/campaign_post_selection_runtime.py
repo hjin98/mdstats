@@ -104,11 +104,13 @@ from .post_selection_identity import (
     compute_replay_lineage_digest,
     cv_training_budget_policy,
     final_production_training_budget_policy,
+    post_selection_checkpoint_admissibility,
     resolve_cv_validation_policy_identity,
     resolve_final_production_policy_identity,
     resolve_post_selection_method_identity,
     resolve_post_selection_method_policies,
 )
+from .post_selection_run_identity import PostSelectionRunRole
 from .post_selection_production import (
     FinalProductionPlan,
     build_final_production_plan,
@@ -191,6 +193,40 @@ class PostSelectionContext:
             separation = build_common_monitor_separation(governed, record)
             self._common_monitor_cache["resolved"] = (record, separation)
         return self._common_monitor_cache["resolved"]
+
+    def checkpoint_admissibility(self, run_plan: Any) -> Any:
+        """Return the authenticated role-effective admissibility of one run.
+
+        The run plan binds the method (shared constraints) and its role policy
+        (target ceiling).  Both must be the current authority before a policy
+        is composed, so no run is trained or judged under a stale or other-role
+        ceiling.
+        """
+
+        role = str(getattr(run_plan, "run_role", ""))
+        if role == PostSelectionRunRole.POST_SELECTION_CV.value:
+            role_policy: Any = self.cv_policy
+            bound_policy_digest = getattr(run_plan, "cv_policy_identity_digest", None)
+        elif role == PostSelectionRunRole.FINAL_PRODUCTION.value:
+            role_policy = self.production_policy
+            bound_policy_digest = getattr(
+                run_plan, "final_production_policy_digest", None
+            )
+        else:
+            raise PostSelectionError(
+                f"Post-selection checkpoint admissibility has no role policy for {role!r}."
+            )
+        if (
+            getattr(run_plan, "method_identity_digest", None)
+            != self.method.content_digest
+            or bound_policy_digest != role_policy.content_digest
+        ):
+            raise PostSelectionError(
+                f"Run {str(getattr(run_plan, 'run_identity', ''))[:12]}... is not bound "
+                f"to the current method and {role} policy; its checkpoints are never "
+                "judged under a different admissibility policy."
+            )
+        return post_selection_checkpoint_admissibility(self.method_policies, role_policy)
 
     @property
     def evidence_store(self) -> Any:
@@ -468,7 +504,9 @@ def build_post_selection_contexts(
                 method=method,
                 method_policies=policies,
                 cv_policy=resolve_cv_validation_policy_identity(
-                    cfg, max_num_epochs=cv_max_num_epochs
+                    cfg,
+                    max_num_epochs=cv_max_num_epochs,
+                    training_mode=policies.training_mode,
                 ),
                 production_policy=resolve_final_production_policy_identity(
                     cfg, max_num_epochs=production_max_num_epochs
@@ -729,7 +767,7 @@ def evaluate_post_selection_run_candidates(
     from .eval2 import assess_eval2_checkpoint
 
     selected = context.selected
-    admissibility = context.method_policies.checkpoint_admissibility
+    admissibility = context.checkpoint_admissibility(run_plan)
     extxyz_policy = context.method_policies.extxyz
     optimizer_policy = _optimizer_policy_for(
         context,
@@ -1725,7 +1763,6 @@ class _PostSelectionRunSetup:
     checkpoint_directory: Path
     optimizer_policy: Any
     extxyz_policy: Any
-    admissibility: Any
     replay_resolution: Any | None
     preparation: Any | None
     runtime_plan: Any
@@ -1835,7 +1872,8 @@ def _prepare_post_selection_run(
         context, seed=run_plan.optimizer_seed, planned_epochs=run_plan.planned_epochs
     )
     extxyz_policy = context.method_policies.extxyz
-    admissibility = context.method_policies.checkpoint_admissibility
+    # Authenticate the run's role-effective admissibility before any training.
+    admissibility = context.checkpoint_admissibility(run_plan)
     replay_resolution = None
     if admissibility.replay_enabled:
         replay_resolution = _resolve_post_selection_replay_resolution(
@@ -1903,7 +1941,6 @@ def _prepare_post_selection_run(
         checkpoint_directory=checkpoint_directory,
         optimizer_policy=optimizer_policy,
         extxyz_policy=extxyz_policy,
-        admissibility=admissibility,
         replay_resolution=replay_resolution,
         preparation=preparation,
         runtime_plan=runtime_plan,
@@ -2122,7 +2159,10 @@ def _execute_post_selection_run_locked(
         if str(getattr(run_plan, "run_role", "")) != "post_selection_cv":
             raise PostSelectionError(
                 f"No checkpoint of run {run_plan.run_identity[:12]}... passed "
-                f"mandatory admissibility; rejection reasons: {reasons}. An "
+                "mandatory admissibility (production checkpoint target-force "
+                "ceiling "
+                f"{context.production_policy.checkpoint_maximum_target_force_rmse_ev_per_angstrom}"
+                f" eV/angstrom); rejection reasons: {reasons}. An "
                 "inadmissible checkpoint is never promoted to a representative."
             )
         # The fold's scientific result is decided by these records alone, so
@@ -3622,15 +3662,15 @@ def execute_post_selection_cross_validation(
     selected = context.selected
     projection = build_selected_relation_projection(selected)
     common_monitor, monitor_separation = context.common_target_monitor()
-    admissibility = context.method_policies.checkpoint_admissibility
+    replay_enabled = context.method_policies.replay_enabled
     replay_resolution = None
-    if admissibility.replay_enabled:
+    if replay_enabled:
         replay_resolution = _resolve_post_selection_replay_resolution(
             context, require_train=True
         )
     replay_lineage_digest = (
         compute_replay_lineage_digest(replay_resolution)
-        if admissibility.replay_enabled
+        if replay_enabled
         else None
     )
     plan = build_post_selection_cv_plan(
@@ -3763,15 +3803,15 @@ def resolve_current_cv_plan(context: PostSelectionContext) -> PostSelectionCvPla
         deserializer=PostSelectionCvPlan.from_dict,
     )
     if plan is not None:
-        admissibility = context.method_policies.checkpoint_admissibility
+        replay_enabled = context.method_policies.replay_enabled
         replay_resolution = None
-        if admissibility.replay_enabled:
+        if replay_enabled:
             replay_resolution = _resolve_post_selection_replay_resolution(
                 context, require_train=True
             )
         replay_lineage_digest = (
             compute_replay_lineage_digest(replay_resolution)
-            if admissibility.replay_enabled
+            if replay_enabled
             else None
         )
         common_monitor, monitor_separation = context.common_target_monitor()
@@ -3845,15 +3885,15 @@ def execute_final_production(
         method_identity_digest=context.method.content_digest,
         selected_binding_digest=selected.binding.content_digest,
     )
-    admissibility = context.method_policies.checkpoint_admissibility
+    replay_enabled = context.method_policies.replay_enabled
     replay_resolution = None
-    if admissibility.replay_enabled:
+    if replay_enabled:
         replay_resolution = _resolve_post_selection_replay_resolution(
             context, require_train=True
         )
     replay_lineage_digest = (
         compute_replay_lineage_digest(replay_resolution)
-        if admissibility.replay_enabled
+        if replay_enabled
         else None
     )
     common_monitor, monitor_separation = context.common_target_monitor()
@@ -3960,15 +4000,15 @@ def resolve_current_final_production_plan(
         deserializer=FinalProductionPlan.from_dict,
     )
     if plan is not None:
-        admissibility = context.method_policies.checkpoint_admissibility
+        replay_enabled = context.method_policies.replay_enabled
         replay_resolution = None
-        if admissibility.replay_enabled:
+        if replay_enabled:
             replay_resolution = _resolve_post_selection_replay_resolution(
                 context, require_train=True
             )
         replay_lineage_digest = (
             compute_replay_lineage_digest(replay_resolution)
-            if admissibility.replay_enabled
+            if replay_enabled
             else None
         )
         common_monitor, monitor_separation = context.common_target_monitor()
@@ -4105,7 +4145,10 @@ def execute_current_cross_validate(args: Any) -> int:
         print(
             f"Cross-validated the exact selected dataset: N_selected="
             f"{n_selected}, K={plan.fold_count}, "
-            f"seeds={list(plan.required_cv_seeds)}.",
+            f"seeds={list(plan.required_cv_seeds)}, "
+            "CV checkpoint target-force ceiling="
+            f"{context.cv_policy.checkpoint_maximum_target_force_rmse_ev_per_angstrom} "
+            "eV/angstrom.",
             flush=True,
         )
         if acceptance.accepted:

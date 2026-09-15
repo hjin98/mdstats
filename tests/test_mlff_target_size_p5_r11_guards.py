@@ -198,7 +198,7 @@ def _lifecycle_fixture(
         method_policies=SimpleNamespace(
             extxyz=SimpleNamespace(),
             objective=SimpleNamespace(),
-            checkpoint_admissibility=SimpleNamespace(replay_enabled=replay_enabled),
+            replay_enabled=replay_enabled,
             checkpoint_selection=SimpleNamespace(),
             training_mode="multihead_replay",
             mace_architecture=SimpleNamespace(),
@@ -215,6 +215,10 @@ def _lifecycle_fixture(
             # common-preparation policy, which does not consume it.
             default_dtype="float64",
             device="cpu",
+        ),
+        # The role-effective admissibility owner is outside this lifetime claim.
+        checkpoint_admissibility=lambda _run_plan: SimpleNamespace(
+            replay_enabled=replay_enabled
         ),
         inference_evaluator=None,
         trainer=lambda request: summary,

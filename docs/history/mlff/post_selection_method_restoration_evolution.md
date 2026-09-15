@@ -23,3 +23,45 @@ that kind cannot become current.
 
 Production-scale GPU qualification of the restored method is deferred to the
 final release package.
+
+## Foundation CV competence / production quality separation
+
+**Lifecycle state:** accepted D1/D2 authority on
+`fix/mlff-cv-competence-threshold-separation` against integrated
+`8553ebe9ed86b24dfe910c9e43acc6230d3ece90` (independent re-review PASS;
+stakeholder ratification 2026-09-15 that all three thresholds are configurable
+with defaults 45/45/30 meV/angstrom). This entry is non-normative history;
+current semantics are owned by `docs/methods/mlff_scientific_method.md` §10.3/§11,
+`docs/methods/mlff_numerical_algorithmic_method.md` §17.1, and
+`docs/specs/training_data/mlff_post_selection_p5_spec.md` §12.1.
+
+The restoration above preserved the target/replay thresholds because threshold
+revision was outside its scope. That preservation is not evidence that CV and
+production ceilings must be equal. A later review found the target-force
+ceiling owned too broadly: it was part of shared method identity, so foundation
+CV paid the late slow-convergence cost of the production criterion.
+
+| Previous semantic | Replacement semantic | Currentness consequence |
+|---|---|---|
+| One `[acceptance]` target-force ceiling (nominally `0.030 eV/angstrom`) gated checkpoints for both foundation CV and fresh production, and the full target-bearing `CheckpointAdmissibilityPolicy` digest was bound by `PostSelectionMethodIdentity`. | Method identity v3 binds only the shared checkpoint constraints (replay retention/TRUE_DFT, finite metrics, physical/integrity gates). CV policy v3 owns the configurable foundation-CV checkpoint competence ceiling (default `0.045`); final-production policy v2 owns the configurable production checkpoint ceiling (`[acceptance]`, default `0.030`). One owner composes the effective policy per run after authenticating the run plan's method and role-policy digests, before training and before candidate assessment. | **One-time cutover:** v2 method, v2 CV and v1 production policy records no longer deserialize, so pre-cutover P5 CV/final descendants are stale once even where production still uses `0.030`; P1/P2/P3, frozen selection, common monitor, replay and source evidence keep their own identities. No threshold-equivalence translation exists: a prior 30 pass is not current under 45, and a prior 30–45 failure is not retroactively a pass. |
+| Foundation CV held-out default `acceptance_maximum = 0.030`, mode-agnostic. | Foundation CV (`naive_fine_tuning`, `multihead_replay`) defaults to `0.045` in the units of `acceptance_metric`; scratch keeps `0.030` and its `[acceptance]` checkpoint ceiling. Explicit values are kept as written; an alternate outer metric never supplies the checkpoint ceiling. | **Steady state:** a CV-only edit moves the CV policy, plan and run positions only; a production-only ceiling edit moves the production policy and run positions only; a shared replay/physical/integrity edit moves the method and both roles. |
+
+CV consistency remains every required fold/seed passing both predicates, with
+dispersion diagnostic-only; training remains fixed-budget. The ceiling split
+permits a deliberately shorter fixed CV horizon without weakening production.
+
+**Calibration provenance.** `45 meV/angstrom` is a stakeholder-authorized
+calibration from recalled foundation-adaptation learning curves (fast initial
+decrease, markedly slower convergence through roughly 40–20 meV/angstrom, with
+the 30 meV/angstrom production criterion inside that slow regime). It is not a
+recovered repository study.
+
+**Downstream boundary.** Neither the 45 meV/angstrom CV criteria nor the
+30 meV/angstrom production common-monitor criterion is external adequacy, a
+locked test, or release qualification; downstream qualification is unchanged.
+
+**Rejected concretization.** An intermediate workplan amendment required binding
+the effective policy through a per-run DATA8 `TrainingProtocolIdentity` and a
+generic EVAL2 plan. Accepted D3 already excludes both from P5 authority; the
+requirement was superseded in favor of the existing role-plan/run-plan lineage
+rather than adding a parallel protocol graph.

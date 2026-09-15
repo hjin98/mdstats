@@ -162,7 +162,7 @@ def _make_dummy_method_identity(mode: str = "scratch", backend: str = "e3nn") ->
             else POST_SELECTION_FOUNDATION_EXPOSURE_POLICY
         ),
         learning_rate_schedule_policy_digest="22" * 32,
-        checkpoint_admissibility_policy_digest="33" * 32,
+        shared_checkpoint_constraints_digest="33" * 32,
         checkpoint_selection_policy_digest="44" * 32,
         shared_optimizer_settings_digest="55" * 32,
         replay_exposure_policy_digest="66" * 32,

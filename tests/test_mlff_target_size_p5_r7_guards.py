@@ -136,7 +136,7 @@ def _make_dummy_method_identity(training_mode: str = "multihead_replay") -> Post
             else "mdstats.p5-foundation-exposure.single-process-shuffled-drop-last-replay-first.v1"
         ),
         learning_rate_schedule_policy_digest="22" * 32,
-        checkpoint_admissibility_policy_digest="33" * 32,
+        shared_checkpoint_constraints_digest="33" * 32,
         checkpoint_selection_policy_digest="44" * 32,
         shared_optimizer_settings_digest="55" * 32,
         replay_exposure_policy_digest="66" * 32,

@@ -52,7 +52,8 @@ foundation checkpoint + selected foundation head when applicable
 foundation-P5 objective identity when applicable
 P5 atomic-reference/preparation-policy identity
 learning-rate schedule policy
-checkpoint admissibility policy
+shared checkpoint constraints (replay retention budget/TRUE_DFT requirement,
+  finite metrics, required physical gates) - never a role target-force ceiling
 checkpoint selection policy
 shared optimizer settings
 replay training-label/exposure policy
@@ -314,6 +315,35 @@ Held-out labels SHALL remain unavailable to fitting, checkpoint selection, adapt
 
 ## 12. Checkpoint/adaptive-stop policy
 
+### 12.1 Role-effective checkpoint admissibility
+
+Target-force checkpoint ceilings are role policy, not method identity. `CvValidationPolicyIdentity` (schema `mdstats.post-selection-cv-policy-identity.v3`) and `FinalProductionPolicyIdentity` (schema `mdstats.post-selection-final-production-policy-identity.v2`) each carry `checkpoint_maximum_target_force_rmse_ev_per_angstrom` in eV/angstrom. `PostSelectionMethodIdentity` (schema `mdstats.post-selection-method-identity.v3`) carries `shared_checkpoint_constraints_digest` instead of the retired target-bearing `checkpoint_admissibility_policy_digest`.
+
+Resolution SHALL be:
+
+| Mode | CV checkpoint ceiling | CV `acceptance_maximum` default | Production checkpoint ceiling |
+|---|---|---|---|
+| `naive_fine_tuning`, `multihead_replay` | `[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom`, default `0.045` | `0.045` | `[acceptance].maximum_target_force_rmse_ev_per_angstrom`, default `0.030` |
+| `scratch` | `[acceptance].maximum_target_force_rmse_ev_per_angstrom`, default `0.030` | `0.030` | same key, default `0.030` |
+
+For foundation modes the three values are the independently configurable thresholds of D1 §10.3/§11 and D2 §17.1: `tau_cv` (CV checkpoint competence), `theta_cv` (`acceptance_maximum`, CV held-out threshold), and `tau_prod` (production checkpoint quality). This section is their single D4 resolution contract.
+
+An explicit `[post_selection.cv].acceptance_maximum` is used as written. Its units follow `acceptance_metric`; it never supplies either checkpoint ceiling. An explicit `[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom` is valid for foundation modes, is not a second outer-acceptance threshold, always has target-force RMSE units (eV/angstrom), and defaults to `0.045` when omitted. P5 scratch keeps its pre-separation resolution and fails closed if the foundation CV checkpoint field is configured under `[post_selection.cv]`. `[acceptance].maximum_target_force_rmse_ev_per_angstrom` is the foundation-production threshold source, keeps its generic/non-P5 meaning, and is not rewritten; no second production alias (for example under `[post_selection.production]`) exists.
+
+Each of the three values SHALL be a finite positive TOML integer or float. Booleans, strings (including quoted numerics such as `"0.040"`), non-finite values, and nonpositive values SHALL fail with a typed input error before identity construction or execution; the raw configured value, not a pre-coerced float, is validated by the owning policy identity. Explicitly configuring a default and omitting it SHALL resolve the identical policy identity when every other field is equal.
+
+Changing one threshold SHALL move only its owning role-policy lineage and material dependents:
+
+```text
+tau_cv or theta_cv edit -> CV policy/plan/run + CV acceptance; dependent production authorization stale
+tau_prod edit           -> final-production policy/plan/run only
+shared constraint edit  -> shared method + both roles
+```
+
+Each run SHALL be judged under one effective `CheckpointAdmissibilityPolicy` composed from the method's shared constraints and its role policy's ceiling. Before a run's preparation/training and before its checkpoint candidates are evaluated, the runtime SHALL verify that the run plan's `method_identity_digest` and role-policy digest (`cv_policy_identity_digest` or `final_production_policy_digest`) equal current authority and SHALL fail closed otherwise; a run of one role can never be judged under the other role's policy.
+
+P5 binds that effective policy through the existing per-run lineage rather than a DATA8 `TrainingProtocolIdentity` or a generic `Eval2EvaluationPlan`: the role plan binds the method and role-policy digests, run identity and run root derive from the plan, and fold acceptance/run evidence bind the run-plan digest. Checkpoint records carry no additional role field. A role-ceiling change therefore yields a different plan and run position; stored candidate classifications are never re-thresholded under another ceiling.
+
 Retired target/replay **training-head scalar** weights have no current P5 field in config, plan, materialization, runtime evidence, or content identity.
 
 Existing target/replay checkpoint/adaptive-stop score weights remain separate current owners. Their semantics are not changed by retirement of training-head weights.
@@ -424,6 +454,8 @@ Current configuration behavior is frozen as follows:
 - canonical replay omission resolves TRUE_DFT;
 - ambiguous omitted legacy split-file replay semantics fail closed;
 - current P5 fold default resolves to 3 and explicit overrides require `K >= 2`;
+- role target-force ceilings and the CV outer default resolve as in section 12.1, and an explicit `acceptance_maximum` is never rewritten;
+- generated and shipped foundation configuration show all three section 12.1 threshold defaults explicitly (`checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.045` and `acceptance_maximum = 0.045` under `[post_selection.cv]`, `maximum_target_force_rmse_ev_per_angstrom = 0.030` under `[acceptance]`), and the CLI specification and user guide state the same defaults and units;
 - foundation distributed execution fails closed;
 - exact-monitor shortfall, relation collision, unusable monitor labels, or failed composition transfer are typed infeasibility/failure, not fallback paths.
 
@@ -445,6 +477,8 @@ restart/currentness stamps
 ```
 
 The exact token strings are delegated D4 implementation details provided the cutover is unambiguous and tested.
+
+The threshold-separation cutover advances `PostSelectionMethodIdentity` to v3, the CV policy to v3, and the final-production policy to v2. Pre-cutover P5 CV/final plans, fold verdicts, and run evidence become stale once; unaffected P1/P2/P3, frozen-selection, common-monitor, replay, and source/cache evidence remain reusable. Plan, run-plan, fold-acceptance, checkpoint-record, and EVAL2 schemas do not advance because only ancestor digest values change.
 
 Old foundation weighted-stress trajectories, fold-local checkpoint-monitor plans, M3-dependent P5 plans/publications, from-scratch-E0 foundation preparations, target-first replay exposure records, missing-transfer preparations, and broad DATA8/`TrainingProtocolIdentity` P5 records SHALL fail currentness before execution/restart reuse.
 
@@ -518,7 +552,16 @@ At minimum, implementation tests/review SHALL reject these counterfactuals:
 28. a true method-bearing change fails to invalidate dependent P5 evidence;
 29. inherited source `config_weight` or non-binary `config_{energy,forces,stress}_weight` survives into a current replay view or directly consumed legacy split file and reaches native UniversalLoss;
 30. a replay stress mask disagrees with the rendered stress label, or missing stress is fabricated; and
-31. a pre-contract replay view is reused as current, or its repair re-runs foundation inference or resplits replay.
+31. a pre-contract replay view is reused as current, or its repair re-runs foundation inference or resplits replay;
+32. a foundation CV checkpoint at 42 meV/angstrom fails because a 30 meV/angstrom ceiling survives in method, run, or evaluation ancestry, or a foundation production checkpoint at 42 meV/angstrom is admitted;
+33. default scratch begins admitting 42 meV/angstrom because foundation CV changed;
+34. a role-only ceiling edit moves `PostSelectionMethodIdentity`, or a shared replay-constraint edit does not;
+35. a non-target-force outer metric threshold becomes the checkpoint ceiling;
+36. a run is judged under a role policy its plan does not bind;
+37. an explicit non-default `tau_cv`, `theta_cv`, or `tau_prod` is ignored by its assessment, moves the shared method or the other role's policy, or (for a CV-only edit changing no other field) leaves the prior CV acceptance authorizing production;
+38. an explicit default resolves a different identity than omission;
+39. a boolean, string, quoted-numeric, non-finite, or nonpositive threshold value is accepted from real TOML configuration; and
+40. generated template, shipped example, CLI specification, and guide disagree on the three defaults.
 
 ## 21. Documentation boundary
 
