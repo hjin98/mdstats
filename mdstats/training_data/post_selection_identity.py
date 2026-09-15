@@ -180,10 +180,10 @@ def _positive_int(value: Any, *, name: str) -> int:
 
 
 def _finite_positive_threshold(value: Any, *, name: str) -> float:
-    try:
-        threshold = float(value)
-    except (TypeError, ValueError):
+    # Booleans and strings are rejected before conversion, never coerced.
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TrainingDataInputError(f"{name} must be a finite positive threshold.")
+    threshold = float(value)
     if not math.isfinite(threshold) or threshold <= 0.0:
         raise TrainingDataInputError(f"{name} must be a finite positive threshold.")
     return threshold
@@ -1960,18 +1960,17 @@ def resolve_final_production_policy_identity(
     )
 
 
-def _configured_maximum_target_force_rmse(config: Mapping[str, Any]) -> float:
+def _configured_maximum_target_force_rmse(config: Mapping[str, Any]) -> Any:
     """The pre-separation ``[acceptance]`` target ceiling (eV/angstrom).
 
     Production reads it for every mode and scratch CV reads it; foundation CV
-    never does.
+    never does.  The raw value is returned so the consuming policy identity
+    validates its original type.
     """
 
-    return float(
-        _table(config, "acceptance").get(
-            "maximum_target_force_rmse_ev_per_angstrom",
-            DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM,
-        )
+    return _table(config, "acceptance").get(
+        "maximum_target_force_rmse_ev_per_angstrom",
+        DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM,
     )
 
 

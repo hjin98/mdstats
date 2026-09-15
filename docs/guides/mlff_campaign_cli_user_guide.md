@@ -440,12 +440,13 @@ seed reaches a clearly competent regime: a fold checkpoint must reach at most
 held-out target-force RMSE must also be at most 0.045
 (`[post_selection.cv].acceptance_maximum`). Fresh production keeps the stricter
 checkpoint criterion `[acceptance].maximum_target_force_rmse_ev_per_angstrom`
-(0.030 by default), so a model that passed CV at 42 meV/Angstrom is still refused
-as a production checkpoint. This lets a shorter fixed CV horizon
+(0.030 by default), so under the defaults a model that passed CV at
+42 meV/Angstrom is still refused as a production checkpoint. This lets a shorter fixed CV horizon
 (`[post_selection.cv].max_num_epochs`) avoid the slow late-convergence region
 that production must reach; training is never stopped early by either ceiling.
 Neither ceiling is release qualification. Scratch campaigns keep 0.030 for both
-roles. An explicit value for any of the three thresholds stays as written, and
+roles. An explicit value for any of the three thresholds must be a finite positive
+number (a boolean or quoted string such as `"0.040"` is rejected), stays as written, and
 changing a role ceiling invalidates only that role's evidence. Campaigns
 cross-validated before this separation must rerun `cross-validate` and
 `train-production` once.

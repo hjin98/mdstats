@@ -26,10 +26,14 @@ final release package.
 
 ## Foundation CV competence / production quality separation
 
-**Lifecycle state:** proposed on `fix/mlff-cv-competence-threshold-separation`
-against integrated `8553ebe9ed86b24dfe910c9e43acc6230d3ece90`. The D1/D2
-revision is pending independent review and stakeholder ratification; this entry
-records the candidate delta and does not make it current.
+**Lifecycle state:** accepted D1/D2 authority on
+`fix/mlff-cv-competence-threshold-separation` against integrated
+`8553ebe9ed86b24dfe910c9e43acc6230d3ece90` (independent re-review PASS;
+stakeholder ratification 2026-09-15 that all three thresholds are configurable
+with defaults 45/45/30 meV/angstrom). This entry is non-normative history;
+current semantics are owned by `docs/methods/mlff_scientific_method.md` §10.3/§11,
+`docs/methods/mlff_numerical_algorithmic_method.md` §17.1, and
+`docs/specs/training_data/mlff_post_selection_p5_spec.md` §12.1.
 
 The restoration above preserved the target/replay thresholds because threshold
 revision was outside its scope. That preservation is not evidence that CV and

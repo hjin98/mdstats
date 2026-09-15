@@ -123,7 +123,7 @@ defaults to `0.030`. Scratch CV checkpoints keep the `[acceptance]` ceiling.
 An explicit value is never rewritten, and its units follow `acceptance_metric`
 for `acceptance_maximum` and target-force RMSE (`eV/angstrom`) for checkpoint
 ceilings. The exact resolution table is owned by the P5 specification
-section 12.1 and `mlff_post_selection_threshold_policy_spec.md`.
+section 12.1.
 
 The configured power ceiling is not a fixed scientific constant. Candidates
 are additionally bounded by the available `P_train` population and the

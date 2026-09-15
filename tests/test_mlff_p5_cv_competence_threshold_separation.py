@@ -1,9 +1,10 @@
 """Foundation-CV competence versus fresh-production checkpoint quality.
 
 Foundation adaptation shares one method between CV and production, but each run
-is judged under its role's target-force ceiling: CV checkpoint competence and
-the default held-out ceiling are 0.045 eV/angstrom, production checkpoint
-quality is 0.030 eV/angstrom, and scratch keeps its pre-separation 0.030.  The
+is judged under its role's independently configurable target-force ceiling:
+CV checkpoint competence and the held-out ceiling default to 0.045
+eV/angstrom, production checkpoint quality defaults to 0.030 eV/angstrom, and
+scratch keeps its pre-separation 0.030.  The
 shared replay/finite/physical constraints stay in the method identity.
 """
 
@@ -269,19 +270,67 @@ def test_explicit_default_vs_omission_identity_equivalence(foundation: Path):
     assert cv_omitted.content_digest == cv_explicit.content_digest
 
 
-@pytest.mark.parametrize("invalid_val", (-0.01, 0.0, math.nan, math.inf, "invalid"))
-def test_cv_checkpoint_invalid_threshold_raises_input_error(
-    foundation: Path, invalid_val: object
-):
-    cfg = _config(
-        "naive_fine_tuning",
-        foundation=foundation,
-        post_selection={
-            "cv": {"checkpoint_maximum_target_force_rmse_ev_per_angstrom": invalid_val}
-        },
+_THRESHOLD_KNOBS = {
+    # knob: (generated TOML line, role policy field reading it)
+    "tau_cv": (
+        "checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.045",
+        lambda cfg: resolve_cv_validation_policy_identity(
+            cfg
+        ).checkpoint_maximum_target_force_rmse_ev_per_angstrom,
+    ),
+    "theta_cv": (
+        "acceptance_maximum = 0.045",
+        lambda cfg: resolve_cv_validation_policy_identity(cfg).acceptance_maximum,
+    ),
+    "tau_prod": (
+        "\nmaximum_target_force_rmse_ev_per_angstrom = 0.030",
+        lambda cfg: resolve_final_production_policy_identity(
+            cfg
+        ).checkpoint_maximum_target_force_rmse_ev_per_angstrom,
+    ),
+}
+
+
+def _threshold_toml_config(tmp_path: Path, knob: str, raw: str) -> dict:
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    line, _read = _THRESHOLD_KNOBS[knob]
+    text = cli._config_template(
+        workspace="work",
+        training_root="training",
+        foundation_model="foundation.model",
+        replay_train="train.xyz",
+        replay_monitor="monitor.xyz",
     )
-    with pytest.raises(TrainingDataInputError):
-        resolve_cv_validation_policy_identity(cfg)
+    assert text.count(line) == 1, line
+    path = tmp_path / f"{knob}.toml"
+    path.write_text(
+        text.replace(line, line.rsplit("=", 1)[0] + "= " + raw), encoding="utf-8"
+    )
+    cfg, _paths = cli._load_config(path)
+    return cfg
+
+
+@pytest.mark.parametrize("knob", tuple(_THRESHOLD_KNOBS))
+@pytest.mark.parametrize(
+    "raw", ("true", '"0.040"', '"invalid"', "-0.01", "0.0", "nan", "inf")
+)
+def test_threshold_knobs_reject_non_real_and_nonpositive_toml(
+    tmp_path: Path, knob: str, raw: str
+):
+    cfg = _threshold_toml_config(tmp_path, knob, raw)
+    with pytest.raises(TrainingDataInputError, match="finite positive threshold"):
+        _THRESHOLD_KNOBS[knob][1](cfg)
+
+
+@pytest.mark.parametrize("knob", tuple(_THRESHOLD_KNOBS))
+@pytest.mark.parametrize(("raw", "expected"), (("0.040", 0.040), ("1", 1.0)))
+def test_threshold_knobs_accept_finite_positive_toml_numbers(
+    tmp_path: Path, knob: str, raw: str, expected: float
+):
+    cfg = _threshold_toml_config(tmp_path, knob, raw)
+    value = _THRESHOLD_KNOBS[knob][1](cfg)
+    assert type(value) is float and value == expected
 
 
 def test_alternate_outer_metric_cannot_donate_its_threshold(foundation: Path):
@@ -643,26 +692,87 @@ def test_assembled_foundation_cv_passes_42_mev_and_production_refuses_it(
     assert run_train_production(config, authorized) == 0
     assert authorized.runs and not set(authorized.runs) & set(refused.runs)
 
-    # A CV outer-only edit stales the CV evidence, so it no longer authorizes production.
-    rewrite_config(config, "partition_seed = 7", "partition_seed = 7\nacceptance_maximum = 0.04")
-    with pytest.raises(PostSelectionError, match="different cross-validation policy"):
-        run_train_production(config, PostSelectionHarness(force_offset=0.042))
+    def current_digests():
+        cfg, paths, store = load_context(config)
+        try:
+            context = build_post_selection_context(cfg, paths, store, trainer=object())
+            return context.method, context.cv_policy, context.production_policy
+        finally:
+            store.close()
 
-    # A CV checkpoint-ceiling edit stales the CV evidence as well.
+    method_before, cv_before, production_before = current_digests()
+    assert cv_before.content_digest == plan.cv_policy_identity_digest
+
+    # A CV checkpoint-only edit: tau_cv alone moves; theta_cv, the shared method
+    # and the production policy are held fixed.
     rewrite_config(
         config,
-        "acceptance_maximum = 0.04",
-        "checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.040",
+        "partition_seed = 7",
+        "partition_seed = 7\ncheckpoint_maximum_target_force_rmse_ev_per_angstrom = 0.040",
     )
+    method_after, cv_after, production_after = current_digests()
+    assert method_after.content_digest == method_before.content_digest
+    assert production_after.content_digest == production_before.content_digest
+    assert cv_after.content_digest != cv_before.content_digest
+    assert dataclasses.replace(
+        cv_after,
+        checkpoint_maximum_target_force_rmse_ev_per_angstrom=(
+            cv_before.checkpoint_maximum_target_force_rmse_ev_per_angstrom
+        ),
+    ) == cv_before
+    assert cv_after.checkpoint_maximum_target_force_rmse_ev_per_angstrom == 0.040
+    assert cv_after.acceptance_maximum == cv_before.acceptance_maximum == 0.045
+    # The accepted CV plan is stale under the new CV policy, so it no longer
+    # authorizes production.
+    cfg, paths, store = load_context(config)
+    try:
+        context = build_post_selection_context(cfg, paths, store, trainer=object())
+        with pytest.raises(PostSelectionError, match="different cross-validation policy"):
+            resolve_current_cv_plan(context)
+    finally:
+        store.close()
     with pytest.raises(PostSelectionError, match="different cross-validation policy"):
         run_train_production(config, PostSelectionHarness(force_offset=0.042))
 
-    # Re-running CV under the tightened 0.040 ceiling rejects the 0.042 meV candidate.
+    # Re-running CV under tau_cv=0.040 rejects the 0.042 candidate, and the
+    # current rejected CV does not authorize production.
     from mdstats.training_data.post_selection_cv_acceptance import (
         PostSelectionCvRejectedError,
     )
     with pytest.raises(PostSelectionCvRejectedError):
         run_cross_validate(config, PostSelectionHarness(force_offset=0.042))
+    cfg, paths, store = load_context(config)
+    try:
+        context = build_post_selection_context(cfg, paths, store, trainer=object())
+        rerun_plan = resolve_current_cv_plan(context)
+        rerun = resolve_current_cv_acceptance(context)
+        assert rerun_plan is not None and rerun is not None and not rerun.accepted
+        assert rerun_plan.cv_policy_identity_digest == cv_after.content_digest
+        assert rerun_plan.method_identity_digest == method_before.content_digest
+        folds = [
+            fold for seed_record in rerun.seed_acceptances
+            for fold in seed_record.fold_acceptances
+        ]
+        assert folds and all(
+            "target_threshold_exceeded" in fold.checkpoint_rejection_reasons
+            for fold in folds
+        )
+    finally:
+        store.close()
+    blocked = PostSelectionHarness(force_offset=0.042)
+    with pytest.raises(PostSelectionError):
+        run_train_production(config, blocked)
+    assert not blocked.runs
+
+    # A CV outer-only edit (theta_cv alone) stales CV evidence the same way.
+    rewrite_config(config, "partition_seed = 7", "partition_seed = 7\nacceptance_maximum = 0.04")
+    method_outer, cv_outer, production_outer = current_digests()
+    assert method_outer.content_digest == method_before.content_digest
+    assert production_outer.content_digest == production_before.content_digest
+    assert cv_outer == dataclasses.replace(cv_after, acceptance_maximum=0.04)
+    assert cv_outer.content_digest != cv_after.content_digest
+    with pytest.raises(PostSelectionError, match="different cross-validation policy"):
+        run_train_production(config, PostSelectionHarness(force_offset=0.042))
 
 
 @pytest.mark.slow

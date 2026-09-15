@@ -13,11 +13,9 @@ closeout_record: workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_AND_P
 
 ## 0. Final review disposition and scope
 
-Final independent workplan review was PASS after amendment. The subsequent independent assembled implementation review is **NO-PASS / reopened**; its repair contract is `MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_IMPLEMENTATION_REVIEW_REOPEN.md`. No Serious Challenge is active against the scientific intent or the accepted P5 architecture.
+*Historical record.* Final independent workplan review was PASS after amendment. The first independent assembled implementation review was NO-PASS; its repair contract `MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_IMPLEMENTATION_REVIEW_REOPEN.md` is resolved and archived, and this plan was superseded by `MLFF_CV_COMPETENCE_THRESHOLD_PARAMETERIZATION_ALIGNMENT.md`. Current lifecycle state is owned by `workplans/active/README.md`, not by this archived plan. No Serious Challenge was raised against the scientific intent or the accepted P5 architecture.
 
 That review found this plan's final-review amendment internally contradictory: it required per-run `TrainingProtocolIdentity` and generic EVAL2-plan policy binding, whereas accepted D3 (`docs/arch_manuals/mlff_training_data/40_training_evaluation.md`, `80_ownership_and_decisions.md`) states that the broad DATA8-era `TrainingProtocolIdentity` cannot authorize restored P5 and current P5 constructs no generic `Eval2EvaluationPlan`. Those requirements are **superseded** by the P5 role-plan/run-plan lineage in §3; the contract below is the repaired binding text. The concern they protected — no hidden stale target ceiling in any run's training or checkpoint-assessment ancestry — is preserved by that lineage, not by adding a P5 protocol graph, EVAL2 wrapper/plan or per-checkpoint role field.
-
-The active-workplan index advertises this plan and its reopen state.
 
 The requested change remains narrow. Foundation post-selection cross-validation (CV) should determine whether the frozen foundation-adaptation method reaches a clearly competent regime consistently on held-out development evidence without forcing every disposable fold model through the late slow-convergence regime required for fresh-production checkpoint quality.
 

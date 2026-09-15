@@ -12,6 +12,8 @@ closeout_record: workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_AND_P
 
 # MLFF CV threshold policy — D1/D2 independent re-review
 
+*Historical review record of candidate `6745778a`.* The threshold delta files it names as current authority were later incorporated into the broad canonical owners (D1 `docs/methods/mlff_scientific_method.md` §10.3/§11, D2 `docs/methods/mlff_numerical_algorithmic_method.md` §17.1/§23.7) and removed; current lifecycle state is owned by `workplans/active/README.md`.
+
 ## Disposition
 
 **D1 PASS. D2 PASS.** No Serious Challenge remains.

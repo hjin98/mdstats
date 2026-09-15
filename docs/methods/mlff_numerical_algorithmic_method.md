@@ -1,11 +1,11 @@
 ---
 title: "mdstats MLFF Numerical Algorithmic Method — foundation role-predicate separation revision"
 artifact_level: "D2 numerical algorithm design"
-status: "proposed D2 revision on fix/mlff-cv-competence-threshold-separation, constrained by the proposed D1 threshold-separation revision; pending independent D2 review and stakeholder ratification. The post-selection restoration revision (accepted 2026-09-14) is repository-integrated at 8553ebe9ed86b24dfe910c9e43acc6230d3ece90 and remains the accepted baseline until this revision is accepted."
+status: "accepted-current D2 authority. The configurable foundation role-predicate revision on fix/mlff-cv-competence-threshold-separation, constrained by the accepted D1 threshold revision, passed independent D2 re-review and was stakeholder-ratified on 2026-09-15, against the post-selection restoration revision accepted 2026-09-14 and integrated at 8553ebe9ed86b24dfe910c9e43acc6230d3ece90."
 baseline_accepted_date: "2026-09-14"
 baseline_integrated_commit: "8553ebe9ed86b24dfe910c9e43acc6230d3ece90"
-candidate_revision_date: "2026-09-14"
-candidate_against_commit: "8553ebe9ed86b24dfe910c9e43acc6230d3ece90"
+threshold_revision_accepted_date: "2026-09-15"
+threshold_revision_against_commit: "8553ebe9ed86b24dfe910c9e43acc6230d3ece90"
 ---
 
 # mdstats MLFF Numerical Algorithmic Method
@@ -29,7 +29,7 @@ P3 target-size screening retains its accepted weighted objective, complete-batch
 
 The restoration revision was independently reviewed, ratified on 2026-09-14, and integrated at `8553ebe9ed86b24dfe910c9e43acc6230d3ece90`.
 
-**Proposed revision (role predicates).** Section 17.1 and the associated handoff/oracle items concretize the proposed D1 separation of foundation-CV competence from fresh-production checkpoint quality. They remain proposed until independent D2 review and stakeholder ratification.
+**Accepted revision (configurable role predicates).** Section 17.1 and the associated handoff/oracle items concretize the accepted D1 separation of foundation-CV competence from fresh-production checkpoint quality, with `τ_CV`, `θ_CV`, and `τ_prod` as independently configurable policy parameters (stakeholder-ratified 2026-09-15 after independent D2 re-review). This paper is the single D2 owner of those numerical semantics.
 
 ## 2. Canonical source numerical conventions
 
@@ -710,7 +710,7 @@ The same exact `M_mon` membership and checkpoint method are used for every selec
 
 Replay checkpoint/retention evidence remains a distinct true-reference lineage. Existing target/replay score weights and the accepted replay-degradation budget remain separate from training-head weighting and are unchanged by this revision.
 
-### 17.1 Role-effective predicates *(proposed)*
+### 17.1 Role-effective predicates
 
 Let `r_mon(c)` be the target force-component RMSE of checkpoint `c` on `M_mon` and `r_out` the target force-component RMSE of a frozen fold representative on held-out `O_i`, both in `eV/Å` as defined by the accepted EVAL2 target-force estimator. Let `S(c)` be the conjunction of the **shared** mandatory constraints: finite metrics; replay degradation `<=` the accepted budget with authenticated true-reference evidence where replay is enabled; and required physical/integrity gates. `S` is part of the shared method and is identical for every role.
 
@@ -720,7 +720,7 @@ $$
 A_\rho(c) \;=\; S(c) \;\wedge\; r_{\mathrm{mon}}(c) \le \tau_\rho ,
 $$
 
-with inclusive boundaries, compared in IEEE-754 double precision against the double nearest the resolved decimal ceiling. For foundation adaptation (`naive_fine_tuning`, `multihead_replay`), the role thresholds are independently resolved policy parameters (`docs/methods/mlff_post_selection_threshold_numerical_policy.md`):
+with inclusive boundaries, compared in IEEE-754 double precision against the double nearest the resolved decimal ceiling. For foundation adaptation (`naive_fine_tuning`, `multihead_replay`), the role thresholds are independently resolved finite positive policy parameters; no numerical rule requires an explicitly configured value to equal its generated default:
 
 | Role | Predicate | Resolved ceiling / default |
 |---|---|---|
@@ -737,6 +737,8 @@ Required properties:
 5. **No reinterpretation.** A candidate classification computed under one `A_ρ` is evidence only for that predicate. Re-thresholding stored metrics under a different `τ` does not produce current evidence; the run is re-evaluated under the current role authority.
 6. **Fixed budget.** No predicate alters the training horizon or terminates training.
 7. **Scratch.** Post-selection scratch keeps its pre-separation criteria: checkpoint target ceiling from the accepted target acceptance value (currently `0.030 eV/Å`) for both roles and default outer ceiling `0.030 eV/Å`.
+8. **Selective invalidation.** A threshold change moves only its role lineage. A `τ_CV` or `θ_CV` change moves the CV role policy, plan/run positions and CV acceptance, stales production authorization derived from that acceptance, and leaves the shared method and `τ_prod` unchanged. A `τ_prod` change moves only the production role policy and plan/run positions; applicable accepted CV evidence and the shared method remain current. A change to `S` (replay budget, physical/integrity gates) is a shared-method change and can invalidate both roles.
+9. **Resolution equivalence.** Explicitly configuring a threshold at its default is equivalent to omitting it when every other policy input is equal; identity binds the resolved value.
 
 Pre-separation records, in which one `τ` was represented as part of the shared method, remain historical and do not authorize work under Section 17.1.
 
@@ -886,12 +888,22 @@ D2 review and verification should attempt at least the following counterexamples
 - verify true-versus-pseudo replay label changes leave replay geometry split unchanged; and
 - prove old weighted-stress/fold-local-monitor/target-first-order continuation state cannot authenticate as the restored method.
 
-### 23.7 Role predicates *(proposed)*
+### 23.7 Role predicates
+
+Default-policy oracles (generated defaults `τ_CV=θ_CV=0.045 eV/Å`, `τ_prod=0.030 eV/Å`; they test the defaults, not a fixed-threshold invariant):
 
 - foundation CV: `r_mon=0.042` admissible and `r_out=0.042` accepted; `r=0.045` passes and `nextafter(0.045, +inf)` fails;
 - foundation production: `r_mon=0.042` inadmissible; `r=0.030` passes and `nextafter(0.030, +inf)` fails;
 - default scratch: `r_mon=0.042` remains inadmissible in both roles;
-- a non-target-force outer metric with a large `θ` leaves `τ_CV` at `0.045 eV/Å`;
+- a non-target-force outer metric with a large `θ` leaves `τ_CV` at its resolved value (default `0.045 eV/Å`);
+
+Configured-policy oracles (any finite positive resolved value):
+
+- for each resolved target-force ceiling `τ`, `r=τ` passes and `nextafter(τ, +inf)` fails;
+- an explicit non-default `τ_CV` changes only the CV role-policy lineage and is honored by CV checkpoint assessment; the shared method and `τ_prod` are unchanged, and CV acceptance under the prior `τ_CV` no longer authorizes production;
+- an explicit non-default `θ_CV` changes only the CV outer-policy lineage and is honored in held-out acceptance without changing checkpoint target-force units;
+- an explicit non-default `τ_prod` changes only the production role-policy lineage and is honored by production checkpoint assessment;
+- an explicit default is equivalent to omission;
 - one failing required position rejects CV even when the mean outer metric is below `θ_CV`;
 - a shared-constraint change (e.g. replay budget) changes shared method identity; a role-ceiling change changes only that role's policy; and
 - stored candidate classifications under one `τ` are not reused under another.
@@ -910,7 +922,7 @@ D3 must preserve at least:
 6. one current target-monitor owner over neutral protected `OUTER_MONITOR`, exact deterministic 256 membership, exact SHA-256 sampling semantics, and no current DATA5/label-domain monitor parent;
 7. P5 CV schema whose fold membership excludes checkpoint monitor, preserves the deterministic outer/purge allocation above, and defaults to three folds with `K>=2` override;
 8. one common target checkpoint membership shared by CV and final production, with P3 `M3` excluded from checkpoint control;
-9. independent true-reference replay-monitor/retention evidence and preserved score/admissibility semantics, with the shared constraints `S` owned by the shared method and the role target ceilings `τ_CV`, `θ_CV`, `τ_prod` of Section 17.1 owned by the role policies (proposed), one role-effective predicate bound per run before its checkpoints are evaluated;
+9. independent true-reference replay-monitor/retention evidence and preserved score/admissibility semantics, with the shared constraints `S` owned by the shared method and the independently configurable role thresholds `τ_CV`, `θ_CV`, `τ_prod` of Section 17.1 owned by the role policies (each identity-bearing only for its own role, never for the shared method, with exactly one configuration source each and no synchronized alias or second checkpoint-policy engine), one role-effective predicate bound per run before its checkpoints are evaluated;
 10. method/currentness generations that make superseded weighted-stress/fold-local/head-scalar/target-first artifacts stale while preserving independent P1/P2/P3 and frozen membership evidence; and
 11. runtime evidence sufficient to reconstruct actual loss, dimensional thresholds, E0 fit/null-space transfer result, monitor, ordered combined-corpus layout, realized exposure, seed, precision/backend, and fold/final lineage.
 
@@ -926,7 +938,7 @@ Runtime caches and scratch state need not be preserved when exactly reconstructi
 
 The 2026-09-13 accepted D2 baseline remains the source of all unaffected P1/P2/P3 semantics. The first independent review found that the initial rewrite had accidentally compressed out several still-current baseline invariants and had conflated elemental-coefficient identifiability with composition-energy identifiability. That review repair restored the baseline invariants explicitly, narrowed the new E0 feasibility rule to the scientifically consumed composition-weighted corrections, and made the shared numeric Huber parameter dimensionally explicit per property channel. A subsequent re-review found one remaining D2 reproducibility defect: the candidate had written the combined multi-head corpus as target-first/replay-second even though pinned MACE orders `pt_head` first and shuffles the resulting replay-first/target-second combined index space. That ordering was corrected and bound to exposure identity/oracles. Final independent re-review then passed the repaired D1/D2 pair, and the stakeholder ratified the branch authority on 2026-09-14 by directing D3/D4 closure to proceed. It was integrated at `8553ebe9ed86b24dfe910c9e43acc6230d3ece90`.
 
-The role-predicate parameterization (Sections 17.1, 23.7, handoff item 9) follows stakeholder ratification that all three foundation post-selection thresholds are configurable policy parameters (`docs/methods/mlff_post_selection_threshold_numerical_policy.md`). It establishes foundation defaults `τ_CV=θ_CV=0.045 eV/Å` and `τ_prod=0.030 eV/Å` from a stakeholder-authorized calibration premise (D1 §10.3), leaves scratch unchanged, and is coordinated by `workplans/active/MLFF_CV_COMPETENCE_THRESHOLD_PARAMETERIZATION_ALIGNMENT.md`.
+The role-predicate parameterization (Sections 17.1, 23.7, handoff item 9) was accepted after independent D2 re-review and the stakeholder's 2026-09-15 ratification that all three foundation post-selection thresholds are configurable policy parameters. It establishes foundation defaults `τ_CV=θ_CV=0.045 eV/Å` and `τ_prod=0.030 eV/Å` from a stakeholder-authorized calibration premise (D1 §10.3) and leaves scratch unchanged. The cycle is recorded in `workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_PARAMETERIZATION_ALIGNMENT.md` and `workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_D1_D2_REREVIEW.md`.
 
 Reference realization evidence:
 

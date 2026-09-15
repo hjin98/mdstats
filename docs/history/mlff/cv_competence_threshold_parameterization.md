@@ -1,6 +1,6 @@
 # Foundation CV / production threshold parameterization
 
-This file is non-normative semantic history. Current authority is owned by the threshold-specific D1-D4 files on `fix/mlff-cv-competence-threshold-separation`.
+This file is non-normative semantic history. Current authority is owned by the broad canonical owners: D1 `docs/methods/mlff_scientific_method.md` §10.3/§11, D2 `docs/methods/mlff_numerical_algorithmic_method.md` §17.1/§23.7, D3 `docs/arch_manuals/mlff_training_data/40_training_evaluation.md`, and D4 `docs/specs/training_data/mlff_post_selection_p5_spec.md` §12.1. Threshold-specific delta authority files used during the cycle were incorporated into those owners and removed so that no parallel current authority remains (recoverable from Git history).
 
 The first threshold-separation candidate correctly split foundation CV competence from fresh-production checkpoint quality, but represented the generated/default values too rigidly: CV checkpoint competence was fixed at `45 meV/angstrom` and D1/D2 described production `30 meV/angstrom` as an unconditional constant even though production already had an explicit policy input.
 

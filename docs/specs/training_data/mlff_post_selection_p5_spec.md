@@ -326,7 +326,19 @@ Resolution SHALL be:
 | `naive_fine_tuning`, `multihead_replay` | `[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom`, default `0.045` | `0.045` | `[acceptance].maximum_target_force_rmse_ev_per_angstrom`, default `0.030` |
 | `scratch` | `[acceptance].maximum_target_force_rmse_ev_per_angstrom`, default `0.030` | `0.030` | same key, default `0.030` |
 
-An explicit `[post_selection.cv].acceptance_maximum` is used as written. Its units follow `acceptance_metric`; it never supplies the checkpoint ceiling. An explicit `[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom` is valid for foundation modes, always has target-force RMSE units (eV/angstrom), and defaults to `0.045` when omitted. P5 scratch keeps its pre-separation resolution and fails closed if the foundation CV checkpoint field is configured under `[post_selection.cv]`. `[acceptance].maximum_target_force_rmse_ev_per_angstrom` keeps its generic/non-P5 meaning and is not rewritten.
+For foundation modes the three values are the independently configurable thresholds of D1 §10.3/§11 and D2 §17.1: `tau_cv` (CV checkpoint competence), `theta_cv` (`acceptance_maximum`, CV held-out threshold), and `tau_prod` (production checkpoint quality). This section is their single D4 resolution contract.
+
+An explicit `[post_selection.cv].acceptance_maximum` is used as written. Its units follow `acceptance_metric`; it never supplies either checkpoint ceiling. An explicit `[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom` is valid for foundation modes, is not a second outer-acceptance threshold, always has target-force RMSE units (eV/angstrom), and defaults to `0.045` when omitted. P5 scratch keeps its pre-separation resolution and fails closed if the foundation CV checkpoint field is configured under `[post_selection.cv]`. `[acceptance].maximum_target_force_rmse_ev_per_angstrom` is the foundation-production threshold source, keeps its generic/non-P5 meaning, and is not rewritten; no second production alias (for example under `[post_selection.production]`) exists.
+
+Each of the three values SHALL be a finite positive TOML integer or float. Booleans, strings (including quoted numerics such as `"0.040"`), non-finite values, and nonpositive values SHALL fail with a typed input error before identity construction or execution; the raw configured value, not a pre-coerced float, is validated by the owning policy identity. Explicitly configuring a default and omitting it SHALL resolve the identical policy identity when every other field is equal.
+
+Changing one threshold SHALL move only its owning role-policy lineage and material dependents:
+
+```text
+tau_cv or theta_cv edit -> CV policy/plan/run + CV acceptance; dependent production authorization stale
+tau_prod edit           -> final-production policy/plan/run only
+shared constraint edit  -> shared method + both roles
+```
 
 Each run SHALL be judged under one effective `CheckpointAdmissibilityPolicy` composed from the method's shared constraints and its role policy's ceiling. Before a run's preparation/training and before its checkpoint candidates are evaluated, the runtime SHALL verify that the run plan's `method_identity_digest` and role-policy digest (`cv_policy_identity_digest` or `final_production_policy_digest`) equal current authority and SHALL fail closed otherwise; a run of one role can never be judged under the other role's policy.
 
@@ -443,6 +455,7 @@ Current configuration behavior is frozen as follows:
 - ambiguous omitted legacy split-file replay semantics fail closed;
 - current P5 fold default resolves to 3 and explicit overrides require `K >= 2`;
 - role target-force ceilings and the CV outer default resolve as in section 12.1, and an explicit `acceptance_maximum` is never rewritten;
+- generated and shipped foundation configuration show all three section 12.1 threshold defaults explicitly (`checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.045` and `acceptance_maximum = 0.045` under `[post_selection.cv]`, `maximum_target_force_rmse_ev_per_angstrom = 0.030` under `[acceptance]`), and the CLI specification and user guide state the same defaults and units;
 - foundation distributed execution fails closed;
 - exact-monitor shortfall, relation collision, unusable monitor labels, or failed composition transfer are typed infeasibility/failure, not fallback paths.
 
@@ -543,8 +556,12 @@ At minimum, implementation tests/review SHALL reject these counterfactuals:
 32. a foundation CV checkpoint at 42 meV/angstrom fails because a 30 meV/angstrom ceiling survives in method, run, or evaluation ancestry, or a foundation production checkpoint at 42 meV/angstrom is admitted;
 33. default scratch begins admitting 42 meV/angstrom because foundation CV changed;
 34. a role-only ceiling edit moves `PostSelectionMethodIdentity`, or a shared replay-constraint edit does not;
-35. a non-target-force outer metric threshold becomes the checkpoint ceiling; and
-36. a run is judged under a role policy its plan does not bind.
+35. a non-target-force outer metric threshold becomes the checkpoint ceiling;
+36. a run is judged under a role policy its plan does not bind;
+37. an explicit non-default `tau_cv`, `theta_cv`, or `tau_prod` is ignored by its assessment, moves the shared method or the other role's policy, or (for a CV-only edit changing no other field) leaves the prior CV acceptance authorizing production;
+38. an explicit default resolves a different identity than omission;
+39. a boolean, string, quoted-numeric, non-finite, or nonpositive threshold value is accepted from real TOML configuration; and
+40. generated template, shipped example, CLI specification, and guide disagree on the three defaults.
 
 ## 21. Documentation boundary
 

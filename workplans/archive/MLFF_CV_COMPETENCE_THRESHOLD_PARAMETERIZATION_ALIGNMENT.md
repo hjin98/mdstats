@@ -11,21 +11,17 @@ closeout_record: workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_AND_P
 
 # MLFF configurable 45/45/30 threshold alignment
 
-## Current disposition
+## Disposition (historical)
 
-D1/D2 threshold policy is now **accepted branch authority** after independent re-review and explicit stakeholder ratification on 2026-09-15. The stakeholder decision is that all three foundation post-selection thresholds are configurable by design, with generated/current defaults `45 / 45 / 30 meV/angstrom`.
+*Archived handoff; current lifecycle state is owned by `workplans/active/README.md`.* D1/D2 threshold policy became **accepted branch authority** after independent re-review and explicit stakeholder ratification on 2026-09-15. The stakeholder decision is that all three foundation post-selection thresholds are configurable by design, with generated/current defaults `45 / 45 / 30 meV/angstrom`.
 
 This handoff supersedes parent-workplan wording that describes any of those three values as an immutable policy constant. The role separation, evidence interpretation, fixed-budget rule, selective invalidation and no-duplicate-machinery constraints remain unchanged.
 
 ## Governing authority
 
-- D1: `docs/methods/mlff_post_selection_threshold_policy.md`
-- D2: `docs/methods/mlff_post_selection_threshold_numerical_policy.md`
-- D3: `docs/arch_manuals/mlff_training_data/85_post_selection_threshold_policy_ownership.md`
-- D4 specification: `docs/specs/training_data/mlff_post_selection_threshold_policy_spec.md`
-- independent D1/D2 re-review: `workplans/active/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_D1_D2_REREVIEW.md`
+During this cycle the threshold-policy delta was held in dedicated D1/D2/D3/D4 delta files (`docs/methods/mlff_post_selection_threshold_policy.md`, `docs/methods/mlff_post_selection_threshold_numerical_policy.md`, `docs/arch_manuals/mlff_training_data/85_post_selection_threshold_policy_ownership.md`, `docs/specs/training_data/mlff_post_selection_threshold_policy_spec.md`); independent D1/D2 re-review is `workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_D1_D2_REREVIEW.md`.
 
-These files own only the threshold-policy delta; unaffected semantics remain with the existing broad D1-D4 owners. Before integration, the broad canonical papers/specifications should be consolidated so they no longer contain contradictory fixed-value wording; do not duplicate authority during that consolidation.
+Those delta files have since been incorporated into, and removed in favor of, the broad canonical owners: D1 `docs/methods/mlff_scientific_method.md` §10.3/§11, D2 `docs/methods/mlff_numerical_algorithmic_method.md` §17.1/§23.7, D3 `docs/arch_manuals/mlff_training_data/40_training_evaluation.md`, and D4 `docs/specs/training_data/mlff_post_selection_p5_spec.md` §12.1.
 
 ## Exact configuration design
 
