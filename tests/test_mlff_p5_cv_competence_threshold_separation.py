@@ -126,6 +126,42 @@ def test_explicit_outer_ceiling_is_not_rewritten(foundation: Path):
     assert cv.checkpoint_maximum_target_force_rmse_ev_per_angstrom == 0.045
 
 
+def test_generated_and_shipped_configuration_resolve_45_45_30(tmp_path: Path):
+    from mdstats.training_data import _campaign_cli_core as cli
+
+    root = Path(__file__).resolve().parents[1]
+    texts = {
+        "generated": cli._config_template(
+            workspace="work",
+            training_root="training",
+            foundation_model="foundation.model",
+            replay_train="train.xyz",
+            replay_monitor="monitor.xyz",
+        ),
+        "shipped": (root / "campaign.toml.example").read_text(encoding="utf-8"),
+    }
+    for name, text in texts.items():
+        path = tmp_path / f"{name}.toml"
+        path.write_text(text, encoding="utf-8")
+        cfg, _paths = cli._load_config(path)
+        cv = resolve_cv_validation_policy_identity(cfg)
+        production = resolve_final_production_policy_identity(cfg)
+        assert (
+            cv.checkpoint_maximum_target_force_rmse_ev_per_angstrom,
+            cv.acceptance_metric,
+            cv.acceptance_maximum,
+            production.checkpoint_maximum_target_force_rmse_ev_per_angstrom,
+        ) == (0.045, "target_force_rmse_ev_per_angstrom", 0.045, 0.030), name
+    # The public contract documents state the same generated values.
+    for document in (
+        "docs/specs/training_data/mlff_data9b3_campaign_cli_spec.md",
+        "docs/guides/mlff_campaign_cli_user_guide.md",
+    ):
+        assert "acceptance_maximum = 0.045" in (root / document).read_text(
+            encoding="utf-8"
+        ), document
+
+
 def test_alternate_outer_metric_cannot_donate_its_threshold(foundation: Path):
     config = _config(
         "naive_fine_tuning",
@@ -393,6 +429,7 @@ def test_assembled_foundation_cv_passes_42_mev_and_production_refuses_it(
     from tests._mlff_post_selection_fixture import (
         PostSelectionHarness,
         load_context,
+        rewrite_config,
         run_cross_validate,
         run_train_production,
     )
@@ -413,12 +450,19 @@ def test_assembled_foundation_cv_passes_42_mev_and_production_refuses_it(
             plan.cv_policy_identity_digest, CvValidationPolicyIdentity.from_dict
         )
         assert persisted_cv.checkpoint_maximum_target_force_rmse_ev_per_angstrom == 0.045
+        horizon = context.cv_policy.cv_max_num_epochs
         for seed_record in acceptance.seed_acceptances:
             for fold in seed_record.fold_acceptances:
                 assert fold.acceptance_maximum == 0.045
                 assert 0.030 < fold.outer_metric_value <= 0.045
-        # Fixed budget: every fold trained its whole frozen CV horizon.
+                # Fixed budget: the first epoch is already competent, yet every
+                # epoch of the frozen horizon was trained and assessed.
+                assert len(fold.candidate_record_digests) == horizon
         assert len(harness.runs) == plan.fold_count * len(plan.required_cv_seeds)
+        assert all(
+            request.plan.execution_epoch_limit == horizon
+            for request in harness.requests
+        )
 
         # Evidence judged under this CV policy cannot be reached under another
         # CV ceiling: the run positions move and the old run is refused.
@@ -440,10 +484,38 @@ def test_assembled_foundation_cv_passes_42_mev_and_production_refuses_it(
     finally:
         store.close()
 
-    # The same 42 meV/angstrom behavior is not production quality.
+    # The same 42 meV/angstrom behavior is not production quality: the persisted
+    # CV authorized production, whose own role ceiling then refused it.
+    refused = PostSelectionHarness(force_offset=0.042)
     with pytest.raises(
         PostSelectionError, match=r"target-force ceiling 0\.03 eV/angstrom"
     ):
+        run_train_production(config, refused)
+
+    # A production-only ceiling edit leaves the shared method and the persisted
+    # CV acceptance current, and moves production to a new run position rather
+    # than re-thresholding the refused run's evidence.
+    rewrite_config(
+        config,
+        "[post_selection.production]",
+        "[acceptance]\nmaximum_target_force_rmse_ev_per_angstrom = 0.045\n\n"
+        "[post_selection.production]",
+    )
+    cfg, paths, store = load_context(config)
+    try:
+        context = build_post_selection_context(cfg, paths, store, trainer=object())
+        assert context.method.content_digest == plan.method_identity_digest
+        current = resolve_current_cv_acceptance(context)
+        assert current is not None and current.content_digest == acceptance.content_digest
+    finally:
+        store.close()
+    authorized = PostSelectionHarness(force_offset=0.042)
+    assert run_train_production(config, authorized) == 0
+    assert authorized.runs and not set(authorized.runs) & set(refused.runs)
+
+    # A CV-only edit stales the CV evidence, so it no longer authorizes production.
+    rewrite_config(config, "partition_seed = 7", "partition_seed = 7\nacceptance_maximum = 0.04")
+    with pytest.raises(PostSelectionError, match="different cross-validation policy"):
         run_train_production(config, PostSelectionHarness(force_offset=0.042))
 
 
@@ -478,10 +550,11 @@ def test_assembled_scratch_cv_still_rejects_42_mev(tmp_path: Path):
             for fold in seed_record.fold_acceptances
         ]
         assert folds and all(not fold.accepted for fold in folds)
-        assert all(
-            "target_threshold_exceeded" in fold.checkpoint_rejection_reasons
-            for fold in folds
-        )
+        for fold in folds:
+            # The existing no-admissible outcome: no held-out evaluation at all.
+            assert "target_threshold_exceeded" in fold.checkpoint_rejection_reasons
+            assert fold.outer_metric_value is None
+            assert fold.representative_candidate_identity is None
     finally:
         store.close()
 

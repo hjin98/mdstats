@@ -125,3 +125,25 @@ Implementation review may return PASS only when all of the following are true:
 - no repair introduces a second checkpoint-policy owner, P5 protocol graph, EVAL2 wrapper/plan, compatibility translator, or duplicated threshold state.
 
 Until then the active cycle remains **reopened / NO-PASS**.
+## 4. Repair realization record (D4, 2026-09-14; awaiting re-review)
+
+Candidate: branch `fix/mlff-cv-competence-threshold-separation` at `174e0d0c` plus the working-tree repair below. Product code (`mdstats/`, `campaign.toml.example`) is byte-identical to reviewed `473437e2`; the repair changes only tests, workplans and history, so §2's static assessment stays applicable.
+
+| Finding | Disposition |
+|---|---|
+| B1 | **Repaired in plan text.** Parent workplan invariants 18-22/25, delegated space, D2->D3 graph, affected surface, HAS SP-002/SP-004, reverse-semantic question, falsification cases 17-22/27, Gates C/D/E, D3 reopen trigger and §9 acceptance now state the §1 run-plan lineage; the "Implementation reconciliation" interim section was folded into that binding text. No product machinery added. |
+| B2 | **OPEN / BLOCKING.** D1 and D2 remain proposed. Independent D1 then D2 review and explicit stakeholder ratification have not occurred and cannot be supplied by D4. |
+| B3 | **Executed; see below.** |
+| B4 | **Repaired.** `docs/methods/.tmp_d1_threshold_revision.md` deleted; no replacement. |
+| B5 | **Semantic history repaired; closeout deferred.** Delta appended, marked proposed, to `docs/history/mlff/post_selection_method_restoration_evolution.md` (indexed in `docs/history/mlff/README.md`). Accepted PEM basis has not advanced (`origin/main` = `8553ebe9`, the workplan's recorded state), so the HAS is unchanged. Closeout-learning assessment requires accepted repair and is deferred to post-B2 closure; candidate episodes to assess then are SP-001 (reduction instead of a P5 protocol/EVAL2 seam), SP-002 (run-plan authentication fail-closed) and SP-004 (real cross-validate -> train-production path). No PEM mutation now. |
+
+### Executed evidence
+
+Environment: CPU, `/home/samjin/miniconda3/envs/mace/bin/python`, pytest-xdist `-n 8 -p no:randomly`.
+
+- Focused `tests/test_mlff_p5_cv_competence_threshold_separation.py`: **19 passed**. Strengthened within the existing file: real-path production-only ceiling edit keeps method and persisted CV acceptance current, and `train-production` then succeeds at a new run position disjoint from the refused run; CV-only edit makes `train-production` refuse with the stale-CV-policy error; fixed budget (every fold assessed `cv_max_num_epochs` candidates, TRAIN2 epoch limit equals the horizon); no-admissible scratch folds carry no held-out metric or representative; generated `init` template and shipped example resolve 45/45/30 through the real loader and resolvers, and spec/guide state `acceptance_maximum = 0.045`.
+- Affected regression: the ten §B3 files are a subset of the 72-file transitive affected closure (tests importing the changed identity/runtime/CLI/fixture owners or `cross-validate`/`train-production`). Candidate **33 failed / 1592 passed / 2 skipped**; baseline `8553ebe9` in a detached worktree (71 existing files) **33 failed / 1570 passed / 5 skipped**. Failure-id sets are **identical: 0 new, 0 fixed**; all 33 are pre-existing `*_specification.py` documentation-sync tests. No candidate-attributable regression.
+- `python -m compileall -q mdstats/training_data`: **pass**.
+- `git diff --check 8553ebe9...HEAD`: **fails only on the CI-regenerated PDFs** (`docs/guides/mlff_campaign_cli_user_guide.pdf`, `docs/specs/training_data/mlff_data9b3_campaign_cli_spec.pdf`), whose xref lines carry PDF-format trailing spaces; earlier CI regeneration commits (e.g. `bf98b47a`) show the same. Excluding `*.pdf`, the check **passes**.
+
+Not required here and not run: GPU/production-scale qualification (deferred to the final release package).

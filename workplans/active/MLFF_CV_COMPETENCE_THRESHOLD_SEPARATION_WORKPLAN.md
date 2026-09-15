@@ -5,17 +5,19 @@ status: proposed
 branch: fix/mlff-cv-competence-threshold-separation
 baseline_commit: 8553ebe9ed86b24dfe910c9e43acc6230d3ece90
 highest_affected_domain: D1
-review_state: final-review-pass-after-amendment
+review_state: implementation-review-reopened
+reopen_amendment: workplans/active/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_IMPLEMENTATION_REVIEW_REOPEN.md
 ---
 
 # MLFF CV Competence Threshold Separation Workplan
 
 ## 0. Final review disposition and scope
 
-Final independent workplan review is **PASS after amendment**. No active Serious Challenge remains in the workplan itself. The final review closed two remaining concretization/lifecycle gaps:
+Final independent workplan review was PASS after amendment. The subsequent independent assembled implementation review is **NO-PASS / reopened**; its repair contract is `MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_IMPLEMENTATION_REVIEW_REOPEN.md`. No Serious Challenge is active against the scientific intent or the accepted P5 architecture.
 
-1. the role-effective checkpoint-admissibility policy must be bound consistently by the per-run `TrainingProtocolIdentity` as well as by EVAL2; EVAL2-only provenance would permit a hidden stale target ceiling in TRAIN2 protocol ancestry; and
-2. the active-workplan index must advertise this plan rather than continuing to state that no active MLFF post-selection workplan exists.
+That review found this plan's final-review amendment internally contradictory: it required per-run `TrainingProtocolIdentity` and generic EVAL2-plan policy binding, whereas accepted D3 (`docs/arch_manuals/mlff_training_data/40_training_evaluation.md`, `80_ownership_and_decisions.md`) states that the broad DATA8-era `TrainingProtocolIdentity` cannot authorize restored P5 and current P5 constructs no generic `Eval2EvaluationPlan`. Those requirements are **superseded** by the P5 role-plan/run-plan lineage in §3; the contract below is the repaired binding text. The concern they protected — no hidden stale target ceiling in any run's training or checkpoint-assessment ancestry — is preserved by that lineage, not by adding a P5 protocol graph, EVAL2 wrapper/plan or per-checkpoint role field.
+
+The active-workplan index advertises this plan and its reopen state.
 
 The requested change remains narrow. Foundation post-selection cross-validation (CV) should determine whether the frozen foundation-adaptation method reaches a clearly competent regime consistently on held-out development evidence without forcing every disposable fold model through the late slow-convergence regime required for fresh-production checkpoint quality.
 
@@ -34,19 +36,6 @@ foundation production checkpoint quality ceiling  = 0.030 eV/angstrom = 30 meV/a
 The `30 meV/angstrom` production value is checkpoint/model-control evidence on the protected common target monitor. It is not final external adequacy, a locked test, or release qualification. Those downstream roles remain separate.
 
 This change is specific to restored **foundation adaptation**. P5 `scratch` remains separately governed and retains its pre-change target-threshold/default semantics, currently `0.030 eV/angstrom`, unless separately reopened.
-
-### Implementation reconciliation (Gate C/D, pending Gate E review)
-
-Reconstruction of the actual P5 surface showed that invariants 19-20 and falsification cases 17-19 name seams P5 does not have: accepted D3 (`40_training_evaluation.md`, `80_ownership_and_decisions.md`) states that `TrainingProtocolIdentity` cannot authorize P5, P5's TRAIN2 runtime plan uses the method-identity digest as its protocol digest, and P5 constructs no `Eval2EvaluationPlan`. Constructing either record for P5 would add the duplicate machinery §2 forbids and contradict accepted D3.
-
-The candidate therefore concretizes the same ownership/invalidation graph through the existing per-run lineage, as §3 permits for an equivalent decomposition:
-
-- `PostSelectionMethodIdentity` v3 binds `shared_checkpoint_constraints_digest`; CV policy v3 and final-production policy v2 bind `checkpoint_maximum_target_force_rmse_ev_per_angstrom`;
-- `post_selection_checkpoint_admissibility(policies, role_policy)` is the one composition owner;
-- `PostSelectionContext.checkpoint_admissibility(run_plan)` authenticates the run plan's method and role-policy digests before preparation/training and before candidate evaluation, failing closed on mismatch or foreign role;
-- the role plan (binding both digests) determines run identity/root, and fold acceptance/run evidence bind the run-plan digest, so the TRAIN2 state and EVAL2 candidate classifications of a run are bound to exactly one effective policy and are never re-thresholded.
-
-Gate E review must decide whether this equivalent concretization satisfies invariants 18-21 or whether D3 must be reopened.
 
 ## 1. Outcome and authority
 
@@ -67,7 +56,7 @@ The D1 correction is:
 - for this cycle, CV consistency means every required fold/seed independently reaches the CV checkpoint-competence predicate and passes its held-out predicate; cross-fold dispersion remains diagnostic-only; and
 - neither CV nor the common monitor becomes downstream release qualification.
 
-D2 owns exact numerical predicates, units, boundaries and equivalence semantics. D3 owns the identity/ownership graph and persistence/currentness boundaries. D4 owns exact schemas, resolvers, configuration defaults, protocol/evaluation construction, recovery and runtime realization.
+D2 owns exact numerical predicates, units, boundaries and equivalence semantics. D3 owns the identity/ownership graph and persistence/currentness boundaries. D4 owns exact schemas, resolvers, configuration defaults, run-plan/evaluation construction, recovery and runtime realization.
 
 ### Accepted baseline and current owners
 
@@ -82,9 +71,10 @@ Current relevant owners include:
 - campaign/CLI configuration contract: `docs/specs/training_data/mlff_data9b3_campaign_cli_spec.md`
 - method/role policy resolution: `mdstats/training_data/post_selection_identity.py`
 - generic checkpoint policy: `mdstats/training_data/train2_policy.py`
-- per-run TRAIN2 protocol identity: `mdstats/training_data/protocol.py`
-- TRAIN2 runtime realization: `mdstats/training_data/train2_runtime.py` and post-selection protocol/runtime construction
-- EVAL2 plan/candidate evidence: `mdstats/training_data/eval2.py`
+- role-effective admissibility composition and run authentication: `post_selection_checkpoint_admissibility(...)` in `mdstats/training_data/post_selection_identity.py` and `PostSelectionContext.checkpoint_admissibility(run_plan)` in `mdstats/training_data/campaign_post_selection_runtime.py`
+- TRAIN2 runtime realization: `mdstats/training_data/train2_runtime.py` and post-selection runtime construction (P5's TRAIN2 runtime plan uses the method-identity digest as its protocol digest)
+- generic EVAL2 candidate assessment/records: `mdstats/training_data/eval2.py` (consumes the run's composed policy; not a P5 policy authority)
+- non-P5/historical DATA8 protocol identity: `mdstats/training_data/protocol.py` (cannot authorize restored P5)
 - CV plan/run ancestry: `mdstats/training_data/post_selection_cv_plan.py`
 - CV fold/campaign acceptance: `mdstats/training_data/post_selection_cv_acceptance.py`
 - final-production plan/run ancestry: `mdstats/training_data/post_selection_production.py`
@@ -127,14 +117,14 @@ D1/D2 edits remain proposed until independent falsification/review and required 
 15. **Shared method identity excludes role-only target ceilings after cutover.** It continues to bind foundation method, optimizer/loss/exposure/preparation, checkpoint-selection semantics and genuinely shared replay/physical/integrity constraints.
 16. **One-time identity cutover is explicit.** Removing the old target-bearing admissibility digest from the shared method may require a new `PostSelectionMethodIdentity` schema/generation and may stale existing P5 CV/final descendants once. That is a fail-closed representation cutover, not a relaxation of production semantics.
 17. **Steady-state invalidation is minimal after cutover.** A CV-only target-ceiling change moves CV policy/evidence, not the shared method or production policy. A production-only ceiling change moves production policy, not the shared method or otherwise applicable CV evidence. A genuinely shared replay/physical/method change moves shared method identity and stales both roles.
-18. **One role-effective checkpoint policy governs a run.** Shared gates plus the current role target ceiling resolve to one effective `CheckpointAdmissibilityPolicy` (or equivalent one-owner policy) before run construction.
-19. **TRAIN2 protocol ancestry binds that effective policy.** The per-run `TrainingProtocolIdentity` must serialize/bind the exact effective checkpoint-admissibility policy used by the run. Foundation CV and production may therefore have different per-run training-protocol digests while sharing one `PostSelectionMethodIdentity`.
-20. **EVAL2 ancestry binds the same effective policy.** The EVAL2 evaluation plan/evidence must bind the exact effective admissibility-policy digest used by its corresponding TRAIN2 protocol. For one run, the TRAIN2-embedded policy digest and EVAL2 `admissibility_policy_digest` must agree exactly.
-21. **Recovery never reinterprets completed evidence.** Recovery reauthenticates role policy, TRAIN2 protocol identity, EVAL2 plan and candidate evidence. It does not recompute a stored numeric metric against a newly resolved ceiling and call old evidence current.
-22. **No hidden 30-meV CV fallback.** A healthy foundation-CV checkpoint at `42 meV/angstrom` cannot fail because a production-only `30 meV/angstrom` ceiling survives in method, TRAIN2 or EVAL2 ancestry.
+18. **One role-effective checkpoint policy governs a run.** Shared gates bound by the method plus the current role target ceiling compose, through one owner, into one effective `CheckpointAdmissibilityPolicy` for the run.
+19. **Run-plan ancestry binds the effective policy.** The CV/final role plan binds the exact method and role-policy digests; run plan, run identity and run root derive from that plan. The effective policy is composed only after authenticating those digests against current authority, before preparation/TRAIN2 execution. A role-ceiling edit moves the role policy, plan and run identity/root; a shared replay/physical/integrity edit moves the method and both dependent roles. Foundation CV and production share one `PostSelectionMethodIdentity` while their run plans bind different role policies.
+20. **Checkpoint assessment uses the same authenticated policy.** EVAL2 candidate assessment of a run re-authenticates the same run-plan ancestry and uses the same composed policy. Fold acceptance and final run evidence bind the exact run-plan digest, which is what makes a run's candidate classifications attributable to one policy. The broad `TrainingProtocolIdentity` and a generic `Eval2EvaluationPlan` are not P5 policy seams and must not be added to restate this ancestry; generic `Eval2CheckpointRecord` gains no role/policy field.
+21. **Recovery never reinterprets completed evidence.** Recovery authenticates current method, role-policy and plan/run-plan ancestry before reuse. It does not recompute a stored numeric metric against a newly resolved ceiling and call old evidence current.
+22. **No hidden 30-meV CV fallback.** A healthy foundation-CV checkpoint at `42 meV/angstrom` cannot fail because a production-only `30 meV/angstrom` ceiling survives in method, role-plan/run-plan, TRAIN2 runtime or EVAL2 assessment ancestry.
 23. **No global-threshold collateral change.** Non-foundation consumers of `[acceptance].maximum_target_force_rmse_ev_per_angstrom`, generic checkpoint policy, P3 or historical/generic TRAIN2/EVAL2 retain accepted behavior unless direct dependency analysis independently requires reconciliation. Do not globally rewrite that key to `0.045`.
 24. **Metric units cannot be aliased.** `[post_selection.cv].acceptance_maximum` is dimensioned by `acceptance_metric`; an energy/quantile/species threshold cannot become the target-force checkpoint ceiling.
-25. **Historical/current state fails closed.** Old shared-30 method/policy/protocol records may remain readable as history but cannot authorize new role-separated work by silent translation or compatibility wrapper.
+25. **Historical/current state fails closed.** Old shared-30 method/role-policy/plan records may remain readable as history but cannot authorize new role-separated work by silent translation or compatibility wrapper.
 26. **No silent configuration rewrite.** Existing explicit `acceptance_maximum = 0.030` remains explicit `0.030`. New/current foundation defaults may expose `0.045`; operators may explicitly adopt the new policy and currentness follows identity rules.
 27. **Downstream qualification remains separate.** Neither `45` CV nor `30` production-monitor criteria become external/locked/release adequacy.
 
@@ -159,7 +149,7 @@ Use the smallest coherent representation. Prefer narrowing the current over-broa
 
 The generic `CheckpointAdmissibilityPolicy` may remain if instantiated cleanly per role. The shared method may bind a projection/digest of only genuinely shared checkpoint constraints rather than the full target-bearing effective policy. Exact class/helper layout remains delegated.
 
-Reuse current ancestry seams. CV/final run plans already bind role-policy digests; `TrainingProtocolIdentity` already embeds the concrete checkpoint-admissibility policy; EVAL2 already carries `admissibility_policy_digest`. These should be made coherent rather than supplemented with duplicate role fields on every checkpoint record. Advance a schema only when that object's serialized payload or meaning actually changes.
+Reuse current P5 ancestry seams. CV/final run plans already bind method and role-policy digests, and fold acceptance/run evidence already bind run-plan digests; make the effective policy flow through that lineage rather than adding duplicate role fields on checkpoint records, a P5 `TrainingProtocolIdentity`, or a generic EVAL2 plan. Advance a schema only when that object's serialized payload or meaning actually changes.
 
 ### Non-goals
 
@@ -213,17 +203,20 @@ FinalProductionPolicyIdentity
   owns production horizon/seeds/publication policy
   owns/reconstructs foundation-production target checkpoint quality
 
-shared constraints + role target policy
-  -> one effective CheckpointAdmissibilityPolicy
-  -> per-run TrainingProtocolIdentity binds that full effective policy
-  -> TRAIN2 runtime/checkpoint trajectory
-  -> EVAL2 evaluation plan binds the same effective policy digest
-  -> candidate classification/evidence
+PostSelectionMethodIdentity(shared checkpoint constraints)
+  + CV/final role policy(role target ceiling)
+  -> CV/final role plan
+  -> CV/final run plan / run identity / run root
+  -> authenticate method + exact role-policy digest
+  -> compose one effective CheckpointAdmissibilityPolicy
+  -> preparation/TRAIN2 execution
+  -> EVAL2 candidate assessment under that same composed policy
+  -> fold acceptance or final run evidence binding the run-plan digest
 ```
 
 Equivalent decomposition is allowed only if the same ownership/invalidation graph is reconstructable without duplicated truth.
 
-Current code violates this target graph because `resolve_post_selection_method_policies()` constructs one target-bearing policy from global `[acceptance]`, `resolve_post_selection_method_identity()` binds that full digest as shared method identity, `TrainingProtocolIdentity` serializes the full policy, and current runtime reaches the same method-level policy for both CV and production. The repair must remove coupling at the owner and then propagate one role-effective policy consistently through protocol construction and EVAL2.
+The baseline code violated this graph because `resolve_post_selection_method_policies()` constructed one target-bearing policy from global `[acceptance]`, `resolve_post_selection_method_identity()` bound that full digest as shared method identity, and the runtime reached the same method-level policy for both CV and production training and assessment. The repair removes the coupling at the owner and composes one role-effective policy per authenticated run plan.
 
 ### One-time cutover versus steady-state invalidation
 
@@ -255,23 +248,21 @@ Review/update where actually implicated:
 - `docs/specs/training_data/mlff_post_selection_p5_spec.md`
 - `docs/specs/training_data/mlff_data9b3_campaign_cli_spec.md`
 - `mdstats/training_data/post_selection_identity.py`
-- `mdstats/training_data/protocol.py`
 - `mdstats/training_data/post_selection_cv_plan.py` only if its own role-policy payload/meaning changes
 - `mdstats/training_data/post_selection_production.py` only if its own role-policy payload/meaning changes
 - `mdstats/training_data/campaign_post_selection_runtime.py`
-- `mdstats/training_data/post_selection_execution.py` and/or the canonical TRAIN2 protocol construction path
-- `mdstats/training_data/train2_runtime.py` only where protocol-policy authentication requires it
+- `mdstats/training_data/post_selection_execution.py` and `mdstats/training_data/train2_runtime.py` only if run-plan policy authentication requires it
 - `mdstats/training_data/post_selection_cv_acceptance.py`
-- `mdstats/training_data/eval2.py`/EVAL2 construction/recovery only as needed to bind/authenticate the existing effective-admissibility seam
+- `mdstats/training_data/eval2.py` only if generic assessment cannot consume the composed policy unchanged
 - `mdstats/training_data/train2_policy.py` only if clean composition cannot be achieved without changing the generic type
-- currentness/recovery/store paths that compare method, role-policy, training-protocol or EVAL2 ancestry
+- currentness/recovery/store paths that compare method, role-policy or plan/run-plan ancestry
 - `campaign.toml.example`
 - generated `init` template in `mdstats/training_data/_campaign_cli_core.py`
 - configuration validation/default resolution
 - `docs/guides/mlff_campaign_cli_user_guide.md`
 - `workplans/active/README.md` for current branch-local lifecycle discoverability
 - operator-visible manifests/logs/status where threshold provenance is shown
-- affected identity, protocol, no-admissible, recovery, CLI/spec-generation and assembled CV->production tests.
+- affected identity, run-authentication, no-admissible, recovery, CLI/spec-generation and assembled CV->production tests.
 
 This is a lower bound, not a mandate to churn every listed file.
 
@@ -297,13 +288,13 @@ has:
     reason: Narrow/rewire the over-broad owner rather than adding synchronized threshold paths.
   - id: SP-002
     disposition: APPLICABLE
-    reason: Method/role/protocol/effective-admissibility boundaries must fail closed.
+    reason: Method/role-policy/run-plan/effective-admissibility boundaries must fail closed.
   - id: SP-003
     disposition: APPLICABLE
     reason: Preserve unaffected immutable P1/P2/P3/replay/source/common-monitor evidence.
   - id: SP-004
     disposition: APPLICABLE
-    reason: Acceptance must exercise the real CV -> TRAIN2 protocol -> EVAL2 -> held-out verdict -> production authorization path.
+    reason: Acceptance must exercise the real cross-validate -> role/run plan -> TRAIN2 -> EVAL2 assessment -> persisted held-out verdict -> train-production authorization path.
 ```
 
 **PEM basis health:** `REVIEW_REQUIRED` for metadata provenance, not a blocker to the bounded lessons above. The project-selected publication at `4eabe2...` still self-declares an older `b65fa3b...` basis and the then-live NT-001 state. Later branch-local state at `b5d101d8f73d3efd63ef4e70b3913e7d281406ce` reconciled that basis and the associated repair later closed PASS, but this workplan does not self-promote that candidate state into accepted PEM. Use only materially verified lessons also supported by direct repository history; do not infer absence of another lesson from partial/stale metadata. Refresh the HAS if project-governed accepted memory advances before closeout.
@@ -314,7 +305,7 @@ The preceding post-selection restoration preserved target/replay thresholds beca
 
 ### Reverse-semantic verification question
 
-From persisted identities/plans/protocols/evidence and real executable behavior, without this workplan, can an independent reviewer reconstruct:
+From persisted identities/plans/evidence and real executable behavior, without this workplan, can an independent reviewer reconstruct:
 
 ```text
 shared foundation method: same CV and production method
@@ -324,8 +315,8 @@ foundation production checkpoint quality: 30 meV/angstrom target-force RMSE
 scratch target behavior: unchanged
 CV consistency: every required fold/seed passes; dispersion diagnostic only
 shared replay/physical/integrity gates: unchanged
-TRAIN2 protocol: binds exact role-effective admissibility policy
-EVAL2 plan: binds the same role-effective admissibility-policy digest
+run ancestry: role plan binds method + exact role-policy digest; run identity/root derive from it
+checkpoint assessment: the run's authenticated composed policy; acceptance/run evidence bind the run-plan digest
 termination: fixed budget
 release qualification: downstream and unchanged
 ```
@@ -352,17 +343,17 @@ At minimum demonstrate:
 14. post-cutover CV-only target-ceiling perturbation moves CV policy/evidence but not shared method/production policy;
 15. post-cutover production-only ceiling perturbation moves production policy but not shared method/applicable CV method evidence;
 16. replay degradation or another truly shared gate still moves shared method identity and dependent CV/production ancestry;
-17. CV and production `TrainingProtocolIdentity` records carry their respective effective target ceilings while referencing the same shared post-selection method identity at the parent plan level;
-18. for each run, the checkpoint-admissibility digest embedded in `TrainingProtocolIdentity` exactly matches EVAL2 `admissibility_policy_digest`; a mismatch fails closed before candidate evidence is accepted;
-19. CV and production EVAL2 plans therefore bind different effective admissibility-policy digests when the role ceilings differ;
-20. completed candidate/protocol evidence from one effective admissibility policy cannot be reused under another by merely recomparing stored metrics;
-21. no redundant role/evidence authority is added to checkpoint records when existing protocol/EVAL2 ancestry already proves the policy;
-22. readable old method/policy/protocol/CV records cannot silently authorize current work;
+17. CV and production run plans bind the same shared method digest and their own role-policy digests, and their composed effective policies carry their respective target ceilings;
+18. a run plan whose method or role-policy digest is not current, or whose role has no P5 role policy, fails closed before preparation/training and before candidate assessment;
+19. CV and production composed policies differ exactly in the target ceiling when the role ceilings differ; every shared gate is identical;
+20. completed candidate/run evidence from one effective admissibility policy cannot be reused under another by merely recomparing stored metrics: a role-ceiling edit yields a new plan/run position or stale CV authorization;
+21. no redundant role/policy authority is added to checkpoint records, and no P5 `TrainingProtocolIdentity` or generic `Eval2EvaluationPlan` is constructed;
+22. readable old method/role-policy/plan/CV records cannot silently authorize current work;
 23. newly generated foundation configuration resolves default outer CV `0.045` and production target `0.030`, while scratch defaults remain pre-change;
 24. `campaign.toml.example`, generated `init` text, CLI specification and user guide agree on the public configuration contract;
 25. an existing explicit `[post_selection.cv].acceptance_maximum = 0.030` is not silently rewritten;
 26. CV still consumes the configured fixed horizon rather than stopping when `0.045` is first crossed;
-27. real `cross-validate` -> persisted CV verdict -> `train-production` integration authenticates shared method, role policies, TRAIN2 protocol and EVAL2 policy ancestry at real owners; and
+27. real `cross-validate` -> persisted CV verdict -> `train-production` integration authenticates shared method, role policies and plan/run-plan ancestry at real owners; and
 28. current D1/D2/D3/D4 documents no longer claim an identical role target ceiling as part of the shared checkpoint method.
 
 ### Calibration adequacy premise
@@ -420,16 +411,15 @@ Reconstruct all current identity consumers before editing. Required end state:
 - shared `PostSelectionMethodIdentity` excludes role target ceilings but retains genuine shared method/replay/physical/integrity semantics;
 - `CvValidationPolicyIdentity` owns/reconstructs the foundation-CV checkpoint target ceiling plus outer acceptance policy;
 - `FinalProductionPolicyIdentity` owns/reconstructs the production checkpoint target ceiling;
-- shared constraints + role policy deterministically produce one effective checkpoint-admissibility policy before run construction;
-- the per-run `TrainingProtocolIdentity` binds that exact effective policy;
-- the corresponding EVAL2 plan binds the same policy digest;
-- protocol/EVAL2 recovery reauthenticates exact policy ancestry instead of reinterpreting old metrics;
+- shared constraints + authenticated role policy deterministically compose one effective checkpoint-admissibility policy per run, through one owner;
+- role plans bind method + role-policy digests and determine run identity/root; training and candidate assessment both authenticate that ancestry before using the composed policy;
+- fold acceptance/run evidence bind the run-plan digest, and plan recovery reauthenticates method/role-policy ancestry instead of reinterpreting old metrics;
 - scratch and generic TRAIN2/EVAL2 retain accepted behavior; and
 - P1/P2/P3/frozen-selection/common-monitor evidence is preserved where its own identity did not change.
 
 Treat migration and steady state separately. Advance `PostSelectionMethodIdentity` schema/generation if its field meaning changes; that one-time cutover may stale old P5 CV/final descendants. After cutover, role-only threshold changes must not move the shared method.
 
-Advance CV/final role-policy schemas if their serialized payload/meaning changes. Do not advance CV/final plan, `TrainingProtocolIdentity`, EVAL2 or checkpoint-record schemas merely because an ancestor/policy digest value changes; advance them only if their own representation/meaning changes. `TrainingProtocolIdentity` already has a checkpoint-admissibility field and EVAL2 already has an admissibility digest seam, so prefer rewiring those owners over adding another representation.
+Advance CV/final role-policy schemas if their serialized payload/meaning changes. Do not advance CV/final plan, EVAL2 or checkpoint-record schemas merely because an ancestor/policy digest value changes; advance them only if their own representation/meaning changes. Do not construct `TrainingProtocolIdentity` or `Eval2EvaluationPlan` for P5.
 
 Do not globally change `[acceptance].maximum_target_force_rmse_ev_per_angstrom` to `0.045`; it has scratch/generic/historical consumers. Foundation CV needs an identity-bound effective `0.045` role value. Foundation production may continue resolving `0.030` from the existing key only if that remains semantically faithful and does not recouple CV; otherwise place the role value on the existing production-policy surface. Add a user-visible field only when needed for unambiguous ownership.
 
@@ -458,8 +448,7 @@ Update together:
 - user guide;
 - P5 D4 spec;
 - shared/role policy composition;
-- `TrainingProtocolIdentity` construction and any protocol/runtime authentication needed so the exact role-effective policy is embedded;
-- EVAL2 plan construction so its admissibility digest exactly matches the protocol's policy for the run;
+- run-plan authentication before training and before candidate assessment, composing the role-effective policy from the authenticated method and role policy;
 - recovery/currentness, logs/manifests/status; and
 - affected focused, regression and real-path integration tests.
 
@@ -467,7 +456,7 @@ Do not add early stopping or change the default CV horizon merely to claim speed
 
 ### Gate E — assembled independent review and impact closure
 
-Review the assembled D1-D4 candidate independently. Verify foundation/scratch isolation; D1/D2 meaning/units; one-time cutover vs steady-state invalidation; role-effective TRAIN2 and EVAL2 policy provenance/agreement/recovery; no stale-policy reinterpretation; frozen target selection/common-monitor preservation; no replay/physical/integrity weakening; no P3/generic TRAIN2 collateral change; fixed-budget behavior; generated/config/spec/guide convergence; and real CV -> production authorization.
+Review the assembled D1-D4 candidate independently. Verify foundation/scratch isolation; D1/D2 meaning/units; one-time cutover vs steady-state invalidation; role-effective policy provenance through role plan/run plan into TRAIN2 and EVAL2 assessment, and its recovery; no stale-policy reinterpretation; frozen target selection/common-monitor preservation; no replay/physical/integrity weakening; no P3/generic TRAIN2 collateral change; fixed-budget behavior; generated/config/spec/guide convergence; and real CV -> production authorization.
 
 Refresh PEM/HAS if accepted memory advances. Perform closeout learning assessment but mutate PEM only if admission criteria are met. Reconcile `workplans/active/README.md` throughout lifecycle and archive this plan only after independent assembled Review PASS and required authority acceptance.
 
@@ -477,7 +466,7 @@ Reopen D1 if CV is actually final-product/release qualification; the `45` calibr
 
 Reopen D2 if role predicates cannot be specified without metric/unit ambiguity; shorter fixed-horizon CV creates an unrecognized estimator/selection bias; a mode-independent target criterion is required; or the role change affects checkpoint-selection algorithm rather than only admissibility.
 
-Reopen D3 before adding machinery if clean ownership appears to require wrappers/shadow registries/duplicate evaluators/synchronized thresholds; fail-closed currentness cannot use existing role/protocol/EVAL2 ancestry; implementation would require global generic TRAIN2/scratch changes; or one-time cutover cannot be distinguished from steady-state role invalidation.
+Reopen D3 before adding machinery if clean ownership appears to require wrappers/shadow registries/duplicate evaluators/synchronized thresholds; fail-closed currentness cannot use existing method/role-policy/plan/run-plan ancestry; implementation would require global generic TRAIN2/scratch changes; or one-time cutover cannot be distinguished from steady-state role invalidation.
 
 Human ratification is required for the material D1/D2 revision before final acceptance. The Challenge targets in this plan remain mandatory at Gates A/B/E.
 
@@ -514,16 +503,15 @@ The workplan may close only when:
 - foundation CV checkpoint and default held-out target-force criteria resolve to `45`;
 - foundation production checkpoint quality remains `30`;
 - alternate outer metrics cannot alias checkpoint target force;
-- each run's `TrainingProtocolIdentity` binds the exact role-effective checkpoint-admissibility policy;
-- EVAL2 binds the same effective policy digest as its run's training protocol;
-- recovery reauthenticates both and does not reinterpret old candidate evidence;
+- each run's role-effective checkpoint-admissibility policy is composed only from its authenticated method + role-policy ancestry, before training and before candidate assessment;
+- fold acceptance/run evidence bind the run-plan digest, and recovery reauthenticates plan ancestry without reinterpreting old candidate evidence;
 - P1/P2/P3/frozen selected design and unaffected common-monitor/replay/source evidence are preserved;
 - generated config, example config, CLI specification and user guide agree while explicit old config is not silently rewritten;
 - TRAIN2 remains fixed-budget;
 - all required folds/seeds, leakage, replay and physical/integrity constraints remain unchanged;
-- real-path regression includes the `30 < RMSE <= 45` foundation CV pass/production fail, scratch preservation, dimensionality, protocol/EVAL2 policy agreement, one-time cutover, steady-state invalidation and recovery cases;
-- assembled `cross-validate` -> persisted acceptance -> `train-production` passes under authenticated role policies/protocols;
+- real-path regression includes the `30 < RMSE <= 45` foundation CV pass/production fail, scratch preservation, dimensionality, run-plan policy authentication, one-time cutover, steady-state invalidation and recovery cases;
+- assembled `cross-validate` -> persisted acceptance -> `train-production` passes under authenticated role policies and plan/run-plan ancestry;
 - active-workplan lifecycle/index and affected documentation/history are reconciled; and
 - PEM basis-health/closeout obligations are reconciled.
 
-A hidden shared `30 meV/angstrom` CV gate; global `45` scratch change; runtime-only role switch; missing role-effective TRAIN2 or EVAL2 policy provenance; disagreement between TRAIN2 and EVAL2 policy digests; metric-unit aliasing; stale-schema reinterpretation; silent old-evidence reclassification; contradiction between one-time and steady-state invalidation; production-threshold relaxation; downstream qualification weakening; or unreviewed final-qualification dependence is a blocking **No-Pass**.
+A hidden shared `30 meV/angstrom` CV gate; global `45` scratch change; runtime-only role switch; missing run-plan-bound role-effective policy provenance in TRAIN2 or EVAL2 assessment; a second checkpoint-policy owner, P5 protocol graph or EVAL2 plan/wrapper; metric-unit aliasing; stale-schema reinterpretation; silent old-evidence reclassification; contradiction between one-time and steady-state invalidation; production-threshold relaxation; downstream qualification weakening; or unreviewed final-qualification dependence is a blocking **No-Pass**.
