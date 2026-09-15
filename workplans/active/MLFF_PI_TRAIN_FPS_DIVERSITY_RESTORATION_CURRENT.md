@@ -1,7 +1,7 @@
 ---
 kind: restoration-current-pointer
 workplan_id: MLFF-PI-TRAIN-FPS-DIVERSITY-RESTORATION-1
-plan_revision: 9
+plan_revision: 10
 protocol_version: 6.3.0
 status: active
 basis_commit: e72090e21cec5311ce87745b03603f8783cd15a7
@@ -29,65 +29,34 @@ R3 first D3 candidate:       NO-PASS / SUPERSEDED
 R3 repaired D3 candidate:    PASS / ACCEPTED
 Canonical D3 promotion:      PASS / PROMOTED / CURRENT
 D4 product implementation:   COMPLETE / INDEPENDENT REVIEW NO-PASS
+D4 integration audit:        NO-PASS / REVISION 10 ACTIVE
 D4 repair:                    REQUIRED / ACTIVE
 ```
 
-The accepted D1/D2/D3 authority remains current. Independent review of assembled candidate `c76a53476596137aa34ec47bb68b7d1ab4bfe706` found three D4 closure blockers. Revision 9 is the current repair contract. No Serious Challenge is open against the accepted D1/D2/D3 method/architecture chain; the open challenge is bounded to D4 conformance and acceptance evidence.
+The accepted scoped D1/D2/D3 authority remains current. Revision 10 composes Revision 9 and the broader integration/verification audit. The open challenge is bounded to D4 conformance, integration, persistence/concurrency, documentation reconciliation, and acceptance evidence; no upstream scientific/architectural redesign is presently authorized.
 
 ## Current accepted authority
-
-For the restored target-training-order scope:
 
 - D1: `docs/methods/mlff_target_training_order_scientific_method.md`
 - D2: `docs/methods/mlff_target_training_order_numerical_algorithmic_method.md`
 - D3: `docs/arch_manuals/mlff_training_data/45_target_training_order.md` plus the reconciled canonical MLFF Architecture Manual chapters and dependency graph
-- D4 repair contract: `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_9.md`
-
-General MLFF method/architecture authority remains current for unaffected surfaces.
-
-## Current target-order architecture
-
-```text
-exact P_train
- -> sole TargetCoverageReference
- -> one canonical membership-obligation authority
- -> one shared exact FEAS1/NEIGHBOR1 construction
-      -> FEAS1 support/capacity report
-      -> authenticated NEIGHBOR1 store
-           -> MVIDX adoption/inversion
-                -> MVSEL2
-                -> configured REPAIR2
-                -> exact repaired-prefix reconstruction
-                -> complete TargetTrainingOrder
- -> independent MVQUAL from primitive reference + canonical obligation definitions
- -> current P2 projection
- -> unchanged P3/CV/replay/production
-```
-
-Pre-adoption MVSTATE/history/checkpoint state remains subordinate authenticated reconstructible `prepare`/prepared-storage state. It is not CampaignStore currentness and is never a downstream scientific input.
+- D4 repair contracts: Revision 9 plus `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_10.md`
 
 ## Blocking D4 repair
 
-1. Remove the unowned REPAIR2 early-exit that suppresses zero-new-coverage proposals before the accepted later objective components and strict `J` gate can be evaluated.
-2. Produce representative current-scale complete prepare/order/publication/reload performance/resource evidence required by canonical D3 and Revision 8; the small 32-frame checkpoint is insufficient for that claim.
-3. Reconcile the eight known affected architecture/manual/CLI/spec/help static failures to current authority and rerun the closure batch with no unresolved failures. Baseline equality is not final impact closure.
+1. Remove the unowned REPAIR2 zero-new-coverage early exit and falsify later-objective improvements.
+2. Produce representative current-scale complete prepare/order/publication/reload performance/resource evidence.
+3. Reconcile the eight known static/documentation failures and remove contradictory current general D1/D2 target-order construction/qualification text by delegating to the scoped method owners.
+4. Fence same-build pre-adoption checkpoint mutation so concurrent prepares cannot cross-adopt, prune, or delete one another's unfinished continuation state.
+5. Enforce the frozen required universal structural-family catalog fail-closed; do not let phase/geometry provider policy silently thin D2-required target-order evidence.
+6. Make completed target-order reference/geometry/MVIDX/build publication truly immutable create-or-verify; corrupt/conflicting protected destinations must fail closed rather than be deleted/replaced by `prepare`.
 
-Use reduction/rewiring, not wrappers. Do not create a fallback selector, old/new router, alternate suffix, second currentness/checkpoint store, semantic migration layer, or new cleanup authority.
+Use deletion, rewiring, and existing persistence/fencing primitives. Do not create a fallback selector, old/new router, alternate suffix, second currentness/checkpoint store, semantic migration layer, new cleanup owner, or duplicate lock implementation.
 
 ## Protected current architecture
 
-Preserve:
-
-- one current `U_size -> P_train + M3` split;
-- one `P_train` and one complete `pi_train`;
-- exact nested `T_N=pi_train[:N]`;
-- current configurable target-size ladder and `pi_eval/M1/M2/M3`;
-- current P3 training/evaluation/reducer semantics;
-- current post-selection CV/replay/production lifecycle;
-- `prepare` as sole live-input/build/publication orchestration owner;
-- prepared-generation/CampaignStore as sole completed-generation currentness/adoption owner;
-- final production-scale GPU qualification deferred to final release.
+Preserve one exact `P_train`, one complete `pi_train`, exact nested `T_N`, sole `TargetCoverageReference`, one canonical obligation authority, one shared FEAS1/NEIGHBOR1 construction, MVIDX as representation, MVSEL2/REPAIR2 as the one order owner, independent MVQUAL, `prepare` as sole live-input/build/publication orchestrator, and prepared-generation/CampaignStore as sole completed-generation currentness/adoption owner. Final production-scale GPU qualification remains deferred to the final release package.
 
 ## Next gate
 
-Implement Revision 9 as a bounded D4 repair, record its exact validation/evidence, then perform a fresh independent D4 re-review of the assembled candidate. Close/archive the workplan only after that re-review passes.
+Implement Revision 9 + Revision 10 as one bounded D4 repair round. Record focused owner-level evidence and representative current-scale evidence, then perform a fresh independent assembled-candidate D4 re-review. Close/archive only after that re-review passes.
