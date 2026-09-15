@@ -5,7 +5,7 @@ their own copy of the same NPY/manifest/hash mechanics.  This module is the one
 current implementation of that mechanism: immutable artifact directories whose
 manifest authenticates every member file, packed shared roots so mapped file
 descriptors stay O(1) in family count, and create-or-verify publication through
-an attempt-owned temporary directory plus one atomic rename.
+an attempt-owned temporary directory plus one locked atomic rename.
 
 Nothing here is scientific authority.  Directory names, mmap policy, and hard
 link reuse are execution/storage details; the owner that writes an artifact
@@ -32,6 +32,7 @@ from .._common import (
     digest,
     sha256_file_cached,
 )
+from ..persistence import artifact_publication_lock, fsync_parent_directory
 
 ARRAY_REFERENCE_SCHEMA = "mdstats.target-coverage-array.v1"
 ARTIFACT_MANIFEST_NAME = "manifest.json"
@@ -388,8 +389,7 @@ def read_manifest(directory: Path, *, schema: str) -> dict[str, Any]:
         raise TargetOrderArtifactStoreError(f"Unreadable target-order artifact manifest: {path}") from exc
     if not isinstance(manifest, dict) or manifest.get("schema") != schema:
         raise TargetOrderArtifactStoreError(
-            f"Unsupported or obsolete target-order artifact layout at {path}; the "
-            "reconstructible artifact is rejected and rebuilt by its owner."
+            f"Unsupported or obsolete target-order artifact layout at {path}."
         )
     expected = digest({key: value for key, value in manifest.items() if key != "manifest_digest"})
     if manifest.get("manifest_digest") != expected:
@@ -424,12 +424,14 @@ def publish_artifact_directory(
 
     ``write`` fills an attempt-owned temporary directory and returns the
     manifest payload (which must carry ``schema`` and ``content_digest``).  The
-    directory becomes visible only through one atomic rename, so an interrupted
-    or failed writer leaves nothing reachable at ``destination``.  When another
-    attempt published first, the existing directory is authenticated and must
-    carry the same content digest; ours is discarded.  An existing directory
-    that fails authentication is a corrupt reconstructible cache and is
-    replaced only at that exact resolved destination.
+    directory becomes visible only through one atomic rename under the shared
+    destination advisory lock, so an interrupted or failed writer leaves
+    nothing reachable at ``destination``.  When the destination already exists
+    it is authenticated under that lock: identical valid content is reused and
+    ours is discarded; corrupt, obsolete, or conflicting content fails closed
+    and is left untouched.  A published destination may be protected by a
+    prepared generation, so retiring it belongs to the storage/retention owner,
+    never to a publisher.
     """
 
     destination = Path(destination)
@@ -444,31 +446,25 @@ def publish_artifact_directory(
                 "Target-order artifact writer returned an incomplete manifest."
             )
         manifest = write_manifest(temporary, payload)
-        for _ in range(2):
-            try:
-                os.rename(temporary, destination)
-            except OSError:
-                if not destination.exists():
-                    raise
+        with artifact_publication_lock(destination):
+            if destination.exists():
                 try:
                     existing = read_manifest(destination, schema=schema)
                     if existing.get("content_digest") != manifest["content_digest"]:
                         raise TargetOrderArtifactStoreError(
-                            "A concurrently published artifact carries different content."
+                            "the published artifact carries different content"
                         )
                     verify_existing(destination, existing)
-                except TargetOrderArtifactStoreError as exc:
-                    if "different content" in str(exc):
-                        raise
-                    shutil.rmtree(destination, ignore_errors=True)
-                    continue
+                except (TargetOrderArtifactStoreError, TrainingDataError) as exc:
+                    raise TargetOrderArtifactStoreError(
+                        f"Existing immutable target-order artifact at {destination} is corrupt "
+                        f"or conflicting ({exc}); it is not replaced by publication."
+                    ) from exc
                 shutil.rmtree(temporary, ignore_errors=True)
                 return PublishedArtifact(destination, existing)
-            else:
-                return PublishedArtifact(destination, manifest)
-        raise TargetOrderArtifactStoreError(
-            f"Target-order artifact could not be published at {destination}."
-        )
+            os.rename(temporary, destination)
+            fsync_parent_directory(destination)
+        return PublishedArtifact(destination, manifest)
     except BaseException:
         shutil.rmtree(temporary, ignore_errors=True)
         raise

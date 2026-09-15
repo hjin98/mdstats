@@ -51,8 +51,8 @@ def test_data9b3_version_and_user_surface() -> None:
 def test_data9b3_architecture_and_stage_plan_integration() -> None:
     manual = MANUAL.read_text(encoding="utf-8")
     stage = STAGE.read_text(encoding="utf-8")
-    assert "one target-size architecture" in manual
-    assert "post-selection cross-validation on the frozen collection" in manual
+    assert "one prepared target-size generation" in manual
+    assert "freezes the collection before numerical CV work" in manual
     assert "init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production" in stage
     assert "downstream qualification" in stage
     assert (
@@ -66,32 +66,37 @@ def test_data9b3_architecture_and_stage_plan_integration() -> None:
     assert "selected target size and exact global membership identity" not in stage
     assert "one protocol-global target-size decision" not in manual
     assert "final T_selected -> final-training fitted products" not in stage
-    assert "does not redefine RDF, MSD, VACF, VDOS" in manual
+    assert "it does not redefine those algorithms" in manual
     assert "checkpoint" in manual
 
 
 def test_data9b3_dependency_graph_contract() -> None:
     graph = json.loads(GRAPH.read_text(encoding="utf-8"))
-    assert graph["schema_version"] == 3
-    assert graph["authority_model"] == "single_generation_current_dependency_architecture"
+    assert graph["schema_version"] == 5
+    assert graph["authority_model"] == "d1_d2_d3_d4_layered_mlff_architecture"
     nodes = {node["id"] for node in graph["nodes"]}
     required = {
-        "TARGET_SIZE_DEVELOPMENT_SPLIT",
-        "CANONICAL_TRAINING_ORDER",
-        "CANONICAL_EVALUATION_LADDER",
-        "COMMON_TARGET_SIZE_PREPARATION",
-        "TARGET_SIZE_POLICY",
-        "TARGET_SIZE_DECISION",
-        "CURRENT_SELECTED_SET",
-        "POST_SELECTION_CV_ACCEPTANCE",
-        "FRESH_FINAL_PRODUCTION",
-        "OUT_OF_FOLD_PROTOCOL_EVIDENCE",
-        "DEPLOYMENT_ARTIFACTS",
+        "TARGET_SIZE_SPLIT",
+        "TARGET_TRAINING_ORDER",
+        "TARGET_PREFIX_QUALIFICATION",
+        "TARGET_SIZE_GENERATION",
+        "COMMON_TARGET_PREPARATION",
+        "TARGET_SIZE_SCREEN",
+        "PROVISIONAL_DESIGN",
+        "FROZEN_TARGET_BINDINGS",
+        "POST_SELECTION_CV",
+        "FINAL_PRODUCTION",
+        "FINAL_PUBLICATION",
+        "QUALIFICATION",
     }
     assert required <= nodes
     edges = {(edge["from"], edge["to"], edge["type"]) for edge in graph["edges"]}
-    assert ("TARGET_SIZE_DECISION", "CURRENT_SELECTED_SET", "produces") in edges
-    assert ("CURRENT_SELECTED_SET", "POST_SELECTION_CV_ACCEPTANCE", "identity_requires") in edges
-    assert ("POST_SELECTION_CV_ACCEPTANCE", "FRESH_FINAL_PRODUCTION", "promotion_requires") in edges
-    assert ("FRESH_FINAL_PRODUCTION", "FROZEN_TRAINING_PROTOCOL", "identity_requires") in edges
-    assert "retired target-size migration" in "\n".join(graph["forbidden_current_paths"])
+    # init -> doctor -> prepare -> select-target-size -> cross-validate -> train-production
+    assert ("TARGET_SIZE_SCREEN", "PROVISIONAL_DESIGN", "optional_recommendation_only") in edges
+    assert ("PROVISIONAL_DESIGN", "FROZEN_TARGET_BINDINGS", "atomic_freeze") in edges
+    assert ("FROZEN_TARGET_BINDINGS", "POST_SELECTION_CV", "authorizes") in edges
+    assert ("POST_SELECTION_CV", "FINAL_PRODUCTION", "acceptance_gate") in edges
+    assert ("FINAL_PRODUCTION", "FINAL_PUBLICATION", "produces") in edges
+    assert ("FINAL_PUBLICATION", "QUALIFICATION", "consumed_by") in edges
+    forbidden = {(edge["from"], edge["to"]) for edge in graph["forbidden_edges"]}
+    assert ("POST_SELECTION_CV", "FROZEN_TARGET_BINDINGS") in forbidden

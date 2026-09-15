@@ -15,67 +15,112 @@ REV_INDEX = ROOT / "docs/history/mlff/architecture_revisions/INDEX.md"
 REL_INDEX = ROOT / "docs/history/mlff/release_notes/INDEX.md"
 
 
+def _d3_sources() -> str:
+    """The canonical D3 set: the top-level manual plus its numbered chapters."""
+
+    chapters = sorted(CHAPTERS.glob("[0-9][0-9]_*.md"))
+    return "\n\n".join(
+        [MANUAL.read_text(encoding="utf-8")]
+        + [path.read_text(encoding="utf-8") for path in chapters]
+    )
+
+
 def test_doc_arch1_release_and_current_authority_are_synchronized():
     assert mdstats.__version__ == "0.20.242a0"
     text = MANUAL.read_text(encoding="utf-8")
-    assert "architecture_revision: 109" in text
-    assert "# Part VI - Bounded execution, restart, and performance architecture" in text
-    assert "# Part VII - Ownership and extension boundaries" in text
-    assert "## Context retrieval index" in text
-    assert "one canonical training order pi_train" in text
-    assert (
-        "optional paired optimizer-seed automatic diagnostic over candidate sizes"
-        in text
-    )
-    assert "post-selection cross-validation on the frozen collection" in text
+    assert 'status: "current normative D3 architecture"' in text
+    for owner in (
+        "docs/methods/mlff_scientific_method.md",
+        "docs/methods/mlff_target_training_order_scientific_method.md",
+        "docs/methods/mlff_numerical_algorithmic_method.md",
+        "docs/methods/mlff_target_training_order_numerical_algorithmic_method.md",
+        "45_target_training_order.md",
+    ):
+        assert owner in text, owner
+        if owner.startswith("docs/"):
+            assert (ROOT / owner).is_file(), owner
+    assert "one complete `TargetTrainingOrder`" in text
+    assert "post-selection cross-validation" in text
+    snapshot = "docs/history/mlff/architecture_snapshots/pre_d1_d2_promotion_2026-09-13/"
+    assert snapshot in text and (ROOT / snapshot).is_dir()
+    assert "not as current authority" in text
     assert not (ROOT / "mlff_training_data_architecture.md").exists()
     assert not (ROOT / "mlff_training_data_dependency_graph.json").exists()
 
 
-def test_doc_arch1_manual_is_deterministically_assembled_from_numbered_sources():
-    order = [
+def test_doc_arch1_manual_and_numbered_sources_index_the_same_canonical_chapters():
+    chapters = sorted(path.name for path in CHAPTERS.glob("[0-9][0-9]_*.md"))
+    assert chapters == [
         "00_front_matter.md", "10_foundations.md", "20_data_contracts.md",
         "30_statistical_design.md", "40_training_evaluation.md",
-        "50_target_size_selection.md", "60_execution_performance.md",
-        "80_ownership_and_decisions.md", "90_references.md",
+        "45_target_training_order.md", "50_target_size_selection.md",
+        "60_execution_performance.md", "80_ownership_and_decisions.md",
+        "90_references.md",
     ]
-    expected = "\n\n".join((CHAPTERS / name).read_text(encoding="utf-8").rstrip() for name in order) + "\n"
-    assert MANUAL.read_text(encoding="utf-8") == expected
-    assert len(MANUAL.read_text(encoding="utf-8").splitlines()) < 4000
+    manual = MANUAL.read_text(encoding="utf-8")
+    readme = (CHAPTERS / "README.md").read_text(encoding="utf-8")
+    sources = manual[manual.index("## 14. Detailed D3 sources and provenance"):]
+    for name in chapters:
+        assert f"`{name}`" in sources, name
+        assert f"`{name}`" in readme, name
+    assert "70_status_and_gates.md" not in chapters
+    assert "it is not a generated aggregate" in manual
+    assert len(manual.splitlines()) < 4000
 
 
 def test_doc_arch1_current_target_size_and_execution_contract():
-    text = MANUAL.read_text(encoding="utf-8")
+    text = _d3_sources()
     for token in (
-        "pi_train", "T_selected", "common target-size preparation",
-        "paired optimizer-seed", "post-selection cross-validation",
+        "pi_train", "T_N = pi_train[:N]", "common target-size training preparation",
+        "operator-owned provisional design", "cross-validate admission",
         "fresh final production", "deterministic", "restart",
     ):
-        assert token.lower() in text.lower()
+        assert token.lower() in text.lower(), token
     # The screen recommends; the operator decides; `cross-validate` freezes.
-    assert "the automatic screen recommends and the operator decides" in text
-    assert "cross-validate admission" in text
     assert (
-        "Fewer than three qualified sizes is a typed no-recommendation outcome" in text
+        "The automatic screen produces evidence and an optional recommendation; "
+        "it does not freeze the design." in text
     )
-    assert "nonconverged_at_configured_ceiling" in text
-    assert "n1 / M1  ->  n2 / M2  ->  n3 / M3" in text
-    assert "exactly one target-size architecture" in text
+    assert "`cross-validate` admission is the only freeze boundary" in text
+    assert "typed no-recommendation" in text
+    assert "freezes the collection before numerical CV work" in text
 
 
 def test_doc_arch1_manual_names_no_retired_target_size_owner():
-    """The current manual may not present retired topology as current authority."""
+    """Current D3 names the restored chain and no retired owner as current."""
 
     text = MANUAL.read_text(encoding="utf-8")
-    for token in (
-        "MVSEL2", "REPAIR2", "MVSTATE2", "MVQUAL", "MVIDX", "FEAS1",
-        "TargetSizeStudyPolicy", "TargetDataRoleFreeze", "target_size_study",
-    ):
+    for token in ("TargetSizeStudyPolicy", "TargetDataRoleFreeze", "target_size_study"):
         assert token not in text, token
+    for token in (
+        "TargetCoverageReference", "FEAS1", "NEIGHBOR1", "MVIDX", "MVSEL2",
+        "REPAIR2", "MVQUAL",
+    ):
+        assert token in text, token
+
+    # General D1/D2 papers delegate `pi_train` construction/qualification to the
+    # scoped target-order owners instead of presenting the retired
+    # condition-round-robin / hard-support-only method as current.
+    general_d1 = (ROOT / "docs/methods/mlff_scientific_method.md").read_text(encoding="utf-8")
+    general_d2 = (ROOT / "docs/methods/mlff_numerical_algorithmic_method.md").read_text(encoding="utf-8")
+    assert "mlff_target_training_order_scientific_method.md" in general_d1
+    assert "mlff_target_training_order_numerical_algorithmic_method.md" in general_d2
+    for stale in (
+        "a prefix is admitted only by label usability and explicitly declared hard-support obligations",
+        "Diagnostic novelty or coverage measures do not silently become additional qualification gates",
+    ):
+        assert stale not in general_d1, stale
+    for stale in (
+        "The same deterministic rule is used for target-training and evaluation-reserve orders",
+        "### 6.1 Condition-balanced priority order",
+        "The canonical target order may consume candidate-independent priority vectors",
+        "Q(N)=\\text{prefix exists}",
+    ):
+        assert stale not in general_d2, stale
 
 
 def test_doc_arch1_external_algorithmic_provenance_is_cited():
-    text = MANUAL.read_text(encoding="utf-8")
+    text = (CHAPTERS / "90_references.md").read_text(encoding="utf-8")
     for ref in ("[32]", "[33]", "[34]", "[35]", "[36]", "[37]"):
         assert ref in text
     assert "Blumofe" in text and "work stealing" in text.lower()
@@ -98,19 +143,21 @@ def test_doc_arch1_history_is_indexed_once_and_current_revision_is_recorded():
 
 def test_doc_arch1_graph_and_directory_ownership_are_current():
     graph = json.loads(GRAPH.read_text())
-    assert graph["schema_version"] == 3
-    assert graph["authority_model"] == "single_generation_current_dependency_architecture"
+    assert graph["schema_version"] == 5
+    assert graph["authority_model"] == "d1_d2_d3_d4_layered_mlff_architecture"
+    assert [item["level"] for item in graph["authority_chain"]] == ["D1", "D2", "D3", "D4"]
+    assert "45_target_training_order.md" in graph["authority_chain"][2]["owner"]
+    assert (ROOT / graph["historical_snapshot"]).is_dir()
     node_ids = {node["id"] for node in graph["nodes"]}
     for node in (
-        "TARGET_SIZE_DEVELOPMENT_SPLIT", "CANONICAL_TRAINING_ORDER",
-        "CANONICAL_EVALUATION_LADDER", "COMMON_TARGET_SIZE_PREPARATION",
-        "TARGET_SIZE_POLICY", "TARGET_SIZE_DECISION",
-        "CURRENT_SELECTED_SET", "POST_SELECTION_CV_ACCEPTANCE",
-        "FRESH_FINAL_PRODUCTION", "COARSE_SCREEN", "SHORT_SCREEN",
-        "FINAL_SCREEN", "FULL_TRAIN2_SCHEDULE",
-        "OUT_OF_FOLD_PROTOCOL_EVIDENCE", "DEPLOYMENT_ARTIFACTS",
+        "TARGET_SIZE_SPLIT", "TARGET_COVERAGE_REFERENCE", "CANONICAL_TARGET_OBLIGATIONS",
+        "SHARED_FEAS_NEIGHBOR", "MVIDX", "TARGET_TRAINING_ORDER",
+        "TARGET_PREFIX_QUALIFICATION", "TARGET_SIZE_GENERATION", "TARGET_ORDER_BUILD_STATE",
+        "COMMON_TARGET_PREPARATION", "TARGET_SIZE_SCREEN", "PROVISIONAL_DESIGN",
+        "FROZEN_TARGET_BINDINGS", "POST_SELECTION_CV", "FINAL_PRODUCTION",
+        "FINAL_PUBLICATION", "QUALIFICATION", "STORAGE_PLANE",
     ):
-        assert node in node_ids
+        assert node in node_ids, node
     for retired in (
         "FEASIBILITY_EVIDENCE", "EXACT_NEIGHBORHOOD_AUTHORITY",
         "DOMAIN_SELECTION_ORDER", "DOMAIN_REPAIRED_MASTER_ORDER",
@@ -119,18 +166,20 @@ def test_doc_arch1_graph_and_directory_ownership_are_current():
     ):
         assert retired not in node_ids
     assert not any(node.startswith("SIZE_STUDY_EPOCH") for node in node_ids)
-    forbidden = "\n".join(graph["forbidden_current_paths"])
-    assert "retired target-size migration" in forbidden
-    assert "post-selection cross-validation -> target-size decision" in forbidden
-    assert "one selected binding" not in graph["description"]
-    assert "ordered collection of selected bindings" in graph["description"]
-    nodes_by_id = {node["id"]: node for node in graph["nodes"]}
-    cv_summary = nodes_by_id["POST_SELECTION_CV_ACCEPTANCE"].get("summary", "")
-    assert "on exactly T_selected" not in cv_summary
-    assert "per frozen size" in cv_summary
-    prod_summary = nodes_by_id["FRESH_FINAL_PRODUCTION"].get("summary", "")
-    assert "on the complete exact T_selected" not in prod_summary
-    assert "per frozen size" in prod_summary
+    for edge in graph["edges"] + graph["forbidden_edges"]:
+        assert edge["from"] in node_ids or edge["from"] == "D4_RUNTIME_ADAPTERS", edge
+    forbidden = {(edge["from"], edge["to"]) for edge in graph["forbidden_edges"]}
+    for edge in (
+        ("POST_SELECTION_CV", "FROZEN_TARGET_BINDINGS"),
+        ("TARGET_SIZE_SCREEN", "TARGET_TRAINING_ORDER"),
+        ("POST_SELECTION_CV", "TARGET_TRAINING_ORDER"),
+        ("TARGET_ORDER_BUILD_STATE", "TARGET_SIZE_GENERATION"),
+        ("QUALIFICATION", "FINAL_PUBLICATION"),
+        ("STORAGE_PLANE", "FROZEN_TARGET_BINDINGS"),
+    ):
+        assert edge in forbidden, edge
+    edges = {(edge["from"], edge["to"]) for edge in graph["edges"]}
+    assert not (forbidden & edges)
 
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "fresh final production on the complete T_selected" not in readme

@@ -13,7 +13,8 @@ published stage and from authenticated MVSTATE2 checkpoints.  None of these
 objects is current: the returned :class:`TargetOrderPreparation` becomes
 meaningful only when the prepared generation that names it is adopted through
 ``CampaignStore``.  Attempt scratch is attempt-owned and removed on exit;
-checkpoints are build-owned and removed once the build result is published.
+checkpoints are build-owned, mutated only by the holder of the same-build
+single-flight fence, and removed once the build result is published.
 Worker counts are execution-only and never enter an identity.
 """
 
@@ -27,8 +28,9 @@ import time
 from typing import Any, Callable, Mapping, Sequence
 
 from .._common import TrainingDataInputError, TrainingDataSerializationError, digest
+from ..persistence import artifact_publication_lock
 from ..progress_timing import format_progress_time
-from ..resources import StageResourceScope
+from ..resources import StageResourceScope, available_cpu_threads
 from .artifact_store import (
     TargetOrderArtifactStoreError,
     publish_artifact_directory,
@@ -279,37 +281,63 @@ def prepare_target_training_order(
         configured_sizes=sizes,
     )
     build_directory = root / "builds" / build_identity
+    # Cheap unlocked fast path: a build becomes visible only through one
+    # atomic rename, so an existing directory is complete or corrupt.
     if build_directory.is_dir():
+        return _reuse_build(build_directory, root, build_identity, progress_callback)
+    # Same-build single-flight fence.  Checkpoint roots are keyed by the
+    # scientific build identity, so exactly one attempt may mutate them.  The
+    # fence is execution-only (never part of an identity), is released by the
+    # OS if the holder dies, and does not serialize different build identities.
+    # It is adjacent to, and distinct from, the build publication lock.
+    with artifact_publication_lock(root / "builds" / f"{build_identity}.prepare"):
+        if build_directory.is_dir():
+            return _reuse_build(build_directory, root, build_identity, progress_callback)
+        (root / "attempts").mkdir(parents=True, exist_ok=True)
+        scratch = Path(tempfile.mkdtemp(prefix="attempt-", dir=root / "attempts"))
+        started = time.monotonic()
         try:
-            build = _read_build(build_directory, root)
-        except (TargetOrderArtifactStoreError, TrainingDataInputError) as exc:
-            _say(progress_callback, f"status=stale-build; reason={exc}; action=rebuild")
-        else:
-            _say(progress_callback, f"status=reused; build={build_identity[:12]}")
-            return build
-    (root / "attempts").mkdir(parents=True, exist_ok=True)
-    scratch = Path(tempfile.mkdtemp(prefix="attempt-", dir=root / "attempts"))
-    started = time.monotonic()
+            return _build(
+                root=root,
+                scratch=scratch,
+                build_identity=build_identity,
+                population=population,
+                split=split,
+                training_order_policy=training_order_policy,
+                hard_support_obligations=hard_support_obligations,
+                sizes=sizes,
+                raw_feature_catalog=raw_feature_catalog,
+                structural_input_identity=structural_input_identity,
+                structural_catalog_factory=structural_catalog_factory,
+                workers=workers,
+                resource_scope=resource_scope,
+                progress=progress_callback,
+            )
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+            _say(progress_callback, f"status=complete; elapsed={format_progress_time(time.monotonic() - started)}")
+
+
+def _read_published(reader: Callable[[Path], Any], directory: Path) -> Any:
+    """Read a published stage product; corruption fails closed, untouched."""
+
     try:
-        return _build(
-            root=root,
-            scratch=scratch,
-            build_identity=build_identity,
-            population=population,
-            split=split,
-            training_order_policy=training_order_policy,
-            hard_support_obligations=hard_support_obligations,
-            sizes=sizes,
-            raw_feature_catalog=raw_feature_catalog,
-            structural_input_identity=structural_input_identity,
-            structural_catalog_factory=structural_catalog_factory,
-            workers=workers,
-            resource_scope=resource_scope,
-            progress=progress_callback,
-        )
-    finally:
-        shutil.rmtree(scratch, ignore_errors=True)
-        _say(progress_callback, f"status=complete; elapsed={format_progress_time(time.monotonic() - started)}")
+        return reader(directory)
+    except (TargetOrderArtifactStoreError, TrainingDataInputError) as exc:
+        raise TargetOrderArtifactStoreError(
+            f"Published target-order artifact at {directory} fails authentication ({exc}); "
+            "prepare does not replace immutable published content."
+        ) from exc
+
+
+def _reuse_build(
+    build_directory: Path, root: Path, build_identity: str, progress: Callable[[str], None] | None
+) -> TargetOrderBuild:
+    """Authenticate a published build; a corrupt one fails closed, untouched."""
+
+    build = _read_published(lambda directory: _read_build(directory, root), build_directory)
+    _say(progress, f"status=reused; build={build_identity[:12]}")
+    return build
 
 
 def _build(
@@ -341,14 +369,17 @@ def _build(
     )
     reference: TargetCoverageReference | None = None
     if reference_directory.is_dir():
-        try:
-            reference = read_target_coverage_reference(reference_directory)
-        except (TargetOrderArtifactStoreError, TrainingDataInputError):
-            reference = None
-    if reference is None or reference.split_digest != split.content_digest:
+        reference = _read_published(read_target_coverage_reference, reference_directory)
+        if reference.split_digest != split.content_digest:
+            raise TargetOrderArtifactStoreError(
+                f"Published target coverage reference at {reference_directory} does not bind the exact split."
+            )
+    if reference is None:
         _say(progress, "stage=structural-selector-inputs; status=start")
         structural_catalog = structural_catalog_factory()
         _say(progress, "stage=target-coverage-reference; status=start")
+        # COVREF-PAR1: single-level radius-block parallelism (one cKDTree
+        # worker per lane) under the stage CPU budget; execution-only.
         reference = build_target_coverage_reference(
             dataset_id=population.dataset_id,
             population=population,
@@ -356,6 +387,20 @@ def _build(
             raw_feature_catalog=raw_feature_catalog,
             structural_catalog=structural_catalog,
             policy=coverage_policy,
+            query_workers=1,
+            execution_scope=None
+            if workers == 1
+            else StageResourceScope(
+                stage_name="TARGET-ORDER-COVREF",
+                cpu_threads_available=int(
+                    available_cpu_threads() if resource_scope is None else resource_scope.cpu_threads_available
+                ),
+                cpu_threads_budget=int(workers if resource_scope is None else resource_scope.cpu_threads_budget),
+                python_workers=workers,
+                tree_workers=1,
+                blas_threads=1,
+                ram_budget_bytes=None if resource_scope is None else resource_scope.ram_budget_bytes,
+            ),
             progress_callback=progress,
         )
         del structural_catalog
@@ -376,11 +421,12 @@ def _build(
     )
     geometry = None
     if geometry_directory.is_dir():
-        try:
-            geometry = read_target_coverage_geometry(geometry_directory)
-        except (TargetOrderArtifactStoreError, TrainingDataInputError):
-            geometry = None
-    if geometry is None or geometry.neighborhoods.target_coverage_reference_digest != reference.content_digest:
+        geometry = _read_published(read_target_coverage_geometry, geometry_directory)
+        if geometry.neighborhoods.target_coverage_reference_digest != reference.content_digest:
+            raise TargetOrderArtifactStoreError(
+                f"Published FEAS1/NEIGHBOR1 geometry at {geometry_directory} does not bind the reference."
+            )
+    if geometry is None:
         _say(progress, "stage=FEAS1-NEIGHBOR1; status=start")
         built = build_target_coverage_geometry(
             reference,
@@ -408,10 +454,7 @@ def _build(
     )
     forward = None
     if mvidx_directory.is_dir():
-        try:
-            forward = read_target_coverage_sparse_forward_view(mvidx_directory)
-        except (TargetOrderArtifactStoreError, TrainingDataInputError):
-            forward = None
+        forward = _read_published(read_target_coverage_sparse_forward_view, mvidx_directory)
     if forward is None:
         _say(progress, "stage=MVIDX; status=start")
         index = build_target_coverage_sparse_index(

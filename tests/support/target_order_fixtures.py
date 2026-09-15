@@ -22,6 +22,19 @@ from mdstats.training_data.target_size_experiment import (
 )
 
 
+#: One accepted universal structural base feature per frozen D2 semantic family.
+_STRUCTURAL_BASES = (
+    ("pair_distance", "nearest_neighbor_distance_angstrom"),
+    ("radial_environment", "radial_density_0"),
+    ("coordination", "smooth_coordination"),
+    ("connectivity", "hard_neighbor_count"),
+    ("chemical_environment", "neighbor_species_entropy"),
+    ("local_density", "local_number_density_angstrom^-3"),
+    ("angular_environment", "angular_legendre_2"),
+    ("orientational_order", "bond_orientational_q4"),
+)
+
+
 def uid(tag: str) -> str:
     return digest({"fixture-frame": tag})
 
@@ -67,8 +80,16 @@ def build_selector_fixture(
     event_frames: Sequence[int] = (3, 17),
     duplicate_pairs: Sequence[tuple[int, int]] = (),
     pair_rules: int = 1,
+    omit_structural_families: Sequence[str] = (),
+    sparse_structural_families: Sequence[str] = (),
 ) -> SelectorFixture:
-    """A small exact-P_train fixture with structural, pair and label evidence."""
+    """A small exact-P_train fixture with structural, pair and label evidence.
+
+    The structural table carries one base feature for every frozen D2 universal
+    semantic family.  ``omit_structural_families`` removes a family's columns;
+    ``sparse_structural_families`` leaves only one valid reference element for
+    it (every other row missing).
+    """
 
     rng = np.random.default_rng(seed)
     uids = tuple(sorted(uid(f"{seed}:{index}") for index in range(frames)))
@@ -147,15 +168,22 @@ def build_selector_fixture(
     raw = _RawCatalog(records=records, content_digest=digest({"fixture-raw": seed, "frames": frames}))
     feature_names: list[str] = []
     columns: list[np.ndarray] = []
-    for base in ("nearest_neighbor_distance_angstrom", "smooth_coordination", "local_number_density_angstrom^-3"):
+    missing_columns: list[np.ndarray] = []
+    for semantic, base in _STRUCTURAL_BASES:
+        if semantic in omit_structural_families:
+            continue
         for stat in ("mean", "std")[: max(1, min(2, structural_dim - 1))]:
             feature_names.append(f"group:Li:{base}:{stat}")
             columns.append(coordinates[:, len(columns) % 2] * (1.0 + 0.25 * len(columns)))
+            missing = np.zeros(frames, dtype=bool)
+            if semantic in sparse_structural_families:
+                missing[1:] = True
+            missing_columns.append(missing)
     table = SimpleNamespace(
         frame_uids=uids,
         feature_names=tuple(feature_names),
         values=np.stack(columns, axis=1),
-        missing_mask=np.zeros((frames, len(feature_names)), dtype=bool),
+        missing_mask=np.stack(missing_columns, axis=1),
     )
     events = tuple(
         SimpleNamespace(event_type="coordination_change", current_frame_uid=uids[index]) for index in event_frames

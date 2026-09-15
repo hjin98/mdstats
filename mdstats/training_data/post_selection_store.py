@@ -185,7 +185,7 @@ def post_selection_publication_barrier(
     released by the kernel and never deadlocks the campaign.
     """
 
-    from .target_size_execution.persistence import artifact_publication_lock
+    from .persistence import artifact_publication_lock
 
     root = post_selection_root(paths, generation)
     root.mkdir(parents=True, exist_ok=True)

@@ -25,7 +25,7 @@ The integrated restoration revision preserves the accepted P1/P2/P3 target-size 
 - fresh final production using the same common checkpoint method (selection/admissibility mechanics; role target ceilings are separated by Section 17.1); and
 - numerical failure/falsification rules needed to prevent silent fallback to the superseded method.
 
-P3 target-size screening retains its accepted weighted objective, complete-batch update geometry, optimizer-progress normalization, candidate/evaluation orders, deterministic exact `M3` membership rule, qualification and reducer sufficiency rules, and restart semantics. Post-selection training from scratch also retains its accepted weighted energy+forces+stress objective, configuration-weight semantics, and local property masks; it is not changed merely because foundation-model P5 is restored to a different robust objective.
+P3 target-size screening retains its accepted weighted objective, complete-batch update geometry, optimizer-progress normalization, evaluation order, deterministic exact `M3` membership rule, reducer sufficiency rules, and restart semantics. The `TargetTrainingOrder` / `pi_train` construction (`TargetCoverageReference -> FEAS1/NEIGHBOR1 -> MVIDX -> MVSEL2 -> REPAIR2 -> MVQUAL`) and configured-prefix membership qualification are owned by the scoped D2 paper `mlff_target_training_order_numerical_algorithmic_method.md`; this paper does not restate them. Post-selection training from scratch also retains its accepted weighted energy+forces+stress objective, configuration-weight semantics, and local property masks; it is not changed merely because foundation-model P5 is restored to a different robust objective.
 
 The restoration revision was independently reviewed, ratified on 2026-09-14, and integrated at `8553ebe9ed86b24dfe910c9e43acc6230d3ece90`.
 
@@ -149,9 +149,7 @@ The neutral condition key contains reduced formula, temperature condition, strai
 
 ### 4.1 Pre-order evidence
 
-The canonical target order may consume candidate-independent priority vectors derived from authorized descriptor, difficulty, diversity, condition, event, environment, or other accepted selection evidence. Fitted transforms used to produce this evidence are fitted before the order on their authorized development domain and cannot inspect downstream held-out/calibration/locked labels.
-
-The ordering owner receives either no priority evidence, represented by an empty vector per frame, or an exact finite mapping covering every bound frame. Missing, foreign, or non-finite priority values are errors.
+Selector evidence for `pi_train`, including the sole fitted `TargetCoverageReference` on exact `P_train`, is defined by `mlff_target_training_order_numerical_algorithmic_method.md`. Evaluation-order priority evidence for `pi_eval` (Section 6.1) is either empty, represented by an empty vector per frame, or an exact finite mapping covering every bound frame; missing, foreign, or non-finite priority values are errors. Neither may inspect downstream held-out/calibration/locked labels.
 
 ### 4.2 P3 common candidate-training preparation
 
@@ -196,15 +194,15 @@ The state bound is pseudo-polynomial, approximately `O(C M3)` reachability work 
 
 ## 6. Canonical training and evaluation orders
 
-### 6.1 Condition-balanced priority order
+### 6.1 Condition-balanced evaluation order
 
-For the relevant membership:
+`pi_train` is not constructed by this rule; its construction is owned by `mlff_target_training_order_numerical_algorithmic_method.md`. For the evaluation-reserve membership `M3`, `pi_eval` is:
 
 1. group frame UIDs by `condition_id`;
 2. inside each bucket, sort by descending priority-vector coordinates, equivalently ascending negated coordinates, with immutable frame UID as final tie-breaker; and
 3. repeatedly visit condition buckets in sorted condition-ID order, taking one frame from each nonempty bucket.
 
-With no priority evidence, empty vectors tie and frame UID supplies within-condition order. The same deterministic rule is used for target-training and evaluation-reserve orders with their respective evidence maps.
+With no priority evidence, empty vectors tie and frame UID supplies within-condition order.
 
 ### 6.2 Nested memberships
 
@@ -228,13 +226,7 @@ The current P2 policy requires at least three strictly increasing positive power
 
 ## 7. Prefix qualification
 
-For configured candidate size `N`, derive qualification from exact prefix:
-
-$$
-Q(N)=\text{prefix exists}\land\text{labels usable}(T_N)\land\bigwedge_j c_j(T_N)\ge q_j.
-$$
-
-Hard-support selectors refer only to frozen pre-candidate condition evidence. They cannot inspect optimizer outcomes, evaluation scores, CV state, or runtime accidents. Qualification does not reorder, swap, repair, or expand `T_N`. Because prefixes are nested and hard-support counts are membership counts, support counts are monotone nondecreasing in `N`; contradictory qualification lineage indicates corrupt policy/evidence.
+Configured-prefix membership qualification of `T_N` (independent MVQUAL: prefix existence, training-usable labels, required family coverage and extents, and every canonical hard obligation) is owned by `mlff_target_training_order_numerical_algorithmic_method.md`. It cannot inspect optimizer outcomes, evaluation scores, CV state, or runtime accidents, and it does not reorder, swap, repair, or expand `T_N`.
 
 The current automatic funnel requires at least **three qualified candidates** before numerical screening begins. Fewer qualified candidates yield insufficient automatic comparison rather than an altered ladder or repaired membership.
 
@@ -807,8 +799,8 @@ Ignoring neural-network training cost, principal control-plane operations scale 
 - autocorrelation estimation: fast-Fourier-transform dominated per observable/run plus linear block construction;
 - relation closure: near-linear in frame/relation edges with union-find-style closure;
 - exact `M3` allocation: pseudo-polynomial `O(C M3)` reachability work with `O(M3)` predecessor state;
-- condition-balanced order: at most `O(N log N)` due to sorting;
-- hard-support qualification: linear in inspected prefix/obligations in the direct implementation;
+- condition-balanced `pi_eval` order: at most `O(M3 log M3)` due to sorting;
+- `pi_train` construction and membership qualification: see `mlff_target_training_order_numerical_algorithmic_method.md`;
 - composition-level E0 transfer checks: dominated by the fit's singular-value/null-space factorization plus matrix products over required composition classes;
 - common-monitor construction: sorting plus linear quota/systematic selection over protected parent frames;
 - CV component ordering/allocation: `O(C log C)` for ordering plus linear fold assignment, excluding relation closure;

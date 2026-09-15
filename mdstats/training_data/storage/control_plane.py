@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping
 
-from ..target_size_execution.persistence import fsync_parent_directory
+from ..persistence import fsync_parent_directory
 from .durability import (
     canonical_digest,
     durable_append_jsonl,

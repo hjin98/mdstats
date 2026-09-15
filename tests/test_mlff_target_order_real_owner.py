@@ -149,7 +149,7 @@ def _build_assembled_campaign_fixture(tmp_path: Path) -> tuple[Path, Path]:
     source_path = source_directory / "vasprun.xml"
     source_path.write_text(
         neutral._vasprun(
-            ("Li", "O"), n_frames=332, force_event_frame=None, tebeg=700
+            ("Li", "O", "O"), n_frames=332, force_event_frame=None, tebeg=700
         ),
         encoding="utf-8",
     )
@@ -165,7 +165,16 @@ def _build_assembled_campaign_fixture(tmp_path: Path) -> tuple[Path, Path]:
     # features consumed by the target-order provider.  Keep the label payload
     # fixed as well, so the small fixture exercises the structural and
     # canonical-unit obligations without requiring a large label ladder.
-    base_positions = ((0.125, 0.125, 0.125), (0.375, 0.375, 0.375))
+    # A compact 3.8 A cubic cell gives Li two distinct O neighbors at 1.9 A
+    # (minimum image), so every frozen universal structural family (including
+    # the neighbor-dependent pair-distance, chemical, angular and orientational
+    # families) has valid reference elements; a dilute cell would correctly
+    # fail closed on the required family catalog.
+    for basis in tree.getroot().iter("varray"):
+        if basis.get("name") == "basis":
+            for axis, vector in enumerate(basis):
+                vector.text = " ".join("3.8" if column == axis else "0" for column in range(3))
+    base_positions = ((0.125, 0.125, 0.125), (0.625, 0.125, 0.125), (0.125, 0.625, 0.125))
     for frame_index, calculation in enumerate(calculations):
         positions = calculation.find("./structure/varray[@name='positions']")
         assert positions is not None
@@ -177,7 +186,7 @@ def _build_assembled_campaign_fixture(tmp_path: Path) -> tuple[Path, Path]:
             target.text = " ".join(f"{value:.12g}" for value in coordinates)
         forces = calculation.find("./varray[@name='forces']")
         assert forces is not None
-        fixed_forces = ((0.1, 0.0, 0.0), (-0.1, 0.0, 0.0))
+        fixed_forces = ((0.1, 0.0, 0.0), (-0.05, 0.0, 0.0), (-0.05, 0.0, 0.0))
         for atom_index, target in enumerate(forces):
             target.text = " ".join(f"{value:.12g}" for value in fixed_forces[atom_index])
         for energy in calculation.findall("./energy/i"):
@@ -500,17 +509,21 @@ def test_real_owner_mvqual_is_independent_and_canonical(
         )
 
 
-def _manual_selection_plan(products: SimpleNamespace) -> TargetMultiViewSelectionPlan:
+def _manual_selection_plan(
+    products: SimpleNamespace,
+    order: tuple[int, ...] | None = None,
+    sizes: tuple[int, ...] = (4, 8),
+) -> TargetMultiViewSelectionPlan:
     reference = products.reference
     forward = products.forward
-    sizes = (4, 8)
-    # The first cluster is deliberately redundant at the first shell; the
-    # second cluster remains in the future as a positive-coverage replacement.
-    order = tuple(range(16)) + tuple(range(16, forward.candidate_count))
+    if order is None:
+        # The first cluster is deliberately redundant at the first shell; the
+        # second cluster remains in the future as a positive-coverage replacement.
+        order = tuple(range(forward.candidate_count))
     state = build_forward_state(reference, forward, validate=False)
     entries: list[TargetMultiViewSelectionEntry] = []
     rungs = []
-    for rank, candidate in enumerate(order):
+    for rank, candidate in enumerate(order[: sizes[-1]]):
         score = score_candidate(candidate, forward, state)
         entries.append(
             TargetMultiViewSelectionEntry(
@@ -538,7 +551,7 @@ def _manual_selection_plan(products: SimpleNamespace) -> TargetMultiViewSelectio
                     state,
                     entries,
                     target_size=rank + 1,
-                    previous_size=0 if rank + 1 == sizes[0] else sizes[0],
+                    previous_size=0 if rank + 1 == sizes[0] else sizes[sizes.index(rank + 1) - 1],
                 )
             )
     return TargetMultiViewSelectionPlan(
@@ -1406,3 +1419,541 @@ def test_real_owner_prepare_build_reuse_crash_resume_and_scratch_cleanup(
     assert reused.reused
     assert reused.preparation.content_digest == build.preparation.content_digest
     assert calls["structural"] == 1
+
+
+# --- Revision 11 falsification ------------------------------------------------
+
+
+def _prepare(prepared_root: Path, fixture, *, sizes=_SIZES, **kwargs):
+    kwargs.setdefault("structural_catalog_factory", lambda: fixture.structural_catalog)
+    return prepare_target_training_order(
+        prepared_root=prepared_root,
+        population=fixture.population,
+        split=fixture.split,
+        training_order_policy=_POLICY_NAME,
+        hard_support_obligations=(),
+        configured_sizes=sizes,
+        raw_feature_catalog=fixture.raw_features,
+        structural_input_identity="real-owner-prepare-fixture.v1",
+        workers=1,
+        **kwargs,
+    )
+
+
+def _prepare_fixture():
+    return build_selector_fixture(
+        frames=32,
+        units=4,
+        conditions=2,
+        event_frames=(),
+        duplicate_pairs=_all_duplicate_pairs(32),
+    )
+
+
+def _tree_digest(root: Path) -> dict[str, str]:
+    return {
+        str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def test_real_owner_repair2_zero_new_coverage_swap_strictly_improves_representative_utility(
+    repair_products: SimpleNamespace,
+) -> None:
+    """D2 9.2/9.3: a zero-new-coverage replacement is admitted by strict J alone."""
+
+    products = repair_products
+    # Shell 1 = one member of each duplicate cluster -> complete coverage.  Shell
+    # 2 piles four more members onto cluster A, so no available frame adds new
+    # coverage while moving a member to cluster B strictly raises U_rep.
+    uneven = _manual_selection_plan(products, order=(0, 16, 1, 2, 3, 4), sizes=(2, 6))
+    plans = [
+        build_repair_plan(products.reference, products.forward, uneven, workers=workers)
+        for workers in (1, 2, 4)
+    ]
+    assert plans[0].to_dict() == plans[1].to_dict() == plans[2].to_dict()
+    plan = plans[0]
+    assert plan.total_swaps > 0
+    cluster_b = {products.reference.frame_uids[index] for index in range(16, 32)}
+    for rung in plan.rungs:
+        for swap in rung.swaps:
+            before, after = swap.objective_before, swap.objective_after
+            assert before[0] == after[0] == 0
+            assert after[1] == pytest.approx(before[1], rel=0.0, abs=1.0e-14)
+            assert after[2] == pytest.approx(before[2], rel=0.0, abs=1.0e-14)
+            assert after[3] > before[3]
+            assert swap.removed_unique_coverage == 0.0
+            assert swap.replacement_frame_uid in cluster_b
+    base = dict(uneven.rungs[-1].family_coverage)
+    assert all(
+        value == pytest.approx(base[family], rel=0.0, abs=1.0e-14)
+        for family, value in plan.rungs[-1].family_coverage
+    )
+
+    # Control: the shell is already balanced across clusters, so no replacement
+    # strictly improves J and REPAIR2 must make no swap.
+    even = _manual_selection_plan(products, order=(0, 16, 1, 17), sizes=(2, 4))
+    control = build_repair_plan(products.reference, products.forward, even, workers=2)
+    assert control.total_swaps == 0
+    assert control.to_dict() == build_repair_plan(
+        products.reference, products.forward, even, workers=1
+    ).to_dict()
+
+
+def test_real_owner_repair2_v1_build_identity_is_not_current(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mdstats.training_data.target_order import preparation
+    from mdstats.training_data.target_order.repair import (
+        REPAIR2_VERSION,
+        TargetMultiViewRepairPolicy,
+    )
+    from mdstats.training_data._common import TrainingDataInputError
+
+    assert REPAIR2_VERSION == "mdstats.target-order.repair2.configured-shell.v2"
+    current_policy = TargetMultiViewRepairPolicy().to_dict()
+    v1_payload = {
+        key: value for key, value in current_policy.items() if key != "policy_digest"
+    }
+    v1_payload["authority_version"] = "mdstats.target-order.repair2.configured-shell.v1"
+    v1_policy = {**v1_payload, "policy_digest": digest(v1_payload)}
+    with pytest.raises(TrainingDataInputError, match="REPAIR2 policy version"):
+        TargetMultiViewRepairPolicy.from_dict(v1_policy)
+
+    fixture = _prepare_fixture()
+    build = _prepare(tmp_path / "prepared", fixture)
+    identity_arguments = {
+        "population_digest": fixture.population.content_digest,
+        "split_digest": fixture.split.content_digest,
+        "raw_feature_catalog_digest": fixture.raw_features.content_digest,
+        "structural_input_identity": "real-owner-prepare-fixture.v1",
+        "training_order_policy": _POLICY_NAME,
+        "hard_support_obligations": (),
+        "configured_sizes": _SIZES,
+    }
+    assert preparation.target_order_build_identity(**identity_arguments) == build.preparation.build_identity
+    current_method = preparation.target_order_method_identity()
+    monkeypatch.setattr(
+        preparation,
+        "target_order_method_identity",
+        lambda: {**current_method, "repair_policy": v1_policy},
+    )
+    v1_identity = preparation.target_order_build_identity(**identity_arguments)
+    assert v1_identity != build.preparation.build_identity
+
+    # A completed build whose repair plan names the v1 policy cannot authenticate.
+    root = tmp_path / "prepared" / "target-order"
+    manifest = json.loads((root / "builds" / build.preparation.build_identity / "manifest.json").read_text())
+    manifest["repair_plan"]["policy"] = v1_policy
+    manifest.pop("manifest_digest")
+    manifest["manifest_digest"] = digest(manifest)
+    forged = tmp_path / "forged"
+    forged.mkdir()
+    (forged / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(TargetOrderArtifactStoreError, match="REPAIR2 policy version"):
+        preparation._read_build(forged, root)
+
+
+def _fence_lock_path(prepared_root: Path) -> Path:
+    locks = tuple((prepared_root / "target-order" / "builds").glob(".*.prepare.lock"))
+    assert len(locks) == 1, locks
+    return locks[0]
+
+
+def _fence_is_held(lock_path: Path) -> bool:
+    import fcntl
+
+    descriptor = os.open(lock_path, os.O_RDWR)
+    try:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(descriptor)
+
+
+def test_real_owner_same_build_prepare_is_single_flight(tmp_path: Path) -> None:
+    import threading
+
+    fixture = _prepare_fixture()
+    prepared_root = tmp_path / "prepared"
+    root = prepared_root / "target-order"
+    holder_inside = threading.Event()
+    release = threading.Event()
+    results: dict[str, object] = {}
+    failures: list[BaseException] = []
+    holder_progress: list[str] = []
+    waiter_progress: list[str] = []
+    waiter_structural = {"calls": 0}
+
+    def holder_callback(message: str) -> None:
+        holder_progress.append(message)
+        if message.startswith("status=selecting; progress=8/24"):
+            holder_inside.set()
+            assert release.wait(300.0)
+
+    def run(name: str, **kwargs) -> None:
+        try:
+            results[name] = _prepare(prepared_root, fixture, **kwargs)
+        except BaseException as exc:  # pragma: no cover - surfaced below
+            failures.append(exc)
+
+    def waiter_structural_factory():
+        waiter_structural["calls"] += 1
+        return fixture.structural_catalog
+
+    holder = threading.Thread(
+        target=run, args=("holder",), kwargs={"progress_callback": holder_callback}, daemon=True
+    )
+    holder.start()
+    try:
+        assert holder_inside.wait(300.0), failures
+        lock_path = _fence_lock_path(prepared_root)
+        assert _fence_is_held(lock_path)
+        checkpoints_before = _tree_digest(root / "checkpoints")
+        assert checkpoints_before
+        assert len(tuple((root / "attempts").iterdir())) == 1
+
+        waiter = threading.Thread(
+            target=run,
+            args=("waiter",),
+            kwargs={
+                "progress_callback": waiter_progress.append,
+                "structural_catalog_factory": waiter_structural_factory,
+            },
+            daemon=True,
+        )
+        waiter.start()
+
+        # A different prospective build identity is not serialized behind the
+        # held same-build fence: it completes while the holder is still paused.
+        other = _prepare(prepared_root, fixture, sizes=(8, 16))
+        assert other.preparation.build_identity not in lock_path.name
+        assert _fence_is_held(lock_path)
+        assert "waiter" not in results and "holder" not in results
+        assert not any(item.startswith("stage=") for item in waiter_progress)
+        assert waiter_structural["calls"] == 0
+        # The waiter created no attempt scratch and touched no checkpoint.
+        assert len(tuple((root / "attempts").iterdir())) == 1
+        assert _tree_digest(root / "checkpoints").items() >= checkpoints_before.items()
+    finally:
+        release.set()
+        holder.join(300.0)
+    waiter.join(300.0)
+    assert not failures, failures
+    assert not holder.is_alive() and not waiter.is_alive()
+
+    holder_build, waiter_build = results["holder"], results["waiter"]
+    assert not holder_build.reused
+    assert waiter_build.reused
+    assert waiter_structural["calls"] == 0
+    assert not any(item.startswith("stage=") for item in waiter_progress)
+    assert waiter_build.preparation.content_digest == holder_build.preparation.content_digest
+    assert waiter_build.frame_uids == holder_build.frame_uids
+    assert waiter_build.repair_plan.to_dict() == holder_build.repair_plan.to_dict()
+    assert waiter_build.qualification.to_dict() == holder_build.qualification.to_dict()
+    assert not tuple((root / "attempts").iterdir())
+    assert not _fence_is_held(lock_path)
+
+    # Serial reference: an independent root yields the identical build.
+    serial = _prepare(tmp_path / "serial", fixture)
+    assert serial.preparation.content_digest == holder_build.preparation.content_digest
+
+
+def test_real_owner_interrupted_fence_holder_releases_and_successor_resumes(
+    tmp_path: Path,
+) -> None:
+    import signal
+    import threading
+
+    prepared_root = tmp_path / "prepared"
+    marker = tmp_path / "holder-inside"
+    repository = Path(__file__).resolve().parents[1]
+    child_script = r'''
+import sys, time
+from pathlib import Path
+from tests.test_mlff_target_order_real_owner import _prepare, _prepare_fixture
+
+marker = Path(sys.argv[2])
+
+def callback(message):
+    if message.startswith("status=selecting; progress=8/24"):
+        marker.write_text("inside")
+        while True:
+            time.sleep(60)
+
+_prepare(Path(sys.argv[1]), _prepare_fixture(), progress_callback=callback)
+'''
+    environment = os.environ.copy()
+    environment["PYTHONPATH"] = os.pathsep.join(
+        item for item in (str(repository), environment.get("PYTHONPATH", "")) if item
+    )
+    child = subprocess.Popen(
+        [sys.executable, "-c", child_script, str(prepared_root), str(marker)],
+        cwd=repository,
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 300.0
+        while not marker.exists():
+            assert child.poll() is None, child.stdout.read()
+            assert time.monotonic() < deadline, "fence holder never reached its checkpoint"
+            time.sleep(0.05)
+        lock_path = _fence_lock_path(prepared_root)
+        assert _fence_is_held(lock_path)
+
+        fixture = _prepare_fixture()
+        progress: list[str] = []
+        results: dict[str, object] = {}
+        failures: list[BaseException] = []
+
+        def successor() -> None:
+            try:
+                results["build"] = _prepare(prepared_root, fixture, progress_callback=progress.append)
+            except BaseException as exc:  # pragma: no cover - surfaced below
+                failures.append(exc)
+
+        waiter = threading.Thread(target=successor, daemon=True)
+        waiter.start()
+        assert "build" not in results and not progress
+        child.send_signal(signal.SIGKILL)
+        child.wait(60.0)
+        waiter.join(300.0)
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait(60.0)
+    assert not failures, failures
+    build = results["build"]
+    # The successor acquired the released fence, rechecked the absent build,
+    # removed nothing it did not own, and resumed from the authenticated
+    # checkpoint the killed holder published.
+    assert not build.reused
+    assert any("resume=8" in item for item in progress), progress
+    # Only the killed holder's own scratch remains; the successor removed its
+    # own scratch and did not adopt or delete the dead attempt's directory.
+    attempts = prepared_root / "target-order" / "attempts"
+    assert len(tuple(attempts.iterdir())) == 1
+    fresh = _prepare(tmp_path / "fresh", fixture)
+    assert build.preparation.content_digest == fresh.preparation.content_digest
+    assert build.repair_plan.to_dict() == fresh.repair_plan.to_dict()
+    assert build.qualification.to_dict() == fresh.qualification.to_dict()
+
+
+def test_real_owner_required_structural_families_are_complete_or_fail_closed(
+    tmp_path: Path,
+) -> None:
+    from mdstats.training_data._common import TrainingDataInputError
+    from mdstats.training_data.target_order.coverage_reference import (
+        REQUIRED_STRUCTURAL_FEATURE_FAMILIES,
+    )
+
+    def reference(fixture, **kwargs):
+        return build_target_coverage_reference(
+            dataset_id=fixture.population.dataset_id,
+            population=fixture.population,
+            split=fixture.split,
+            raw_feature_catalog=fixture.raw_features,
+            structural_catalog=fixture.structural_catalog,
+            policy=TargetCoveragePolicy(),
+            radius_block_size=8,
+            **kwargs,
+        )
+
+    from mdstats.training_data.resources import StageResourceScope
+
+    complete = build_selector_fixture(frames=32, units=4, event_frames=())
+    serial = reference(complete, query_workers=1)
+    parallel = reference(complete, query_workers=2)
+    # COVREF-PAR1 block parallelism, the execution path ``prepare`` uses.
+    blocked = reference(
+        complete,
+        query_workers=1,
+        execution_scope=StageResourceScope(
+            stage_name="TARGET-ORDER-COVREF",
+            cpu_threads_available=4,
+            cpu_threads_budget=4,
+            python_workers=4,
+            tree_workers=1,
+            blas_threads=1,
+        ),
+    )
+    assert serial.content_digest == parallel.content_digest == blocked.content_digest
+    assert {
+        family.semantic_family for family in serial.families if family.family_kind == "structural"
+    } == set(REQUIRED_STRUCTURAL_FEATURE_FAMILIES)
+
+    omitted = build_selector_fixture(
+        frames=32, units=4, event_frames=(), omit_structural_families=("orientational_order",)
+    )
+    with pytest.raises(TrainingDataInputError, match="orientational_order"):
+        reference(omitted, query_workers=1)
+
+    # A family whose only group projection has fewer than the D2 minimum
+    # reference elements is invalid and must fail rather than disappear.
+    sparse = build_selector_fixture(
+        frames=32, units=4, event_frames=(), sparse_structural_families=("connectivity",)
+    )
+    with pytest.raises(TrainingDataInputError, match="connectivity") as caught:
+        reference(sparse, query_workers=1)
+    assert "orientational_order" not in str(caught.value)
+
+    # Preparation fails before FEAS/MVIDX/MVSEL products exist.
+    prepared_root = tmp_path / "prepared"
+    with pytest.raises(TrainingDataInputError, match="orientational_order"):
+        _prepare(prepared_root, omitted)
+    target_root = prepared_root / "target-order"
+    for stage in ("reference", "geometry", "mvidx", "checkpoints", "builds"):
+        assert not tuple((target_root / stage).glob("[!.]*")), stage
+
+
+def test_real_owner_molecular_phase_plan_cannot_thin_target_order_families(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from mdstats.training_data import campaign_target_size_runtime as runtime
+    from mdstats.training_data.phase_geometry_profiles import (
+        derive_phase_geometry_selection_plan,
+    )
+    from mdstats.training_data.structural_selection import (
+        UniversalStructuralSelectionProvider,
+    )
+    from mdstats.training_data.target_order import preparation
+    from mdstats.training_data.target_order.coverage_reference import (
+        REQUIRED_STRUCTURAL_FEATURE_FAMILIES,
+    )
+
+    profile = mdstats.build_single_phase_material_profile(
+        profile_id="molecular-bulk",
+        phase_kind=mdstats.MaterialPhaseKind.MOLECULAR_OR_GAS,
+        geometry=mdstats.MaterialGeometryKind.BULK,
+    )
+    contracts = mdstats.build_material_profile_contracts(profile)
+    plan = derive_phase_geometry_selection_plan(contracts)
+    assert "orientational_order" not in plan.feature_families
+
+    captured: dict[str, object] = {}
+
+    def capture_prepare(**kwargs):
+        captured["prepare"] = kwargs
+        kwargs["structural_catalog_factory"]()
+        return "prepared"
+
+    def capture_catalog(self, frame_catalog, frame_data_by_run, data4, **kwargs):
+        captured["policy"] = kwargs["policy"]
+
+    monkeypatch.setattr(preparation, "prepare_target_training_order", capture_prepare)
+    monkeypatch.setattr(UniversalStructuralSelectionProvider, "build_catalog", capture_catalog)
+    fixture = _prepare_fixture()
+
+    def call(material_contracts):
+        return runtime._build_current_target_training_order(
+            {"model": {"device": "cpu"}},
+            SimpleNamespace(internal=tmp_path / "internal"),
+            population=fixture.population,
+            split=fixture.split,
+            policy=SimpleNamespace(
+                training_order_policy=_POLICY_NAME,
+                hard_support_obligations=(),
+                candidate_sizes=_SIZES,
+            ),
+            raw_feature_catalog=fixture.raw_features,
+            frame_catalog=SimpleNamespace(content_digest=digest({"frame-catalog": 1})),
+            frame_data_by_run={},
+            data4=SimpleNamespace(
+                material_profile_contracts=material_contracts,
+                content_digest=digest({"data4": 1}),
+            ),
+        )
+
+    assert call(contracts) == "prepared"
+    policy = captured["policy"]
+    assert set(policy.enabled_feature_families) == set(REQUIRED_STRUCTURAL_FEATURE_FAMILIES)
+    assert policy.materialize_atomic_environments is False
+    # Accepted phase/geometry semantics other than the family catalog survive.
+    assert policy.phase_geometry_plan_digest == plan.content_digest
+    assert tuple(policy.enabled_event_types) == tuple(sorted(plan.event_types))
+    molecular_identity = captured["prepare"]["structural_input_identity"]
+
+    call(None)
+    default_policy = captured["policy"]
+    assert set(default_policy.enabled_feature_families) == set(REQUIRED_STRUCTURAL_FEATURE_FAMILIES)
+    assert captured["prepare"]["structural_input_identity"] != molecular_identity
+
+
+def test_real_owner_corrupt_published_target_order_artifacts_are_not_replaced(
+    tmp_path: Path,
+) -> None:
+    # Direct owner: identical content converges, corrupt or conflicting content
+    # fails closed and stays byte-for-byte untouched.
+    destination = tmp_path / "store" / "artifact"
+
+    def writer(content: bytes):
+        def write(directory: Path):
+            (directory / "member.bin").write_bytes(content)
+            return {
+                "schema": "test.target-order-artifact.v1",
+                "content_digest": hashlib.sha256(content).hexdigest(),
+            }
+
+        return write
+
+    def verify(path: Path, manifest) -> None:
+        if hashlib.sha256((path / "member.bin").read_bytes()).hexdigest() != manifest["content_digest"]:
+            raise TargetOrderArtifactStoreError("member checksum mismatch")
+
+    first = publish_artifact_directory(
+        destination, schema="test.target-order-artifact.v1", write=writer(b"same"), verify_existing=verify
+    )
+    again = publish_artifact_directory(
+        destination, schema="test.target-order-artifact.v1", write=writer(b"same"), verify_existing=verify
+    )
+    assert again.manifest == first.manifest
+    with pytest.raises(TargetOrderArtifactStoreError, match="not replaced"):
+        publish_artifact_directory(
+            destination, schema="test.target-order-artifact.v1", write=writer(b"other"), verify_existing=verify
+        )
+    (destination / "member.bin").write_bytes(b"corrupt")
+    corrupt = _tree_digest(destination)
+    with pytest.raises(TargetOrderArtifactStoreError, match="not replaced"):
+        publish_artifact_directory(
+            destination, schema="test.target-order-artifact.v1", write=writer(b"same"), verify_existing=verify
+        )
+    assert _tree_digest(destination) == corrupt
+    assert sorted(path.name for path in destination.parent.iterdir()) == [".artifact.lock", "artifact"]
+
+    # Real prepare: a corrupt completed build and a corrupt completed reference
+    # both fail closed without deletion, replacement, or an alternative build.
+    fixture = _prepare_fixture()
+    prepared_root = tmp_path / "prepared"
+    build = _prepare(prepared_root, fixture)
+    root = prepared_root / "target-order"
+    paths = dict(build.preparation.artifact_paths)
+    build_directory = root / paths["build"]
+    manifest_path = build_directory / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["frame_uids"] = list(reversed(manifest["frame_uids"]))
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    corrupt_build = _tree_digest(build_directory)
+    with pytest.raises(TargetOrderArtifactStoreError, match="does not replace"):
+        _prepare(prepared_root, fixture)
+    assert _tree_digest(build_directory) == corrupt_build
+
+    reference_directory = root / paths["reference"]
+    member = next(path for path in sorted(reference_directory.iterdir()) if path.suffix == ".npy")
+    raw = bytearray(member.read_bytes())
+    raw[-1] ^= 0xFF
+    member.write_bytes(bytes(raw))
+    corrupt_reference = _tree_digest(reference_directory)
+    builds_before = sorted(path.name for path in (root / "builds").glob("[!.]*"))
+    with pytest.raises(TargetOrderArtifactStoreError, match="does not replace"):
+        _prepare(prepared_root, fixture, sizes=(8, 16))
+    assert _tree_digest(reference_directory) == corrupt_reference
+    assert sorted(path.name for path in (root / "builds").glob("[!.]*")) == builds_before
+    assert not tuple((root / "attempts").iterdir())

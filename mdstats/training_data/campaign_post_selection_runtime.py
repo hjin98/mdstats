@@ -1162,7 +1162,7 @@ def _detach_post_selection_namespace(
     # the same run lease.  Directory rename is the namespace commit point seen
     # by the next invocation; recursive reclaim happens only after it.
     os.rename(canonical_directory, scratch)
-    from .target_size_execution import fsync_parent_directory
+    from .persistence import fsync_parent_directory
 
     fsync_parent_directory(canonical_directory)
     _reclaim_post_selection_retirement_scratch(
@@ -2383,7 +2383,7 @@ def post_selection_run_activity_lease(run_root: str | os.PathLike[str]):
     share one cycle-free order.
     """
 
-    from .target_size_execution import artifact_publication_lock
+    from .persistence import artifact_publication_lock
 
     root = Path(run_root)
     root.parent.mkdir(parents=True, exist_ok=True)

@@ -515,7 +515,7 @@ def dedup_engine(
             # filesystem publication boundary could survive a power loss that
             # the rename did not, leaving durable evidence disagreeing with the
             # recovered tree.
-            from ..target_size_execution.persistence import fsync_parent_directory
+            from ..persistence import fsync_parent_directory
 
             if not same_filesystem(staging, member):
                 # An atomic hardlink replacement needs one filesystem. Falling

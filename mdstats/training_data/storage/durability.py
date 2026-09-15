@@ -23,7 +23,7 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from ..target_size_execution.persistence import fsync_parent_directory
+from ..persistence import fsync_parent_directory
 
 #: Chunk size for streaming digests; also bounds peak memory during
 #: authentication of a large archive blob.

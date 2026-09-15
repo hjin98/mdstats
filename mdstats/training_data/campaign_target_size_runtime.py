@@ -450,7 +450,8 @@ def _build_current_target_training_order(
     """Run the prepare-owned target-order chain on exact ``P_train``.
 
     The universal structural selector input is built only when no published
-    coverage reference for the same identity exists, on exact ``P_train`` and
+    coverage reference for the same identity exists, on exact ``P_train``,
+    requesting the complete frozen target-order structural family catalog, and
     without atomic-environment materialization.  CPU width comes from the
     campaign performance budget and is execution-only.
     """
@@ -468,6 +469,7 @@ def _build_current_target_training_order(
         UniversalStructuralSelectionPolicy,
         UniversalStructuralSelectionProvider,
     )
+    from .target_order.coverage_reference import TargetCoveragePolicy
     from .target_order.preparation import prepare_target_training_order
 
     provider = UniversalStructuralSelectionProvider()
@@ -479,7 +481,14 @@ def _build_current_target_training_order(
             derive_phase_geometry_selection_plan(contracts)
         )
     )
-    structural_policy = _replace(structural_policy, materialize_atomic_environments=False)
+    # The phase/geometry plan still supplies local-structure, group, event and
+    # aggregation semantics, but it cannot thin the frozen D2 target-order
+    # universal structural family catalog; no phase exemption exists there.
+    structural_policy = _replace(
+        structural_policy,
+        enabled_feature_families=TargetCoveragePolicy().required_structural_feature_families,
+        materialize_atomic_environments=False,
+    )
     training_uids = tuple(sorted(split.training_frame_uids))
     structural_identity = digest(
         {
@@ -1455,7 +1464,7 @@ def _execute_candidate_cell(
         derive_active_boundary_requirements,
         recover_authenticated_boundary_progress,
     )
-    from .target_size_execution.persistence import artifact_publication_lock
+    from .persistence import artifact_publication_lock
 
     optimizer = _replace(screen.optimizer_policy, seed=int(optimizer_seed))
     trajectory = build_target_size_candidate_trajectory(

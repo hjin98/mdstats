@@ -2856,11 +2856,11 @@ def test_an_aborted_reopen_and_storage_cleanup_never_interleave(
     # the real lock has been acquired. The designated first contender then holds
     # it while the second one runs, which is what makes each ordering actually
     # happen rather than merely being asked for.
-    from mdstats.training_data import target_size_execution as _tse
+    from mdstats.training_data import persistence as persistence_mod
 
     acquisitions: list[tuple[str, str]] = []
     acquisition_lock = threading.Lock()
-    real_publication_lock = _tse.artifact_publication_lock
+    real_publication_lock = persistence_mod.artifact_publication_lock
 
     @contextmanager
     def _instrumented_lock(target, *args, **kwargs):
@@ -2911,7 +2911,7 @@ def test_an_aborted_reopen_and_storage_cleanup_never_interleave(
     winner_name = "reopen" if owner_first else "cleanup"
     loser_name = "cleanup" if owner_first else "reopen"
 
-    _tse.artifact_publication_lock = _instrumented_lock
+    persistence_mod.artifact_publication_lock = _instrumented_lock
     try:
         first = threading.Thread(target=winner, name="first", daemon=True)
         first.start()
@@ -2932,7 +2932,7 @@ def test_an_aborted_reopen_and_storage_cleanup_never_interleave(
         first.join(300.0)
         second.join(300.0)
     finally:
-        _tse.artifact_publication_lock = real_publication_lock
+        persistence_mod.artifact_publication_lock = real_publication_lock
         release.set()
     assert not failures, failures
     assert not first.is_alive() and not second.is_alive()

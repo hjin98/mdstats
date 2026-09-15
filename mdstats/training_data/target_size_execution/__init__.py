@@ -144,8 +144,6 @@ from .export import (
     write_target_size_extxyz_artifact,
 )
 from .persistence import (
-    artifact_publication_lock,
-    fsync_parent_directory,
     publish_immutable_bytes_create_or_verify,
     publish_immutable_json_create_or_verify,
     publish_mutable_json_atomic,
@@ -174,8 +172,6 @@ __all__ = [
     "TargetSizeOptimizerNormalizationPolicy",
     "resolve_target_size_optimizer_normalization_policy",
     "resolve_target_size_common_training_policy",
-    "artifact_publication_lock",
-    "fsync_parent_directory",
     "authenticate_train2_checkpoint_provider",
     "CommonAtomicReferenceFit",
     "EVALUATION_MODEL_STATE_EMA",

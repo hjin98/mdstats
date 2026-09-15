@@ -15,7 +15,9 @@ continuation -- the repair plan that fixed the repaired prefix.  Restore
 re-derives multiplicities, masses, counts and utility from the prefix and
 fails closed on any disagreement; the authenticated stored FP history is then
 retained so continuation is bit-identical to the uninterrupted run.  It never
-becomes CampaignStore currentness or downstream evidence.
+becomes CampaignStore currentness or downstream evidence.  Checkpoint roots are
+keyed by scientific identity, so their mutation is owned by the one holder of
+``prepare``'s same-build single-flight fence.
 """
 
 from __future__ import annotations
@@ -241,7 +243,12 @@ def list_checkpoints(directory: Path) -> tuple[tuple[int, Path], ...]:
 def restore_latest_checkpoint(
     directory: Path, reference: Any, forward: Any, *, expected_identity: str, maximum_selected: int | None = None
 ) -> SelectionCheckpoint | None:
-    """Highest valid checkpoint; stale/corrupt ones are discarded as reconstructible."""
+    """Highest valid checkpoint; stale/corrupt ones are discarded as reconstructible.
+
+    Discarding mutates a checkpoint root shared by every attempt at the same
+    build identity; ``prepare`` calls this only while holding that build's
+    single-flight fence.
+    """
 
     for count, path in list_checkpoints(directory):
         if maximum_selected is not None and count > int(maximum_selected):
@@ -254,7 +261,11 @@ def restore_latest_checkpoint(
 
 
 def prune_checkpoints(directory: Path, *, keep: Path) -> None:
-    """Retain only the newest checkpoint of one build identity (bounded journal)."""
+    """Retain only the newest checkpoint of one build identity (bounded journal).
+
+    Like :func:`restore_latest_checkpoint`, callers must hold the same-build
+    single-flight fence of ``prepare``.
+    """
 
     for _count, path in list_checkpoints(directory):
         if path.resolve() != Path(keep).resolve():

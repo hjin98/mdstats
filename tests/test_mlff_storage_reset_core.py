@@ -5715,7 +5715,7 @@ def test_every_patched_production_name_is_one_the_product_actually_reads() -> No
         "storage_commands": "mdstats.training_data.storage.commands",
         "archive_mod": "mdstats.training_data.storage.archive",
         "durability_mod": "mdstats.training_data.storage.durability",
-        "persistence_mod": "mdstats.training_data.target_size_execution.persistence",
+        "persistence_mod": "mdstats.training_data.persistence",
         "trust_mod": "mdstats.training_data.storage.trust",
         "store_mod": "mdstats.training_data.qualification.store",
         "qstore": "mdstats.training_data.qualification.store",
@@ -6727,7 +6727,7 @@ def test_a_restore_destination_failure_after_the_replace_records_the_install(
 
     # The installer reaches the shared persistence primitive directly, which is
     # the lowest real callable on that path.
-    from mdstats.training_data.target_size_execution import persistence as persistence_mod
+    from mdstats.training_data import persistence as persistence_mod
 
     real = persistence_mod.fsync_parent_directory
     fired = {"n": 0}

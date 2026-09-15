@@ -76,14 +76,16 @@ def pytest_configure(config):
     )
 
 
-@pytest.fixture(autouse=True)
-def substitute_target_order_owner_for_downstream_campaign_tests(request, monkeypatch):
+@pytest.fixture(autouse=True, scope="module")
+def substitute_target_order_owner_for_downstream_campaign_tests(request):
     """Downstream MLFF campaign fixtures are far below the target-order method's scale.
 
     Their claims concern P2/P3/publication/post-selection behavior, not how
     ``pi_train`` is built, so ``prepare`` receives the deterministic substitute
-    from ``tests/support/target_order_substitute.py``.  Suites that claim the
-    target-order chain itself opt out with ``@pytest.mark.real_target_order``.
+    from ``tests/support/target_order_substitute.py``.  The substitute is
+    module-scoped so module-scoped campaign fixtures receive it too.  Suites
+    that claim the target-order chain itself opt out with a module-level
+    ``pytestmark = pytest.mark.real_target_order``.
     """
 
     path = Path(str(request.fspath))
@@ -92,8 +94,9 @@ def substitute_target_order_owner_for_downstream_campaign_tests(request, monkeyp
         return
     from tests.support.target_order_substitute import substitute_prepare_target_order
 
-    monkeypatch.setattr(
-        "mdstats.training_data.campaign_target_size_runtime._build_current_target_training_order",
-        substitute_prepare_target_order,
-    )
-    yield
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            "mdstats.training_data.campaign_target_size_runtime._build_current_target_training_order",
+            substitute_prepare_target_order,
+        )
+        yield

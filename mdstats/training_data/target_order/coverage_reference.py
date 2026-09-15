@@ -1138,8 +1138,13 @@ def build_target_coverage_reference(
             thread_name_prefix="mdstats-covref",
         ) as queue:
             families = build(queue)
-    if not families:
-        raise TrainingDataInputError("Exact P_train produced no required coverage family.")
+    represented = {item.semantic_family for item in families if item.family_kind == "structural"}
+    missing_structural = [name for name in active.required_structural_feature_families if name not in represented]
+    if missing_structural:
+        raise TrainingDataInputError(
+            "Exact P_train retains no valid reference family for required universal structural "
+            f"semantic families {missing_structural}; the frozen family catalog is not thinned."
+        )
     index_by_uid = {uid: i for i, uid in enumerate(frame_uids)}
     by_event: dict[str, set[int]] = {}
     for event in structural_catalog.events:

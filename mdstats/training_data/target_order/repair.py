@@ -45,7 +45,7 @@ from .selector import (
     unsatisfied_obligation_ids,
 )
 
-REPAIR2_VERSION = "mdstats.target-order.repair2.configured-shell.v1"
+REPAIR2_VERSION = "mdstats.target-order.repair2.configured-shell.v2"
 REPAIR2_POLICY_SCHEMA = "mdstats.target-multi-view-repair-policy.v3"
 REPAIR2_SWAP_SCHEMA = "mdstats.target-multi-view-repair-swap.v2"
 REPAIR2_RUNG_SCHEMA = "mdstats.target-multi-view-repair-rung.v3"
@@ -400,7 +400,6 @@ class _Frontier:
     before: Objective
     bottleneck: int
     candidates: tuple[int, ...]
-    proposal_possible: bool
 
 
 def _build_frontier(forward: Any, state: TargetMultiViewForwardState, selector_policy: Any, tolerance: float) -> _Frontier | None:
@@ -420,10 +419,7 @@ def _build_frontier(forward: Any, state: TargetMultiViewForwardState, selector_p
     candidates = filter_best_relative(candidates, bottleneck_values, tolerance)
     totals = {c: total_coverage_gain(c, forward, state)[1] for c in candidates}
     candidates = filter_best_relative(candidates, totals, tolerance)
-    # Restored REPAIR1/REPAIR2 frontier: without a pending hard obligation and
-    # without any positive new coverage there is no repair proposal.
-    possible = hard_pending or max(totals[c] for c in candidates) > tolerance
-    return _Frontier(utility, before, bottleneck, candidates, possible)
+    return _Frontier(utility, before, bottleneck, candidates)
 
 
 def _proposal(
@@ -608,7 +604,7 @@ def build_repair_plan(
                 best = None
                 if shortlist:
                     frontier = _build_frontier(forward, state, selection.policy, tolerance)
-                    if frontier is not None and frontier.proposal_possible:
+                    if frontier is not None:
                         best = _best_proposal(
                             reference, forward, state, shortlist, frontier, tolerance,
                             workers=workers, resource_scope=resource_scope,
