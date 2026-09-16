@@ -17,7 +17,7 @@ d4_r11_independent_rereview_verdict: NO-PASS
 d4_r12_repair_commit: 9c41f44be32dd0e4f3869e6e48be4e85b9effce9
 d4_r12_evidence_candidate: c6fbe03c92f23a79123031922f338966e9c76c6b
 d4_r12_independent_rereview_verdict: NO-PASS
-d4_r13_repair_commit: PENDING_COMMIT
+d4_r13_repair_commit: d993f25e28f7d0886ef7628c0a39feeb91adaf33
 current_gate: D4_R13_IMPLEMENTED_INDEPENDENT_REVIEW_REQUIRED
 d4_authorized: true
 ---

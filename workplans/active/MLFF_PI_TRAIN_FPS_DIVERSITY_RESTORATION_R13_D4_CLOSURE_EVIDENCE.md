@@ -8,6 +8,7 @@ evidence_date: 2026-09-16
 branch: design/mlff-pi-train-fps-diversity-restoration
 basis_commit: e72090e21cec5311ce87745b03603f8783cd15a7
 parent_implementation_commit: 9c41f44be32dd0e4f3869e6e48be4e85b9effce9
+r13_implementation_commit: d993f25e28f7d0886ef7628c0a39feeb91adaf33
 reviewed_r12_candidate: c6fbe03c92f23a79123031922f338966e9c76c6b
 highest_affected_domain: D4
 upstream_authority_state: D1_D2_D3_ACCEPTED_UNCHANGED
