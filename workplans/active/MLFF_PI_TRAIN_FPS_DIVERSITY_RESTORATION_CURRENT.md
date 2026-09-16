@@ -1,7 +1,7 @@
 ---
 kind: restoration-current-pointer
 workplan_id: MLFF-PI-TRAIN-FPS-DIVERSITY-RESTORATION-1
-plan_revision: 13
+plan_revision: 14
 protocol_version: 6.3.0
 status: active
 basis_commit: e72090e21cec5311ce87745b03603f8783cd15a7
@@ -18,7 +18,9 @@ d4_r12_repair_commit: 9c41f44be32dd0e4f3869e6e48be4e85b9effce9
 d4_r12_evidence_candidate: c6fbe03c92f23a79123031922f338966e9c76c6b
 d4_r12_independent_rereview_verdict: NO-PASS
 d4_r13_repair_commit: d993f25e28f7d0886ef7628c0a39feeb91adaf33
-current_gate: D4_R13_IMPLEMENTED_INDEPENDENT_REVIEW_REQUIRED
+d4_r13_evidence_candidate: a616f8aa54a80ff003abeb1a2c6b0e882055e4a7
+d4_r13_independent_rereview_verdict: NO-PASS
+current_gate: D4_R14_FEAS1_RESOURCE_SCOPE_CLOSURE_REQUIRED
 d4_authorized: true
 ---
 
@@ -37,71 +39,48 @@ D4 integration audit:        NO-PASS / REVISION 10 COMPLETE
 D4 correctness repair:       REVISION 11 / IMPLEMENTED
 R11 independent re-review:   NO-PASS / CORRECTNESS BLOCKERS CLOSED
 D4 performance repair:       REVISION 12 / IMPLEMENTED
-R12 independent re-review:   NO-PASS / PERFORMANCE CLOSED / RESOURCE+HAS CLOSURE REMAIN
-D4 current repair:           REVISION 13 / IMPLEMENTED / INDEPENDENT REVIEW REQUIRED
+R12 independent re-review:   NO-PASS / PERFORMANCE CLOSED
+D4 resource/HAS repair:      REVISION 13 / IMPLEMENTED
+R13 independent re-review:   NO-PASS / R13 INTENDED BLOCKERS CLOSED / FEAS1 RESOURCE GAP REMAINS
+D4 current repair:           REVISION 14 / REQUIRED / ACTIVE
 ```
 
-The accepted scoped D1/D2/D3 authority remains current. Revision 11 closed the six correctness/ownership blockers. Revision 12 successfully closed the material REPAIR2 execution bottleneck and post-`N_max` restart-cost question without changing D2 semantics or adding persistent repair state.
+The accepted scoped D1/D2/D3 authority remains current. R11 correctness/ownership repairs, R12 exact REPAIR2 performance/restart closure, and R13 campaign resource routing/COVREF peak-memory/canonical-HAS closure are accepted and SHALL remain frozen absent contradictory evidence.
 
-Revision 13 is the active bounded D4 closure for two remaining issues discovered by independent review of assembled candidate `c6fbe03c92f23a79123031922f338966e9c76c6b`.
+Revision 14 is the active bounded D4 closure for the one remaining resource-architecture defect exposed by the R13 evidence.
 
 ## Current accepted authority
 
 - D1: `docs/methods/mlff_target_training_order_scientific_method.md`
 - D2: `docs/methods/mlff_target_training_order_numerical_algorithmic_method.md`
-- D3: `docs/arch_manuals/mlff_training_data/45_target_training_order.md` plus the reconciled canonical MLFF Architecture Manual chapters and dependency graph
+- D3: `docs/arch_manuals/mlff_training_data/45_target_training_order.md` plus `60_execution_performance.md` and the reconciled canonical MLFF Architecture Manual
 - R11 correctness repair: `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_11.md`
 - R12 performance closure: `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_12.md`
-- Current closure contract: `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_13.md`
-- Current independent-review handoff: `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_REVIEW_REVISION_13_HANDOFF.md`
+- R13 resource/HAS closure: `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_13.md`
+- Current closure contract: `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_14.md`
+- Current independent-review handoff: `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_REVIEW_REVISION_14_HANDOFF.md`
 
-## Accepted R12 closure — preserve
+## Accepted R13 closure — preserve
 
-1. R12 `_StateBatch` exact batched REPAIR2 execution over the existing MVIDX/native-row substrate.
-2. D2 §9 frontier/objective/tolerance/rank-inheritance semantics unchanged and bounded bitwise scalar/native equivalence recorded.
-3. REPAIR2 current-scale wall approximately 6,156 s -> 99 s; whole fresh prepare approximately 2 h 26 m -> 32 m; R11-correct scientific build identity unchanged.
-4. Post-`N_max` REPAIR2 replay approximately 6,610 s -> 100 s and no longer dominates resumed prepare; no new repair persistence owner.
-5. Every R11 correctness/ownership closure remains intact.
+1. The campaign `_performance_resources(cfg)` snapshot now supplies one root target-order `StageResourceScope`.
+2. COVREF, MVIDX, REPAIR2 and MVQUAL receive the finite campaign RAM/CPU budget through existing interfaces.
+3. Representative COVREF peak RSS was directly sampled under the finite budget and remained far inside the envelope.
+4. The final scientific build identity remains `b8d75b6a1857`, with the accepted 49-swap REPAIR2 trace and unchanged MVQUAL result.
+5. The session-local HAS is in the canonical Protocol 6.3 `pem_basis` + `has` schema against unchanged accepted `main` `e72090e21cec5311ce87745b03603f8783cd15a7`.
 
-## Revision 13 implementation status
+## Remaining blocking D4 closure
 
-Both blocking findings are implemented and evidenced in
-`workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R13_D4_CLOSURE_EVIDENCE.md`.
+`target_order/preparation.py::_build()` still calls `build_target_coverage_geometry()` without `resource_scope`.
 
-- **B13-1 closed.** `_build_current_target_training_order()` now builds one root
-  `TARGET-ORDER` `StageResourceScope` from the existing `_performance_resources(cfg)`
-  snapshot and passes it as `resource_scope`. Representative LTA telemetry reports
-  `ram_budget=41431436492` and `queue_memory_budget_bytes=41431436492` where R12
-  reported `None`. Actual in-stage COVREF peak RSS was measured by an external
-  `/proc` sampler at 10 Hz: entry 4.98 GiB, peak 5.15 GiB, incremental peak
-  +172.4 MiB against a 38.6 GiB stage budget, with `VmHWM` unchanged across the
-  stage. The published build identity remains `b8d75b6a1857` with 49 swaps.
-  No resource manager, admission database, memory fraction or wrapper was added.
-- **B13-2 closed.** The HAS is recorded in the canonical Protocol 6.3
-  `pem_basis` + `has` interface with `APPLICABLE`/`NOT_APPLICABLE` dispositions
-  against the unchanged accepted basis `e72090e2`. No PEM mutation is warranted.
+As a result, FEAS1/NEIGHBOR1 synthesizes `_default_scope(...)` with `ram_budget_bytes=None`. Its queue also uses `manage_resource_scope=resource_scope is not None`; on this production route that is `False`, so the stage neither admits queue memory against the campaign RAM budget nor applies its own declared BLAS/OpenMP resource scope.
 
-The original findings are retained below for review traceability.
+This conflicts with accepted D3 execution architecture: target-order sparse work runs under the current stage/resource owner, outer/native nesting stays within budget, and long-stage CPU/RAM/scratch work is admitted against the stage plan.
 
-## Resolved blocking D4 closure
-
-### B13-1 — campaign RAM budget is not routed into target-order preparation
-
-`campaign_target_size_runtime._build_current_target_training_order()` resolves the campaign resource snapshot but passes only the CPU worker count into `prepare_target_training_order()`. It omits `resource_scope`. R12 telemetry therefore reports `StageResourceScope.ram_budget_bytes=None` and `queue_memory_budget_bytes=None`.
-
-R12 also measured only current RSS before COVREF and after COVREF release. The resulting -200 MiB end-minus-start value is not a stage peak and cannot falsify a transient high-memory peak.
-
-Revision 13 requires a direct rewire through the existing `resource_scope` interface and representative measurement of actual in-stage COVREF peak RSS under the finite campaign budget. No new resource manager or policy is authorized.
-
-### B13-2 — HAS record is noncanonical Protocol 6.3
-
-The R12 table uses `applied/rejected/review-required` rather than the exact Protocol 6.3 `pem_basis` + `has` interface with `APPLICABLE/NOT_APPLICABLE/REVIEW_REQUIRED` dispositions and a recoverable accepted PEM publication route.
-
-Revision 13 requires the canonical schema. Accepted `main` remains `e72090e21cec5311ce87745b03603f8783cd15a7`; no basis refresh is currently needed.
+Revision 14 requires a direct rewire through the already-existing FEAS1 `resource_scope` argument plus deletion of the remaining provenance-dependent `manage_resource_scope` override. No new resource subsystem or policy is authorized.
 
 ## Protected architecture
 
-Preserve one exact `P_train`, one complete `pi_train`, exact nested `T_N`, sole `TargetCoverageReference`, one canonical obligation authority, one shared FEAS1/NEIGHBOR1 construction, MVIDX as representation, MVSEL2/REPAIR2 as the one order owner, independent MVQUAL, `prepare` as sole live-input/build/publication orchestrator, and prepared-generation/CampaignStore as sole completed-generation currentness/adoption owner.
+Preserve one exact `P_train`, one complete `pi_train`, exact nested `T_N`, sole TargetCoverageReference, canonical obligations, one shared FEAS1/NEIGHBOR1 construction, MVIDX as representation, MVSEL2/REPAIR2 as the one order owner, independent MVQUAL, prepare-owned construction/publication, and prepared-generation/CampaignStore completed-currentness ownership.
 
 Do not add a fallback selector, alternate suffix, repair compatibility mode, second currentness/checkpoint store, repair-side durable cache, second memory manager, duplicate sparse representation, or new cleanup/GC owner.
 
@@ -111,10 +90,10 @@ Final production-scale GPU qualification remains deferred to the final release p
 
 Start at:
 
-`workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_13.md`
+`workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_14.md`
 
 on branch:
 
 `design/mlff-pi-train-fps-diversity-restoration`
 
-Implement only the bounded resource-routing/peak-evidence and HAS-representation closure, record affected final evidence, then request another fresh independent review. Close/archive only after that review passes.
+Implement only the bounded FEAS1/NEIGHBOR1 resource-scope closure, record representative and affected regression evidence, then request another fresh independent review. Close/archive only after that review passes.
