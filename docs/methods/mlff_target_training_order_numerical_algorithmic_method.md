@@ -280,7 +280,7 @@ State includes selected/available membership and ordered prefix, each family wit
 For available candidate `c`, define
 
 $$
-H(c)=\#\{o:q_o(S)<k_o\text{ and }c\in A_o\},
+H(c)=\left|\{o:q_o(S)<k_o\text{ and }c\in A_o\}\right|,
 $$
 
 $$
@@ -292,16 +292,33 @@ G(c)=\sum_m G_m(c),
 $$
 
 $$
-R(c)=\sum_m\sum_{w:A_m(w,c)=1}\frac{\omega_m(w)}{n_m(w)+1},
+R(c)=\sum_m\sum_{w:A_m(w,c)=1}\frac{\omega_m(w)}{n_m(w)+1}.
 $$
 
-and
+For the sparse-diversity term, define
 
 $$
-D(c)=\operatorname{mean}_{m:A_m(c)\ne\varnothing}\left[\operatorname{mean}_{w:A_m(w,c)=1}\frac{1}{n_m(w)+1}\right],
+W_m(c)=\{w\in W_m:A_m(w,c)=1\},
 $$
 
-with `D(c)=0` when all family rows are empty.
+$$
+M(c)=\{m:|W_m(c)|>0\}.
+$$
+
+If `M(c)` is empty, define `D(c)=0`. Otherwise,
+
+$$
+D(c)=
+\frac{1}{|M(c)|}
+\sum_{m\in M(c)}
+\left[
+\frac{1}{|W_m(c)|}
+\sum_{w\in W_m(c)}
+\frac{1}{n_m(w)+1}
+\right].
+$$
+
+This is exactly the nested arithmetic mean over nonempty family rows and their supporting witnesses; the explicit finite-sum form avoids renderer-specific named-operator macros.
 
 A stronger minimum extends how long a canonical locus remains unsatisfied. It does not multiply that locus's hard-gain vote and hard gain is not proportional to deficit magnitude.
 
