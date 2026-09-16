@@ -20,7 +20,8 @@ d4_r12_independent_rereview_verdict: NO-PASS
 d4_r13_repair_commit: d993f25e28f7d0886ef7628c0a39feeb91adaf33
 d4_r13_evidence_candidate: a616f8aa54a80ff003abeb1a2c6b0e882055e4a7
 d4_r13_independent_rereview_verdict: NO-PASS
-current_gate: D4_R14_FEAS1_RESOURCE_SCOPE_CLOSURE_REQUIRED
+d4_r14_repair_commit: PENDING_COMMIT
+current_gate: D4_R14_IMPLEMENTED_INDEPENDENT_REREVIEW_REQUIRED
 d4_authorized: true
 ---
 
@@ -42,7 +43,7 @@ D4 performance repair:       REVISION 12 / IMPLEMENTED
 R12 independent re-review:   NO-PASS / PERFORMANCE CLOSED
 D4 resource/HAS repair:      REVISION 13 / IMPLEMENTED
 R13 independent re-review:   NO-PASS / R13 INTENDED BLOCKERS CLOSED / FEAS1 RESOURCE GAP REMAINS
-D4 current repair:           REVISION 14 / REQUIRED / ACTIVE
+D4 resource closure repair:  REVISION 14 / IMPLEMENTED / INDEPENDENT RE-REVIEW REQUIRED
 ```
 
 The accepted scoped D1/D2/D3 authority remains current. R11 correctness/ownership repairs, R12 exact REPAIR2 performance/restart closure, and R13 campaign resource routing/COVREF peak-memory/canonical-HAS closure are accepted and SHALL remain frozen absent contradictory evidence.
@@ -68,15 +69,19 @@ Revision 14 is the active bounded D4 closure for the one remaining resource-arch
 4. The final scientific build identity remains `b8d75b6a1857`, with the accepted 49-swap REPAIR2 trace and unchanged MVQUAL result.
 5. The session-local HAS is in the canonical Protocol 6.3 `pem_basis` + `has` schema against unchanged accepted `main` `e72090e21cec5311ce87745b03603f8783cd15a7`.
 
-## Remaining blocking D4 closure
+## Revision 14 closure — implemented, awaiting independent re-review
 
-`target_order/preparation.py::_build()` still calls `build_target_coverage_geometry()` without `resource_scope`.
+B14-1 is closed by rewiring, not by addition:
 
-As a result, FEAS1/NEIGHBOR1 synthesizes `_default_scope(...)` with `ram_budget_bytes=None`. Its queue also uses `manage_resource_scope=resource_scope is not None`; on this production route that is `False`, so the stage neither admits queue memory against the campaign RAM budget nor applies its own declared BLAS/OpenMP resource scope.
+1. `target_order/preparation.py::_build()` derives one FEAS1/NEIGHBOR1 child `StageResourceScope` from the existing root target-order scope — exact root CPU available/budget and RAM budget, existing FEAS widths (`python_workers=workers`, `tree_workers=1`, `blas_threads=1`, `native_openmp_threads=1`) — and passes it through the already-existing `build_target_coverage_geometry(..., resource_scope=...)` parameter.
+2. `target_order/feasibility.py` deletes the conditional `manage_resource_scope=resource_scope is not None`; the queue's existing default applies. The flag now has no reader anywhere in the repository.
+3. The FEAS1 `status=complete` line carries the stage scope and queue disposition in the shape COVREF already publishes, so the stage budget and admission behavior are observable at representative scale.
 
-This conflicts with accepted D3 execution architecture: target-order sparse work runs under the current stage/resource owner, outer/native nesting stays within budget, and long-stage CPU/RAM/scratch work is admitted against the stage plan.
+No class, function, module or configuration key was added; no resource manager, selector, repair algorithm, persistence/currentness owner, cleanup owner or compatibility path exists.
 
-Revision 14 requires a direct rewire through the already-existing FEAS1 `resource_scope` argument plus deletion of the remaining provenance-dependent `manage_resource_scope` override. No new resource subsystem or policy is authorized.
+Representative LTA evidence: FEAS1 inherits `ram_budget=41,804,365,824` B, runs `python=28; tree=1; blas=1; openmp=1`, peaks at 32.91 GiB against a 38.93 GiB budget with zero memory backpressure, takes 528.7 s (R13: 544.6 s), and the published build remains `b8d75b6a1857` with 49 REPAIR2 swaps, Phase A at 361 and MVQUAL {512…16384}. Affected regression: 1,275 passed / 4 failed, all four reproduced at the basis with the change stashed.
+
+Evidence: `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R14_D4_CLOSURE_EVIDENCE.md`.
 
 ## Protected architecture
 
@@ -96,4 +101,4 @@ on branch:
 
 `design/mlff-pi-train-fps-diversity-restoration`
 
-Implement only the bounded FEAS1/NEIGHBOR1 resource-scope closure, record representative and affected regression evidence, then request another fresh independent review. Close/archive only after that review passes.
+The bounded FEAS1/NEIGHBOR1 resource-scope closure is implemented and its representative and affected-regression evidence recorded. A fresh independent review against the Revision 14 nine-condition gate is now required. Close/archive only after that review passes.

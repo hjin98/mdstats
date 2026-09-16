@@ -2533,3 +2533,192 @@ def test_real_owner_r13_a_small_finite_budget_reaches_queue_admission(
     target_root = tmp_path / "internal" / "prepared" / "target-order"
     for stage in ("reference", "geometry", "mvidx", "builds"):
         assert not tuple((target_root / stage).glob("[!.]*")), stage
+
+
+# --- Revision 14 falsification ------------------------------------------------
+
+
+def _feas1_reference(fixture):
+    """The real COVREF product FEAS1/NEIGHBOR1 consumes."""
+
+    return build_target_coverage_reference(
+        dataset_id=fixture.population.dataset_id,
+        population=fixture.population,
+        split=fixture.split,
+        raw_feature_catalog=fixture.raw_features,
+        structural_catalog=fixture.structural_catalog,
+        policy=TargetCoveragePolicy(),
+        query_workers=1,
+        radius_block_size=8,
+    )
+
+
+def test_real_owner_r14_feas1_inherits_the_campaign_scope_and_owns_its_native_limits(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """B14-1 §4.1-4.3: the production route reaches FEAS1's queue.
+
+    Revision 13 routed COVREF/MVIDX/MVQUAL through the root target-order scope
+    and left FEAS1/NEIGHBOR1 on ``_default_scope`` with ``ram_budget_bytes=None``
+    and ``manage_resource_scope=False``.  The campaign root CPU/RAM budget must
+    now reach the one FEAS1 queue with the FEAS1 widths unchanged.
+    """
+
+    from mdstats.training_data.target_order import feasibility
+
+    seen = _recording_queue(monkeypatch, feasibility)
+    snapshot = _snapshot(threads=8, budget=4, ram=6 * 1024 ** 3)
+    lines: list[str] = []
+    monkeypatch.setattr(
+        "builtins.print", lambda *args, **kwargs: lines.append(" ".join(str(a) for a in args))
+    )
+    build = _production_target_order(monkeypatch, tmp_path, _prepare_fixture(), snapshot)
+    monkeypatch.undo()
+
+    assert len(seen) == 1
+    scope, manages, queue_snapshot = seen[0]
+    # Exactly the root budget, inherited rather than re-derived.
+    assert scope.ram_budget_bytes == snapshot.ram_budget_bytes
+    assert scope.cpu_threads_available == snapshot.cpu_threads_available
+    assert scope.cpu_threads_budget == snapshot.cpu_threads_budget
+    # The existing FEAS1 width semantics are preserved.
+    assert scope.python_workers == snapshot.cpu_threads_budget
+    assert scope.tree_workers == 1
+    assert scope.blas_threads == 1
+    assert scope.native_openmp_threads == 1
+    # Budget provenance no longer decides native-thread quarantine.
+    assert manages is True
+    # The queue really entered with a finite budget and was not constrained by it.
+    assert queue_snapshot is not None
+    assert queue_snapshot.memory_budget_bytes == snapshot.ram_budget_bytes
+    assert queue_snapshot.memory_backpressure_events == 0
+    # The stage reports the disposition it actually ran under, as COVREF does.
+    complete = [
+        line for line in lines if "status=complete" in line and f"{scope.stage_name}:" in line
+    ]
+    assert len(complete) == 1
+    assert f"ram_budget={snapshot.ram_budget_bytes}" in complete[0]
+    assert f"queue_memory_budget_bytes={snapshot.ram_budget_bytes}" in complete[0]
+    assert "queue_memory_budget_bytes=None" not in complete[0]
+    assert "queue_memory_backpressure=0" in complete[0]
+    assert build.preparation.build_identity
+
+
+def test_real_owner_r14_a_small_finite_budget_reaches_feas1_queue_admission(
+    tmp_path: Path,
+) -> None:
+    """B14-1 §4.4: FEAS1 fails closed on the budget instead of the host.
+
+    ``_default_scope`` could not refuse anything.  With the campaign budget
+    inherited, an impossible FEAS1 task is refused by the deterministic queue
+    that owns admission, and no geometry is produced for publication.
+    """
+
+    from mdstats.training_data.resources import StageResourceScope
+    from mdstats.training_data.work_queue import DeterministicWorkQueueMemoryError
+
+    fixture = _prepare_fixture()
+    reference = _feas1_reference(fixture)
+    build_directory = tmp_path / "geometry-build"
+    with pytest.raises(DeterministicWorkQueueMemoryError, match="stage RAM budget"):
+        build_target_coverage_geometry(
+            reference,
+            build_directory=build_directory,
+            global_workers=2,
+            query_block_size=8,
+            resource_scope=StageResourceScope(
+                stage_name="TARGET-ORDER/feas1-neighbor1",
+                cpu_threads_available=8,
+                cpu_threads_budget=4,
+                python_workers=2,
+                tree_workers=1,
+                blas_threads=1,
+                native_openmp_threads=1,
+                ram_budget_bytes=1024,
+            ),
+        )
+    # Attempt-owned scratch only; the refusal happens before any published
+    # geometry exists, so nothing partial can be adopted.
+    assert not (tmp_path / "geometry").exists()
+
+
+def test_real_owner_r14_a_locally_synthesized_feas1_scope_is_still_applied(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """B14-1 §4.5: removing the conditional does not depend on provenance.
+
+    An isolated direct caller still supplies no scope; FEAS1 synthesizes its own
+    and must now apply it, rather than inheriting ambient process thread state.
+    """
+
+    from mdstats.training_data import work_queue
+
+    real = work_queue.stage_resource_scope
+    applied: list = []
+
+    def recording(scope):
+        applied.append(scope)
+        return real(scope)
+
+    monkeypatch.setattr(work_queue, "stage_resource_scope", recording)
+    geometry = build_target_coverage_geometry(
+        _feas1_reference(_prepare_fixture()),
+        build_directory=tmp_path / "geometry-build",
+        global_workers=2,
+        query_block_size=8,
+    )
+
+    assert len(applied) == 1
+    scope = applied[0]
+    assert scope.stage_name == "TARGET-ORDER-FEAS1-NEIGHBOR1"
+    assert scope.ram_budget_bytes is None
+    assert scope.python_workers == 2
+    assert scope.blas_threads == 1
+    assert scope.native_openmp_threads == 1
+    assert geometry.neighborhoods.families
+
+
+def test_real_owner_r14_feas1_products_are_identical_under_the_resource_routing(
+    tmp_path: Path,
+) -> None:
+    """B14-1 §4.6: the FEAS1/NEIGHBOR1 product is execution-invariant.
+
+    Serial, bounded-parallel, and inherited-finite-budget execution of the one
+    exact geometry pass must produce the same neighborhoods and family reports.
+    """
+
+    from mdstats.training_data.resources import StageResourceScope
+
+    reference = _feas1_reference(_prepare_fixture())
+
+    def geometry(name: str, workers: int, scope):
+        return build_target_coverage_geometry(
+            reference,
+            build_directory=tmp_path / name,
+            global_workers=workers,
+            query_block_size=8,
+            resource_scope=scope,
+        )
+
+    serial = geometry("serial", 1, None)
+    parallel = geometry("parallel", 2, None)
+    inherited = geometry(
+        "inherited",
+        2,
+        StageResourceScope(
+            stage_name="TARGET-ORDER/feas1-neighbor1",
+            cpu_threads_available=8,
+            cpu_threads_budget=4,
+            python_workers=2,
+            tree_workers=1,
+            blas_threads=1,
+            native_openmp_threads=1,
+            ram_budget_bytes=6 * 1024 ** 3,
+        ),
+    )
+    assert serial.content_digest == parallel.content_digest == inherited.content_digest
+    assert (
+        serial.neighborhoods.content_digest
+        == parallel.neighborhoods.content_digest
+        == inherited.neighborhoods.content_digest
+    )

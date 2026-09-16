@@ -474,6 +474,9 @@ def build_target_coverage_geometry(
     feas_policy = TargetCoverageFeasibilityPolicy() if policy is None else policy
     workers = max(1, int(global_workers))
     tree_workers = max(1, int(query_workers)) if workers == 1 else 1
+    # An inherited scope supplies the campaign CPU/RAM budget; FEAS1 always owns
+    # and applies the native-thread limits its own lanes run under, whether the
+    # scope arrived from the caller or was synthesized here.
     scope = _default_scope(workers, tree_workers) if resource_scope is None else resource_scope
     if int(scope.python_workers) != workers or int(scope.tree_workers) != tree_workers:
         raise TrainingDataInputError("FEAS1 StageResourceScope does not match the single-level queue width.")
@@ -528,7 +531,6 @@ def build_target_coverage_geometry(
         max_completed_tasks=max_pending,
         heartbeat_interval_seconds=interval,
         thread_name_prefix="mdstats-feas1",
-        manage_resource_scope=resource_scope is not None,
     ) as queue:
 
         def buffered() -> int:
@@ -640,6 +642,9 @@ def build_target_coverage_geometry(
                     progress["last"] = now
             finalize_pending()
             refill()
+        # Read the admission disposition while the queue is still live, exactly
+        # as COVREF already does for its own stage scope.
+        queue_snapshot = queue.snapshot()
     completed = [item for item in results if item is not None]
     packed = pack_staged_neighborhood_families([item[1] for item in completed], directory=build_directory)
     store = TargetCoverageExactNeighborhoodStore(
@@ -652,7 +657,15 @@ def build_target_coverage_geometry(
     if progress_callback is not None:
         progress_callback(
             f"status=complete; families={len(families)}; edges={store.edge_count}; "
-            f"elapsed={format_progress_time(time.monotonic() - started)}"
+            f"elapsed={format_progress_time(time.monotonic() - started)}; "
+            f"{scope.summary()}; "
+            f"queue_lanes={queue_snapshot.allocated_workers}; "
+            f"queue_max_busy={queue_snapshot.max_busy_workers}; "
+            f"queue_peak_accounted_bytes={queue_snapshot.peak_accounted_memory_bytes}; "
+            f"queue_memory_budget_bytes={queue_snapshot.memory_budget_bytes}; "
+            f"queue_memory_backpressure={queue_snapshot.memory_backpressure_events}; "
+            f"queue_backpressure={queue_snapshot.queue_backpressure_events}; "
+            f"queue_tasks={queue_snapshot.committed_tasks}"
         )
     return TargetCoverageGeometry(
         neighborhoods=store,

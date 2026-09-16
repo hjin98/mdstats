@@ -444,11 +444,27 @@ def _build(
             )
     if geometry is None:
         _say(progress, "stage=FEAS1-NEIGHBOR1; status=start")
+        # FEAS1/NEIGHBOR1 is long-stage target-order work and is admitted under
+        # the same campaign resource owner as COVREF/MVIDX/MVQUAL: the child
+        # scope inherits the root CPU/RAM budget exactly and only declares the
+        # widths FEAS1 itself runs at.  No second snapshot, fraction or policy.
         built = build_target_coverage_geometry(
             reference,
             build_directory=scratch / "geometry",
             policy=feas_policy,
             global_workers=workers,
+            resource_scope=None
+            if resource_scope is None
+            else StageResourceScope(
+                stage_name=f"{resource_scope.stage_name}/feas1-neighbor1",
+                cpu_threads_available=int(resource_scope.cpu_threads_available),
+                cpu_threads_budget=int(resource_scope.cpu_threads_budget),
+                python_workers=workers,
+                tree_workers=1,
+                blas_threads=1,
+                native_openmp_threads=1,
+                ram_budget_bytes=resource_scope.ram_budget_bytes,
+            ),
             progress_callback=progress,
         )
         write_target_coverage_geometry(geometry_directory, built)
