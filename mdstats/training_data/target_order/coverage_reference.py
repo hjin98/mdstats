@@ -1128,6 +1128,11 @@ def build_target_coverage_reference(
 
     if execution_scope is None:
         families = build(None)
+        if progress_callback is not None:
+            progress_callback(
+                "stage=target-coverage-reference; execution=serial; "
+                f"radius_block_size={max(1, int(radius_block_size))}; query_workers={int(query_workers)}"
+            )
     else:
         width = max(2, 2 * int(execution_scope.python_workers))
         with DeterministicWorkQueue(
@@ -1138,6 +1143,20 @@ def build_target_coverage_reference(
             thread_name_prefix="mdstats-covref",
         ) as queue:
             families = build(queue)
+            # COVREF-PAR1 admission accounting: the stage budget and what the
+            # deterministic queue actually admitted against it.
+            snapshot = queue.snapshot()
+        if progress_callback is not None:
+            progress_callback(
+                f"stage=target-coverage-reference; execution=covref-par1; {execution_scope.summary()}; "
+                f"radius_block_size={max(1, int(radius_block_size))}; query_workers={int(query_workers)}; "
+                f"queue_lanes={snapshot.allocated_workers}; queue_max_busy={snapshot.max_busy_workers}; "
+                f"queue_peak_accounted_bytes={snapshot.peak_accounted_memory_bytes}; "
+                f"queue_memory_budget_bytes={snapshot.memory_budget_bytes}; "
+                f"queue_memory_backpressure={snapshot.memory_backpressure_events}; "
+                f"queue_backpressure={snapshot.queue_backpressure_events}; "
+                f"queue_tasks={snapshot.committed_tasks}"
+            )
     represented = {item.semantic_family for item in families if item.family_kind == "structural"}
     missing_structural = [name for name in active.required_structural_feature_families if name not in represented]
     if missing_structural:

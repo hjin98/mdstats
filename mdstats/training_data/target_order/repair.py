@@ -5,20 +5,34 @@ rebound to one exact ``P_train`` domain, canonical obligations and the current
 configured ladder.  At shell ``[N_{i-1}, N_i)`` only zero-unique, hard-safe
 active-shell members may be removed; the exact pre-removal replacement
 frontier is built once per unchanged state and removal-dependent terms are
-evaluated per shortlist entry (deterministically in parallel when workers are
-authorized).  Accepted swaps mutate the forward state by exact deselect/select,
-inherit the removed rank, and displace a future occurrence of the replacement
-inside the configured master order.  Lower configured prefixes are immutable.
+evaluated over that frontier in exact batches.  Accepted swaps mutate the
+forward state by exact deselect/select, inherit the removed rank, and displace
+a future occurrence of the replacement inside the configured master order.
+Lower configured prefixes are immutable.
 
 Frontier primitives (hard gain, first canonical bottleneck family, coverage
 gains) are the MVSEL2 primitives from :mod:`selector`; there is no second
 definition.
+
+Execution.  Every candidate-indexed quantity is evaluated by
+:class:`_StateBatch` over the existing MVIDX forward CSR arrays.  Full-row FP64
+sums go through the already-qualified pairwise row reduction
+(``native.score_family_candidate_batch`` at width > 1, the identical NumPy row
+reduction at width 1), and masked reductions keep the canonical compacted
+association by delegating exactly those rows that own a masked witness to the
+scalar owner below.  Removal-dependent terms are expressed as a per-witness
+patch of the state's base term vector, so ``|shortlist|`` proposals need one
+batched sweep each instead of one Python task per candidate.  The batch object
+is created per unchanged repair state; an accepted swap discards it, which is
+how every state-dependent array is invalidated.  The scalar functions
+``removal_metrics``, ``_representative_after_removal`` and
+``_diversity_after_removal`` remain the D2 formula oracle used by the
+equivalence tests.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from threading import local
 import time
 from typing import Any, Callable, Mapping, Sequence
 
@@ -27,7 +41,7 @@ import numpy as np
 from .._common import TrainingDataInputError, TrainingDataSerializationError, digest, validate_digest
 from ..progress_timing import format_progress_time
 from ..resources import StageResourceScope
-from ..work_queue import DeterministicWorkQueue
+from .native import mvsel2_execution_backend, score_family_candidate_batch
 from .selector import (
     TargetMultiViewForwardState,
     TargetMultiViewSelectionPlan,
@@ -35,7 +49,6 @@ from .selector import (
     build_forward_state,
     deselect_candidate,
     family_coverage_gain,
-    filter_best_relative,
     hard_gain,
     native_row,
     prefix_digest,
@@ -389,6 +402,269 @@ def _diversity_after_removal(candidate: int, forward: Any, state: TargetMultiVie
     return 0.0 if not values else float(np.mean(values, dtype=np.float64))
 
 
+# --- batched exact execution over one unchanged repair state ------------------
+
+
+def _candidate_array(candidates: Any) -> np.ndarray:
+    """Canonically ordered contiguous candidate vector for the row primitive."""
+
+    return np.ascontiguousarray(candidates, dtype=np.uint32)
+
+
+class _StateBatch:
+    """Exact batched candidate evaluation bound to one unchanged repair state.
+
+    Full-row FP64 reductions are bitwise equal to
+    ``np.sum(terms[row], dtype=np.float64)`` in both execution paths, which is
+    exactly what the native backend qualification certifies.  Masked reductions
+    (uncovered coverage mass, uniquely covered mass) keep the canonical
+    compacted association: the batch only proves which rows own no masked
+    witness -- an exact integer indicator count -- and delegates the remaining
+    rows to the scalar owner.
+    """
+
+    def __init__(self, forward: Any, state: TargetMultiViewForwardState, *, workers: int) -> None:
+        self.forward = forward
+        self.state = state
+        self.workers = max(1, int(workers))
+        self.native = self.workers > 1 and mvsel2_execution_backend(self.workers) == "native-openmp"
+        self._arrays: dict[tuple[str, int], np.ndarray] = {}
+
+    # -- per-family state arrays (built once per unchanged state) -------------
+
+    def _family(self, index: int) -> tuple[Any, Any]:
+        return self.forward.families[index], self.state.family_states[index]
+
+    def _array(self, kind: str, index: int) -> np.ndarray:
+        key = (kind, index)
+        cached = self._arrays.get(key)
+        if cached is not None:
+            return cached
+        _, family_state = self._family(index)
+        weights = np.ascontiguousarray(family_state.weights, dtype=np.float64)
+        if kind == "multiplicity":
+            value = family_state.multiplicity.astype(np.float64)
+        elif kind == "weights":
+            value = weights
+        else:
+            multiplicity = self._array("multiplicity", index)
+            if kind == "unit":
+                value = np.ones_like(multiplicity)
+            elif kind == "representative":
+                value = np.divide(weights, multiplicity + 1.0, dtype=np.float64)
+            elif kind == "diversity":
+                value = np.divide(1.0, multiplicity + 1.0, dtype=np.float64)
+            elif kind == "loss":
+                # ``w/n`` is the exact removal-loss term.  Entries at ``n == 0``
+                # are unreachable for a selected row and stay at zero so no
+                # division warning or non-finite value can enter a reduction.
+                value = np.zeros_like(weights)
+                np.divide(weights, multiplicity, out=value, where=multiplicity > 0.0)
+            elif kind == "near_unique":
+                value = (multiplicity <= 1.0).astype(np.float64)
+            elif kind == "uncovered":
+                value = (multiplicity == 0.0).astype(np.float64)
+            else:  # pragma: no cover - internal guard
+                raise TrainingDataInputError(f"Unknown REPAIR2 batch array {kind!r}.")
+        value = np.ascontiguousarray(value, dtype=np.float64)
+        self._arrays[key] = value
+        return value
+
+    # -- row primitives -------------------------------------------------------
+
+    def row_sums(self, index: int, terms: np.ndarray, candidates: np.ndarray) -> np.ndarray:
+        """Bitwise ``np.sum(terms[row(c)], dtype=np.float64)`` per candidate row."""
+
+        family, _ = self._family(index)
+        if self.native and candidates.size:
+            values, _ = score_family_candidate_batch(
+                family.candidate_offsets, family.candidate_witnesses, terms, candidates, workers=self.workers
+            )
+            return values
+        offsets = family.candidate_offsets
+        witnesses = family.candidate_witnesses
+        values = np.empty(candidates.size, dtype=np.float64)
+        for position in range(candidates.size):
+            candidate = int(candidates[position])
+            start = int(offsets[candidate])
+            stop = int(offsets[candidate + 1])
+            values[position] = np.sum(terms[witnesses[start:stop]], dtype=np.float64)
+        return values
+
+    def row_lengths(self, index: int, candidates: np.ndarray) -> np.ndarray:
+        family, _ = self._family(index)
+        offsets = np.asarray(family.candidate_offsets)
+        selected = candidates.astype(np.int64, copy=False)
+        return (offsets[selected + 1] - offsets[selected]).astype(np.int64, copy=False)
+
+    def _row(self, index: int, candidate: int) -> np.ndarray:
+        family, _ = self._family(index)
+        return native_row(family.candidate_witness_indices(int(candidate)))
+
+    def _forbid_shared(self, index: int, forbidden: np.ndarray, candidates: np.ndarray, message: str) -> None:
+        """Fail closed exactly when an evaluated row owns a forbidden witness."""
+
+        terms = np.zeros_like(self._array("multiplicity", index))
+        terms[forbidden] = 1.0
+        counts = self.row_sums(index, terms, candidates)
+        if counts.size and float(np.max(counts)) > 0.0:
+            raise TrainingDataInputError(message)
+
+    # -- removal metrics over selected rows ----------------------------------
+
+    def removal_metrics_many(self, candidates: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Exact :func:`removal_metrics` for many selected candidates."""
+
+        candidates = _candidate_array(candidates)
+        unique = np.zeros(candidates.size, dtype=np.float64)
+        loss = np.zeros(candidates.size, dtype=np.float64)
+        for index in range(len(self.forward.families)):
+            _, family_state = self._family(index)
+            if family_state.weights.size == 0 or candidates.size == 0:
+                continue
+            nonempty = self.row_lengths(index, candidates) > 0
+            if not bool(np.any(nonempty)):
+                continue
+            near = self.row_sums(index, self._array("near_unique", index), candidates)
+            plain = nonempty & (near == 0.0)
+            if bool(np.any(plain)):
+                loss[plain] += self.row_sums(index, self._array("loss", index), candidates)[plain]
+            multiplicity = self._array("multiplicity", index)
+            weights = family_state.weights
+            for position in np.flatnonzero(nonempty & (near > 0.0)):
+                row = self._row(index, int(candidates[position]))
+                values = multiplicity[row]
+                if bool(np.any(values < 1.0)):
+                    raise TrainingDataInputError("REPAIR2 selected witness multiplicity underflow.")
+                mask = values == 1.0
+                if bool(np.any(mask)):
+                    unique[position] += float(np.sum(weights[row][mask], dtype=np.float64))
+                loss[position] += float(np.sum(weights[row] / values, dtype=np.float64))
+        return unique, loss
+
+    # -- coverage gains -------------------------------------------------------
+
+    def family_coverage_gain_many(self, candidates: np.ndarray, index: int) -> np.ndarray:
+        """Exact :func:`selector.family_coverage_gain` mass for many candidates."""
+
+        candidates = _candidate_array(candidates)
+        gains = np.zeros(candidates.size, dtype=np.float64)
+        _, family_state = self._family(index)
+        if family_state.weights.size == 0 or candidates.size == 0:
+            return gains
+        uncovered = self._array("uncovered", index)
+        if not bool(np.any(uncovered)):
+            return gains
+        counts = self.row_sums(index, uncovered, candidates)
+        for position in np.flatnonzero(counts > 0.0):
+            gains[position] = family_coverage_gain(int(candidates[position]), index, self.forward, self.state)[0]
+        return gains
+
+    def total_coverage_gain_many(self, candidates: np.ndarray) -> np.ndarray:
+        """Exact :func:`selector.total_coverage_gain` total for many candidates."""
+
+        candidates = _candidate_array(candidates)
+        family_count = len(self.forward.families)
+        matrix = np.zeros((candidates.size, family_count), dtype=np.float64)
+        for index in range(family_count):
+            matrix[:, index] = self.family_coverage_gain_many(candidates, index)
+        totals = np.empty(candidates.size, dtype=np.float64)
+        for position in range(candidates.size):
+            totals[position] = np.sum(matrix[position], dtype=np.float64)
+        return totals
+
+    # -- removal-dependent frontier terms ------------------------------------
+
+    def _after_removal_sums(
+        self,
+        index: int,
+        kind: str,
+        numerator: str,
+        removed: int,
+        candidates: np.ndarray,
+        *,
+        guard: float,
+        message: str,
+    ) -> np.ndarray:
+        """Row sums of one term vector with the removed row's witnesses patched.
+
+        A witness shared with ``removed`` loses one multiplicity, so its term
+        denominator becomes ``n`` instead of ``n + 1`` while every other witness
+        keeps the state's base term.  The divisions use the same FP64 operands
+        the scalar owner divides, so the patched row sums are bitwise equal.
+        """
+
+        terms = self._array(kind, index)
+        multiplicity = self._array("multiplicity", index)
+        row = self._row(index, int(removed))
+        if row.size == 0:
+            return self.row_sums(index, terms, candidates)
+        forbidden = row[multiplicity[row] < guard]
+        if forbidden.size:
+            self._forbid_shared(index, forbidden, candidates, message)
+        denominator = multiplicity[row]
+        saved = terms[row].copy()
+        patched = np.zeros(row.size, dtype=np.float64)
+        np.divide(self._array(numerator, index)[row], denominator, out=patched, where=denominator > 0.0)
+        terms[row] = patched
+        try:
+            return self.row_sums(index, terms, candidates)
+        finally:
+            terms[row] = saved
+
+    def representative_after_removal_many(self, candidates: np.ndarray, removed: int) -> np.ndarray:
+        """Exact :func:`_representative_after_removal` for many candidates."""
+
+        candidates = _candidate_array(candidates)
+        total = np.zeros(candidates.size, dtype=np.float64)
+        for index in range(len(self.forward.families)):
+            _, family_state = self._family(index)
+            if family_state.weights.size == 0 or candidates.size == 0:
+                continue
+            nonempty = self.row_lengths(index, candidates) > 0
+            if not bool(np.any(nonempty)):
+                continue
+            values = self._after_removal_sums(
+                index, "representative", "weights", int(removed), candidates,
+                guard=2.0, message="REPAIR2 zero-unique removal invariant failed.",
+            )
+            total[nonempty] += values[nonempty]
+        return total
+
+    def diversity_after_removal_many(self, candidates: np.ndarray, removed: int) -> np.ndarray:
+        """Exact :func:`_diversity_after_removal` for many candidates."""
+
+        candidates = _candidate_array(candidates)
+        family_count = len(self.forward.families)
+        matrix = np.full((candidates.size, family_count), np.nan, dtype=np.float64)
+        for index in range(family_count):
+            _, family_state = self._family(index)
+            if family_state.weights.size == 0 or candidates.size == 0:
+                continue
+            lengths = self.row_lengths(index, candidates)
+            nonempty = lengths > 0
+            if not bool(np.any(nonempty)):
+                continue
+            values = self._after_removal_sums(
+                index, "diversity", "unit", int(removed), candidates,
+                guard=1.0, message="REPAIR2 diversity multiplicity underflow.",
+            )
+            matrix[nonempty, index] = values[nonempty] / lengths[nonempty].astype(np.float64)
+        result = np.empty(candidates.size, dtype=np.float64)
+        for position in range(candidates.size):
+            finite = matrix[position][np.isfinite(matrix[position])]
+            result[position] = 0.0 if finite.size == 0 else float(np.mean(finite, dtype=np.float64))
+        return result
+
+
+def _best_relative_mask(values: np.ndarray, tolerance: float) -> np.ndarray:
+    """Array form of :func:`selector.filter_best_relative`."""
+
+    if values.size <= 1:
+        return np.ones(values.size, dtype=np.bool_)
+    return values >= float(np.max(values)) - float(tolerance)
+
+
 # --- replacement frontier -----------------------------------------------------
 
 
@@ -399,26 +675,28 @@ class _Frontier:
     utility_before: float
     before: Objective
     bottleneck: int
-    candidates: tuple[int, ...]
+    candidates: np.ndarray
 
 
-def _build_frontier(forward: Any, state: TargetMultiViewForwardState, selector_policy: Any, tolerance: float) -> _Frontier | None:
-    available = tuple(int(v) for v in np.flatnonzero(state.available))
-    if not available:
+def _build_frontier(
+    forward: Any,
+    state: TargetMultiViewForwardState,
+    selector_policy: Any,
+    tolerance: float,
+    batch: _StateBatch,
+) -> _Frontier | None:
+    available = _candidate_array(np.flatnonzero(state.available))
+    if available.size == 0:
         return None
     utility = representative_utility(state)
     before = objective(forward, state, utility)
-    hard_pending = before[0] > 0
     candidates = available
-    if hard_pending:
-        gains = {c: hard_gain(c, forward, state) for c in candidates}
-        maximum = max(gains.values())
-        candidates = tuple(c for c in candidates if gains[c] == maximum)
+    if before[0] > 0:
+        gains = np.asarray([hard_gain(int(c), forward, state) for c in candidates], dtype=np.int64)
+        candidates = candidates[gains == int(np.max(gains))]
     bottleneck = bottleneck_family_index(state, selector_policy)
-    bottleneck_values = {c: family_coverage_gain(c, bottleneck, forward, state)[0] for c in candidates}
-    candidates = filter_best_relative(candidates, bottleneck_values, tolerance)
-    totals = {c: total_coverage_gain(c, forward, state)[1] for c in candidates}
-    candidates = filter_best_relative(candidates, totals, tolerance)
+    candidates = candidates[_best_relative_mask(batch.family_coverage_gain_many(candidates, bottleneck), tolerance)]
+    candidates = candidates[_best_relative_mask(batch.total_coverage_gain_many(candidates), tolerance)]
     return _Frontier(utility, before, bottleneck, candidates)
 
 
@@ -428,24 +706,24 @@ def _proposal(
     state: TargetMultiViewForwardState,
     removal: tuple[int, int, float, float],
     frontier: _Frontier,
-    marks: _RemovalMarks,
+    batch: _StateBatch,
     tolerance: float,
 ) -> dict[str, Any] | None:
     rank, removed, unique, loss = removal
-    marks.mark(forward, removed)
     removed_unit = int(forward.candidate_correlation_unit_codes[removed])
-    hypothetical = {
-        c: int(state.correlation_unit_counts[int(forward.candidate_correlation_unit_codes[c])])
-        - int(int(forward.candidate_correlation_unit_codes[c]) == removed_unit)
-        for c in frontier.candidates
-    }
-    minimum = min(hypothetical.values())
-    candidates = tuple(c for c in frontier.candidates if hypothetical[c] == minimum)
-    representative = {c: _representative_after_removal(c, forward, state, marks) for c in candidates}
-    candidates = filter_best_relative(candidates, representative, tolerance)
-    diversity = {c: _diversity_after_removal(c, forward, state, marks) for c in candidates}
-    candidates = filter_best_relative(candidates, diversity, tolerance)
-    replacement = min(candidates, key=lambda c: reference.frame_uids[c])
+    codes = np.asarray(forward.candidate_correlation_unit_codes)[frontier.candidates.astype(np.int64)].astype(
+        np.int64, copy=False
+    )
+    counts = np.asarray(state.correlation_unit_counts).astype(np.int64)
+    hypothetical = counts[codes] - (codes == removed_unit).astype(np.int64)
+    candidates = frontier.candidates[hypothetical == int(np.min(hypothetical))]
+    representative = batch.representative_after_removal_many(candidates, removed)
+    keep = _best_relative_mask(representative, tolerance)
+    candidates, representative = candidates[keep], representative[keep]
+    keep = _best_relative_mask(batch.diversity_after_removal_many(candidates, removed), tolerance)
+    candidates, representative = candidates[keep], representative[keep]
+    position = min(range(candidates.size), key=lambda index: reference.frame_uids[int(candidates[index])])
+    replacement = int(candidates[position])
     gains, _, _ = total_coverage_gain(replacement, forward, state)
     coverage_after = [min(1.0, float(item.coverage_mass) + float(g)) for item, g in zip(state.family_states, gains, strict=True)]
     before = frontier.before
@@ -459,7 +737,7 @@ def _proposal(
         max(0, before[0] - hard_gain(replacement, forward, state)),
         float(min(coverage_after)),
         float(sum(coverage_after)),
-        float(frontier.utility_before - loss + representative[replacement]),
+        float(frontier.utility_before - loss + float(representative[position])),
         balance,
     )
     if any(new + tolerance < float(old.coverage_mass) for old, new in zip(state.family_states, coverage_after, strict=True)):
@@ -487,64 +765,20 @@ def _best_proposal(
     state: TargetMultiViewForwardState,
     shortlist: Sequence[tuple[int, int, float, float]],
     frontier: _Frontier,
+    batch: _StateBatch,
     tolerance: float,
-    *,
-    workers: int,
-    resource_scope: StageResourceScope | None,
 ) -> dict[str, Any] | None:
-    """Evaluate immutable proposals; reduction is in canonical shortlist order."""
+    """Evaluate immutable proposals and reduce in canonical shortlist order.
 
-    width = max(1, min(int(workers), len(shortlist)))
-    if width == 1:
-        marks = _RemovalMarks(forward)
-        results = [_proposal(reference, forward, state, removal, frontier, marks, tolerance) for removal in shortlist]
-    else:
-        owned = resource_scope is None
-        scope = StageResourceScope(
-            stage_name="TARGET-ORDER-REPAIR2/proposals" if owned else f"{resource_scope.stage_name}/proposals",
-            cpu_threads_available=width if owned else int(resource_scope.cpu_threads_available),
-            cpu_threads_budget=width if owned else int(resource_scope.cpu_threads_budget),
-            python_workers=width,
-            ram_budget_bytes=None if owned else resource_scope.ram_budget_bytes,
-        )
-        thread_marks = local()
+    Each shortlist entry is one batched sweep over the shared frontier, so
+    execution width lives inside the qualified row primitive and there is no
+    completion order, worker count or task boundary left to perturb the
+    reduction.
+    """
 
-        def evaluate(removal: tuple[int, int, float, float]) -> dict[str, Any] | None:
-            marks = getattr(thread_marks, "marks", None)
-            if marks is None:
-                marks = thread_marks.marks = _RemovalMarks(forward)
-            return _proposal(reference, forward, state, removal, frontier, marks, tolerance)
-
-        by_position: dict[int, dict[str, Any] | None] = {}
-        scratch_bytes = width * sum(int(family.witness_count) * 4 for family in forward.families)
-        with DeterministicWorkQueue(
-            scope,
-            max_ready_tasks=max(len(shortlist), 2 * width),
-            max_inflight_tasks=2 * width,
-            max_completed_tasks=2 * width,
-            thread_name_prefix="mdstats-repair2",
-            manage_resource_scope=owned,
-        ) as queue:
-            if scratch_bytes:
-                queue.reserve_memory("repair2-thread-scratch", scratch_bytes)
-            for position, removal in enumerate(shortlist):
-                queue.submit(
-                    task_id=f"repair2-proposal-{position:04d}-rank-{int(removal[0]):09d}",
-                    canonical_order=(position,),
-                    function=evaluate,
-                    args=(removal,),
-                    task_kind="repair2-proposal",
-                    estimated_memory_bytes=0,
-                )
-            while len(by_position) < len(shortlist):
-                queue.wait_for_completion()
-                for completion in queue.drain_completed():
-                    by_position[int(completion.canonical_order[0])] = completion.value
-            if scratch_bytes:
-                queue.release_memory("repair2-thread-scratch")
-        results = [by_position[position] for position in range(len(shortlist))]
     best: dict[str, Any] | None = None
-    for proposal in results:
+    for removal in shortlist:
+        proposal = _proposal(reference, forward, state, removal, frontier, batch, tolerance)
         if proposal is not None:
             best = _preferred(best, proposal, reference, tolerance)
     return best
@@ -570,6 +804,9 @@ def build_repair_plan(
         raise TrainingDataInputError("REPAIR2 workers must be positive.")
     if selection.mvidx_content_digest != forward.mvidx_content_digest:
         raise TrainingDataInputError("REPAIR2 selection/MVIDX lineage mismatch.")
+    # Execution-only: the stage resource owner caps the row-primitive width.
+    width = int(workers) if resource_scope is None else min(int(workers), int(resource_scope.cpu_threads_budget))
+    width = max(1, width)
     tolerance = float(policy.gain_tie_tolerance)
     candidate_by_uid = {uid: index for index, uid in enumerate(reference.frame_uids)}
     order = [candidate_by_uid[uid] for uid in selection.master_order]
@@ -582,17 +819,33 @@ def build_repair_plan(
         for rank in range(previous, size):
             select_candidate(order[rank], forward, state, score=score_candidate(order[rank], forward, state))
         shell = range(previous, size)
-        initial_zero = sum(removal_metrics(order[r], forward, state)[0] <= policy.unique_coverage_tolerance for r in shell)
+        initial_zero = 0
+        measured_initial = False
+        # Execution-only stage telemetry for current-envelope resource evidence.
+        proposals = 0
+        frontier_max = 0
+        shortlist_max = 0
+        # One batch object per unchanged repair state; an accepted swap drops it,
+        # which is how every state-dependent array is invalidated.
+        batch: _StateBatch | None = None
+        shell_candidates = _candidate_array([])
         accepted: list[TargetMultiViewRepairSwap] = []
         for pass_index in range(policy.max_passes_per_shell):
             changed = False
             while len(accepted) < policy.max_swaps_per_shell:
+                if batch is None:
+                    batch = _StateBatch(forward, state, workers=width)
+                    shell_candidates = _candidate_array([order[r] for r in shell])
+                shell_unique, shell_loss = batch.removal_metrics_many(shell_candidates)
+                if not measured_initial:
+                    initial_zero = int(np.count_nonzero(shell_unique <= policy.unique_coverage_tolerance))
+                    measured_initial = True
                 removals: list[tuple[int, int, float, float]] = []
-                for rank in shell:
+                for position, rank in enumerate(shell):
                     candidate = order[rank]
-                    unique, loss = removal_metrics(candidate, forward, state)
+                    unique = float(shell_unique[position])
                     if unique <= policy.unique_coverage_tolerance and hard_safe(candidate, forward, state):
-                        removals.append((rank, candidate, unique, loss))
+                        removals.append((rank, candidate, unique, float(shell_loss[position])))
                 removals.sort(
                     key=lambda row: (
                         row[3],
@@ -601,14 +854,14 @@ def build_repair_plan(
                     )
                 )
                 shortlist = removals[: policy.removal_shortlist_limit]
+                shortlist_max = max(shortlist_max, len(shortlist))
                 best = None
                 if shortlist:
-                    frontier = _build_frontier(forward, state, selection.policy, tolerance)
+                    frontier = _build_frontier(forward, state, selection.policy, tolerance, batch)
                     if frontier is not None:
-                        best = _best_proposal(
-                            reference, forward, state, shortlist, frontier, tolerance,
-                            workers=workers, resource_scope=resource_scope,
-                        )
+                        frontier_max = max(frontier_max, int(frontier.candidates.size))
+                        proposals += len(shortlist)
+                        best = _best_proposal(reference, forward, state, shortlist, frontier, batch, tolerance)
                 if best is None:
                     break
                 rank, removed, replacement = int(best["rank"]), int(best["removed"]), int(best["replacement"])
@@ -618,6 +871,7 @@ def build_repair_plan(
                 order[rank] = replacement
                 deselect_candidate(removed, forward, state)
                 select_candidate(replacement, forward, state, score=score_candidate(replacement, forward, state))
+                batch = None
                 accepted.append(
                     TargetMultiViewRepairSwap(
                         target_size=size,
@@ -659,7 +913,9 @@ def build_repair_plan(
             progress_callback(
                 f"status=rung; progress={size}/{selection.configured_sizes[-1]}; "
                 f"elapsed={format_progress_time(time.monotonic() - started)}; target_size={size}; "
-                f"active_shell_start={previous}; swaps={len(accepted)}; zero_unique={initial_zero}"
+                f"active_shell_start={previous}; swaps={len(accepted)}; zero_unique={initial_zero}; "
+                f"width={width}; backend={'native-openmp' if width > 1 else 'python-numpy'}; "
+                f"proposals={proposals}; frontier_max={frontier_max}; shortlist_max={shortlist_max}"
             )
         previous = size
     return TargetMultiViewRepairPlan(

@@ -30,7 +30,7 @@ from typing import Any, Callable, Mapping, Sequence
 from .._common import TrainingDataInputError, TrainingDataSerializationError, digest
 from ..persistence import artifact_publication_lock
 from ..progress_timing import format_progress_time
-from ..resources import StageResourceScope, available_cpu_threads
+from ..resources import StageResourceScope, available_cpu_threads, available_memory_bytes, process_rss_bytes
 from .artifact_store import (
     TargetOrderArtifactStoreError,
     publish_artifact_directory,
@@ -377,7 +377,16 @@ def _build(
     if reference is None:
         _say(progress, "stage=structural-selector-inputs; status=start")
         structural_catalog = structural_catalog_factory()
-        _say(progress, "stage=target-coverage-reference; status=start")
+        # Stage RAM accounting: the budget is derived from available memory while
+        # process RSS already carries everything resident before this stage, so
+        # both are recorded and the stage's incremental demand is the comparable
+        # quantity.
+        rss_before = process_rss_bytes()
+        _say(
+            progress,
+            "stage=target-coverage-reference; status=start; "
+            f"process_rss_bytes={rss_before}; mem_available_bytes={available_memory_bytes()}",
+        )
         # COVREF-PAR1: single-level radius-block parallelism (one cKDTree
         # worker per lane) under the stage CPU budget; execution-only.
         reference = build_target_coverage_reference(
@@ -404,6 +413,13 @@ def _build(
             progress_callback=progress,
         )
         del structural_catalog
+        rss_after = process_rss_bytes()
+        _say(
+            progress,
+            "stage=target-coverage-reference; status=released; "
+            f"process_rss_bytes={rss_after}; mem_available_bytes={available_memory_bytes()}; "
+            f"stage_incremental_rss_bytes={None if rss_before is None or rss_after is None else rss_after - rss_before}",
+        )
         write_target_coverage_reference(reference_directory, reference)
     _say(progress, f"stage=target-coverage-reference; families={len(reference.families)}; frames={reference.candidate_count}")
 
@@ -525,8 +541,12 @@ def _build(
         phase_a_completed_at=pure.phase_a_completed_at,
     )
 
-    _say(progress, "stage=REPAIR2; status=start")
-    repair = build_repair_plan(reference, forward, selection, workers=workers, resource_scope=resource_scope, progress_callback=progress)
+    _say(progress, f"stage=REPAIR2; status=start; width={selector_workers}")
+    # REPAIR2 evaluates the same qualified row primitive as MVSEL2, so the
+    # metered preflight width is the one execution-width authority for both.
+    repair = build_repair_plan(
+        reference, forward, selection, workers=selector_workers, resource_scope=resource_scope, progress_callback=progress
+    )
     validate_repair_plan(repair, selection)
     candidate_by_uid = {uid: index for index, uid in enumerate(reference.frame_uids)}
     repaired = [candidate_by_uid[uid] for uid in repair.repaired_prefix]

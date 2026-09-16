@@ -1470,9 +1470,10 @@ def test_real_owner_repair2_zero_new_coverage_swap_strictly_improves_representat
     uneven = _manual_selection_plan(products, order=(0, 16, 1, 2, 3, 4), sizes=(2, 6))
     plans = [
         build_repair_plan(products.reference, products.forward, uneven, workers=workers)
-        for workers in (1, 2, 4)
+        for workers in (1, 2, 4, 16)
     ]
-    assert plans[0].to_dict() == plans[1].to_dict() == plans[2].to_dict()
+    # Execution width and native batch boundaries never move the repair trace.
+    assert all(plan.to_dict() == plans[0].to_dict() for plan in plans[1:])
     plan = plans[0]
     assert plan.total_swaps > 0
     cluster_b = {products.reference.frame_uids[index] for index in range(16, 32)}
@@ -1957,3 +1958,330 @@ def test_real_owner_corrupt_published_target_order_artifacts_are_not_replaced(
     assert _tree_digest(reference_directory) == corrupt_reference
     assert sorted(path.name for path in (root / "builds").glob("[!.]*")) == builds_before
     assert not tuple((root / "attempts").iterdir())
+
+
+# --- R12 B12-1: batched REPAIR2 execution versus the scalar D2 oracle ---------
+
+
+def _bits(values) -> np.ndarray:
+    return np.ascontiguousarray(values, dtype=np.float64).view(np.uint64)
+
+
+def _oracle_after_removal(
+    candidates: np.ndarray, removed: int, forward, state
+) -> tuple[np.ndarray, np.ndarray]:
+    """Scalar D2 formula owner for the removal-dependent frontier terms."""
+
+    from mdstats.training_data.target_order import repair as repair_module
+
+    marks = repair_module._RemovalMarks(forward)
+    marks.mark(forward, int(removed))
+    representative = np.asarray(
+        [
+            repair_module._representative_after_removal(
+                int(candidate), forward, state, marks
+            )
+            for candidate in candidates
+        ],
+        dtype=np.float64,
+    )
+    diversity = np.asarray(
+        [
+            repair_module._diversity_after_removal(
+                int(candidate), forward, state, marks
+            )
+            for candidate in candidates
+        ],
+        dtype=np.float64,
+    )
+    return representative, diversity
+
+
+def _repair_states(products: SimpleNamespace) -> list[tuple[str, object, np.ndarray]]:
+    """Bounded adversarial states: hard deficit pending, then satisfied."""
+
+    from mdstats.training_data.target_order.repair import hard_deficit
+
+    reference = products.reference
+    forward = products.forward
+    state = build_forward_state(reference, forward, validate=False)
+    states: list[tuple[str, object, np.ndarray]] = []
+    deficit_seen = False
+    satisfied_seen = False
+    for rank in range(int(forward.candidate_count)):
+        candidate = rank
+        select_candidate(
+            candidate, forward, state, score=score_candidate(candidate, forward, state)
+        )
+        pending = hard_deficit(forward, state) > 0
+        if pending and not deficit_seen and rank >= 1:
+            deficit_seen = True
+            states.append(("hard-deficit-pending", state, np.arange(rank + 1)))
+        if not pending and not satisfied_seen and rank >= 3:
+            satisfied_seen = True
+            states.append(("hard-deficit-satisfied", state, np.arange(rank + 1)))
+        if deficit_seen and satisfied_seen and rank >= int(forward.candidate_count) // 2:
+            states.append(("saturated-frontier", state, np.arange(rank + 1)))
+            break
+    assert states, "fixture produced no bounded repair state"
+    return states
+
+
+@pytest.mark.parametrize("workers", (1, 2, 4, 16))
+def test_real_owner_repair2_batch_quantities_are_bitwise_equal_to_the_scalar_oracle(
+    repair_products: SimpleNamespace, workers: int
+) -> None:
+    """R12 B12-1: the batched proposal path reproduces D2 9.2/9.3 bitwise.
+
+    Every candidate-indexed quantity the optimized REPAIR2 path evaluates is
+    compared, bit for bit, against the scalar formula owner it replaced: the
+    removal metrics, the coverage-gain frontier filters and the
+    removal-dependent representative/diversity terms, at removal shortlists of
+    size 1 and of the frozen limit 64, over states with the hard deficit both
+    pending and satisfied.
+    """
+
+    from mdstats.training_data.target_order.repair import (
+        TargetMultiViewRepairPolicy,
+        _StateBatch,
+        hard_safe,
+        removal_metrics,
+    )
+    from mdstats.training_data.target_order.selector import (
+        family_coverage_gain,
+        total_coverage_gain,
+    )
+
+    if workers > 1 and not qualify_mvsel2_native_backend().qualified:
+        pytest.skip("native backend is required for width > 1")
+    products = repair_products
+    forward = products.forward
+    limit = TargetMultiViewRepairPolicy().removal_shortlist_limit
+    assert limit == 64
+    compared = {"removal": 0, "coverage": 0, "after_removal": 0, "shortlists": []}
+
+    for label, state, selected in _repair_states(products):
+        batch = _StateBatch(forward, state, workers=workers)
+        assert batch.native == (workers > 1)
+
+        # removal metrics over every selected row
+        unique, loss = batch.removal_metrics_many(selected)
+        oracle = [removal_metrics(int(c), forward, state) for c in selected]
+        assert np.array_equal(_bits(unique), _bits([v[0] for v in oracle])), label
+        assert np.array_equal(_bits(loss), _bits([v[1] for v in oracle])), label
+        compared["removal"] += int(selected.size)
+
+        # coverage-gain frontier filters over every available candidate
+        available = np.flatnonzero(state.available).astype(np.uint32)
+        if available.size:
+            for index in range(len(forward.families)):
+                gains = batch.family_coverage_gain_many(available, index)
+                expected = [
+                    family_coverage_gain(int(c), index, forward, state)[0]
+                    for c in available
+                ]
+                assert np.array_equal(_bits(gains), _bits(expected)), (label, index)
+            totals = batch.total_coverage_gain_many(available)
+            expected_totals = [
+                total_coverage_gain(int(c), forward, state)[1] for c in available
+            ]
+            assert np.array_equal(_bits(totals), _bits(expected_totals)), label
+            compared["coverage"] += int(available.size)
+
+            # removal-dependent terms at shortlist sizes 1 and 64 (the frozen limit).
+            # Only zero-unique, hard-safe members are legal removals; anything
+            # else must fail closed and is covered by the negative test below.
+            removable = np.asarray(
+                [
+                    int(candidate)
+                    for position, candidate in enumerate(selected)
+                    if float(unique[position]) <= 1.0e-14
+                    and hard_safe(int(candidate), forward, state)
+                ],
+                dtype=np.uint32,
+            )
+            if removable.size == 0:
+                continue
+            for size in (1, min(limit, int(removable.size))):
+                shortlist = removable[:size]
+                compared["shortlists"].append(int(shortlist.size))
+                for removed in shortlist:
+                    representative = batch.representative_after_removal_many(
+                        available, int(removed)
+                    )
+                    diversity = batch.diversity_after_removal_many(
+                        available, int(removed)
+                    )
+                    expected_rep, expected_div = _oracle_after_removal(
+                        available, int(removed), forward, state
+                    )
+                    assert np.array_equal(
+                        _bits(representative), _bits(expected_rep)
+                    ), (label, int(removed))
+                    assert np.array_equal(_bits(diversity), _bits(expected_div)), (
+                        label,
+                        int(removed),
+                    )
+                    compared["after_removal"] += int(available.size)
+
+    assert compared["removal"] > 0 and compared["coverage"] > 0
+    assert compared["after_removal"] > 0
+    assert 1 in compared["shortlists"] and max(compared["shortlists"]) > 1
+
+
+@pytest.mark.parametrize("workers", (1, 2))
+def test_real_owner_repair2_batch_fails_closed_on_an_illegal_removal(
+    repair_products: SimpleNamespace, workers: int
+) -> None:
+    """R12 B12-1: the batched path keeps the zero-unique removal invariant.
+
+    A candidate that uniquely covers a witness shared with an evaluated
+    replacement is not a legal removal.  The batch must raise exactly where the
+    scalar oracle raises instead of quietly summing a patched term.
+    """
+
+    from mdstats.training_data.target_order.repair import _StateBatch
+    from mdstats.training_data._common import TrainingDataInputError
+
+    if workers > 1 and not qualify_mvsel2_native_backend().qualified:
+        pytest.skip("native backend is required for width > 1")
+    products = repair_products
+    forward = products.forward
+    state = build_forward_state(products.reference, forward, validate=False)
+    # One member of each duplicate cluster: every witness it covers is unique.
+    for candidate in (0, 16):
+        select_candidate(
+            candidate, forward, state, score=score_candidate(candidate, forward, state)
+        )
+    available = np.flatnonzero(state.available).astype(np.uint32)
+    batch = _StateBatch(forward, state, workers=workers)
+    with pytest.raises(TrainingDataInputError, match="zero-unique removal invariant"):
+        batch.representative_after_removal_many(available, 16)
+    with pytest.raises(TrainingDataInputError, match="zero-unique removal invariant"):
+        _oracle_after_removal(available, 16, forward, state)
+
+
+def test_real_owner_repair2_batch_state_arrays_are_invalidated_by_an_accepted_swap(
+    repair_products: SimpleNamespace,
+) -> None:
+    """R12 B12-1: a swap must discard every state-dependent batch quantity.
+
+    The batch caches removal-independent per-witness term vectors.  This drives
+    a real accepted swap and shows both that a freshly built batch matches the
+    scalar oracle on the new state and that reusing the stale batch would have
+    produced different numbers -- so the per-state construction is load-bearing
+    rather than vacuous.
+    """
+
+    from mdstats.training_data.target_order.repair import (
+        _StateBatch,
+        _best_proposal,
+        _build_frontier,
+        removal_metrics,
+    )
+    from mdstats.training_data.target_order.selector import deselect_candidate
+    from mdstats.training_data._common import TrainingDataInputError
+
+    products = repair_products
+    reference, forward = products.reference, products.forward
+    selection = _manual_selection_plan(products, order=(0, 16, 1, 2, 3, 4), sizes=(2, 6))
+    state = build_forward_state(reference, forward, validate=False)
+    order = [reference.frame_index(uid) for uid in selection.master_order]
+    for candidate in order:
+        select_candidate(
+            candidate, forward, state, score=score_candidate(candidate, forward, state)
+        )
+
+    stale = _StateBatch(forward, state, workers=1)
+    shortlist = [
+        (rank, order[rank], *removal_metrics(order[rank], forward, state))
+        for rank in range(len(order))
+    ]
+    shortlist = [row for row in shortlist if row[2] <= 1.0e-14]
+    assert shortlist, "fixture produced no removable shell member"
+    frontier = _build_frontier(forward, state, selection.policy, 1.0e-14, stale)
+    assert frontier is not None
+    best = _best_proposal(
+        reference, forward, state, shortlist, frontier, stale, 1.0e-14
+    )
+    assert best is not None
+
+    removed, replacement = int(best["removed"]), int(best["replacement"])
+    deselect_candidate(removed, forward, state)
+    select_candidate(
+        replacement,
+        forward,
+        state,
+        score=score_candidate(replacement, forward, state),
+    )
+
+    # A batch built on the new state answers the scalar oracle exactly.
+    fresh = _StateBatch(forward, state, workers=1)
+    row = np.asarray([replacement], dtype=np.uint32)
+    oracle_unique, oracle_loss = removal_metrics(replacement, forward, state)
+    fresh_unique, fresh_loss = fresh.removal_metrics_many(row)
+    assert np.array_equal(_bits(fresh_unique), _bits([oracle_unique]))
+    assert np.array_equal(_bits(fresh_loss), _bits([oracle_loss]))
+    expected, _ = _oracle_after_removal(
+        frontier.candidates, replacement, forward, state
+    )
+    assert np.array_equal(
+        _bits(fresh.representative_after_removal_many(frontier.candidates, replacement)),
+        _bits(expected),
+    )
+
+    # The pre-swap batch would answer the same question from the old state, so
+    # per-state construction is what keeps the arrays correct.
+    try:
+        stale_unique, stale_loss = stale.removal_metrics_many(row)
+    except TrainingDataInputError:
+        stale_differs = True
+    else:
+        stale_differs = not (
+            np.array_equal(_bits(stale_unique), _bits([oracle_unique]))
+            and np.array_equal(_bits(stale_loss), _bits([oracle_loss]))
+        )
+    assert stale_differs, "stale batch arrays were indistinguishable from the new state"
+
+
+def test_real_owner_repair2_best_relative_mask_matches_the_selector_filter() -> None:
+    """R12 B12-1: the array contender filter is the MVSEL2 rule, not a new one."""
+
+    from hypothesis import HealthCheck, given, settings
+    from hypothesis import strategies as st
+
+    from mdstats.training_data.target_order.repair import _best_relative_mask
+    from mdstats.training_data.target_order.selector import filter_best_relative
+
+    @settings(max_examples=200, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+    @given(
+        st.lists(
+            st.floats(min_value=-1.0e6, max_value=1.0e6, allow_nan=False, allow_infinity=False),
+            min_size=1,
+            max_size=24,
+        )
+    )
+    def property_holds(values: list[float]) -> None:
+        candidates = tuple(range(len(values)))
+        mapping = {index: value for index, value in enumerate(values)}
+        expected = filter_best_relative(candidates, mapping, 1.0e-14)
+        mask = _best_relative_mask(np.asarray(values, dtype=np.float64), 1.0e-14)
+        assert tuple(index for index in candidates if mask[index]) == expected
+
+    property_holds()
+
+
+def test_real_owner_repair2_has_no_python_worker_queue_left_in_the_proposal_path() -> None:
+    """R12 B12-1: the GIL-bound candidate-at-a-time mechanism is gone, not wrapped."""
+
+    import inspect
+
+    from mdstats.training_data.target_order import repair as repair_module
+
+    source = inspect.getsource(repair_module)
+    assert "DeterministicWorkQueue" not in source
+    assert "threading" not in source and "from threading import" not in source
+    assert "ThreadPool" not in source
+    # Exactly one execution primitive, reused from the qualified MVSEL2 backend.
+    assert source.count("score_family_candidate_batch(") == 1
+    assert "_best_proposal" in source and "def _proposal(" in source
