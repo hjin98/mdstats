@@ -7631,7 +7631,7 @@ init -> doctor -> prepare -> select-target-size -> cross-validate -> train-produ
 
 1. init                Write an annotated campaign.toml.
 2. doctor              Check paths, source inputs, MACE, replay, and the requested backend.
-3. prepare             Build the neutral source/statistical substrate and common target-size preparation.
+3. prepare             Build the neutral substrate and the prepared pi_train/MVQUAL target-order projection.
 4. select-target-size  Choose the provisional target size and role horizons.
 5. cross-validate      Freeze that design, then validate the method on exactly T_selected.
 6. train-production    Train fresh final model(s) on the complete T_selected.
@@ -7652,12 +7652,17 @@ runs the automatic diagnostic.
 Preparation and target-size selection
 --------------------------------------
 prepare is restartable and source-neutral. It authenticates the manifest,
-DATA2-DATA5 authorities, the canonical P_train/M3 split, pi_train/pi_eval, and
-one common preparation shared by every configured candidate size. It does not
-choose a size, train a candidate, rank a checkpoint, or materialize a
-per-size production dataset. The cutover rejects obsolete derived target-size
-records and quarantines them rather than migrating them; they are never
-translated.
+DATA2-DATA5 authorities, the canonical P_train/M3 split, and pi_train/pi_eval;
+then it prepares the one current target-order chain
+
+exact P_train -> TargetCoverageReference -> canonical obligations
+  -> shared FEAS1/NEIGHBOR1 -> MVIDX -> MVSEL2 -> configured REPAIR2
+  -> complete pi_train -> independent MVQUAL -> compact P2 projection
+
+shared by every configured candidate size. It does not choose a size, train a
+candidate, rank a checkpoint, or materialize a per-size production dataset.
+The cutover rejects obsolete derived target-size records and quarantines them
+rather than migrating them; they are never translated.
 
 select-target-size owns the provisional downstream training design: which
 target sizes to train on, and how much optimization budget each downstream role

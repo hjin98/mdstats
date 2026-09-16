@@ -43,32 +43,97 @@ execution realizations and do not change evidence roles or canonical order.
 
 The source/frame and numerical-label authorities are built once and validated
 through their current owners. The neutral statistical substrate supplies the
-one `P_train`/`M3` split and the two canonical orders. The current P3 common
-preparation is then computed once and shared by all authorized candidate
-sizes and optimizer seeds.
+exact `P_train`/`M3` split and existing evaluation-order authority. The restored
+target-training order is then constructed under the canonical D3 owner
+`45_target_training_order.md`; it is not supplied by a generic neutral fitted
+substrate.
+
+The current target-size preparation sequence is:
 
 ```text
 source/frame/label authorities
   -> neutral statistical substrate and protected relations
-  -> one P_train/M3 split and pi_train/pi_eval
-  -> one common target-size preparation
+  -> exact P_train/M3 split + existing pi_eval authority
+  -> selector inputs on exact P_train
+  -> sole TargetCoverageReference
+  -> canonical target-order obligations
+  -> one shared FEAS1/NEIGHBOR1 construction
+  -> MVIDX adoption
+  -> MVSEL2 / configured REPAIR2 / exact reconstruction
+  -> complete pi_train + independent MVQUAL
+  -> compact current P2 definition
+  -> one common target-size training preparation
   -> optional paired-seed diagnostic (recommendation or typed no-recommendation)
   -> operator-owned provisional ordered collection
   -> cross-validate atomic collection freeze
   -> per-frozen-size CV and fresh final production
 ```
 
-The common preparation is a single authenticated authority, not one independent
+The normal target-order prepared path performs the exact candidate-witness
+geometry once. FEAS1 reductions may be produced while that relation streams and
+MVIDX adopts/inverts the authenticated NEIGHBOR1 product instead of querying the
+same geometry again. The canonical obligation authority is shared semantic input
+to FEAS1, MVIDX representation, MVSEL2/REPAIR2, and independent MVQUAL; no
+execution component may project a competing obligation definition.
+
+The P3 common preparation is a single authenticated authority, not one independent
 copy per candidate or fold. A post-selection CV fold may create a fold-local
 fitted view from its own training partition when its owner requires it, but it
 cannot create a target-size ladder or alter the frozen collection or that
 size's exact membership `T_N`.
 
+Manual and automatic target-size selection consume the prepared compact P2
+order/qualification projection. They do not map NEIGHBOR/MVIDX, restore
+selector checkpoints, or reconstruct target-order science.
+
 Foundation-model providers and large accelerator references are released as
-soon as their final preparation consumer completes. Derived file
-materialization and target-size candidate views run on CPU/I/O resources unless
-their current owner explicitly admits an accelerator task. Heavy caches are
-restored lazily only when a validated artifact is needed.
+soon as their final preparation consumer completes. The current restored target-
+order path itself does not require an accelerator-backed foundation provider.
+Derived file materialization and target-size candidate views run on CPU/I/O
+resources unless their current owner explicitly admits an accelerator task.
+Heavy caches are restored lazily only when a validated artifact is needed.
+
+## Target-order sparse execution and pre-adoption restart
+
+Target-order execution preserves the mature exact sparse capability envelope
+under the current stage/resource owner:
+
+- NEIGHBOR1/MVIDX large payloads may be file-backed/OOC while anonymous working
+  and finalization memory remains bounded and admitted;
+- packed/shared durable roots keep mapped file-descriptor count O(1) in family
+  count, including forward-only restore where selector consumers do not need
+  witness-oriented roots;
+- obsolete reconstructible per-family layouts are rejected/rebuilt rather than
+  migrated through a compatibility layer;
+- disk admission covers final durable bytes, scratch/write amplification,
+  available/quota storage where observable, and descriptor/inode constraints
+  where material;
+- write/ENOSPC interruption cannot publish a partial accepted selector product;
+- the optimized certified-lazy production selector must remain exact-equivalent
+  to the scalar/full-forward oracle; native candidate-row acceleration is an
+  execution primitive only;
+- after an accepted REPAIR2 swap, stale prefix-dependent lazy/native/checkpoint/
+  history state is invalidated and exact continuation is reconstructed from
+  primitive authenticated sparse authority plus the repaired prefix; and
+- after the last configured shell, the same optimized exact selector continues
+  to all of `P_train`; no scalar-only, UID, or alternate-selector suffix exists.
+
+Expensive MVSTATE/rank-history/checkpoint continuation produced before completed
+prepared-generation adoption is reconstructible `prepare`/prepared-storage build
+state, not CampaignStore currentness. Reuse requires deterministic prospective
+build identity, exact prefix/repair ancestry, schema/content integrity, and
+attempt isolation. Mutable scratch is never cross-adopted between concurrent
+attempts. Reusable checkpoints are published at crash-safe authenticated
+boundaries; pathname existence alone is not validity evidence. Stale, corrupt,
+incompatible, or foreign-attempt state is discarded or exactly reconstructed.
+Journal/history replay is bounded, and downstream select/CV/production never
+discovers pre-adoption selector state.
+
+If the native/OpenMP selector backend is retained, installed-package acceptance
+includes clean source/editable/wheel build, backend-availability observability,
+and exact native-vs-reference equivalence on qualified fixtures. The current
+target-order path does not require GPU execution; final production-scale GPU
+qualification remains deferred to the final release package.
 
 ## Candidate execution and continuation
 
@@ -171,9 +236,14 @@ The bounded execution representation is:
 
 ```text
 one canonical frame/feature authority
-one neutral statistical substrate
-one P_train/M3 split and pi_train/pi_eval
-one common preparation
+one neutral statistical/protected-relation substrate
+one exact P_train/M3 split and current pi_eval authority
+one sole TargetCoverageReference
+one canonical target-order obligation authority
+one shared exact NEIGHBOR1 relation
+one MVIDX sparse representation
+one complete pi_train + independent configured-prefix qualification
+one common P3 preparation
 prefix views for candidate rungs
 training and CV artifacts only for authorized work
 ```
@@ -587,7 +657,18 @@ throughput, RSS/VRAM, scratch/storage, queue/backpressure, and output digests
 when material. A speedup obtained by changing precision, evidence population,
 ordering, or output is not a conforming optimization.
 
+For the restored target order, representative qualification additionally records
+`|P_train|`, family/witness/edge counts, TargetCoverageReference cost, shared
+FEAS1/NEIGHBOR wall/RSS/I/O and proof of one geometry pass, MVIDX adoption/
+inversion cost, configured-prefix MVSEL/REPAIR edge work, Phase-A-to-B
+transition rank, lazy-refresh/certification rate, native preflight/effective
+width where retained, post-repair reconstruction cost, suffix work beyond
+`N_max`, complete-order wall/RSS/I/O, checkpoint/recovery cost, mapped FDs, and
+final/scratch disk footprint. A slow result first requires proving that the
+accepted optimized execution closure is actually active; it does not authorize
+weakening D1/D2 semantics.
+
 Target-machine GPU and long real-production qualification remain separate from
-P6 functional closure. They require their own supported hardware, workload,
-backend, and acceptance evidence; the current campaign does not infer those
-results from CPU or bounded numerical tests.
+functional closure. They require their own supported hardware, workload,
+backend, and acceptance evidence; final production-scale GPU qualification is
+deferred to the established final-release package on the stakeholder machine.

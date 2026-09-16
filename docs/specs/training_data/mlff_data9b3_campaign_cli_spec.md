@@ -182,8 +182,18 @@ substrate:
 source/frame/label authority
   -> protected statistical relations
   -> one P_train/M3 split and pi_train/pi_eval
+  -> TargetCoverageReference + canonical target-order obligations
+  -> shared FEAS1/NEIGHBOR1 -> MVIDX
+  -> MVSEL2 -> configured REPAIR2 -> complete pi_train
+  -> independent MVQUAL -> compact P2 projection
   -> one common target-size preparation
 ```
+
+The target-order portion is one prepare-owned chain on exact `P_train`. MVIDX
+represents the shared NEIGHBOR1 relation; MVSEL2/REPAIR2 construct one complete
+order; and MVQUAL independently verifies the configured repaired prefixes.
+The current P2 projection authenticates that prepared target-order component
+and does not rebuild it during manual or automatic target-size selection.
 
 It selects no target size, trains no candidate, ranks no checkpoint, and
 publishes no final model. It is restartable and idempotent when all current

@@ -1004,7 +1004,7 @@ def build_replay_foundation_prediction_cache(
     # and a waiter that arrives after a *failed* winner simply becomes the next
     # owner.  This is deliberately not the campaign-state writer lock, which
     # must never be held across GPU work.
-    from .target_size_execution.persistence import artifact_publication_lock
+    from .persistence import artifact_publication_lock
 
     directory.parent.mkdir(parents=True, exist_ok=True)
     with artifact_publication_lock(directory):

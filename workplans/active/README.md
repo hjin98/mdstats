@@ -4,17 +4,33 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 ## Current active MLFF work
 
-No active MLFF workplan is open for the CV competence threshold separation/parameterization cycle.
+### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
-The cycle on branch `fix/mlff-cv-competence-threshold-separation` closed **PASS** after final independent re-review. The accepted design is:
+Branch: `design/mlff-pi-train-fps-diversity-restoration`
 
-- foundation CV checkpoint competence `tau_cv`: independently configurable, default `0.045 eV/angstrom`;
-- foundation held-out CV threshold `theta_cv`: independently configurable in the units of `acceptance_metric`, default `0.045 eV/angstrom` for the default target-force metric;
-- foundation production checkpoint quality `tau_prod`: independently configurable, default `0.030 eV/angstrom`;
-- role-only changes invalidate only their owning role lineage and material dependents;
-- shared method identity contains no role target ceiling;
-- scratch remains separately governed; and
-- no duplicate threshold registry, production alias, P5 `TrainingProtocolIdentity`, generic `Eval2EvaluationPlan`, compatibility translator, wrapper, or second checkpoint engine exists.
+Canonical workplan pointer:
+
+- `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_CURRENT.md`
+
+The active plan is the exact Revision-8 composition of immutable Revision 5, immutable Revision 6, immutable Revision 7, and `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_8.md`. Final independent workplan review is `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_REVISION_8_REVIEW.md` with disposition **PASS AS WORKPLAN**.
+
+The stakeholder direction is to restore the latest mature pre-P6 selection path — selector-relevant DATA7 -> TargetCoverageReference/FEAS1 -> NEIGHBOR1/MVIDX1 -> optimized MVSEL2/MVSTATE2 -> optimized REPAIR2 -> bounded/progressive independent MVQUAL — beneath the current one-P_train/P2/prepared-generation architecture, dropping only concretely incompatible historical target-size topology and historically rejected execution experiments.
+
+The restoration explicitly includes current-compatible performance machinery: shared resource budgeting, deterministic bounded scheduling, exact file-backed/OOC sparse construction with disk and descriptor bounds, locality/native MVSEL2 kernels, certified lazy execution, the final recovered native worker-preflight policy, authenticated restart/history and post-repair invalidation, REPAIR2 factorization/parallel proposal scoring/checkpoint reuse, and serial-rung/parallel-family progressive MVQUAL. Scientific outputs remain invariant to execution width/backend/chunk/queue/restart choices.
+
+Current `TargetTrainingOrder` is a complete permutation owner. Therefore assembled acceptance must run the optimized MVSEL path through all of `P_train`, not merely the largest configured target-size rung, and must exercise restart in that suffix when `|P_train| > Nmax_current`.
+
+#### R1 status
+
+The authoring/reconstruction half of R1 is complete. The branch now contains proposed reconstruction evidence, exact proposed D1 and D2 overlays, an independent-review handoff, and `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R1_STATUS.md`.
+
+The proposed method restores the final mature multi-view semantics under current one-`P_train` ownership: correlation-unit-balanced hard family coverage at 0.95, q01/q99 extents, canonical condition/event/profile/extent/correlation/current-user obligations, exact two-phase MVSEL2, configured active-shell REPAIR2, independent MVQUAL, and same-method continuation through the complete `P_train` order.
+
+**No D1/D2 promotion has occurred.** Independent D1/D2 falsification and stakeholder human ratification remain mandatory before accepted-current method-paper promotion and before R2 begins. The current UID-capable product method therefore remains under **SERIOUS CHALLENGE**.
+
+## Recently closed MLFF work
+
+The CV competence threshold separation/parameterization cycle on branch `fix/mlff-cv-competence-threshold-separation` closed **PASS**. Its accepted design separates foundation CV checkpoint competence `tau_cv`, held-out CV threshold `theta_cv`, and production checkpoint quality `tau_prod`, with role-specific invalidation and no duplicate threshold/translation machinery.
 
 Final review and closeout records are archived under:
 
@@ -23,4 +39,4 @@ Final review and closeout records are archived under:
 
 Production-scale GPU/CuEq/LAMMPS/MLIAP qualification remains deferred to the final complete-release package under the standing MLFF qualification policy.
 
-Completed/superseded workplans belong under `workplans/archive/`.
+Completed/superseded workplans belong under `workplans/archive/` after their active cycle closes.

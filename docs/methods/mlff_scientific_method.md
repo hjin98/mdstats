@@ -25,7 +25,7 @@ The revision changes the scientific method for **foundation-model post-selection
 
 Foundation-residual elemental reference-energy fitting remains mandatory and is strengthened here to require the exact selected foundation checkpoint **and foundation head**. The scientifically required identifiability condition is imposed on the composition-weighted reference-energy correction actually used by each governed target configuration; individual elemental correction coefficients need not be uniquely identifiable when their relevant composition-weighted sums are unique. Checkpoint-monitor or held-out labels may not be used to resolve an otherwise unidentifiable correction.
 
-The numerical method is delegated to `mlff_numerical_algorithmic_method.md`. D3 architecture and D4 specifications/implementation own software decomposition, persisted schemas, runtime control, dependency adaptation, caches, and interfaces. They may not redefine the scientific semantics below.
+The numerical method is delegated to `mlff_numerical_algorithmic_method.md`. The `TargetTrainingOrder` / `pi_train` membership-design surface—pre-order selector evidence, training-population coverage, hard membership support, configured-shell repair, complete-order continuation, and configured-prefix membership qualification—is owned by the scoped D1 paper `mlff_target_training_order_scientific_method.md`; this paper does not restate it. D3 architecture and D4 specifications/implementation own software decomposition, persisted schemas, runtime control, dependency adaptation, caches, and interfaces. They may not redefine the scientific semantics below.
 
 The restoration revision above was independently reviewed, ratified by the stakeholder on 2026-09-14, and integrated at `8553ebe9ed86b24dfe910c9e43acc6230d3ece90`.
 
@@ -216,9 +216,7 @@ The accepted method distinguishes two semantically different stages that older a
 
 ### 5.1 Pre-order selection evidence
 
-Candidate-independent descriptors, feature metrics, foundation predictions, difficulty evidence, condition/event/environment evidence, representative-density/diversity evidence, and provenance/correlation evidence may contribute to the ordering evidence from which the one canonical target-training order is built. Any fitted quantity in this stage is bound to its authorized pre-candidate development domain.
-
-These inputs do not create a second selector. They contribute evidence to one target-size ordering owner.
+The candidate-independent evidence from which the one canonical target-training order is built, and its fitting domain, are defined by `mlff_target_training_order_scientific_method.md`. Scientifically, that evidence is fitted before candidate training on exact `P_train`, cannot inspect downstream candidate, held-out, calibration, or locked outcomes, and feeds one ordering owner rather than a second selector.
 
 ### 5.2 Target-size common training preparation
 
@@ -252,7 +250,7 @@ $$
 
 For `N_a<N_b`, the smaller candidate is therefore a prefix of the larger candidate. Increasing `N` only adds frames; it does not swap to a different selection solution.
 
-Ordering evidence may favor representative, difficult, diverse, or otherwise relevant frames while maintaining condition support. Candidate qualification is separate: a prefix is admitted only by label usability and explicitly declared hard-support obligations over frozen pre-candidate condition evidence. Diagnostic novelty or coverage measures do not silently become additional qualification gates.
+How `pi_train` is constructed and which configured prefixes qualify as candidate memberships—including required training-population coverage, extents, and hard membership obligations—is owned by `mlff_target_training_order_scientific_method.md`. Membership qualification is decided before candidate training and is not a model-accuracy gate; it does not rank already-qualified sizes.
 
 ### 6.3 Evaluation ladder
 

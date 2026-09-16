@@ -1728,7 +1728,7 @@ def _install_container(action: PlannedAction, result: StorageExecutionResult) ->
     result.mutated = True
     result.completed.append({**action.to_dict(), "created_container": True})
     os.chmod(destination, int(action.binding["archived_mode"]))
-    from ..target_size_execution.persistence import fsync_parent_directory
+    from ..persistence import fsync_parent_directory
 
     fsync_parent_directory(destination)
     return 1
@@ -1740,7 +1740,7 @@ def _install_member(
     workspace: Path,
     result: StorageExecutionResult,
 ) -> bool:
-    from ..target_size_execution.persistence import fsync_parent_directory
+    from ..persistence import fsync_parent_directory
 
     destination = action.path
     verify_parent_chain(action.binding.get("parent_chain", ()))

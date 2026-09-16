@@ -213,7 +213,7 @@ def qualification_publication_barrier(paths: Any, generation: int | str) -> Iter
     operation can never observe the window half-open.
     """
 
-    from ..target_size_execution import artifact_publication_lock
+    from ..persistence import artifact_publication_lock
 
     root = qualification_root(paths, generation)
     root.mkdir(parents=True, exist_ok=True)
@@ -987,7 +987,7 @@ def attempt_state_lock_at(attempt_directory: str | os.PathLike[str]):
     while a storage operation is removing what it treats as released scratch.
     """
 
-    from ..target_size_execution import artifact_publication_lock
+    from ..persistence import artifact_publication_lock
 
     return artifact_publication_lock(Path(attempt_directory) / ATTEMPT_STATE_FILENAME)
 
@@ -1697,7 +1697,7 @@ def acquire_attempt_reference(
     interrupted qualification still needs.
     """
 
-    from ..target_size_execution import artifact_publication_lock
+    from ..persistence import artifact_publication_lock
 
     attempt_value = validate_digest(str(attempt_identity), name="attempt_identity")
     publication_value = validate_digest(str(publication_digest), name="publication_digest")
@@ -1750,7 +1750,7 @@ def release_attempt_reference(
 ) -> QualificationAttemptState | None:
     """Release the retention reference on terminal completion or explicit abort."""
 
-    from ..target_size_execution import artifact_publication_lock
+    from ..persistence import artifact_publication_lock
 
     attempt_value = validate_digest(str(attempt_identity), name="attempt_identity")
     state_path = attempt_state_path(paths, binding, attempt_value)

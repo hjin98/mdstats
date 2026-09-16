@@ -64,7 +64,6 @@ RETIRED_MODULE_NAMES = (
     "target_data_roles",
     "size_fidelity",
     "production_materialization",
-    "work_queue",
     "multi_fidelity_evaluation",
     "lightweight_rank",
     "campaign_execution",
@@ -157,7 +156,15 @@ def test_p6_retired_modules_are_deleted_not_wrapped():
         if (_PACKAGE / "training_data" / f"{name}.py").exists()
     ]
     assert not present, present
-    assert not (_PACKAGE / "_mvsel2_native.c").exists()
+
+
+def test_p6_restored_target_order_owner_is_present_and_shared_queue_is_current():
+    target_order = _PACKAGE / "training_data" / "target_order"
+    assert target_order.is_dir()
+    assert (target_order / "preparation.py").is_file()
+    assert (target_order / "qualification.py").is_file()
+    assert (_PACKAGE / "training_data" / "work_queue.py").is_file()
+    assert (_PACKAGE / "_mvsel2_native.c").is_file()
 
 
 def test_p6_retired_public_symbols_are_unexported():
@@ -173,14 +180,19 @@ def test_p6_retired_public_symbols_are_unexported():
 
 
 def test_p6_no_source_file_references_a_retired_target_size_authority():
-    """No surviving production module imports or names a retired owner."""
+    """No non-target-order production module imports or names a retired owner.
+
+    The restored ``training_data.target_order`` package is the current owner
+    for the formerly retired coverage/MVIDX/MVSEL2 family.  Its names are
+    therefore not evidence of a stale pre-restoration import and are checked
+    by the dedicated owner-presence test above instead.
+    """
 
     needles = (
         "TargetDataRoleFreeze",
         "target_size_study",
         "target_multi_view",
         "target_coverage",
-        "mvsel2_",
         "mvqual_p2",
         "mvidx1_forward",
         "FIXED_TARGET_SIZES",
@@ -191,6 +203,8 @@ def test_p6_no_source_file_references_a_retired_target_size_authority():
     offenders: list[str] = []
     for path in sorted(_PACKAGE.rglob("*.py")):
         if "__pycache__" in str(path):
+            continue
+        if path.is_relative_to(_PACKAGE / "training_data" / "target_order"):
             continue
         if path.name in {"campaign_target_size_cutover.py", "campaign_cli.py"}:
             # The reject-only obsolete-generation detector must name the retired
@@ -1105,4 +1119,3 @@ def test_p6_r12_storage_report_read_only_and_no_retired_stor_policy(tmp_path: Pa
 
     assert payload["destructive_actions_performed"] is False
     assert (paths.internal / "evaluation-graphs" / "g.bin").is_file()
-

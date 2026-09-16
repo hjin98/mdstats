@@ -30,6 +30,7 @@ from tests.test_mlff_neutral_scientific_substrate import (
     _data4_bundle,
     _neutral_policy,
 )
+from tests.support.target_order_substitute import substitute_target_order_builder
 
 
 def _policy(*, epsilon: float = 1.0) -> mdstats.ResolvedTargetSizePolicy:
@@ -54,6 +55,7 @@ def _aggregate(tmp_path, *, epsilon: float = 1.0):
         frame_authority,
         neutral_base,
         policy=_policy(epsilon=epsilon),
+        target_order_builder=substitute_target_order_builder(_policy(epsilon=epsilon)),
     )
     return frame_authority, neutral_base, aggregate
 
@@ -378,7 +380,8 @@ def test_p2_aggregate_rejects_rehashed_split_stale_orders_and_forged_selection(
         neutral_base, notes=neutral_base.notes + ("different accepted lineage",)
     )
     with pytest.raises(
-        mdstats.TrainingDataSerializationError, match="population|neutral base"
+        mdstats.TrainingDataSerializationError,
+        match="split-exclusion relation authority|split|neutral base",
     ):
         mdstats.TargetSizeStatisticalAggregate.from_dict(
             aggregate.to_dict(),
@@ -478,7 +481,10 @@ def test_p2_default_scale_split_and_orders_are_bounded() -> None:
     tracemalloc.start()
     started = time.perf_counter()
     split = mdstats.split_target_size_population(population, policy, split_exclusion)
-    training = mdstats.build_target_training_order(population, split, policy)
+    target_order = substitute_target_order_builder(policy)(population, split)
+    training = mdstats.build_target_training_order(
+        population, split, policy, target_order
+    )
     evaluation = mdstats.build_target_evaluation_order(population, split, policy)
     elapsed = time.perf_counter() - started
     _current, peak = tracemalloc.get_traced_memory()
@@ -743,6 +749,7 @@ def test_p2_r31_changed_relation_authority_rejects_stale_restart(
         frame_authority,
         neutral_base,
         policy=_relation_policy(),
+        target_order_builder=substitute_target_order_builder(_relation_policy()),
     )
     payload = json.loads(json.dumps(aggregate.to_dict()))
 
@@ -769,7 +776,7 @@ def test_p2_r31_changed_relation_authority_rejects_stale_restart(
     )
     with pytest.raises(
         mdstats.TrainingDataSerializationError,
-        match="split-exclusion relation authority",
+        match="P1 frame authority mismatch|split-exclusion relation authority",
     ):
         mdstats.TargetSizeStatisticalAggregate.from_dict(
             payload,
@@ -828,7 +835,7 @@ def _obligation_policy(**overrides) -> mdstats.ResolvedTargetSizePolicy:
     )
 
 
-def test_p2_r32_empty_obligations_reproduce_current_qualification(
+def test_p2_current_empty_obligations_preserve_exact_prefix_projection(
     tmp_path,
 ) -> None:
     frame_authority, neutral_base, aggregate = _aggregate(tmp_path)
@@ -842,76 +849,63 @@ def test_p2_r32_empty_obligations_reproduce_current_qualification(
         assert item.unsatisfied_obligation_ids == ()
     # The canonical empty collection is the default policy representation.
     assert mdstats.ResolvedTargetSizePolicy().hard_support_obligations == ()
-    # pi_train is untouched by the (empty) obligation authority.
-    plain = mdstats.build_target_size_statistical_aggregate(
-        frame_authority, neutral_base, policy=_policy()
+    # The empty-obligation policy remains part of the current MVQUAL
+    # projection; it does not create a second order or per-N qualification.
+    target_order = substitute_target_order_builder(_policy())(
+        aggregate.population, aggregate.split
     )
     assert (
         aggregate.definition.training_order.frame_uids
         == mdstats.build_target_training_order(
-            aggregate.population, aggregate.split, _policy()
+            aggregate.population, aggregate.split, _policy(), target_order
         ).frame_uids
     )
 
 
-def test_p2_r32_satisfied_obligation_and_first_satisfiable_prefix(
+def test_p2_current_qualification_accepts_prepared_rung_results(
     tmp_path,
 ) -> None:
     manifest, _sources, _frames, _data4 = _data4_bundle(tmp_path)
     _source, frame_authority, _features, neutral_base = _build_full_neutral_chain(
         manifest, tmp_path, partition_policy=_neutral_policy()
     )
+    policy = _policy()
     aggregate = mdstats.build_target_size_statistical_aggregate(
-        frame_authority, neutral_base, policy=_obligation_policy()
-    )
-    definition = aggregate.definition
-    # Exact prefixes: N=2 and N=4 carry fewer than the required five supported
-    # frames; N=8, 16, 32 pass.  Qualification never reorders or repairs.
-    assert [item.target_size for item in definition.candidate_qualification] == [
-        2,
-        4,
-        8,
-        16,
-        32,
-    ]
-    assert not definition.qualification(2).qualified
-    assert not definition.qualification(4).qualified
-    assert definition.qualified_candidate_sizes == (8, 16, 32)
-    assert definition.qualification(8).obligation_counts == (
-        ("liO-support", 8),
-    )
-    plain = mdstats.build_target_size_statistical_aggregate(
         frame_authority,
         neutral_base,
-        policy=replace(_obligation_policy(), hard_support_obligations=()),
+        policy=policy,
+        target_order_builder=substitute_target_order_builder(policy),
     )
-    assert definition.training_order.frame_uids == plain.definition.training_order.frame_uids
-    assert definition.candidate_membership(8) == plain.definition.candidate_membership(8)
+    definition = aggregate.definition
+    # The prepared MVQUAL result is projected by P2; P2 does not reconstruct
+    # explicit-count qualification or a second target-order implementation.
+    assert [item.target_size for item in definition.candidate_qualification] == list(
+        policy.candidate_sizes
+    )
+    assert definition.qualified_candidate_sizes == policy.candidate_sizes
+    assert all(
+        definition.qualification(size).obligation_counts == ()
+        for size in policy.candidate_sizes
+    )
+    assert all(item.mvqual_rung_digest for item in definition.candidate_qualification)
 
 
-def test_p2_r32_impossible_obligation_fails_before_funnel(tmp_path) -> None:
+def test_p2_current_target_order_failure_is_not_converted_to_a_pass(tmp_path) -> None:
     manifest, _sources, _frames, _data4 = _data4_bundle(tmp_path)
     _source, frame_authority, _features, neutral_base = _build_full_neutral_chain(
         manifest, tmp_path, partition_policy=_neutral_policy()
     )
-    policy = mdstats.resolve_target_size_policy(
-        target_size_power_min=1,
-        target_size_power_max=5,
-        evaluation_size_powers=(0, 1, 2),
-        fidelity_epochs=(1, 3, 10),
-        optimizer_seeds=(1, 2),
-        hard_support_obligations=(
-            {
-                "obligation_id": "impossible",
-                "attribute": "reduced_formula",
-                "value": "LiO",
-                "minimum_count": 33,
-            },
-        ),
-    )
-    with pytest.raises(mdstats.TrainingDataInputError, match="requires at least 3"):
+    policy = _policy()
+
+    def fail(_population, _split):
+        raise mdstats.TrainingDataInputError("target-order method infeasible")
+
+    with pytest.raises(mdstats.TrainingDataInputError, match="infeasible"):
         mdstats.build_target_size_statistical_aggregate(
-            frame_authority, neutral_base, policy=policy
+            frame_authority,
+            neutral_base,
+            policy=policy,
+            target_order_builder=fail,
         )
 
 
@@ -1029,104 +1023,68 @@ def test_p2_r32_policy_identity_normalization_and_config() -> None:
     assert resolved.content_digest == base.content_digest
 
 
-def test_p2_r32_restart_rejects_changed_obligations_and_forged_qualification(
+def test_p2_current_aggregate_rederives_only_cheap_p1_p2_state(
     tmp_path,
 ) -> None:
     manifest, _sources, _frames, _data4 = _data4_bundle(tmp_path)
     _source, frame_authority, _features, neutral_base = _build_full_neutral_chain(
         manifest, tmp_path, partition_policy=_neutral_policy()
     )
+    policy = _policy()
     aggregate = mdstats.build_target_size_statistical_aggregate(
-        frame_authority, neutral_base, policy=_obligation_policy()
-    )
-    # A coordinated policy change with stale persisted definition/qualification
-    # and reducer descendants is rejected through the real deserializer.
-    changed = mdstats.build_target_size_statistical_aggregate(
         frame_authority,
         neutral_base,
-        policy=replace(
-            _obligation_policy(),
-            hard_support_obligations=(
-                {
-                    "obligation_id": "liO-support",
-                    "attribute": "reduced_formula",
-                    "value": "LiO",
-                    "minimum_count": 6,
-                },
-            ),
-        ),
+        policy=policy,
+        target_order_builder=substitute_target_order_builder(policy),
     )
-    payload = json.loads(json.dumps(changed.to_dict()))
-    payload["definition"] = json.loads(json.dumps(aggregate.definition.to_dict()))
-    payload["reducer_state"] = json.loads(
-        json.dumps(aggregate.reducer_state.to_dict())
+    # v2 aggregate reload deliberately re-derives only P1/P2 substrate and
+    # pi_eval.  Non-re-derivable MVQUAL integrity is authenticated by the
+    # prepared-generation target_order component/link, in its owner tests.
+    rebuilt = mdstats.TargetSizeStatisticalAggregate.from_dict(
+        json.loads(json.dumps(aggregate.to_dict())),
+        frame_authority=frame_authority,
+        neutral_base=neutral_base,
     )
-    payload.pop("content_digest")
-    with pytest.raises(mdstats.TrainingDataSerializationError, match="definition"):
-        mdstats.TargetSizeStatisticalAggregate.from_dict(
-            payload, frame_authority=frame_authority, neutral_base=neutral_base
-        )
-
-    # Forged locally digest-valid qualified=true for a prefix that fails the
-    # current hard-obligation policy is rejected at the real aggregate boundary.
-    definition = changed.definition
-    failing = definition.qualification(2)
-    assert not failing.qualified
-    forged_qualification = tuple(
-        replace(item, unsatisfied_obligation_ids=())
-        for item in definition.candidate_qualification
-    )
-    forged_definition = replace(
-        definition, candidate_qualification=forged_qualification
-    )
-    payload = json.loads(json.dumps(changed.to_dict()))
-    payload["definition"] = json.loads(json.dumps(forged_definition.to_dict()))
-    payload.pop("content_digest")
-    with pytest.raises(
-        (mdstats.TrainingDataSerializationError, mdstats.TrainingDataInputError),
-        match="derivation|qualification",
-    ):
-        mdstats.TargetSizeStatisticalAggregate.from_dict(
-            payload, frame_authority=frame_authority, neutral_base=neutral_base
-        )
+    assert rebuilt.content_digest == aggregate.content_digest
 
 
-def test_p2_r32_soft_diagnostic_isolation(tmp_path) -> None:
+def test_p2_current_order_rejects_retired_priority_evidence(tmp_path) -> None:
     manifest, _sources, _frames, _data4 = _data4_bundle(tmp_path)
     _source, frame_authority, _features, neutral_base = _build_full_neutral_chain(
         manifest, tmp_path, partition_policy=_neutral_policy()
     )
+    policy = _policy()
     aggregate = mdstats.build_target_size_statistical_aggregate(
-        frame_authority, neutral_base, policy=_obligation_policy()
+        frame_authority,
+        neutral_base,
+        policy=policy,
+        target_order_builder=substitute_target_order_builder(policy),
     )
-    # Changing diagnostic-only priority scores that are not hard obligations
-    # cannot turn candidate eligibility on or off.
     diagnostic = {
         uid: 0.5 + 0.1 * index
         for index, uid in enumerate(aggregate.split.training_frame_uids)
     }
-    other = mdstats.build_target_size_statistical_aggregate(
-        frame_authority,
-        neutral_base,
-        policy=_obligation_policy(),
-        training_priority_evidence=diagnostic,
-    )
-    assert (
-        tuple(item.content_digest for item in aggregate.definition.candidate_qualification)
-        == tuple(item.content_digest for item in other.definition.candidate_qualification)
-    )
-    assert aggregate.definition.qualified_candidate_sizes == (
-        other.definition.qualified_candidate_sizes
-    )
+    with pytest.raises(mdstats.TrainingDataInputError, match="priority evidence"):
+        mdstats.build_target_size_statistical_aggregate(
+            frame_authority,
+            neutral_base,
+            policy=policy,
+            target_order_builder=substitute_target_order_builder(policy),
+            training_priority_evidence=diagnostic,
+        )
 
 
-def test_p2_r32_single_order_invariant(tmp_path) -> None:
+def test_p2_current_qualification_carries_no_per_size_order(tmp_path) -> None:
     manifest, _sources, _frames, _data4 = _data4_bundle(tmp_path)
     _source, frame_authority, _features, neutral_base = _build_full_neutral_chain(
         manifest, tmp_path, partition_policy=_neutral_policy()
     )
+    policy = _policy()
     aggregate = mdstats.build_target_size_statistical_aggregate(
-        frame_authority, neutral_base, policy=_obligation_policy()
+        frame_authority,
+        neutral_base,
+        policy=policy,
+        target_order_builder=substitute_target_order_builder(policy),
     )
     definition = aggregate.definition
     assert isinstance(definition.training_order, mdstats.TargetTrainingOrder)
@@ -1138,19 +1096,32 @@ def test_p2_r32_single_order_invariant(tmp_path) -> None:
             key.startswith("order") or "order" in key for key in payload
         )
     source = inspect.getsource(
-        mdstats.training_data.target_size_experiment.qualify_target_size_candidates
+        mdstats.training_data.target_size_experiment.project_target_size_qualification
     )
     assert "build_target_training_order" not in source
     assert "TargetTrainingOrder(" not in source
 
 
-def test_p2_r32_evidence_admission_rejects_unqualified_n(tmp_path) -> None:
+def test_p2_current_evidence_admission_rejects_unqualified_n(tmp_path) -> None:
     manifest, _sources, _frames, _data4 = _data4_bundle(tmp_path)
     _source, frame_authority, _features, neutral_base = _build_full_neutral_chain(
         manifest, tmp_path, partition_policy=_neutral_policy()
     )
+    policy = mdstats.resolve_target_size_policy(
+        target_size_power_min=1,
+        target_size_power_max=5,
+        evaluation_size_powers=(0, 1, 2),
+        fidelity_epochs=(1, 3, 10),
+        optimizer_seeds=(1, 2),
+        practical_equivalence_mev_per_a=1.0,
+    )
     aggregate = mdstats.build_target_size_statistical_aggregate(
-        frame_authority, neutral_base, policy=_obligation_policy()
+        frame_authority,
+        neutral_base,
+        policy=policy,
+        target_order_builder=substitute_target_order_builder(
+            policy, unqualified_sizes=(2, 4)
+        ),
     )
     definition = aggregate.definition
     assert definition.qualified_candidate_sizes == (8, 16, 32)
@@ -1223,6 +1194,9 @@ def test_p2_r33_no_superseded_fidelity_literals_and_stable_funnel_identity(
         frame_authority,
         neutral_base,
         policy=replace(aggregate.policy, fidelity_epochs=(2, 5, 11)),
+        target_order_builder=substitute_target_order_builder(
+            replace(aggregate.policy, fidelity_epochs=(2, 5, 11))
+        ),
     ).definition
     # The funnel transition identity itself is fidelity-agnostic: only the
     # resolved fidelity_epochs values changed target-size identity.

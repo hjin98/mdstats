@@ -37,6 +37,10 @@ from tests.test_mlff_neutral_scientific_substrate import (
     _data4_bundle,
     _neutral_policy,
 )
+from tests.support.target_order_substitute import (
+    substitute_target_order_build,
+    substitute_target_order_builder,
+)
 
 
 def _policy() -> mdstats.ResolvedTargetSizePolicy:
@@ -61,6 +65,7 @@ def _aggregate_chain(tmp_path: Path):
         frame_authority,
         neutral_base,
         policy=_policy(),
+        target_order_builder=substitute_target_order_builder(_policy()),
     )
     return manifest, frame_authority, neutral_base, aggregate
 
@@ -273,6 +278,7 @@ def test_p3a_projection_rejects_unqualified_and_foreign_authority(
         _fa,
         _nb,
         policy=other_policy,
+        target_order_builder=substitute_target_order_builder(other_policy),
     )
     with pytest.raises(mdstats.TrainingDataInputError):
         project_target_size_candidate_preparation(
@@ -576,13 +582,11 @@ def _order_divergent_manifest(tmp_path: Path) -> mdstats.TrainingDataManifest:
 
 
 def order_divergent_environment(tmp_path: Path):
-    """Real P1/P2/P3 chain whose ``pi_train`` is not a P_train subsequence.
+    """Real P1/P2/P3 chain with an explicit below-claim order substitute.
 
-    Divergence is forced through the accepted P2 input rather than left to
-    accidental UID ordering: each training frame's priority is its own
-    position in ``P_train``, and ``_condition_balanced_order`` sorts by
-    descending priority, so every condition bucket is deliberately reversed
-    relative to the split's storage order.
+    The P3 projection claim does not concern target-order construction.  Its
+    substitute deliberately reverses exact ``P_train`` so this suite still
+    proves that a valid ``pi_train`` prefix need not be a P_train subsequence.
     """
 
     manifest = _order_divergent_manifest(tmp_path)
@@ -590,18 +594,20 @@ def order_divergent_environment(tmp_path: Path):
         manifest, tmp_path, partition_policy=_neutral_policy()
     )
     policy = _order_divergent_policy()
-    baseline = mdstats.build_target_size_statistical_aggregate(
-        frame_authority, neutral_base, policy=policy
-    )
-    priority = {
-        uid: float(position)
-        for position, uid in enumerate(baseline.split.training_frame_uids)
-    }
+
+    def divergent_target_order_builder(population, split):
+        return substitute_target_order_build(
+            population,
+            split,
+            policy.candidate_sizes,
+            order=tuple(reversed(split.training_frame_uids)),
+        )
+
     aggregate = mdstats.build_target_size_statistical_aggregate(
         frame_authority,
         neutral_base,
         policy=policy,
-        training_priority_evidence=priority,
+        target_order_builder=divergent_target_order_builder,
     )
     frames, frame_data_by_run, index = _frame_arrays(tmp_path, manifest)
     common = build_target_size_common_preparation(

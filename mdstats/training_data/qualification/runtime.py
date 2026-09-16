@@ -478,7 +478,7 @@ class QualificationSession:
         be carried by the receipt rather than inferred from the bytes.
         """
 
-        from ..target_size_execution import artifact_publication_lock
+        from ..persistence import artifact_publication_lock
 
         identity = self.deployment_identity(member)
         cached = self._deployment_cache.get(identity)

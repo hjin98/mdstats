@@ -218,6 +218,9 @@ class CurrentTargetSizeAuthorities:
     frame_data_by_run: Mapping[str, Any]
     frame_array_index: Mapping[str, Any]
     frame_records: tuple[Mapping[str, Any], ...] = ()
+    #: Compact prepared record of the one target-order build the aggregate's
+    #: training order binds (absent only for retired v1 workspaces).
+    target_order: Any = None
 
     @property
     def components(self) -> dict[str, Any]:
@@ -232,6 +235,7 @@ class CurrentTargetSizeAuthorities:
             "feature_evidence": self.feature_evidence,
             "neutral_base": self.neutral_base,
             "split_exclusion": self.split_exclusion,
+            "target_order": self.target_order,
             "aggregate": self.aggregate,
             "common": self.common,
         }
@@ -375,11 +379,31 @@ def build_prepared_target_size_substrate(
         split_exclusion = build_neutral_split_exclusion_evidence(
             frame_authority, neutral_base
         )
+    policy = resolve_target_size_policy_from_config(cfg)
+    target_order_builds: list[Any] = []
+
+    def target_order_builder(population: Any, split: Any) -> Any:
+        with _authority_stage("P2 target-training order"):
+            build = _build_current_target_training_order(
+                cfg,
+                paths,
+                population=population,
+                split=split,
+                policy=policy,
+                raw_feature_catalog=feature_evidence.raw_features,
+                frame_catalog=frame_catalog,
+                frame_data_by_run=frame_data_by_run,
+                data4=data4,
+            )
+        target_order_builds.append(build)
+        return build
+
     with _authority_stage("P2 target-size aggregate"):
         aggregate = build_target_size_statistical_aggregate(
             frame_authority,
             neutral_base,
-            policy=resolve_target_size_policy_from_config(cfg),
+            policy=policy,
+            target_order_builder=target_order_builder,
         )
     with _authority_stage("P3 common preparation"):
         frame_array_index = build_frame_array_index(frame_catalog, frame_data_by_run)
@@ -407,6 +431,113 @@ def build_prepared_target_size_substrate(
         frame_data_by_run=frame_data_by_run,
         frame_array_index=frame_array_index,
         frame_records=frame_records,
+        target_order=target_order_builds[-1].preparation,
+    )
+
+
+def _build_current_target_training_order(
+    cfg: Mapping[str, Any],
+    paths: Any,
+    *,
+    population: Any,
+    split: Any,
+    policy: Any,
+    raw_feature_catalog: Any,
+    frame_catalog: Any,
+    frame_data_by_run: Mapping[str, Any],
+    data4: Any,
+) -> Any:
+    """Run the prepare-owned target-order chain on exact ``P_train``.
+
+    The universal structural selector input is built only when no published
+    coverage reference for the same identity exists, on exact ``P_train``,
+    requesting the complete frozen target-order structural family catalog, and
+    without atomic-environment materialization.  CPU width comes from the
+    campaign performance budget and is execution-only.
+    """
+
+    from dataclasses import replace as _replace
+
+    from ._campaign_cli_core import _performance_resources
+    from ._common import digest
+    from .campaign_prepared_generation import prepared_generation_root
+    from .phase_geometry_profiles import (
+        derive_phase_geometry_selection_plan,
+        universal_structural_policy_from_plan,
+    )
+    from .resources import build_stage_resource_scope
+    from .structural_selection import (
+        UniversalStructuralSelectionPolicy,
+        UniversalStructuralSelectionProvider,
+    )
+    from .target_order.coverage_reference import TargetCoveragePolicy
+    from .target_order.preparation import prepare_target_training_order
+
+    provider = UniversalStructuralSelectionProvider()
+    contracts = data4.material_profile_contracts
+    structural_policy = (
+        UniversalStructuralSelectionPolicy()
+        if contracts is None
+        else universal_structural_policy_from_plan(
+            derive_phase_geometry_selection_plan(contracts)
+        )
+    )
+    # The phase/geometry plan still supplies local-structure, group, event and
+    # aggregation semantics, but it cannot thin the frozen D2 target-order
+    # universal structural family catalog; no phase exemption exists there.
+    structural_policy = _replace(
+        structural_policy,
+        enabled_feature_families=TargetCoveragePolicy().required_structural_feature_families,
+        materialize_atomic_environments=False,
+    )
+    training_uids = tuple(sorted(split.training_frame_uids))
+    structural_identity = digest(
+        {
+            "schema": "mdstats.target-order-structural-input.v1",
+            "provider_id": provider.provider_id,
+            "provider_version": provider.provider_version,
+            "policy_digest": structural_policy.policy_digest,
+            "data4_bundle_digest": data4.content_digest,
+            "frame_catalog_digest": frame_catalog.content_digest,
+        }
+    )
+    resources = _performance_resources(cfg)
+    # One campaign resource owner, one root target-order scope.  Target-order
+    # stages are otherwise admitted on CPU accounting alone: COVREF, MVIDX and
+    # MVQUAL inherit their RAM budget through ``resource_scope``, so the scope
+    # the campaign already resolved has to reach the preparation owner.  The
+    # scope is execution-only and never enters a scientific identity; nested
+    # stage widths stay with the stages that own them.
+    target_order_scope = build_stage_resource_scope(
+        resources, stage_name="TARGET-ORDER"
+    )
+
+    def structural_catalog() -> Any:
+        return provider.build_catalog(
+            frame_catalog,
+            frame_data_by_run,
+            data4,
+            frame_uids=training_uids,
+            policy=structural_policy,
+            progress_callback=lambda message: print(
+                f"[target-order structural] {message}", flush=True
+            ),
+            resources=resources,
+        )
+
+    return prepare_target_training_order(
+        prepared_root=prepared_generation_root(paths),
+        population=population,
+        split=split,
+        training_order_policy=policy.training_order_policy,
+        hard_support_obligations=policy.hard_support_obligations,
+        configured_sizes=policy.candidate_sizes,
+        raw_feature_catalog=raw_feature_catalog,
+        structural_input_identity=structural_identity,
+        structural_catalog_factory=structural_catalog,
+        workers=max(1, int(resources.cpu_threads_budget)),
+        resource_scope=target_order_scope,
+        progress_callback=lambda message: print(f"[target-order] {message}", flush=True),
     )
 
 
@@ -475,6 +606,7 @@ def load_prepared_target_size_generation(
         frame_data_by_run=frame_data_by_run,
         frame_array_index=frame_array_index,
         frame_records=manifest.frame_records,
+        target_order=components["target_order"],
     )
     observed = authorities.identity
     for name, value in observed.items():
@@ -1343,7 +1475,7 @@ def _execute_candidate_cell(
         derive_active_boundary_requirements,
         recover_authenticated_boundary_progress,
     )
-    from .target_size_execution.persistence import artifact_publication_lock
+    from .persistence import artifact_publication_lock
 
     optimizer = _replace(screen.optimizer_policy, seed=int(optimizer_seed))
     trajectory = build_target_size_candidate_trajectory(

@@ -152,6 +152,9 @@ def _exported_candidate(tmp_path: Path, objective: TrainingObjectivePolicy):
         frame_authority,
         neutral_base,
         policy=p3a._order_divergent_policy(),
+        target_order_builder=p3a.substitute_target_order_builder(
+            p3a._order_divergent_policy()
+        ),
     )
     frames, frame_data_by_run, frame_array_index = p3a._frame_arrays(
         source_root, manifest

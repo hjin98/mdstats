@@ -64,6 +64,21 @@ def available_memory_bytes() -> int | None:
     return None if not values else min(values)
 
 
+def process_rss_bytes() -> int | None:
+    """Current resident set size of this process, or ``None`` if unobservable.
+
+    A stage RAM budget is derived from *available* memory, while process RSS
+    includes everything already resident before the stage was entered.  The two
+    are not comparable, so resource evidence must record both.
+    """
+
+    try:
+        fields = Path("/proc/self/statm").read_text(encoding="ascii").split()
+        return int(fields[1]) * int(os.sysconf("SC_PAGE_SIZE"))
+    except (OSError, ValueError, IndexError, AttributeError):
+        return None
+
+
 def _cgroup_cpu_quota_threads() -> int | None:
     try:
         text = Path("/sys/fs/cgroup/cpu.max").read_text(encoding="utf-8").strip()

@@ -203,8 +203,18 @@ substrate:
 source/frame/label authority
   -> protected statistical relations
   -> one P_train/M3 split and pi_train/pi_eval
+  -> TargetCoverageReference + canonical target-order obligations
+  -> shared FEAS1/NEIGHBOR1 -> MVIDX
+  -> MVSEL2 -> configured REPAIR2 -> complete pi_train
+  -> independent MVQUAL -> compact P2 projection
   -> one common target-size preparation
 ```
+
+This is one prepare-owned chain on exact `P_train`: MVIDX is the sparse
+representation of the shared NEIGHBOR1 relation, MVSEL2/REPAIR2 construct one
+complete order, and MVQUAL independently verifies its configured prefixes.
+Manual and automatic target-size selection consume the authenticated compact
+P2 projection; they do not rebuild the selector or map its large artifacts.
 
 `prepare` does not select a target size, train a candidate, rank a checkpoint,
 or publish production. The configured ladder is an experiment definition, not
