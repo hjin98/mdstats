@@ -1,0 +1,169 @@
+---
+kind: abstraction-concretization-change-plan
+protocol_version: 6.4.0
+status: active
+workplan_id: MLFF-D1-D2-SSDP64-AXIOMATIC-FORMALIZATION-1
+basis_commit: cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824
+highest_domain: D1
+---
+
+# MLFF D1/D2 SSDP 6.4 axiomatic formalization workplan
+
+## Background and terminology
+
+This cycle upgrades the current machine-learned force-field (MLFF) D1/D2 authority representation from the accepted Protocol-6.3 narrative contract style to the Protocol-6.4 formal-first style while preserving accepted scientific and numerical meaning unless an independently reviewed semantic defect is found.
+
+An **axiom** here is a primitive governing proposition accepted by the D1 owner for the bounded MLFF method. A **definition** introduces an object without asserting empirical truth. A **derived invariant** follows from definitions and axioms. A **parameter family** distinguishes a semantic family from a concrete parameter binding and from a default. A **semantic dependency edge** `A USES_DEFINITION -> B` means that materially changing definition `B` can change the denotation, domain, validity, or interpretation of `A`.
+
+This work does not create a universal ontology, a fifth authority layer, or a machine checker. The dependency record is a bounded review/impact aid under SSDP 6.4.
+
+## 1. Outcome and authority
+
+- Protected outcome: preserve the accepted mdstats MLFF scientific experiment and numerical method while removing definition-order ambiguity, hidden assumptions, overloaded prose, and renderer-invalid mathematical notation.
+- Highest potentially affected domain: D1 scientific formulation.
+- Current owners: `docs/methods/mlff_scientific_method.md`, `docs/methods/mlff_target_training_order_scientific_method.md`, `docs/methods/mlff_numerical_algorithmic_method.md`, and `docs/methods/mlff_target_training_order_numerical_algorithmic_method.md`.
+- Accepted basis: repository `hjin98/mdstats` at `cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824`.
+- Protocol owner: SSDP 6.4.0, accepted recovery `74bc572ef516cae417437a2027eeff52a2e25c15`.
+- Proposed authority state: D1/D2 candidate only until fresh independent D1/D2 review passes and the stakeholder ratifies the exact candidate. No file in this workplan may self-promote to accepted-current authority.
+
+## 2. Governing contract
+
+### Invariants
+
+1. Preserve every accepted P1/P2/P3 scientific and numerical invariant not explicitly reopened by this workplan.
+2. Preserve the scoped target-order authority split: the general D1/D2 papers delegate `TargetTrainingOrder` / `pi_train` construction and qualification to the scoped target-order D1/D2 papers.
+3. Preserve the post-selection restoration and configurable foundation role-threshold semantics ratified on 2026-09-14/15.
+4. Preserve MVSEL2/REPAIR2/MVQUAL scientific and numerical meaning, including exact `P_train`, one complete nested master order, canonical obligations, independent qualification, and execution invariance.
+5. Definitions do not establish empirical adequacy, convergence, optimality, or authority. Claims and warrant remain separate.
+6. Parameter families distinguish family, instance, and default, especially `tau_cv`, `theta_cv`, `tau_prod`, target-size ladder values, tolerances, fold count, monitor size, Huber thresholds, and selector thresholds.
+7. Direct `USES_DEFINITION` edges are recorded only for material semantic prerequisites; transitive closure is derived, not hand-duplicated.
+8. Every mathematical symbol used in a normative formula is defined before or at first substantive use with domain, units, and failure/undefined conditions where material.
+9. Renderer compatibility is part of representation quality. Current MLFF authority text must not use unsupported `\operatorname{...}` or raw `\#` cardinality notation in math where the current renderer rejects them.
+
+### Cycle-scoped decisions
+
+- Formal object identifiers use stable `D1.*` and `D2.*` IDs local to the candidate authority family.
+- Axioms are grouped by semantic owner rather than mirroring implementation stages.
+- The dependency trace is human-readable Markdown, not a new runtime artifact.
+- Renderer-safe cardinality uses `|A|`; arithmetic means are written as explicit sums divided by cardinality.
+
+### Delegated space
+
+D3/D4 remain free to choose persistence, sparse layout, queues, threading, GPU/CPU realization, caching, restart encoding, and equivalent execution strategies provided D1/D2 semantics are unchanged.
+
+### Non-goals
+
+- No redesign of target-size selection, replay, checkpointing, cross-validation, or training objective.
+- No new threshold, tolerance, family, evidence role, or target-size candidate.
+- No reinterpretation of historical evidence under new thresholds.
+- No global cleanup of unrelated repository `\operatorname{...}` usage outside the MLFF D1/D2 authority family.
+- No GPU qualification in this cycle; existing project policy defers GPU qualification to final release qualification.
+
+## 3. Adequacy and affected surface
+
+The candidate must preserve and formalize the following semantic chain:
+
+```text
+source/frame/label conventions
+ -> protected statistical relations and evidence roles
+ -> U_size
+ -> exact P_train + M3 split
+ -> scoped target-order D1
+ -> scoped target-order D2
+ -> exact T_N prefixes + MVQUAL admission
+ -> P3 training/evaluation/reducer experiment
+ -> operator-frozen post-selection design
+ -> foundation/scratch post-selection method
+ -> common monitor + CV role policy
+ -> fresh production role policy
+ -> downstream qualification
+```
+
+Material descendants to inspect after candidate stabilization include current architecture manual sections and current MLFF D4 specifications that cite formulas or semantic definitions changed in wording. Representation-only wording changes do not make unaffected implementation evidence stale.
+
+## 4. Evidence and falsification
+
+Reverse-semantic verification questions:
+
+- Can every normative MLFF D1/D2 object be reconstructed without hidden chat or historical workplans?
+- Does each scoped D2 definition concretize exactly one D1 owner without strengthening or weakening it?
+- Does changing a parameter default leave the family semantics unchanged where the current authority says it should?
+- Can every direct material prerequisite be followed by `USES_DEFINITION` without circular claim warrant?
+- Are all formulas well-defined over their stated domains and dimensionally interpretable?
+- Do renderer-safe rewrites produce the identical mathematical quantity?
+
+Required falsification includes:
+
+1. search the candidate MLFF D1/D2 family for unsupported `\operatorname` and raw `\#` math syntax;
+2. compare every existing accepted equation and decision predicate against the candidate for semantic equality;
+3. challenge each definition for undefined empty-set, zero-denominator, missing-provider, rank-deficient, or non-finite regimes;
+4. challenge each parameterized family for hidden default-as-invariant coupling;
+5. challenge D1/D2 ownership boundaries for duplicate authority;
+6. inspect downstream D3/D4 references for wording that would become semantically false under the formalized definitions;
+7. verify no historical artifact is promoted into current authority merely because it supplied reconstruction evidence.
+
+## 5. Concretization sequence
+
+### A. D1 formalization
+
+Create a complete candidate D1 authority representation in dependency order:
+
+1. foundational configuration/label/evidence objects;
+2. protected relations and evidence roles;
+3. target-size experiment objects;
+4. target-order scientific axioms and definitions;
+5. post-selection adaptation, monitor, CV, production, and qualification objects;
+6. validity, uncertainty, falsification, and D1->D2 handoff.
+
+### B. D2 formalization
+
+Create a complete candidate D2 representation in dependency order:
+
+1. numeric domains/precision/order conventions;
+2. exact split/order/prefix objects;
+3. target-order metrics, coverage, obligations, selector, repair, and qualification operators;
+4. atomic-reference fit and identifiability;
+5. objective/loss definitions;
+6. P3 optimizer/evaluation/reducer algorithms;
+7. P5 exposure/monitor/CV/checkpoint algorithms;
+8. error/conditioning/restart/equivalence semantics;
+9. D2->D3 handoff.
+
+### C. Semantic dependency trace
+
+Record direct `USES_DEFINITION` edges for every material D1/D2 object whose prerequisite meaning can change its denotation or validity. The trace declares its bounded scope as the four MLFF method papers and remains non-authoritative.
+
+### D. Rendering repair
+
+Replace renderer-invalid notation in the scoped D2 formulae with mathematically equivalent supported notation. Search all four MLFF D1/D2 current/candidate files for the same classes of defect.
+
+### E. Independent review and ratification
+
+A fresh reviewer must compare the exact candidate against accepted `cb07d683...`, the accepted historical D1/D2 reconstruction/promotions, and current implementation/architecture evidence. PASS is required before stakeholder ratification and canonical promotion.
+
+## 6. Reopen / simplification / human triggers
+
+Reopen D1 if formalization reveals a scientific object whose accepted meaning is genuinely ambiguous or contradictory. Reopen D2 if two materially different numerical algorithms satisfy the current prose but yield different accepted outputs. Do not repair either by adding implementation wrappers.
+
+Human ratification is required for any semantic change, including newly explicit assumptions if they exclude a regime previously admissible, changed threshold/default ownership, changed evidence-role interpretation, or changed selector/qualification meaning.
+
+## 7. Impact and history
+
+If the candidate is accepted, record a concise semantic-evolution entry: Protocol-6.4 formalization made prior implicit dependencies and parameter-family semantics explicit without changing accepted scientific/numerical behavior, plus any independently reviewed semantic corrections if discovered.
+
+Unaffected historical reviews, tests, and observations remain valid when their governed claim and parameter regime are unchanged. Renderer-only changes do not stale numerical evidence.
+
+## 8. Acceptance and handoff
+
+Acceptance requires all of the following:
+
+- complete D1 and D2 candidate documents exist and are internally definition-closed for their declared competent reader;
+- direct material `USES_DEFINITION` edges are recoverable and acyclic after composite recursive groups are condensed;
+- no material first-use definition gap remains;
+- family/instance/default semantics are explicit for material parameterized objects;
+- formulas are renderer-safe in the four MLFF authority files;
+- no accepted 6.3 invariant is lost or silently strengthened;
+- fresh independent D1/D2 review returns PASS;
+- stakeholder ratifies the exact reviewed candidate;
+- canonical papers are promoted/reconciled only after that ratification;
+- affected D3/D4 documentation is reconciled for terminology/locators without inventing a new software mechanism.
