@@ -14,7 +14,9 @@ d4_implementation_commit: af666839188d62d7cd86bbd341c523f49f045840
 d4_r11_repair_commit: dd96ede2b24540977ee0bb280764907ea258e356
 d4_r11_evidence_candidate: 029b274474c1adc3b4ea0021a82abf6a5de8c27d
 d4_r11_independent_rereview_verdict: NO-PASS
-current_gate: D4_R12_PERFORMANCE_AND_EVIDENCE_REPAIR_REQUIRED
+d4_r12_repair_commit: 9c41f44b
+d4_r12_evidence_record: workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R12_D4_CLOSURE_EVIDENCE.md
+current_gate: D4_R12_IMPLEMENTED_AWAITING_INDEPENDENT_REREVIEW
 d4_authorized: true
 ---
 
@@ -32,12 +34,12 @@ D4 product implementation:   COMPLETE / INDEPENDENT REVIEW NO-PASS
 D4 integration audit:        NO-PASS / REVISION 10 COMPLETE
 D4 correctness repair:       REVISION 11 / IMPLEMENTED
 R11 independent re-review:   NO-PASS / CORRECTNESS BLOCKERS CLOSED / PERFORMANCE-EVIDENCE BLOCKERS REMAIN
-D4 current repair:           REVISION 12 / REQUIRED / ACTIVE
+D4 current repair:           REVISION 12 / IMPLEMENTED / AWAITING INDEPENDENT RE-REVIEW
 ```
 
 The accepted scoped D1/D2/D3 authority remains current. Revision 11 successfully repaired the six prior correctness/ownership blockers. Fresh independent assembled-candidate review of `029b274474c1adc3b4ea0021a82abf6a5de8c27d` found no basis to reopen those repairs or upstream scientific/numerical authority.
 
-Revision 12 is now the active implementation entry point for the remaining D4 current-envelope closure.
+The Revision-12 D4 current-envelope closure is implemented at `9c41f44b`; the active gate is now a fresh independent assembled-candidate re-review.
 
 ## Current accepted authority
 
@@ -59,7 +61,19 @@ Preserve without redesign unless contradictory evidence appears:
 5. Scoped/general D1/D2 documentation reconciliation and the targeted static closure batch.
 6. Prepared-generation/currentness ownership and downstream no-scientific-rebuild routing.
 
-## Remaining blocking D4 closure
+## Revision 12 D4 closure - implemented, awaiting independent re-review
+
+Implementation commit `9c41f44b`; evidence record
+`MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R12_D4_CLOSURE_EVIDENCE.md`. The workplan remains **ACTIVE / D4 NO-PASS** until a fresh independent assembled-candidate review passes its nine Revision-12 section 8 conditions; it must not be closed or archived before then.
+
+1. **B12-1 REPAIR2 execution serialization - repaired at the owner.** The Python-thread candidate-at-a-time proposal evaluator is removed and replaced by exact batched evaluation over the existing MVIDX forward CSR through the already-qualified native row primitive. Representative current scale: REPAIR2 **6,156 s -> 99 s**, 74% -> ~3% of target-order wall, effective cores 1.49 -> 17.2, whole `prepare` 2 h 26 m -> **32 m**, and the published build identity is **`b8d75b6a1857`, byte-identical to R11**.
+2. **B12-2 restart cost - retain the current topology.** Post-`N_max` REPAIR2 replay **6,610 s -> 100 s** (91.5% -> 14.8% of the resumed `prepare`). No new durable repair state; no D3 Challenge raised.
+3. **B12-3 RAM budget - resolved, no violation, closed without code change.** Stage incremental RSS **-200 MiB**, queue peak accounted **132 MiB**, zero backpressure. Residual finding reported: target-order stages receive no `resource_scope`, so they carry no RAM admission contract - offered to the resource owner as a separate bounded question.
+4. **B12-4 PEM/HAS - recorded** against accepted base `e72090e21cec5311ce87745b03603f8783cd15a7` and its PEM (sha256 `7b0d342b3be3b2773bc2012fde74af2ddb89bcd6106885aae2ace3d217ce5945`, no validated same-branch overlay). No PEM mutation proposed.
+
+Two owners were removed rather than added: the REPAIR2 Python worker queue, and a second execution-width authority (`prepare` now feeds the metered native preflight width to both MVSEL2 and REPAIR2).
+
+## Superseded Revision 12 entry criteria
 
 Revision 12 owns four bounded surfaces:
 
@@ -80,10 +94,10 @@ Final production-scale GPU qualification remains deferred to the final release p
 
 Start at:
 
-`workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_12.md`
+`workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R12_D4_CLOSURE_EVIDENCE.md`
 
 on branch:
 
 `design/mlff-pi-train-fps-diversity-restoration`
 
-Implement the bounded Revision-12 D4 closure, record paired representative evidence, then request another fresh independent assembled-candidate review. Close/archive only after that review passes.
+The bounded Revision-12 D4 closure is implemented and its paired representative evidence is recorded. The next step is a **fresh independent assembled-candidate re-review** against the nine conditions in Revision 12 section 8. Close/archive only after that review passes.
