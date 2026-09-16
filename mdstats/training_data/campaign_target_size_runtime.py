@@ -465,6 +465,7 @@ def _build_current_target_training_order(
         derive_phase_geometry_selection_plan,
         universal_structural_policy_from_plan,
     )
+    from .resources import build_stage_resource_scope
     from .structural_selection import (
         UniversalStructuralSelectionPolicy,
         UniversalStructuralSelectionProvider,
@@ -501,6 +502,15 @@ def _build_current_target_training_order(
         }
     )
     resources = _performance_resources(cfg)
+    # One campaign resource owner, one root target-order scope.  Target-order
+    # stages are otherwise admitted on CPU accounting alone: COVREF, MVIDX and
+    # MVQUAL inherit their RAM budget through ``resource_scope``, so the scope
+    # the campaign already resolved has to reach the preparation owner.  The
+    # scope is execution-only and never enters a scientific identity; nested
+    # stage widths stay with the stages that own them.
+    target_order_scope = build_stage_resource_scope(
+        resources, stage_name="TARGET-ORDER"
+    )
 
     def structural_catalog() -> Any:
         return provider.build_catalog(
@@ -526,6 +536,7 @@ def _build_current_target_training_order(
         structural_input_identity=structural_identity,
         structural_catalog_factory=structural_catalog,
         workers=max(1, int(resources.cpu_threads_budget)),
+        resource_scope=target_order_scope,
         progress_callback=lambda message: print(f"[target-order] {message}", flush=True),
     )
 

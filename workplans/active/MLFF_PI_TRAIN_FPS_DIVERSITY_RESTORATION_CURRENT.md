@@ -17,7 +17,8 @@ d4_r11_independent_rereview_verdict: NO-PASS
 d4_r12_repair_commit: 9c41f44be32dd0e4f3869e6e48be4e85b9effce9
 d4_r12_evidence_candidate: c6fbe03c92f23a79123031922f338966e9c76c6b
 d4_r12_independent_rereview_verdict: NO-PASS
-current_gate: D4_R13_RESOURCE_AND_HAS_CLOSURE_REQUIRED
+d4_r13_repair_commit: PENDING_COMMIT
+current_gate: D4_R13_IMPLEMENTED_INDEPENDENT_REVIEW_REQUIRED
 d4_authorized: true
 ---
 
@@ -37,7 +38,7 @@ D4 correctness repair:       REVISION 11 / IMPLEMENTED
 R11 independent re-review:   NO-PASS / CORRECTNESS BLOCKERS CLOSED
 D4 performance repair:       REVISION 12 / IMPLEMENTED
 R12 independent re-review:   NO-PASS / PERFORMANCE CLOSED / RESOURCE+HAS CLOSURE REMAIN
-D4 current repair:           REVISION 13 / REQUIRED / ACTIVE
+D4 current repair:           REVISION 13 / IMPLEMENTED / INDEPENDENT REVIEW REQUIRED
 ```
 
 The accepted scoped D1/D2/D3 authority remains current. Revision 11 closed the six correctness/ownership blockers. Revision 12 successfully closed the material REPAIR2 execution bottleneck and post-`N_max` restart-cost question without changing D2 semantics or adding persistent repair state.
@@ -62,7 +63,27 @@ Revision 13 is the active bounded D4 closure for two remaining issues discovered
 4. Post-`N_max` REPAIR2 replay approximately 6,610 s -> 100 s and no longer dominates resumed prepare; no new repair persistence owner.
 5. Every R11 correctness/ownership closure remains intact.
 
-## Remaining blocking D4 closure
+## Revision 13 implementation status
+
+Both blocking findings are implemented and evidenced in
+`workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R13_D4_CLOSURE_EVIDENCE.md`.
+
+- **B13-1 closed.** `_build_current_target_training_order()` now builds one root
+  `TARGET-ORDER` `StageResourceScope` from the existing `_performance_resources(cfg)`
+  snapshot and passes it as `resource_scope`. Representative LTA telemetry reports
+  `ram_budget=41431436492` and `queue_memory_budget_bytes=41431436492` where R12
+  reported `None`. Actual in-stage COVREF peak RSS was measured by an external
+  `/proc` sampler at 10 Hz: entry 4.98 GiB, peak 5.15 GiB, incremental peak
+  +172.4 MiB against a 38.6 GiB stage budget, with `VmHWM` unchanged across the
+  stage. The published build identity remains `b8d75b6a1857` with 49 swaps.
+  No resource manager, admission database, memory fraction or wrapper was added.
+- **B13-2 closed.** The HAS is recorded in the canonical Protocol 6.3
+  `pem_basis` + `has` interface with `APPLICABLE`/`NOT_APPLICABLE` dispositions
+  against the unchanged accepted basis `e72090e2`. No PEM mutation is warranted.
+
+The original findings are retained below for review traceability.
+
+## Resolved blocking D4 closure
 
 ### B13-1 — campaign RAM budget is not routed into target-order preparation
 

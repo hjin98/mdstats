@@ -211,6 +211,8 @@ def build_membership_qualification(
     if width == 1:
         by_family = [_progressive_family(family, indices, threshold, query_workers=query_workers) for family in families]
     else:
+        # An inherited scope supplies the CPU/RAM budget; MVQUAL still owns and
+        # applies the native-thread limits its own lanes run under.
         owned = resource_scope is None
         scope = StageResourceScope(
             stage_name="TARGET-ORDER-MVQUAL" if owned else f"{resource_scope.stage_name}/mvqual",
@@ -226,7 +228,6 @@ def build_membership_qualification(
             max_inflight_tasks=width,
             max_completed_tasks=2 * width,
             thread_name_prefix="mdstats-mvqual",
-            manage_resource_scope=owned,
         ) as queue:
             position = 0
             while len(results) < len(families):

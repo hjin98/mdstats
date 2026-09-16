@@ -498,6 +498,9 @@ def build_target_coverage_sparse_index(
         for position in range(len(indices)):
             indices[position] = invert(position)
     else:
+        # This queue always describes and applies its own stage nesting: an
+        # inherited scope supplies the CPU/RAM budget, not the native-thread
+        # limits the MVIDX lanes run under.
         scope = resource_scope
         if scope is None or int(scope.python_workers) != width:
             base = resource_scope
@@ -516,7 +519,6 @@ def build_target_coverage_sparse_index(
             max_inflight_tasks=max(1, 2 * width),
             max_completed_tasks=max(1, 2 * width),
             thread_name_prefix="mdstats-mvidx",
-            manage_resource_scope=resource_scope is None,
         ) as queue:
             next_submit = 0
             done = 0

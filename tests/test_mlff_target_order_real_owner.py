@@ -1426,6 +1426,7 @@ def test_real_owner_prepare_build_reuse_crash_resume_and_scratch_cleanup(
 
 def _prepare(prepared_root: Path, fixture, *, sizes=_SIZES, **kwargs):
     kwargs.setdefault("structural_catalog_factory", lambda: fixture.structural_catalog)
+    kwargs.setdefault("workers", 1)
     return prepare_target_training_order(
         prepared_root=prepared_root,
         population=fixture.population,
@@ -1435,7 +1436,6 @@ def _prepare(prepared_root: Path, fixture, *, sizes=_SIZES, **kwargs):
         configured_sizes=sizes,
         raw_feature_catalog=fixture.raw_features,
         structural_input_identity="real-owner-prepare-fixture.v1",
-        workers=1,
         **kwargs,
     )
 
@@ -2285,3 +2285,251 @@ def test_real_owner_repair2_has_no_python_worker_queue_left_in_the_proposal_path
     # Exactly one execution primitive, reused from the qualified MVSEL2 backend.
     assert source.count("score_family_candidate_batch(") == 1
     assert "_best_proposal" in source and "def _proposal(" in source
+
+
+# --- Revision 13 falsification ------------------------------------------------
+
+
+def _snapshot(*, threads: int, budget: int, ram: int | None):
+    """One controlled campaign resource snapshot (the real dataclass)."""
+
+    from mdstats.training_data.resources import (
+        GpuResourceSnapshot,
+        SystemResourceSnapshot,
+    )
+
+    return SystemResourceSnapshot(
+        cpu_threads_available=threads,
+        cpu_fraction=0.9,
+        cpu_threads_budget=budget,
+        ram_available_bytes=None if ram is None else ram * 2,
+        ram_fraction=0.8,
+        ram_budget_bytes=ram,
+        gpu_memory_fraction=0.9,
+        gpu=GpuResourceSnapshot(False, 0, None, None, None, None, None, "test"),
+    )
+
+
+def _production_target_order(monkeypatch, tmp_path: Path, fixture, snapshot, *, sizes=_SIZES):
+    """Drive the production caller with the real preparation owner beneath it."""
+
+    from mdstats.training_data import _campaign_cli_core as cli
+    from mdstats.training_data import campaign_target_size_runtime as runtime
+    from mdstats.training_data.structural_selection import (
+        UniversalStructuralSelectionProvider,
+    )
+
+    monkeypatch.setattr(cli, "_performance_resources", lambda cfg: snapshot)
+    monkeypatch.setattr(
+        UniversalStructuralSelectionProvider,
+        "build_catalog",
+        lambda self, *args, **kwargs: fixture.structural_catalog,
+    )
+    return runtime._build_current_target_training_order(
+        {"model": {"device": "cpu"}},
+        SimpleNamespace(internal=tmp_path / "internal"),
+        population=fixture.population,
+        split=fixture.split,
+        policy=SimpleNamespace(
+            training_order_policy=_POLICY_NAME,
+            hard_support_obligations=(),
+            candidate_sizes=sizes,
+        ),
+        raw_feature_catalog=fixture.raw_features,
+        frame_catalog=SimpleNamespace(content_digest=digest({"frame-catalog": 13})),
+        frame_data_by_run={},
+        data4=SimpleNamespace(
+            material_profile_contracts=None, content_digest=digest({"data4": 13})
+        ),
+    )
+
+
+def test_real_owner_r13_campaign_ram_budget_reaches_target_order_preparation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """B13-1: the campaign resource snapshot reaches the existing scope interface.
+
+    R12 telemetry reported ``ram_budget_bytes=None`` for every target-order
+    stage because the production caller passed only ``workers``.  The campaign
+    resource owner is unchanged; the missing edge into it is what is proven.
+    """
+
+    from mdstats.training_data.target_order import preparation
+
+    snapshot = _snapshot(threads=12, budget=7, ram=9 * 1024 ** 3)
+    captured: dict[str, object] = {}
+
+    def capture(**kwargs):
+        captured.update(kwargs)
+        return "prepared"
+
+    monkeypatch.setattr(preparation, "prepare_target_training_order", capture)
+    assert (
+        _production_target_order(monkeypatch, tmp_path, _prepare_fixture(), snapshot)
+        == "prepared"
+    )
+
+    scope = captured["resource_scope"]
+    assert scope is not None
+    # The same snapshot, not a second resource policy.
+    assert scope.cpu_threads_available == snapshot.cpu_threads_available
+    assert scope.cpu_threads_budget == snapshot.cpu_threads_budget
+    assert scope.ram_budget_bytes == snapshot.ram_budget_bytes
+    # The work-width ceiling is still the campaign CPU budget alone.
+    assert captured["workers"] == snapshot.cpu_threads_budget
+    # The root scope claims no nested width of its own; stages own their widths.
+    assert scope.python_workers == 1
+
+    # An unresolvable host RAM budget stays unresolvable rather than invented.
+    captured.clear()
+    _production_target_order(
+        monkeypatch,
+        tmp_path / "unbounded",
+        _prepare_fixture(),
+        _snapshot(threads=12, budget=7, ram=None),
+    )
+    assert captured["resource_scope"].ram_budget_bytes is None
+
+
+def _recording_queue(monkeypatch, module):
+    """Record the scope each real stage queue is entered with, nothing else."""
+
+    from mdstats.training_data.work_queue import DeterministicWorkQueue
+
+    seen: list = []
+
+    class Recording(DeterministicWorkQueue):
+        def __init__(self, scope, **kwargs):
+            self._record = [scope, kwargs.get("manage_resource_scope", True), None]
+            seen.append(self._record)
+            super().__init__(scope, **kwargs)
+
+        def __exit__(self, *args):
+            self._record[2] = self.snapshot()
+            return super().__exit__(*args)
+
+    monkeypatch.setattr(module, "DeterministicWorkQueue", Recording)
+    return seen
+
+
+def test_real_owner_r13_covref_and_mvidx_inherit_the_finite_ram_budget(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """B13-1 §2.4: COVREF and nested MVIDX inherit the budget, not ``None``."""
+
+    from mdstats.training_data.target_order import qualification, sparse_index
+
+    mvidx_scopes = _recording_queue(monkeypatch, sparse_index)
+    mvqual_scopes = _recording_queue(monkeypatch, qualification)
+
+    snapshot = _snapshot(threads=8, budget=4, ram=6 * 1024 ** 3)
+    lines: list[str] = []
+    monkeypatch.setattr("builtins.print", lambda *args, **kwargs: lines.append(" ".join(str(a) for a in args)))
+    build = _production_target_order(monkeypatch, tmp_path, _prepare_fixture(), snapshot)
+    monkeypatch.undo()
+
+    covref = [line for line in lines if "execution=covref-par1" in line]
+    assert len(covref) == 1
+    assert f"ram_budget={snapshot.ram_budget_bytes}" in covref[0]
+    assert f"queue_memory_budget_bytes={snapshot.ram_budget_bytes}" in covref[0]
+    assert "queue_memory_budget_bytes=None" not in covref[0]
+
+    for seen, name in ((mvidx_scopes, "MVIDX"), (mvqual_scopes, "MVQUAL")):
+        assert seen, name
+        for scope, manages, queue_snapshot in seen:
+            assert scope.ram_budget_bytes == snapshot.ram_budget_bytes, name
+            assert scope.cpu_threads_budget == snapshot.cpu_threads_budget, name
+            assert scope.cpu_threads_available == snapshot.cpu_threads_available, name
+            # An inherited budget must not disown the stage's native limits.
+            assert manages is True, name
+            # A non-constraining budget admits exactly as an absent one did.
+            assert queue_snapshot is not None, name
+            assert queue_snapshot.memory_budget_bytes == snapshot.ram_budget_bytes, name
+            assert queue_snapshot.memory_backpressure_events == 0, name
+    assert build.preparation.build_identity
+
+
+def test_real_owner_r13_finite_budget_does_not_change_any_scientific_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Gate 6: restored resource routing is execution-only.
+
+    The same exact ``P_train`` is prepared with an unbounded scope and with a
+    non-constraining finite budget.  Every published identity, the REPAIR2
+    execution width and the repair plan itself must be unchanged.
+    """
+
+    from mdstats.training_data.resources import build_stage_resource_scope
+
+    fixture = _prepare_fixture()
+    snapshot = _snapshot(threads=8, budget=4, ram=6 * 1024 ** 3)
+
+    def run(root: Path, scope) -> tuple[SimpleNamespace, list[str]]:
+        lines: list[str] = []
+        build = _prepare(
+            root,
+            fixture,
+            workers=4,
+            resource_scope=scope,
+            progress_callback=lines.append,
+        )
+        return build, lines
+
+    unbounded, unbounded_lines = run(tmp_path / "unbounded", None)
+    bounded, bounded_lines = run(
+        tmp_path / "bounded",
+        build_stage_resource_scope(snapshot, stage_name="TARGET-ORDER"),
+    )
+
+    assert unbounded.preparation.content_digest == bounded.preparation.content_digest
+    assert unbounded.preparation.build_identity == bounded.preparation.build_identity
+    assert unbounded.repair_plan.content_digest == bounded.repair_plan.content_digest
+    assert unbounded.repair_plan.total_swaps == bounded.repair_plan.total_swaps
+    assert unbounded.selection_plan.content_digest == bounded.selection_plan.content_digest
+    assert unbounded.qualification.content_digest == bounded.qualification.content_digest
+    assert unbounded.frame_uids == bounded.frame_uids
+
+    def stage(lines: list[str], prefix: str) -> str:
+        found = [line for line in lines if line.startswith(prefix)]
+        assert len(found) == 1, (prefix, found)
+        return found[0]
+
+    # R12's one metered selector/repair execution-width decision is untouched.
+    # The preflight decision itself is a wall-clock measurement and is not
+    # reproducible across runs (the representative substrate has chosen 16 and
+    # 28 on identical inputs), so the falsifiable claim is not that two runs
+    # agree: it is that a non-constraining RAM budget never caps REPAIR2 below
+    # the width its own preflight published.
+    def widths(lines: list[str]) -> tuple[str, str]:
+        preflight = stage(lines, "stage=MVSEL2-preflight").split("effective_workers=")[1]
+        repair = stage(lines, "stage=REPAIR2; status=start").split("width=")[1]
+        return preflight.strip(), repair.strip()
+
+    for lines, name in ((unbounded_lines, "unbounded"), (bounded_lines, "bounded")):
+        preflight, repair = widths(lines)
+        assert repair == preflight, (name, preflight, repair)
+    # COVREF content is identical between serial and block-parallel execution
+    # under the finite budget as well.
+    serial, _ = run(tmp_path / "serial", None)
+    assert serial.preparation.target_coverage_reference_digest == (
+        bounded.preparation.target_coverage_reference_digest
+    )
+
+
+def test_real_owner_r13_a_small_finite_budget_reaches_queue_admission(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """B13-1 §2.4: admission ownership is real, proven without host exhaustion."""
+
+    from mdstats.training_data.work_queue import DeterministicWorkQueueMemoryError
+
+    fixture = _prepare_fixture()
+    # Far below one COVREF radius block estimate; the deterministic queue owns
+    # the refusal, so no target-order artifact is ever published.
+    with pytest.raises(DeterministicWorkQueueMemoryError, match="stage RAM budget"):
+        _production_target_order(
+            monkeypatch, tmp_path, fixture, _snapshot(threads=8, budget=4, ram=4096)
+        )
+    target_root = tmp_path / "internal" / "prepared" / "target-order"
+    for stage in ("reference", "geometry", "mvidx", "builds"):
+        assert not tuple((target_root / stage).glob("[!.]*")), stage
