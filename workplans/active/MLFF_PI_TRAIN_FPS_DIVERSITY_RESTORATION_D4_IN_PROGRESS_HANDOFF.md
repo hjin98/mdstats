@@ -1,5 +1,14 @@
 # D4 in-progress handoff: MLFF `pi_train` multi-view restoration
 
+> **Superseded for the current cycle (2026-09-15).** The Revision 9/10 review found this
+> implementation NO-PASS. The Revision 11 repair is implemented at commit `dd96ede2`;
+> its evidence, including the reconciled dispositions of the eight static failures listed
+> in item 8 below and the representative current-scale performance record that item 9
+> could not supply, is in
+> `MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R11_D4_REPAIR_EVIDENCE.md`. Items 2
+> (REPAIR2 frontier shortcut) and 8 are now closed by that repair; the rest of this
+> document remains historical implementation provenance.
+
 Status: **D4 implementation complete, uncommitted working tree, awaiting fresh independent D4 review** on branch
 `design/mlff-pi-train-fps-diversity-restoration` (start head `188089867d3e8378f0550d0299eb1ef5bb2b6007`).
 The continuation preserved the inherited work and added no commit. Nothing here is independent review or

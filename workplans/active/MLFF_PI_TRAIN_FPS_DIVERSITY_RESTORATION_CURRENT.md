@@ -11,11 +11,12 @@ r3_rereview_commit: d575feb36f80f1d8e6abe434005237b410830163
 canonical_d3_promotion_commit: 3789e11ed9d652aff29cd61dc3158556f27e4644
 d4_authorization_commit: bd3b37832ced3bbe28162592ac4630082fb8c881
 d4_implementation_commit: af666839188d62d7cd86bbd341c523f49f045840
+d4_r11_repair_commit: dd96ede2
 d4_reviewed_assembled_candidate: c76a53476596137aa34ec47bb68b7d1ab4bfe706
 integration_audit_commit: 7a0cb21aaa368ac45b41af98e5df9d8e512e4c9d
 r3_rereview_verdict: PASS
 d4_review_verdict: NO-PASS
-current_gate: D4_REPAIR_IMPLEMENTATION_READY
+current_gate: D4_REPAIR_IMPLEMENTED_AWAITING_INDEPENDENT_REREVIEW
 d4_authorized: true
 ---
 
@@ -32,7 +33,7 @@ Canonical D3 promotion:      PASS / PROMOTED / CURRENT
 D4 product implementation:   COMPLETE / INDEPENDENT REVIEW NO-PASS
 D4 integration audit:        NO-PASS / REVISION 10 COMPLETE
 D4 repair specification:     REVISION 11 / IMPLEMENTATION READY
-D4 repair:                    REQUIRED / ACTIVE
+D4 repair:                    IMPLEMENTED / AWAITING FRESH INDEPENDENT REVIEW
 ```
 
 The accepted scoped D1/D2/D3 authority remains current. Revision 11 composes Revisions 9 and 10 and is the implementation entry point for the bounded D4 repair. The open challenge remains D4-only unless new implementation evidence proves a real upstream contradiction.
@@ -45,9 +46,20 @@ The accepted scoped D1/D2/D3 authority remains current. Revision 11 composes Rev
 - D4 repair contract: `workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_WORKPLAN_REVISION_11.md`
 - Review provenance: Revisions 9 and 10
 
-## Blocking D4 repair
+## D4 repair implementation state
 
-Revision 11 owns the exact repair instructions. The six blocking surfaces remain:
+Revision 11 was implemented on this branch at commit `dd96ede2`; the evidence record is
+`workplans/active/MLFF_PI_TRAIN_FPS_DIVERSITY_RESTORATION_R11_D4_REPAIR_EVIDENCE.md`.
+Nothing here is independent review: the workplan stays **active / D4 NO-PASS** until a
+fresh independent assembled-candidate re-review passes Revision 11 section 12.
+
+Two measured items are routed to the reviewer rather than absorbed locally: REPAIR2's
+current-scale cost after the R11-E shortcut deletion (1 h 42 m of a 2 h 19 m target-order
+build on the representative LTA campaign), and the REPAIR2 replay that a post-`N_max`
+restart performs because repair is not checkpointed. Both are performance-design
+questions for D3/D4; neither licenses restoring the shortcut.
+
+Revision 11 owns the exact repair instructions. The six blocking surfaces it addressed:
 
 1. REPAIR2 zero-new-coverage early-exit semantic drift, including stale pre-fix build identity invalidation.
 2. Missing representative current-scale complete prepare/order/publication/reload performance/resource evidence.
