@@ -481,7 +481,7 @@ def _weighted_quantiles(values: np.ndarray, weights: np.ndarray, quantiles: Sequ
     total = float(cumulative[-1])
     if not np.isfinite(total) or total <= 0.0:
         raise TrainingDataInputError("Weighted quantile weights have no positive mass.")
-    indices = np.searchsorted(cumulative, requested * total, side="left")
+    indices = np.searchsorted(cumulative, requested, side="left")
     indices = np.minimum(indices, sorted_values.size - 1)
     return np.asarray(sorted_values[indices], dtype=np.float64)
 
