@@ -17,10 +17,10 @@ def _correlation_balanced_case(*counts: int) -> np.ndarray:
 
 def test_weighted_quantiles_compare_stored_mass_directly_to_governed_q() -> None:
     cases = (
-        ((2, 6), 0.25, 0),
-        ((50, 1), 0.01, 0),
+        ((50, 15), 0.01, 1),
+        ((2, 57), 0.25, 1),
         ((1, 6), 0.75, 4),
-        ((1, 150), 0.99, 148),
+        ((14, 50), 0.99, 62),
     )
 
     for counts, quantile, expected_index in cases:
