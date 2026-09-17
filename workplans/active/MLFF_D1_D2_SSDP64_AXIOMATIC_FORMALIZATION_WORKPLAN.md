@@ -1,7 +1,7 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: active
+status: REVIEW_NO_PASS_REOPENED
 workplan_id: MLFF-D1-D2-SSDP64-AXIOMATIC-FORMALIZATION-1
 basis_commit: cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824
 highest_domain: D1
@@ -167,3 +167,60 @@ Acceptance requires all of the following:
 - stakeholder ratifies the exact reviewed candidate;
 - canonical papers are promoted/reconciled only after that ratification;
 - affected D3/D4 documentation is reconciled for terminology/locators without inventing a new software mechanism.
+
+## 9. Independent Review R1 — NO-PASS and reopen instructions
+
+Independent review of immutable candidate `c9d3a9b4d8a226a7298e4e6088d3db19e98c1ea2` is recorded in `MLFF_D1_D2_SSDP64_INDEPENDENT_REVIEW_R1.md` and returned **NO-PASS**. The accepted D1/D2 authority is not challenged; repair the proposed Protocol-6.4 representation only.
+
+The renderer-only formula correction is accepted and should remain unchanged unless a new representation defect is found.
+
+### R1 blockers that must all close before R2
+
+1. **Weighted quantile:** remove the second binary64 normalization in candidate `D2.DEF.005`; quantiles consume the once-normalized stored weights from `D2.DEF.004`. Add the 37-witness/2-witness adversarial `Q(0.5)` oracle from R1.
+2. **Selector vs qualification coverage predicates:** bind MVSEL2 Phase-A completion explicitly to `C_m < 0.95 - 1e-14`; retain independent MVQUAL coverage at `C_m + 1e-12 >= 0.95`; represent them as distinct numerical predicates and dependencies.
+3. **Complete P1/P2/P3 numerical closure:** formalize or exact-import the current five-step component ordering for `M3`, condition-balanced `pi_eval`, P2 structural policy, minimum-three-qualified admission, exact reducer funnel/success sufficiency/configured-ceiling rule, autocorrelation truncation, complete-frame blocks, and protected-event merge semantics.
+4. **Required-family catalog:** formalize the current universal/profile/pair-response/foundation-residual family catalog and extent/applicability rules. Generic `m` is not enough.
+5. **REPAIR2:** restore exact replacement-frontier ranking, 2-pass/32-swap limits, rank-inheritance/future-displacement semantics, and final-shell/no-extra-repair continuation.
+6. **Replay:** add D1/D2 true-reference default, explicit pseudo-label opt-in, foundation identity binding, separate true-reference replay-monitor lineage, geometry/label-lineage separation, and geometry-membership invariance under label-mode changes.
+7. **Definition-source trace:** replace generic/dangling prerequisite labels by exact source/owner references or first-class definitions; create the missing D2 correlation-truncation owner; type/source `Perm(role)`; add every missing material node/edge; re-run reverse-impact closure.
+8. **Parameter ledger:** split fixed method coordinates from configurable families/defaults/derived values. In particular do not represent target-order `0.95` or extent `0.01/0.99` as ordinary configurable defaults; preserve current ladder structural constraints.
+9. **PEM/HAS:** add the canonical basis/applicability interface below and reconcile any newer validated overlay before cutting R2.
+
+```yaml
+pem_basis:
+  accepted_project_state: cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824
+  accepted_pem: hjin98/mdstats@b5d101d8f73d3efd63ef4e70b3913e7d281406ce:PROJECT-ENGINEERING-MEMORY.md
+  candidate_overlay_semantic_candidate: NONE
+has:
+  - id: SP-001
+    disposition: APPLICABLE
+    reason: formalization must preserve one canonical semantic owner instead of creating duplicated authority
+  - id: SP-002
+    disposition: APPLICABLE
+    reason: fail-closed exact identity and state boundaries are central to D1/D2 definitions
+  - id: SP-003
+    disposition: APPLICABLE
+    reason: immutable/content-addressed candidate and continuation identities are material
+  - id: SP-004
+    disposition: APPLICABLE
+    reason: real-owner/current-implementation comparison is needed to falsify numerical equivalence
+  - id: FF-001
+    disposition: APPLICABLE
+    reason: foundation checkpoint/head and realized-model identity are material to E0 and P5 authority
+  - id: FF-002
+    disposition: APPLICABLE
+    reason: authenticated continuation/restart authority is formalized by this candidate
+  - id: FF-003
+    disposition: NOT_APPLICABLE
+    reason: destructive storage routing is outside this D1/D2 documentation formalization
+  - id: FF-004
+    disposition: NOT_APPLICABLE
+    reason: GPU admission/cancellation/residency policy is outside the semantic candidate
+  - id: FF-005
+    disposition: APPLICABLE
+    reason: formal ownership must prevent downstream reconstruction of preparation-owned scientific state
+```
+
+### R2 gate
+
+After repair, cut a **new immutable semantic target**. Do not revise the meaning of `c9d3a9b4...` in place. A fresh independent D1/D2 review must re-run the full review, not only the nine repaired findings, because definition closure and dependency edges will materially change.
