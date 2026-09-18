@@ -1,6 +1,6 @@
 # MLFF training-data current specification index
 
-This directory contains narrow **current-generation** MLFF specifications plus a temporary residue of superseded documents being consolidated into `docs/history/mlff/` by `DOC-MLFF-ARCH-RESET1` A4.
+This directory contains narrow MLFF specification owner paths plus a temporary residue of superseded documents being consolidated into `docs/history/mlff/` by `DOC-MLFF-ARCH-RESET1` A4. On `design/mlff-replay-retention-target-admissibility-rework`, `mlff_post_selection_p5_spec.md` is a **proposed renewal candidate**; its pre-renewal version remains accepted-current until Gate D review/acceptance.
 
 Only the specifications listed in this index are current normative owners. Unlisted release/gate/migration-era files do not override the current D1-D4 authority and are scheduled for historical consolidation/removal where applicable.
 
@@ -51,18 +51,18 @@ It is also not the current foundation-P5 fitted-preparation authority.
 ## Monitoring, replay, training, checkpointing, and evaluation
 
 - `mlff_online_monitor_spec.md` — `OnlineTargetMonitorPolicy` and `ReplayMonitorPolicy`; restored P5 uses one exact 256-frame campaign-common target monitor with no short-parent success state; replay-monitor semantics remain separately owned.
-- `mlff_post_selection_p5_spec.md` — **sole current restored-P5 D4 handoff** for `PostSelectionMethodIdentity`, foundation UniversalLoss realization, common-monitor ancestry, selected-only CV folds, foundation-residual fitted preparation/transfer, final production/publication, currentness, and failure behavior.
+- `mlff_post_selection_p5_spec.md` — sole restored-P5 D4 owner path; this branch carries its proposed renewal candidate for training/assessment identity separation, replay retention, strict target-minimum selection, and historical reassessment. The pre-renewal revision remains accepted-current until the candidate passes Gate D.
 - `mlff_data8_mace_artifacts_spec.md` — current MACE artifact transport and broad `TrainingProtocolIdentity`/`Data8PreparationBundle` contracts for separately current non-P5 consumers and historical provenance. Its broad DATA8 protocol graph does **not** authorize restored P5.
 - `mlff_data9b1_campaign_checkpoint_control_spec.md` — checkpoint control and candidate retention/evaluation orchestration where consistent with the current owning method/specification.
 - `mlff_binary_model_precision_spec.md` — model precision policy.
 - `mlff_true_label_restart_lineage_spec.md` — true-label restart/source lineage.
 - `mlff_mace_torchscript_warning_compatibility_spec.md` — current warning handling where the locked runtime still emits the relevant warnings.
 
-For restored P5, `PostSelectionMethodIdentity` is the sole current method identity and the current lineage is `method -> role policy -> role plan -> fitted preparation -> PostSelectionMaterialization -> run evidence`. Broad `TrainingProtocolIdentity` records remain available only for separately current non-P5 consumers/history and cannot become current P5 through deserialization.
+For restored P5, `PostSelectionMethodIdentity` is the sole training-method identity. The proposed renewal makes the lineage acyclic and projection-specific: `training method + pre-fit training position -> fitted preparation -> materialization/TRAIN2`, then assessment-independent measurements, role assessment under hard policy + D2.DEF.059A, and aggregate publication under D2.DEF.059B where applicable. Broad `TrainingProtocolIdentity` records remain available only for separately current non-P5 consumers/history and cannot become current P5 through deserialization.
 
 ## Post-selection validation and campaign realization
 
-- `mlff_post_selection_p5_spec.md` — normative current P5 CV/final-production schema, failure, monitor, fitted-preparation, publication, and currentness contract.
+- `mlff_post_selection_p5_spec.md` — restored-P5 CV/final-production D4 owner path; the branch version is the proposed renewed schema/failure/monitor/fitted-preparation/publication/currentness contract pending Gate D.
 - `mlff_data9b3_campaign_cli_spec.md` — current campaign CLI contract; P5-specific replay defaults/retired fields/failure rules are constrained by the P5 specification.
 - `mlff_adaptive_training_stop_spec.md` — current adaptive-stop/checkpoint scoring semantics where still applicable; P5 target evidence is the exact common monitor and score weights remain distinct from retired training-head scalar weights.
 - `mlff_storage_management_spec.md` — owner-driven campaign storage and I/O management.
@@ -116,7 +116,7 @@ Backend qualification reports, hotfix notes, parity diagnostics, and obsolete mi
 ## Authority and compatibility rules
 
 1. Accepted D1 method papers own scientific meaning; accepted D2 method papers own numerical algorithms/equivalence; current D3 architecture owns software ownership/topology; this index identifies narrow current D4 specification owners.
-2. `mlff_post_selection_p5_spec.md` is the sole current D4 P5 handoff for the restoration. Broad DATA8 protocol prose is explicitly scoped away from current P5 rather than resolved by runtime precedence.
+2. `mlff_post_selection_p5_spec.md` is the sole D4 P5 owner path for the restoration; on the active design branch its renewed contents remain proposed until Gate D acceptance. Broad DATA8 protocol prose is explicitly scoped away from P5 rather than resolved by runtime precedence.
 3. A narrow specification may strengthen its local current contract but cannot contradict accepted upstream authority.
 4. A workplan, audit, benchmark, release note, generated PDF, or historical document cannot override current D1-D4 authority.
 5. Unsupported old campaign artifacts fail clearly and require re-preparation; historical readability is not a current product-semantic authorization path.

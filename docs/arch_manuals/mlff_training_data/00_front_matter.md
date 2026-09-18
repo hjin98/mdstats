@@ -1,15 +1,16 @@
 ---
 title: "mdstats MLFF Training-Data Architecture"
 artifact_level: "D3 software architecture and integration"
-status: "current normative D3 architecture"
-accepted_date: "2026-09-15"
+status: "proposed D3 renewal candidate pending independent review"
+accepted_current_baseline_date: "2026-09-15"
+candidate_date: "2026-09-18"
 ---
 
 # mdstats MLFF Training-Data Architecture (D3)
 
 ## Authority and scope
 
-This manual is the current D3 software-architecture authority for the machine-learned force-field (MLFF) branch of mdstats. It was narrowed from the former mixed pre-SSDP architecture when the reconstructed D1 and D2 method papers were explicitly accepted.
+This branch carries a proposed D3 renewal of the MLFF architecture. Until the renewal passes independent D3 Review and is promoted, the accepted-current baseline remains the pre-renewal canonical architecture. The candidate preserves the baseline except for the replay-retention/target-admissibility ownership/currentness changes under active Gate D. The manual was originally narrowed from the former mixed pre-SSDP architecture when the reconstructed D1 and D2 method papers were accepted.
 
 Authority is layered and directional:
 

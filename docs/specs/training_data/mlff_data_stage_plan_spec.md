@@ -15,7 +15,7 @@ It owns only invariants that span narrower specifications: evidence-role separat
 
 Narrow specifications own exact module schemas, numerical constants, algorithms, storage formats, and runtime behavior. Current D1/D2 own scientific/numerical semantics; D3 architecture owns the higher-level dependency/ownership model. Workplans and historical documents are non-normative once binding semantics are promoted into current authority.
 
-For restored post-selection P5, `mlff_post_selection_p5_spec.md` is the narrow current D4 owner. Broad DATA8-era `TrainingProtocolIdentity` contracts remain applicable only to separately current non-P5 consumers and historical provenance; they are not a second P5 authority.
+For restored post-selection P5, `mlff_post_selection_p5_spec.md` is the narrow D4 owner path. On the active replay-retention/target-admissibility design branch its renewed contents remain proposed until Gate D acceptance; the prior revision remains accepted-current meanwhile. Broad DATA8-era `TrainingProtocolIdentity` contracts remain applicable only to separately current non-P5 consumers and historical provenance; they are not a second P5 authority.
 
 # Normative principles
 
@@ -69,9 +69,9 @@ For restored post-selection P5, `mlff_post_selection_p5_spec.md` is the narrow c
 | `CampaignStore` frozen selection | selected sizes bound to exact `T_N` memberships plus role horizons | re-deciding size or accepting P5 method |
 | `OnlineTargetMonitorPolicy` / common P5 monitor record | campaign-common target-monitor evidence membership | target-training size; held-out fold membership |
 | `ReplayMonitorPolicy` | replay-monitor evidence set | target-training size or replay-training membership |
-| `PostSelectionMethodIdentity` | complete current restored-P5 method identity | realized fold/monitor/fitted/checkpoint/evaluation descendants |
+| `PostSelectionMethodIdentity` | restored-P5 training-method identity only; assessment/selection policy is separate | fitted preparation/materialization/TRAIN2 descendants and training-position construction |
 | P5 fitted-preparation record | authorized fit result plus foundation selected-head/transfer evidence where applicable | target-size ownership; inert P3 weighting authority |
-| CV/final role plans | role-specific P5 plan ancestry including same common monitor | alternate method/monitor authority |
+| CV/final role plans | control-plane authorization plus explicit narrow assessment/publication projections; full plan digest is not run-root/measurement/per-seed-assessment identity | alternate method/monitor authority |
 | `PostSelectionMaterialization` | current executable P5 realization identity | independent method definition |
 | final publication decision | frozen P5 member set before qualification | qualification-driven model selection |
 | `TrainingProtocolIdentity` | broad general/historical DATA8 protocol for separately current non-P5 consumers | restored-P5 method authority |
@@ -159,9 +159,9 @@ init -> doctor -> prepare -> select-target-size -> cross-validate -> train-produ
 
 ## Restored current P5
 
-`PostSelectionMethodIdentity` SHALL bind only current P5 method-bearing inputs, directly or through named component-policy digests. It SHALL NOT bind the whole P3 `TargetSizeCommonTrainingPolicy` merely because that object packages P3 objective/weighting/harness state.
+`PostSelectionMethodIdentity` SHALL bind only P5 training-method-bearing inputs, directly or through named component-policy digests. It SHALL NOT bind checkpoint warning/hard thresholds, D2.DEF.059A/059B ordering policy, CV verdict/publication policy, or the whole P3 `TargetSizeCommonTrainingPolicy` merely because those values coexist in higher-level control-plane objects.
 
-Current P5 descendants additionally bind exact realized ancestry where appropriate:
+P5 descendants additionally bind exact realized ancestry at their own owner boundary. Under the renewal, the pre-fit training-position identity excludes fitted-result descendants; fitted preparation/materialization/runtime bind those results separately, while assessment and publication use their own narrow projections:
 
 ```text
 applicable selected target size and exact TargetBinding
@@ -170,8 +170,10 @@ replay source/training/monitor identities
 one exact common target-monitor record identity
 plan-level P1 monitor-vs-target separation evidence
 foundation residual-fit/transfer evidence where applicable
-checkpoint metric and replay-retention policy
-optimizer/LR/stopping/epoch policy
+checkpoint numeric measurement identity
+hard checkpoint-decision policy and D2.DEF.059A assessment identity
+D2.DEF.059B aggregate publication identity where applicable
+optimizer/LR/fixed-budget epoch policy
 seed policy
 precision/backend/runtime identity
 ```
