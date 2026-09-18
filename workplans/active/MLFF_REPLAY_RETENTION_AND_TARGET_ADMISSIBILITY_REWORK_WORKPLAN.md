@@ -8,7 +8,7 @@ analysis_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 implementation_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 protocol_6_4_authority_merge: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 stakeholder_direction_date: 2026-09-18
-review_state: d1-r3-ratified-d2-gate-open
+review_state: d3-r2-handoff-repair-candidate-awaiting-fresh-review
 ---
 
 # MLFF Replay Retention and Target Admissibility Rework Workplan
@@ -1277,7 +1277,7 @@ Required repair before another immutable Gate-D candidate may be reviewed:
 4. keep historical pre-cutover roots immutable even when they contain legacy outer-evaluation materialization; reuse those bytes only through exact D2.DEF.060B measurement-equivalence authentication and never rewrite them into the new topology;
 5. add falsification proving a held-out label/reference/measurement-artifact-only change leaves `TrainingTrajectoryIdentity`, fitted preparation, training materialization, sealed root and TRAIN2 current while moving only `EvaluationMeasurementIdentity`/EVAL2 and dependent outer verdict; also prove post-cutover root certification contains no held-out outer-evaluation artifact.
 
-The R2 handoff defect is repaired in the candidate D4 contract/workplan: post-cutover training materialization is explicitly free of held-out evaluation transport; EVAL2 owns attempt-local outer materialization outside the sealed root; durable measurement identity remains in the existing P5 evidence store; historical v2 roots remain immutable. Gate E remains blocked until fresh independent Gate-D Review passes the exact immutable repair target.
+The R2 handoff defect is repaired in exact immutable candidate `de360579686bd6f06eae8a6a5e26b232d7db847e`: post-cutover training materialization is explicitly free of held-out evaluation transport; EVAL2 owns attempt-local outer materialization outside the sealed root; durable measurement identity remains in the existing P5 evidence store; historical v2 roots remain immutable. Repair binding: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_R2_REPAIR_BINDING.md`. Gate E remains blocked until fresh independent Gate-D Review passes that exact target.
 
 ### Gate E - D4 implementation - BLOCKED ON GATE D ACCEPTANCE
 
