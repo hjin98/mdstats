@@ -1,0 +1,35 @@
+name: R4 target-order validation
+
+on:
+  push:
+    branches:
+      - design/mlff-d1-d2-ssdp64-axiomatic-formalization
+    paths:
+      - '.github/workflows/r4-target-order-validation.yml'
+      - 'mdstats/training_data/target_order/**'
+      - 'tests/test_mlff_target_order_weighted_quantiles_fp64.py'
+      - 'tests/test_mlff_target_order_real_owner.py'
+      - 'tests/support/target_order_fixtures.py'
+      - 'workplans/active/MLFF_D1_D2_SSDP64_DEFINITION_DEPENDENCY_TRACE_R4_FINAL.md'
+
+permissions:
+  contents: read
+
+jobs:
+  target-order:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact evidence commit
+        uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install project and test runner
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[manifest]' pytest
+      - name: Focused weighted-quantile regression
+        run: pytest -q tests/test_mlff_target_order_weighted_quantiles_fp64.py
+      - name: Real-owner target-order integration/regression
+        run: pytest -q tests/test_mlff_target_order_real_owner.py

@@ -224,3 +224,18 @@ has:
 ### R2 gate
 
 After repair, cut a **new immutable semantic target**. Do not revise the meaning of `c9d3a9b4...` in place. A fresh independent D1/D2 review must re-run the full review, not only the nine repaired findings, because definition closure and dependency edges will materially change.
+
+## 10. Independent Review R3 — NO-PASS and R4 repair gate
+
+Independent review of immutable R3 target `045cb5a052fdb83b6c6cd561142b24fdf5d023b5` is recorded in `MLFF_D1_D2_SSDP64_INDEPENDENT_REVIEW_R3.md` and returned **NO-PASS** without a Serious Challenge to accepted D1/D2.
+
+R3 independently closed all four R2 semantic blockers and accepted the direct D4 weighted-quantile source repair numerically. Two blockers remain for R4:
+
+1. **R3-B1 — direct dependency completeness.** Replace the R3 trace with one R4 trace after a complete object-by-object forward source-availability and reverse-impact pass. At minimum close the missing typed-failure edges `D2.DEF.045`, `D2.DEF.047`, `D2.DEF.049`, `D2.DEF.053`, and `D2.DEF.058`; challenge selector/oracle, repair, qualification, reducer, currentness, continuation and equivalence rows for the same defect. Do not change accepted D1/D2 semantics or reintroduce free-text endpoints.
+2. **R3-B2 — D4 executable acceptance.** Execute the focused FP64 regression and current real-owner target-order suite on the repaired descendant. The minimum commands are `pytest -q tests/test_mlff_target_order_weighted_quantiles_fp64.py` and `pytest -q tests/test_mlff_target_order_real_owner.py`. Expand to the affected target-order suite if those commands expose a wider affected surface. Record the exact tested commit and environment. GPU qualification is not part of this CPU numerical repair.
+
+R4 may reuse the exact R3 D1/D2 kernel blobs if the repair audit finds no semantic-kernel defect. The old immutable R3 target remains historical evidence and must not be rewritten. A temporary validation-only CI harness is permitted only as evidence machinery: it must not become product/runtime authority and must be removed before the new immutable R4 semantic target is bound.
+
+### R4 gate
+
+Cut a new immutable target only after R3-B1 is structurally closed and R3-B2 has current real-owner executable evidence. Fresh R4 review must inspect the complete assembled candidate against accepted `cb07d683...`; it may not inherit R3 author closure. PASS remains prerequisite to stakeholder ratification and canonical promotion.
