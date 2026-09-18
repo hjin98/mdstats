@@ -330,3 +330,35 @@ the R6 repair-closure record. A descendant handoff must request a fresh complete
 assembled-candidate Review. Author repair closure is not PASS, stakeholder
 ratification, promotion or merge. GPU qualification remains deferred and
 outside this gate.
+
+
+## 16. Independent Review R6 — NO-PASS and R7 repair gate
+
+Independent review of immutable R6 target
+`12af89b860511277246e853a1e7ba22b86cec39f` is recorded in
+`MLFF_D1_D2_SSDP64_INDEPENDENT_REVIEW_R6.md` and returned **NO-PASS** without
+a Serious Challenge to accepted D1/D2.
+
+The D1/D2 kernels, renderer repair and D4 executable evidence remain acceptable.
+Two direct dependency-trace blockers remain:
+
+- `D2.DEF.062 -> D2.DEF.015`: robust-scale non-finite input is an explicit
+  fail-preparation rule and directly contributes the typed “non-finite fitted
+  statistics” failure member;
+- `D1.DEF.010 -> D1.DEF.006`: the evaluation ladder explicitly classifies
+  `M_i` as P3 model-selection and not held-out/checkpoint-monitor evidence,
+  whose local role/permission owner is D1.DEF.006.
+
+### R7 gate
+
+Repair the derived trace only unless the renewed audit discovers an actual
+kernel defect. Re-run all 106 objects with focused role-owner and typed-failure
+sweeps in addition to the general local-symbol/directness audit. Preserve
+intentional transitive/non-dependency cases rather than dense-connecting the
+graph.
+
+Cut a new immutable target after exact structural and semantic checks. Existing
+CPU D4 evidence may remain applicable only if the weighted-quantile owner,
+focused regression and real-owner suite blobs remain unchanged and the
+environment contract is unaffected. GPU qualification remains outside this
+gate.
