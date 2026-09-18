@@ -6,7 +6,7 @@ workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-REWORK-1
 parent_D1_ratified_target: d761171f3c86c3c79b87a90cfc02ac324c261b1a
 parent_D1_blob: 612294ec4680db01a18085e13fbfe5dcfa9fb7ed
 accepted_D2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
-d2_candidate_blob: 97798178f4e4e4b463ae95479276bf3237f7d646
+d2_candidate_blob: 894b2f5b6fe16ae483bb98dcc9af4910ccd3b311
 scope:
   - docs/methods/mlff_numerical_algorithmic_method.md
 ---
@@ -34,8 +34,8 @@ This trace is a Protocol-6.4 review aid, not D2 authority.
 Fresh independent D2 Review must challenge:
 
 1. whether `RN64(R_c-R_0)` plus strict binary64 comparisons faithfully concretizes D1 without an implicit tolerance;
-2. whether meV-to-eV conversion can collapse configured warning/hard thresholds and whether fail-closed handling is sufficient;
-3. whether same-monitor/provider/metric provenance is complete enough to prevent invalid replay degradation subtraction;
+2. whether binary64 division by exact `1000` can collapse configured warning/hard thresholds and whether fail-closed handling is sufficient;
+3. whether the training-versus-retention replay projections and same-monitor evaluator/provider/metric provenance are complete enough to prevent either false TRAIN2 invalidation or invalid replay degradation subtraction;
 4. whether warning-only state is fully excluded from hard admissibility and ranking;
 5. whether `(target RMSE, epoch, SHA)` and `(target RMSE, optimizer seed, SHA)` are total deterministic non-quality tie orders;
 6. whether any practical-equivalence/bootstrap/secondary/maturity path can still alter foundation-P5 representative identity under the authority;

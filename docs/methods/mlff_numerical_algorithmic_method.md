@@ -713,9 +713,14 @@ denote the replay/pretraining-head foundation elemental-reference mapping import
 
 Let `Q_r` be the exact replay **evidence-qualification** identity/state required by D1.DEF.022: source/label/provider validity, independent true-reference replay-monitor validity, and other evidence conditions needed to interpret replay training and replay-retention measurements. `Q_r` does not contain `delta_warn`, `delta_hard`, a role target ceiling, or checkpoint-selection ordering.
 
-Replay lineage binds replay geometry/source membership/split, label mode, exact true-reference monitor, `Q_r`, exact foundation checkpoint/head `Phi`, `e_replay(Phi)` where applicable, prediction policy, and realized exposure. Changing any lineage component invalidates dependent replay training/evaluation evidence according to the affected component. Changing label mode over one authenticated prepared source/split does not by itself change replay geometry membership.
+The D1 replay lineage has two numerical dependency projections:
 
-Changing only `delta_warn` or `delta_hard` does not change replay geometry, training labels, realized exposure, foundation identity, true-reference measurement identity, or TRAIN2 trajectory. Those thresholds classify already-defined replay measurements later under D2.DEF.057.
+- the **training projection** binds replay geometry/source membership/split, training label mode, foundation/head and prediction policy when consumed by pseudo labels, exact replay/pretraining-head E0 mapping where consumed, and realized exposure;
+- the **retention-measurement projection** binds the exact true-reference replay monitor, evidence qualification `Q_r`, exact foundation checkpoint/head `Phi` as the baseline model, and evaluator/provider/metric/precision semantics needed to compute D2.DEF.057.
+
+A change stales TRAIN2 only when a training-projection coordinate changes. A change confined to the retention-measurement projection leaves an already-realized TRAIN2 trajectory numerically unchanged but stales dependent replay measurements/assessments. Changing label mode over one authenticated prepared source/split does not by itself change replay geometry membership.
+
+Changing only `delta_warn` or `delta_hard` changes neither projection. Those thresholds classify already-defined replay measurements later under D2.DEF.057.
 
 ### D2.DEF.053 — Combined corpus and update geometry
 
@@ -777,7 +782,7 @@ $$
 R_c=R_{\mathrm{replay}}(c),\qquad R_0=R_{\mathrm{replay}}(\Phi)
 $$
 
-be finite canonical binary64 force-component RMSE values in `eV/angstrom` computed on the **same exact** authenticated true-reference replay monitor under the same metric/reduction, label/reference, provider/model-realization, head and precision semantics. A scalar value without this common provenance cannot enter the degradation calculation.
+be finite canonical binary64 force-component RMSE values in `eV/angstrom` computed on the **same exact** authenticated true-reference replay monitor under the same metric/reduction, label/reference, evaluator/provider and precision semantics. The model-state coordinate is intentionally different: `R_c` evaluates checkpoint `c`, while `R_0` evaluates the exact frozen foundation identity `Phi`; each uses the output/head mapping required by the same replay force observable. A scalar value without this common numerical provenance cannot enter the degradation calculation.
 
 Define the canonical signed degradation by one IEEE-754 binary64 round-to-nearest, ties-to-even subtraction,
 
@@ -787,11 +792,11 @@ $$
 
 No absolute value, ratio, percentage, normalization, clipping, epsilon, or rounding-before-comparison is introduced.
 
-The replay decision-policy family is `(delta_warn,delta_hard)` in internal `eV/angstrom`. Public values expressed in `meV/angstrom` are converted once by
+The replay decision-policy family is `(delta_warn,delta_hard)` in internal `eV/angstrom`. Public values expressed in `meV/angstrom` are first represented as finite binary64 `v_meV` by the accepted configuration parser and converted once using the exactly representable scale denominator `1000`,
 
-$$
-\delta=\operatorname{RN}_{64}(10^{-3}v_{\mathrm{meV/angstrom}}).
-$$
+$
+\delta=\operatorname{RN}_{64}\left(\frac{v_{\mathrm{meV}}}{1000}\right).
+$
 
 The resolved internal values must be finite and positive and must satisfy
 
@@ -1014,7 +1019,7 @@ Fail closed for non-finite fitted statistics; invalid/empty required family mass
 
 Qualification and any future reopen review must attempt at least: one-normalization governed-quantile adversaries; selector-vs-MVQUAL tolerance interval adversary; exact component-order/first-predecessor `M3`; condition-balanced `pi_eval`; structural-policy rejection; candidate-common-preparation perturbation; minimum-three-qualified admission including an unqualified configured prefix with at least three remaining qualified candidates; exact funnel/sufficiency/ceiling cases; autocorrelation/block/event fixtures; required-family applicability fixtures; exact adjacency boundaries; full-forward/lazy rank equality; Phase-A tie behavior; REPAIR2 frontier/trace/limits/rank inheritance/no-extra-shell; direct/MVIDX mass and MVQUAL monotonicity; E0 null-space transfer; replay-head E0 selected-head binding and target/replay E0 separation; robust P5 dimensional/nine-stress/mask/no-head-scalar; true-vs-pseudo replay geometry invariance; replay evidence-qualification invalidation; replay-first seeded exposure/drop-last; monitor/fold reconstruction; exact replay warning/hard boundaries; role-threshold boundaries/selective invalidation; strict foundation-P5 target ordering and exact ties; measurement/training equivalence; policy reassessment; equivalence-registry source closure; and worker/backend/restart invariance.
 
-The replay oracle must include `Delta_R = delta_warn`, `nextafter(delta_warn,+inf)`, `Delta_R = delta_hard`, `nextafter(delta_hard,+inf)`, negative degradation, and a conversion case proving `50 meV/angstrom -> RN64(0.050 eV/angstrom)` and `100 -> RN64(0.100)`. Equality must not warn/reject; the next representable value above each threshold must trigger the corresponding strict predicate. No epsilon may change those outcomes.
+The replay oracle must include `Delta_R = delta_warn`, `nextafter(delta_warn,+inf)`, `Delta_R = delta_hard`, `nextafter(delta_hard,+inf)`, negative degradation, and a conversion case proving binary64 `50/1000 -> 0.050 eV/angstrom` and `100/1000 -> 0.100 eV/angstrom` under round-to-nearest, ties-to-even. Equality must not warn/reject; the next representable value above each threshold must trigger the corresponding strict predicate. No epsilon may change those outcomes.
 
 The role-threshold oracle must include exact `0.075` and `nextafter(0.075,+inf)` for default-force CV checkpoint/outer predicates and exact `0.050` plus its next representable value for production. A `0.060 eV/angstrom` common-monitor checkpoint is a required discriminating example: it may pass default foundation CV `tau_CV=0.075` but must fail default production `tau_prod=0.050`. Alternative outer metrics must demonstrate that omission does not import the force-RMSE `0.075` value.
 
