@@ -1,14 +1,14 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: active-d1-r3-amended-candidate-awaiting-independent-review
+status: active-d1-r3-review-pass-awaiting-stakeholder-ratification
 highest_affected_domain: D1
 branch: design/mlff-replay-retention-target-admissibility-rework
 analysis_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 implementation_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 protocol_6_4_authority_merge: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 stakeholder_direction_date: 2026-09-18
-review_state: d1-r3-post-review-threshold-amendment-awaiting-fresh-independent-review
+review_state: d1-r3-independent-review-pass-awaiting-exact-target-ratification
 ---
 
 # MLFF Replay Retention and Target Admissibility Rework Workplan
@@ -1183,26 +1183,40 @@ Confirmed:
 
 Branch opened from exact baseline: `design/mlff-replay-retention-target-admissibility-rework`.
 
-### Gate B - D1 renewal for replay role and production target quality - OPEN / R3 RECONCILED CANDIDATE
+### Gate B - D1 renewal for replay role and production target quality - REVIEW PASS / AWAITING STAKEHOLDER RATIFICATION
 
-Independent D1 Review R2 passed the prior semantic candidate `2549dee709fb8bb383341ee3aebca7c71973a903`. Representation-only descendants then repaired display and inline math without changing that reviewed meaning.
+Fresh independent Protocol-6.4 D1 Review R3 of exact immutable target
 
-After R2 PASS, the stakeholder made a **new material D1 amendment**:
+`d761171f3c86c3c79b87a90cfc02ac324c261b1a`
 
-- foundation CV checkpoint competence default: `45 -> 75 meV/angstrom`;
-- foundation CV held-out default-force threshold: `45 -> 75 meV/angstrom`;
-- production checkpoint target default remains `50 meV/angstrom`;
-- CV is therefore intentionally more permissive than final production.
+with canonical D1 blob
 
-The stakeholder also questioned the D1 ledger entry `P5 E:F:S coefficients = 1:10:1`. Repository/D2 reconstruction confirms this is **not** a target/replay balance ratio: accepted D2 defines the foundation-P5 robust objective as `L_P5 = L_E + 10 L_F + L_S`. The D1 wording is clarified to identify `1:10:1` as the global energy/force/stress property-loss coefficient tuple applied to the separately reduced property losses. No UniversalLoss coefficient changes are proposed.
+`612294ec4680db01a18085e13fbfe5dcfa9fb7ed`
 
-New immutable D1 R3 candidate:
+returned:
 
-- commit: `d761171f3c86c3c79b87a90cfc02ac324c261b1a`;
-- canonical D1 blob: `612294ec4680db01a18085e13fbfe5dcfa9fb7ed`;
-- dependency trace: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D1_DEPENDENCY_TRACE_R3.md`.
+**D1 PASS; no SERIOUS CHALLENGE.**
 
-The prior R2 PASS does **not** ratify the new `75/75` defaults. The R3 reconciliation additionally makes explicit that CV authorization does not guarantee production success and that `theta_CV` is outer-assessment-only currentness. Gate B remains open for fresh independent D1 review of the final R3 candidate. Gate C remains blocked.
+Review record:
+
+- `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D1_INDEPENDENT_REVIEW_R3.md`
+
+The review independently challenged the post-R2 `45/45 -> 75/75 meV/angstrom` CV amendment, historical calibration provenance, same-monitor `tau_CV` versus `tau_prod` ordering, held-out `theta_CV` population/units, CV-authorization-versus-production-success semantics, threshold-specific currentness, alternative outer metrics, and the E:F:S `1:10:1` clarification.
+
+Key disposition:
+
+- historical `45/45` was itself stakeholder calibration rather than a proved physical boundary;
+- `75/75` is therefore a lawful new configurable policy calibration, with increased false-authorization risk explicitly carried as a limitation/reopen condition;
+- CV acceptance authorizes a fresh production attempt but does not guarantee a checkpoint satisfying the tighter `50 meV/angstrom` production gate;
+- `tau_CV` may move checkpoint representative/current CV evidence, while `theta_CV` may move only the outer verdict and dependent production authorization;
+- the `1:10:1` tuple remains the accepted global E/F/S property-loss coefficients; native MACE `UniversalLoss` remains a D2/D4 realization rather than the D1 scientific coordinate;
+- scratch/P3/downstream semantics remain unchanged.
+
+The reconciled workplan also closes the dependent authority impact: after ratification D2/D3/D4 must move to `75/75/50` on the default force-metric path, historical generated `0.045/0.045` must be reassessed/migrated without retraining, alternative outer metrics must not inherit force-unit `0.075`, and obsolete 42-meV production-failure counterexamples must be replaced by a discriminating value such as 60 meV/angstrom.
+
+Gate B is **not yet closed**. Accepted-current D1 remains `main@a759e81...` until the stakeholder explicitly ratifies exact target `d761171f3c86c3c79b87a90cfc02ac324c261b1a`.
+
+Gate C remains blocked until that exact-target ratification.
 
 ### Gate C - D2 numerical renewal
 
