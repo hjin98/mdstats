@@ -1,4 +1,4 @@
-# MLFF post-selection P5 current specification
+# MLFF post-selection P5 renewal candidate specification
 
 **Status:** proposed renewed D4 contract; implementation blocked until the accompanying D3 architecture candidate passes independent Review  
 **Upstream authority:** ratified D1, stakeholder-ratified D2 target `32508991d472c1c6e4bd8b818b38d0880401845f` / D2 blob `30e6e6336cf41a05879650a3a2d7d583c4ef713a`, and the accompanying D3 MLFF training-data architecture candidate  
@@ -87,23 +87,27 @@ stress_weight = 1.0
 
 D4 SHALL continue the accepted dimensional interpretations and SHALL NOT expose three independent delta knobs.
 
-Define one current role-specific `TrainingTrajectoryIdentity`/digest as the canonical projection of every input capable of changing exact TRAIN2/materialization/restart behavior. It SHALL include at least:
+Define one current role-specific `TrainingTrajectoryIdentity`/digest as the canonical **pre-fit** projection of every already-available input capable of changing exact TRAIN2/materialization/restart behavior. It SHALL include at least:
 
 ```text
 run role and exact gradient/replay-training membership
 optimizer seed and planned horizon
 training-only PostSelectionMethodIdentity
 foundation checkpoint/head and replay-training lineage
-fitted/prepared training-state identity
+P5 preparation-policy identity
+authorized fit membership
+selected-head prediction/reference-E0 input identity where applicable
+common-monitor / required-composition-set identity where preparation consumes them
+rank/null-space/tolerance/accepted-anchor policy inputs
 objective/loss, exposure/corpus order, optimizer/LR
 precision/backend/model architecture
 checkpoint cadence and MACE execution semantics
-trainer-consumed validation/preparation artifacts
-common-monitor identity when preparation/runtime consumes it
-composition-transfer required-composition set
+trainer-consumed validation artifacts
 ```
 
-Assessment-only inputs SHALL be absent. New run/checkpoint roots and continuation identity derive from `TrainingTrajectoryIdentity`, not the full CV/final assessment plan.
+It SHALL NOT include `PostSelectionFittedPreparation.content_digest`, the fitted atomic-reference result, composition-transfer result, materialization digest, runtime summary, checkpoint digest, or any other descendant product. Assessment-only inputs SHALL also be absent.
+
+New run/checkpoint roots derive from `TrainingTrajectoryIdentity`, not the full CV/final assessment plan. Exact continuation/reuse SHALL authenticate the tuple of the pre-fit trajectory identity plus the exact descendant fitted-preparation/result, materialization/config, runtime/optimizer/RNG and checkpoint ancestry required by D2.DEF.060. A different realized fitted result under the same pre-fit identity is a hard mismatch, not a new parent identity.
 
 For one-time historical reuse, the existing recovery/currentness owner may prove one legacy schema-v3 method/run lineage training-equivalent by exact comparison of all training-bearing fields while excluding only the retired assessment-only parents. This is a bounded source-preserving derivation, not a general compatibility translator or alias registry.
 
@@ -398,15 +402,15 @@ Quality-dependent candidate thinning is forbidden. If no hard-admissible checkpo
 The hard/selection assessment occurs only after authenticated TRAIN2. `_prepare_post_selection_run()` or its successor SHALL resolve replay execution from training method/replay lineage and SHALL NOT consult current checkpoint admissibility merely to decide training/replay runtime construction.
 
 
-## 13. Final-production plan
+## 13. Final-production plan and dependency projections
 
-A current final-production plan SHALL bind:
+A current final-production control-plane plan MAY bind all authorization and publication coordinates required to execute the complete role:
 
 ```text
 TargetBinding identity
 training-only PostSelectionMethodIdentity
 TrainingTrajectoryIdentity projection for each seed
-accepted current CV ancestry
+accepted current CV authorization ancestry
 exact common-monitor record + protected-relation evidence
 current final hard checkpoint-decision policy digest
 fixed D2.DEF.059A within-run selection identity
@@ -414,7 +418,21 @@ publication mode and D2.DEF.059B identity when single-best is requested
 replay authority/monitor lineage where applicable
 ```
 
-The replay warning diagnostic digest is not a hard-assessment or publication parent.
+The full plan digest is **not** the per-seed assessment identity. It exposes two narrower canonical projections:
+
+```text
+FinalSeedAssessmentPolicyDigest
+  = final hard checkpoint-decision policy
+  + D2.DEF.059A within-run selection identity
+
+FinalPublicationPolicyDigest
+  = publication mode
+  + D2.DEF.059B when single_best_final_seed
+```
+
+Current accepted CV is a separately re-authenticated authorization precondition for final assessment/publication; it is not a parent of the already-realized per-seed checkpoint assessment. Thus a CV-authorization-only change may block or reauthorize use of an existing seed assessment without changing that assessment's content identity. Likewise a 059B/publication-mode-only change moves only aggregate publication.
+
+The replay warning diagnostic digest is neither a per-seed hard-assessment nor publication-membership parent.
 
 The following P5 plan parents remain retired: M3 evaluation size/membership, M3 checkpoint-monitor ancestry, and M3 seed-ranking ancestry.
 
@@ -463,6 +481,8 @@ checkpoint/runtime continuation ancestry
 
 After authenticated terminal fixed-budget TRAIN2, while holding `post_selection_run_activity_lease()`, publish/reuse the existing typed topology manifest and completion anchor so the run root becomes a sealed training-only subtree. The terminal proof binds the authenticated `Train2RuntimeSummary` and exact checkpoint/runtime boundary and SHALL NOT require `fold-acceptance.json`, `run-evidence.json`, or any other assessment file.
 
+The existing completion-proof safety contract remains mandatory: topology/anchor authority files are opened with `O_NOFOLLOW` and regular-file status is established by `fstat` on the opened descriptor; manifest/anchor are non-reclaimable owner infrastructure; the compact anchor remains sufficient even when terminal assessment evidence is absent or cold; an existing valid proof is verified/reused rather than reconstructed from a storage-depleted tree; and tampered, copied/root-mismatched, partially conflicting, or self-inconsistent proof state fails closed.
+
 Post-cutover EVAL2 and reassessment SHALL NOT write current assessment state into the sealed run root. They read root-dependent materialization/checkpoint bytes while holding `post_selection_run_activity_lease()` for the full numerical-read interval, then release it before publishing external immutable assessment objects. If the post-selection publication barrier is needed concurrently, acquisition order is run-activity lease then publication barrier.
 
 ### 15.1 Assessment-independent measurement records
@@ -482,16 +502,19 @@ Assessment thresholds, warning policy, strict-selection policy, CV/publication p
 
 ### 15.2 Policy assessment records and complete candidate sets
 
-Final production SHALL evolve the existing `PostSelectionRunEvidence` owner into one outcome-discriminated current assessment schema:
+Final production SHALL evolve the existing `PostSelectionRunEvidence` owner into one outcome-discriminated current **per-seed assessment** schema:
 
 ```text
 training_trajectory_identity
-current final assessment-plan / hard-decision / selection ancestry
+final_seed_assessment_policy_digest
+  = current final hard-decision policy + D2.DEF.059A only
 outcome = representative_selected | no_admissible_representative
 complete ordered candidate_record_digests
 representative identity/checkpoint/record only for representative_selected
 current monitor metric identity as required
 ```
+
+The current per-seed assessment record SHALL NOT bind the full final-plan digest, current-CV authorization digest, publication mode, or D2.DEF.059B as identity-bearing parents. Those are checked/bound by their separate authorization/publication owners.
 
 The constructor SHALL enforce tagged outcome invariants. Every candidate assessment is durably published before the terminal outcome.
 
@@ -502,13 +525,15 @@ Extend the existing CampaignStore pointer seam with one position-addressed asses
 ```text
 selected_binding_digest
 assessment_role = cv_fold | final_seed
-current CV/final assessment-plan digest
+assessment_position_policy_digest
 training_trajectory_identity
 optimizer_seed
 fold_index for CV, absent for final seed
 ```
 
-The value is the immutable current assessment-record digest. Existing selected-binding commit-time stale-generation fencing applies. Campaign-level CV-acceptance and final-publication pointers remain aggregate current authorities. Do not add a second pointer database, filesystem registry, content-store scan, or shadow assessment store.
+For `cv_fold`, `assessment_position_policy_digest` binds the current CV hard checkpoint policy + D2.DEF.059A + configured outer metric/`theta_CV` verdict policy. For `final_seed`, it binds the current final hard checkpoint policy + D2.DEF.059A only. It explicitly excludes replay warning policy, current-CV authorization ancestry, publication mode, and D2.DEF.059B.
+
+The value is the immutable current assessment-record digest. Existing selected-binding commit-time stale-generation fencing applies. Campaign-level CV-acceptance and final-publication pointers remain aggregate current authorities. Aggregate final publication separately re-authenticates current accepted CV and binds `FinalPublicationPolicyDigest` plus the exact frozen seed assessments/representatives it consumes. Do not add a second pointer database, filesystem registry, content-store scan, or shadow assessment store.
 
 Warning-only evidence may be published separately from signed replay degradation and SHALL NOT move the hard-assessment locator.
 
@@ -575,7 +600,7 @@ A historical verdict is never made current by monotonic implication. Reassessmen
 
 Historical TRAIN2 reuse requires exact training-semantic equivalence. The one-time historical mapping SHALL prove the legacy schema-v3 method projection, full-plan-derived run/root position, fitted preparation/materialization/runtime ancestry, and any measurement reuse separately. It SHALL NOT be implemented as "ignore method digest", pathname scan, newest-mtime choice, content-store reverse lookup, root rename/copy/symlink, or mutable alias registry.
 
-For a completed legacy root lacking the old assessment-coupled terminal anchor, authenticate terminal TRAIN2/checkpoints and seal the root under the new training-completion rule before assessment. For an interrupted root, continue only under exact historical materialization/runtime/protocol/optimizer/RNG ancestry after the training-equivalence proof; do not rewrite that ancestry mid-trajectory.
+An already sealed legacy root is strictly read-only. For a completed terminal-but-unsealed legacy root lacking the old assessment-coupled terminal anchor, authenticate the exact terminal TRAIN2 summary/checkpoints/runtime boundary and every existing root node, acquire the existing P5 run-activity lease, then publish exactly one append-only topology manifest + completion anchor under the same create-once/verify owner. No pre-existing historical byte may be rewritten; a conflicting or partially inconsistent proof fails closed. For an interrupted root, continue only under exact historical fitted-preparation/materialization/runtime/protocol/optimizer/RNG ancestry after the training-equivalence proof; do not rewrite that ancestry mid-trajectory.
 
 Every affected historical CV fold/seed is reassessed under current hard/selection policy. Reuse numeric measurements only when D2.DEF.060B proof succeeds; otherwise rerun EVAL2 without retraining. If the representative changes, evaluate the new representative on the exact held-out population. Publish new current fold/campaign assessments.
 
@@ -632,14 +657,14 @@ Implementation acceptance SHALL exercise the real P5 owners and reject at least 
 12. a selected outcome's representative is not a member of its bound candidate set;
 13. `single_best_final_seed` performs a second target/M3 evaluation or imports old uncertainty/secondary/maturity ranking;
 14. `all_qualified_final_seeds` performs cross-seed ranking;
-15. a policy-only threshold/selection change moves `TrainingTrajectoryIdentity` or launches TRAIN2 when training-bearing inputs are identical;
-16. a training-bearing membership/loss/LR/seed/horizon/preparation/precision/backend change fails to move training identity;
+15. a policy-only threshold/D2.DEF.059A/059B change moves `TrainingTrajectoryIdentity` or launches TRAIN2 when pre-fit training-bearing inputs are identical;
+16. a pre-fit training-bearing membership/loss/LR/seed/horizon/preparation-input/precision/backend change fails to move training identity, or a changed fitted-preparation/result under the same identity is silently accepted instead of failing realized-state authentication;
 17. `PostSelectionFittedPreparation`, materialization, generated MACE config, checkpoint catalog, runtime summary, or continuation still requires full policy-bearing plan identity;
 18. pre-training preparation consults current checkpoint admissibility merely to decide replay execution;
 19. terminal TRAIN2 cannot seal the run root until assessment files exist, or current EVAL2 writes `fold-acceptance.json`/`run-evidence.json` into a post-cutover sealed root;
 20. root-dependent EVAL2/reassessment can race archive/dedup/reclamation because the P5 run-activity exclusion is absent or lock order is reversed;
-21. warning-only diagnostics move the hard-assessment position locator;
-22. hard-policy/selection change fails to derive a new assessment position over the same training trajectory;
+21. warning-only diagnostics, current-CV-authorization-only edits, or D2.DEF.059B/publication-mode-only edits move a final-seed hard-assessment position locator;
+22. a final hard-policy or D2.DEF.059A change fails to derive a new final-seed assessment position over the same training trajectory, or a 059B-only change fails to derive a new aggregate publication decision;
 23. a second pointer database, assessment filesystem registry, shadow evidence store, or content-store scan is introduced;
 24. a future target/replay measurement digest changes solely because an assessment threshold/full role-plan digest changed;
 25. historical scalar equality alone is accepted as measurement equivalence;
@@ -648,7 +673,7 @@ Implementation acceptance SHALL exercise the real P5 owners and reject at least 
 28. changed historical CV representative reuses the old representative's outer metric;
 29. historical final production is reassessed/published before current CV reclosure accepts;
 30. historical final candidate winner is inferred from an old shortlist/store scan instead of complete bound evidence or recomputed EVAL2;
-31. legacy roots are renamed, copied, symlinked, located by scan/mtime, or have historical hashes/runtime ancestry rewritten;
+31. a sealed legacy root is modified; a terminal-but-unsealed legacy root is sealed by anything other than the one append-only authenticated manifest/anchor publication; legacy roots are renamed, copied, symlinked, located by scan/mtime, or have historical hashes/runtime ancestry rewritten;
 32. interrupted legacy trajectory continues without exact historical optimizer/EMA/RNG/runtime ancestry plus training-equivalence proof;
 33. global campaign schema advances solely for this local policy cutover;
 34. legacy generated foundation `0.045/0.045/0.030` defaults fail to migrate as specified, while explicit current values under the new marker are accidentally rewritten;

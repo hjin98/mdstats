@@ -341,20 +341,40 @@ run root is owned only by its training trajectory. Once authenticated fixed-budg
 TRAIN2 reaches a terminal training state, the P5 owner freezes the existing
 completion proof while holding its run-activity exclusion: an immutable typed
 topology manifest naming every training-owned node is published first, and a
-compact self-authenticating anchor binding that manifest is published last as the
-commit point. The terminal proof binds the authenticated `Train2RuntimeSummary`
-and exact checkpoint/runtime boundary; it does not require CV fold acceptance,
-final run evidence, or any other assessment record.
+compact self-authenticating anchor binding that manifest's identity is published
+last as the commit point. The terminal proof binds the authenticated
+`Train2RuntimeSummary` and exact checkpoint/runtime boundary; it does not require
+CV fold acceptance, final run evidence, or any other assessment record.
 
-The split still lets normal reporting validate completion in O(1) while exact
-closed-subtree certification pays for the full topology. The topology is typed
-and covers directories as well as files, so neither an unexpected empty directory
-nor a same-name file/directory substitution can pass as the node the owner
-certified, and no symlink or special object becomes owned merely by appearing at
-a familiar name. Every observation on that path is no-follow, and the owner's own
-authority records are opened with no-follow regular-file verification. From the
-training terminal boundary onward the anchor certifies the sealed training root;
-reassessment never mutates that root.
+The split lets normal reporting validate completion in O(1) while exact
+closed-subtree certification still pays for the full topology. The topology is
+typed and covers directories as well as files, so neither an unexpected empty
+directory nor a same-name file/directory substitution can pass as the node the
+owner certified, and no symlink or special object becomes owned by appearing at
+a familiar name. Every observation on that path is no-follow. The topology
+manifest and compact completion anchor themselves are opened with `O_NOFOLLOW`
+and confirmed regular by `fstat` on the opened descriptor rather than by a
+separate `lstat`/open sequence whose namespace component could be renamed
+between checks.
+
+From the training terminal boundary onward the anchor - not the presence of a
+fold-acceptance, run-evidence, or other terminal assessment file - certifies the
+sealed training root. This matters because assessment evidence is external for
+post-cutover roots and because a historical terminal assessment file may already
+have moved cold. The topology manifest and completion anchor are owner
+infrastructure, never reclaimable run members. Republication verifies and reuses
+an existing valid proof rather than deriving a new proof from a tree storage may
+legitimately have depleted. A tampered, copied/root-mismatched, partially
+conflicting, or self-inconsistent proof makes the root non-certifiable instead of
+appearing to own more.
+
+An already sealed historical root is strictly read-only. The only migration
+exception is a terminal-but-unsealed historical root whose exact TRAIN2 summary,
+checkpoint/runtime boundary, and every existing root node authenticate under the
+historical owner. While holding the existing run-activity exclusion, that owner
+may publish exactly one append-only topology manifest and completion anchor using
+the same create-once/verify semantics. No pre-existing historical byte is
+rewritten; a conflicting partial proof fails closed.
 
 Current CV/final assessments are published outside the sealed root in the existing
 post-selection immutable evidence plane and are located through CampaignStore's

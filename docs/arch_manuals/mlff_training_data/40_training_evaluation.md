@@ -30,7 +30,7 @@ ReplayWarningDiagnosticPolicy
   -> warning/report evidence only
 ```
 
-`TrainingTrajectoryIdentity` is the canonical role-specific training-position projection. It binds every input capable of changing exact TRAIN2/materialization/restart behavior: training role and gradient/replay-training membership; optimizer seed and planned horizon; foundation checkpoint/head and replay-training lineage; fitted/prepared training state; objective/loss, exposure/corpus order, optimizer/LR, precision/backend/model architecture, checkpoint cadence and accepted MACE execution semantics; and any validation/preparation/common-monitor/composition-transfer parent actually consumed before or during training. It excludes checkpoint-decision thresholds, warning thresholds, CV outer acceptance, representative ordering, committee/publication policy, and other post-training decisions.
+`TrainingTrajectoryIdentity` is the canonical role-specific **pre-fit training-position** projection. It binds every already-available input capable of changing exact TRAIN2/materialization/restart behavior: training role and exact gradient/replay-training membership; optimizer seed and planned horizon; foundation checkpoint/head and replay-training lineage; preparation method/policy plus deterministic preparation inputs such as authorized fit membership, selected-head prediction/reference-E0 input identity, common-monitor/transfer-consumer composition identity, and accepted rank/tolerance/anchor policy; objective/loss, exposure/corpus order, optimizer/LR, precision/backend/model architecture, checkpoint cadence and accepted MACE execution semantics; and any validation artifact consumed by the trainer. It does **not** bind the fitted preparation record/result or another descendant product. Checkpoint-decision thresholds, warning thresholds, CV outer acceptance, representative ordering, committee/publication policy, and other post-training decisions are likewise excluded.
 
 `EvaluationMeasurementIdentity` binds only inputs capable of changing one numerical measurement: exact checkpoint/model state, exact evaluation population/artifact and labels/reference values, metric/reduction/units, head/prediction semantics, provider realization, and numerically material precision/backend semantics. A full role-plan digest or threshold is not a numerical-measurement input merely because an older schema hashed it.
 
@@ -62,7 +62,7 @@ warning policy + replay measurement
   -> diagnostic evidence only
 ```
 
-A policy-only edit therefore cannot create a different training trajectory. A training-bearing edit must create a different trajectory and continue to fail closed for restart/reuse.
+The trajectory position exists before fitting. `PostSelectionFittedPreparation` is its descendant and binds that trajectory identity; materialization/runtime then bind the exact fitted-preparation digest. Continuation/reuse authenticates both the pre-fit trajectory identity and the exact realized fitted-preparation/result/runtime ancestry required by D2.DEF.060. A policy-only edit therefore cannot create a different training trajectory, while a changed fitted result under otherwise identical pre-fit identity is a fail-closed realized-state mismatch rather than a reason to create a cyclic identity.
 
 ## Replay ownership
 
@@ -129,13 +129,20 @@ Current policy-bound assessments are immutable objects in the existing post-sele
 ```text
 selected_binding_digest
 assessment_role = cv_fold | final_seed
-current role assessment-plan digest
+assessment_position_policy_digest
 training_trajectory_identity
 optimizer_seed
 fold_index for CV, absent for final production
 ```
 
-The pointer value is the immutable current assessment-record digest. Campaign-level CV-acceptance and final-publication pointers remain the aggregate current authorities. A warning-only edit does not move the hard-assessment position; a hard-policy or selection-policy edit does.
+The role-specific `assessment_position_policy_digest` is narrower than the full role plan:
+
+- for `cv_fold`, it binds the current CV hard checkpoint-decision policy, D2.DEF.059A within-run ordering identity, configured outer metric and `theta_CV` verdict policy;
+- for `final_seed`, it binds only the current final hard checkpoint-decision policy and D2.DEF.059A within-run ordering identity.
+
+The final-seed projection excludes current-CV authorization ancestry, publication mode, and D2.DEF.059B. Current CV acceptance is a separately re-authenticated authorization precondition for using a final-seed assessment, while publication mode/059B are aggregate publication parents over already-frozen seed representatives.
+
+The pointer value is the immutable current assessment-record digest. Campaign-level CV-acceptance and final-publication pointers remain the aggregate current authorities. A warning-only edit does not move a hard-assessment position; a hard-policy or D2.DEF.059A edit does. A D2.DEF.059B/publication-mode-only edit moves only the aggregate final publication decision.
 
 Any EVAL2/reassessment that reads checkpoint/materialization bytes from a sealed root holds the existing P5 run-activity exclusion for the whole root-dependent numerical-read interval. Storage archive/dedup/reclamation therefore cannot move those bytes concurrently. If an operation also needs the post-selection publication barrier, lock ordering is run-activity exclusion first, publication barrier second. D4 may retain the existing concrete lease API; no second reader-lock protocol is permitted.
 
@@ -244,13 +251,14 @@ Currentness advances at the narrowest real owner:
 - `tau_CV` changes move CV hard assessments/representatives, dependent outer verdict and production authorization, not CV TRAIN2/measurements;
 - `theta_CV` changes move only CV outer verdict and dependent production authorization;
 - `tau_prod` changes move production assessment/representative/publication, not production TRAIN2 or accepted CV;
-- strict within-run/cross-seed ordering changes move representative/publication descendants only;
-- a training-bearing method/membership/seed/horizon/preparation/runtime change moves `TrainingTrajectoryIdentity` and remains fail-closed for continuation;
+- a D2.DEF.059A within-run ordering change moves checkpoint representative and dependent verdict/publication descendants but not TRAIN2 or numeric measurements;
+- a D2.DEF.059B/publication-mode-only change moves only aggregate final publication descendants, not per-seed assessments;
+- a pre-fit training-bearing method/membership/seed/horizon/preparation-input/runtime change moves `TrainingTrajectoryIdentity`; a changed fitted-preparation/result under the same pre-fit identity is detected separately by realized-state authentication and remains fail-closed for continuation;
 - a numerical-evaluation population/metric/provider/precision change moves `EvaluationMeasurementIdentity` and forbids stale measurement reuse.
 
 A historical verdict/classification never becomes current by monotonic threshold implication. Reassessment publishes a new immutable assessment. Existing checkpoint bytes/history/runtime summaries remain immutable.
 
-The one-time cutover from policy-overbound historical identities is a source-preserving equivalence mapping at the existing recovery/currentness owner, not a steady-state compatibility subsystem. It may bind one authenticated legacy root to one current training trajectory after exact proof; it must not scan, rename, copy, symlink, or rewrite historical roots and must not become a general alias registry.
+The one-time cutover from policy-overbound historical identities is a source-preserving equivalence mapping at the existing recovery/currentness owner, not a steady-state compatibility subsystem. It may bind one authenticated legacy root to one current training trajectory after exact proof. An already sealed historical root is strictly read-only. A terminal-but-unsealed historical root may receive exactly one append-only completion topology/anchor publication under the existing P5 run-activity owner after its terminal TRAIN2/checkpoint/runtime state and every existing root node are authenticated; no pre-existing historical byte may be rewritten, and any conflicting partial proof fails closed. The migration must not scan, rename, copy, symlink, or otherwise mutate historical training state and must not become a general alias registry.
 
 P5-only generation changes do not blanket-invalidate independent P1/P2/P3 evidence. Unsupported historical generations remain readable history or fail closed as appropriate; they do not become a backdoor into current authority.
 

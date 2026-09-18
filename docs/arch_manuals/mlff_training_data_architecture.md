@@ -1,15 +1,16 @@
 ---
 title: "mdstats MLFF Training-Data Architecture"
 artifact_level: "D3 software architecture and integration"
-status: "current normative D3 architecture"
-accepted_date: "2026-09-15"
+status: "proposed D3 renewal candidate pending independent review"
+accepted_current_baseline_date: "2026-09-15"
+candidate_date: "2026-09-18"
 ---
 
 # mdstats MLFF Training-Data Architecture (D3)
 
 ## 1. Purpose and authority
 
-This manual is the current D3 software-architecture authority for the machine-learned force-field (MLFF) branch of mdstats. It replaces the former pre-SSDP architecture manual that mixed scientific formulation, numerical algorithms, software architecture, and source-specific implementation detail in one document family.
+This branch carries a proposed D3 renewal of the MLFF software architecture. Until the renewed candidate passes the required independent D3 Review and is accepted-current, the accepted baseline remains the pre-renewal canonical architecture. The candidate preserves that baseline except for the explicitly reviewed replay-retention/target-admissibility ownership/currentness cutover described here. It continues the post-SSDP separation from the former mixed scientific/numerical/architecture manual.
 
 The current authority chain is directional:
 
@@ -143,7 +144,7 @@ Replay monitoring remains a separate replay-domain product.
 
 Target and replay remain distinct evidence domains. Replay construction is owned by preparation; post-selection consumers authenticate prepared replay authority rather than rebuilding its scientific split or label policy. Canonical replay omission resolves TRUE_DFT; explicit pseudo replay remains opt-in and requires independent TRUE_DFT replay monitoring.
 
-The P5 training path now separates four dependency classes: a training-only method/`TrainingTrajectoryIdentity` for fitted preparation, materialization, fixed-budget TRAIN2 and restart; assessment-independent `EvaluationMeasurementIdentity` records for target/replay numerical measurements; role hard-decision plus strict-selection policy for checkpoint assessment/representative/verdict/publication; and a replay-warning diagnostic policy whose descendants are reports only.
+The P5 training path separates four dependency classes: a training-only method plus pre-fit `TrainingTrajectoryIdentity` derived from already-available training-bearing inputs; descendant fitted preparation/materialization/fixed-budget TRAIN2 whose exact realized preparation/runtime state is authenticated separately for continuation; assessment-independent `EvaluationMeasurementIdentity` records for target/replay numerical measurements; role hard-decision plus D2.DEF.059A policy for per-run checkpoint assessment/representative, with D2.DEF.059B reserved for aggregate final publication; and a replay-warning diagnostic policy whose descendants are reports only.
 
 Assessment-only edits cannot change a TRAIN2 trajectory. Every governed durable checkpoint is assessed before P5 representative selection. Foundation-P5 within-run selection is the strict D2 lexicographic minimum `(target RMSE, epoch, checkpoint SHA-256)` over hard-admissible checkpoints. For `single_best_final_seed`, frozen seed representatives are ordered by `(target RMSE, optimizer seed, checkpoint SHA-256)`. `all_qualified_final_seeds` remains unranked.
 
@@ -158,9 +159,9 @@ See `40_training_evaluation.md` for the detailed ownership graph. D1/D2 remain a
 
 The detailed execution architecture in `60_execution_performance.md` remains D3 authority. Parallel/resource adaptation preserves D2 equivalence and cannot alter scientific membership, numerical method, precision policy, label semantics, or accepted foundation-P5 exposure.
 
-Post-cutover P5 run roots are keyed by training trajectory rather than a full assessment plan. Fitted/materialized training state, generated configuration, checkpoints and runtime history live there. Authenticated terminal TRAIN2 seals the existing topology/completion proof before EVAL2. Current CV/final assessments are immutable descendants outside that sealed root and are located through the existing CampaignStore pointer/currentness plane.
+Post-cutover P5 run roots are keyed by the pre-fit training trajectory rather than a full assessment plan. Fitted/materialized training state, generated configuration, checkpoints and runtime history live there as descendants whose exact digests are separately authenticated. Authenticated terminal TRAIN2 seals the existing topology/completion proof before EVAL2. The proof retains opened-descriptor `O_NOFOLLOW`/`fstat` authentication, non-reclaimable manifest/anchor infrastructure, completion independent of assessment-file presence, idempotent proof reuse after cold movement, and fail-closed tamper/root-mismatch behavior. Current CV/final assessments are immutable descendants outside that sealed root and are located through the existing CampaignStore pointer/currentness plane.
 
-A policy-only change reuses a training-equivalent root and assessment-independent measurements where D2 equivalence is provable; otherwise only the required EVAL2 measurement is recomputed. Historical roots are never renamed, copied, symlinked, rewritten or located by store scanning. Interrupted legacy training continues only through exact authenticated historical runtime/protocol ancestry after training-equivalence proof.
+A policy-only change reuses a training-equivalent root and assessment-independent measurements where D2 equivalence is provable; otherwise only the required EVAL2 measurement is recomputed. Already sealed historical roots are never renamed, copied, symlinked or rewritten. A terminal-but-unsealed historical root has exactly one append-only completion-proof exception under the existing P5 run-activity owner after exact authentication, with no pre-existing byte rewrite. Interrupted legacy training continues only through exact authenticated historical runtime/protocol/preparation ancestry after training-equivalence proof. Legacy roots are never located by store scanning.
 
 Storage continues to consume owner-declared views. Retention is the transitive closure of current/restartable references. Any EVAL2/reassessment reading a sealed training root holds the existing P5 run-activity exclusion for the full numerical-read interval so archive/dedup/reclamation cannot race it. No second storage plane or reader-lock protocol is introduced.
 
@@ -196,14 +197,14 @@ The current architecture must preserve:
 3. one current `P_train` / complete `TargetTrainingOrder` and exact configured prefixes;
 4. one canonical target-order obligation authority, one normal-path exact NEIGHBOR1 build, MVIDX as representation, and independent MVQUAL;
 5. distinct target-size screening, post-selection CV, fresh production, and qualification lifecycles;
-6. one current P5 training-method authority and one training-trajectory/root identity excluding assessment-only policy;
+6. one current P5 training-method authority and one acyclic pre-fit training-trajectory/root identity excluding fitted-result descendants and assessment-only policy;
 7. one external campaign-common target checkpoint monitor shared by CV and production;
 8. selected-fold membership limited to train/eval/purge;
 9. assessment-independent numerical measurement identity;
 10. warning-only replay policy isolated from hard decisions;
-11. complete checkpoint assessment plus exact D2 strict representative/publication ordering;
-12. distinct currentness scopes for `tau_CV`, `theta_CV`, `tau_prod`, replay hard/warning policies and strict-order identity;
-13. sealed training-only P5 roots before EVAL2, with assessments external to the root and root reads protected from storage mutation by the existing owner exclusion;
+11. complete checkpoint assessment plus exact D2.DEF.059A within-run ordering and D2.DEF.059B aggregate publication ordering;
+12. distinct currentness scopes for `tau_CV`, `theta_CV`, `tau_prod`, replay hard/warning policy, 059A per-run selection and 059B publication-only policy; final-seed assessment currentness excludes current-CV authorization and 059B/publication mode;
+13. sealed training-only P5 roots before EVAL2, with assessments external to the root, accepted topology/anchor race-safety and cold-storage invariants preserved, already sealed historical roots read-only, and only the narrow append-only seal exception for terminal-but-unsealed legacy roots;
 14. no in-place historical verdict reclassification and no scalar-only measurement reuse;
 15. current CV reauthorization before reuse of historical final production for current assessment/publication;
 16. P5 final publication free of M3 selection/currentness ancestry and fixed before qualification;

@@ -1,7 +1,7 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: active-d3-review-reopen
+status: active-d3-r1-repair-candidate
 highest_affected_domain: D1
 branch: design/mlff-replay-retention-target-admissibility-rework
 analysis_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
@@ -428,7 +428,7 @@ Current `post_selection_run_identity()` hashes the complete CV/final plan digest
 
 This workplan freezes one architecture rather than leaving two alternatives.
 
-**Training trajectory identity.** Define one exact role-specific training-position projection and derive the post-selection run/checkpoint root from it. The projection includes every input capable of changing exact TRAIN2/materialization/restart behavior, including at least:
+**Training trajectory identity.** Define one exact role-specific training-position projection and derive the post-selection run/checkpoint root from it. The projection includes every **already-available pre-fit** input capable of changing exact TRAIN2/materialization/restart behavior, including at least:
 
 ```text
 run role
@@ -443,21 +443,21 @@ composition-transfer required-composition set derived from governed consumers
 checkpoint cadence and MACE execution semantics
 ```
 
-It excludes only downstream checkpoint-decision, warning, CV outer-acceptance, committee/publication and other post-training policy coordinates.
+It excludes the fitted-preparation/result digest and every other descendant product, as well as downstream checkpoint-decision, warning, CV outer-acceptance, committee/publication and other post-training policy coordinates. The fitted preparation binds this trajectory identity; materialization/runtime bind the exact fitted-preparation digest; continuation separately authenticates that realized preparation/result/runtime ancestry under D2.DEF.060.
 
 For new records, `run_identity` / checkpoint-root identity must mean this training trajectory position, schema-bumped as needed. Full CV/final plan digests remain assessment/authorization parents, not restart/root identity.
 
-Because replay hard-decision and P5 selection identity are removed from `PostSelectionMethodIdentity`, evolve `PostSelectionCvPlan` and `FinalProductionPlan` (or their existing role-policy parent payloads) to bind the exact **role-effective hard checkpoint-decision policy digest** and the fixed **P5 strict-target-selection algorithm identity** explicitly. The warning-only threshold is excluded. A hard replay-limit, role target-ceiling, or strict-selection-rule edit must therefore move assessment-plan ancestry while leaving training-position identity unchanged.
+Because replay hard-decision and P5 selection identity are removed from `PostSelectionMethodIdentity`, evolve the role plans to expose narrow assessment/publication projections rather than reusing their full digests as currentness. CV fold assessment binds its hard policy + D2.DEF.059A + outer metric/`theta_CV`; final-seed assessment binds final hard policy + D2.DEF.059A only. Current-CV authorization is a separate precondition for using final-seed evidence, and publication mode/D2.DEF.059B belongs only to aggregate final publication. The warning-only threshold is excluded everywhere except diagnostics.
 
 **Training-owned records.** Rebind the training owners that currently carry full run-plan ancestry:
 
-- `PostSelectionFittedPreparation.owner_plan_digest`;
+- `PostSelectionFittedPreparation` authorizing ancestry (replace the full policy-bearing owner-plan dependency with the pre-fit training-trajectory position);
 - `PostSelectionMaterialization.run_plan_digest/run_identity`;
 - checkpoint catalog/file lineage;
 - generated post-selection MACE configuration identity/name;
 - TRAIN2 runtime-plan/summary/continuation authentication.
 
-They must bind the training-position authority while preserving every training-bearing field listed above. A policy-only edit must reproduce the same training-position digest. A changed training-bearing coordinate must not.
+They must bind the pre-fit training-position authority while preserving every training-bearing input listed above. The fitted preparation/result remains a descendant and is authenticated separately by materialization/runtime/continuation. A policy-only edit must reproduce the same training-position digest. A changed pre-fit training-bearing coordinate must not; a changed fitted result under the same position must fail create-or-verify/continuation authentication.
 
 **No pre-training assessment dependency.** `_prepare_post_selection_run()` must not compose current checkpoint admissibility to decide whether replay training/TRUE_DFT runtime monitoring exists. Resolve replay execution from the training method/replay lineage. Construct hard checkpoint admissibility only when EVAL2 assessment begins.
 
@@ -481,13 +481,15 @@ The deterministic position key is the canonical projection:
 ```text
 selected_binding_digest
 assessment_role = cv_fold | final_seed
-current CV/final assessment-plan digest
+assessment_position_policy_digest
 training_trajectory_identity
 optimizer_seed
 fold_index for CV, absent for final production
 ```
 
-The assessment-plan digest already binds the current role-effective hard-decision policy and fixed P5 strict-selection identity and excludes warning-only policy. The pointer value is the immutable current assessment-record digest. Publication uses the same commit-time selected-binding stale-generation fence as existing post-selection pointers. Thus a hard-policy/selection change derives a different assessment position; an idempotent retry of the same position resolves the same pointer; warning-only edits do not move it.
+For CV, `assessment_position_policy_digest` binds current hard checkpoint policy + D2.DEF.059A + configured outer metric/`theta_CV`. For final seed assessment, it binds current final hard policy + D2.DEF.059A only. Final-seed assessment excludes current-CV authorization, publication mode and D2.DEF.059B; current CV is re-authenticated as an authorization precondition and 059B is bound only by aggregate final publication.
+
+The pointer value is the immutable current assessment-record digest. Publication uses the same commit-time selected-binding stale-generation fence as existing post-selection pointers. Thus a hard-policy/059A change derives a different assessment position; an idempotent retry of the same position resolves the same pointer; warning-only edits do not move it. A 059B/publication-mode-only edit leaves seed assessments current and moves only aggregate publication.
 
 Campaign-level `POINTER_CV_ACCEPTANCE` and final-publication pointers remain aggregate current authorities. The position pointer exists only so interrupted multi-fold/multi-seed assessment can resume without retraining, rerunning already-current assessment work, or scanning the object store.
 
@@ -495,11 +497,11 @@ After cutover:
 
 - stop writing current `fold-acceptance.json` and `run-evidence.json` into training roots;
 - retain one completion/topology owner: do not introduce a second training-root manifest format merely to recognize the TRAIN2 terminal proof;
-- retain read-only support for those files in historical roots;
+- retain read-only support for those files in already sealed historical roots; a terminal-but-unsealed legacy root has exactly one append-only completion-proof exception under the existing run-activity owner after exact terminal/root-node authentication, with no rewrite of any pre-existing byte;
 - a warning-threshold-only change may publish new diagnostic evidence without touching the sealed root or hard-assessment locator;
 - a hard-policy/selection change publishes a new assessment record/locator over the same trajectory root.
 
-The storage/topology owner must continue to certify a closed subtree and cold-storage semantics. Any EVAL2/reassessment that reads materialization/checkpoint bytes from a sealed run root must acquire the existing `post_selection_run_activity_lease()` for the full root-read/evaluation interval, so archive/dedup/reclamation cannot move those bytes concurrently. Release that lease after all root-dependent numerical reads complete; then publish immutable assessment objects/pointers. If a path must hold both locks, preserve the established order `run-activity lease -> post-selection publication barrier`, never the reverse. Do not add a second reader-lock protocol.
+The storage/topology owner must continue to certify a closed subtree and cold-storage semantics. Preserve the accepted proof contract losslessly: `O_NOFOLLOW` open plus `fstat` regular-file authentication of authority records, non-reclaimable topology/anchor infrastructure, compact-anchor completion independent of terminal assessment-file presence, idempotent reuse of an existing proof instead of reconstruction from a depleted tree, and fail-closed handling of tampered/copied/root-mismatched/partial-conflict proof state. Any EVAL2/reassessment that reads materialization/checkpoint bytes from a sealed run root must acquire the existing `post_selection_run_activity_lease()` for the full root-read/evaluation interval, so archive/dedup/reclamation cannot move those bytes concurrently. Release that lease after all root-dependent numerical reads complete; then publish immutable assessment objects/pointers. If a path must hold both locks, preserve the established order `run-activity lease -> post-selection publication barrier`, never the reverse. Do not add a second reader-lock protocol.
 
 ### 5.5 Separate evaluation measurement from assessment policy
 
@@ -565,9 +567,13 @@ change production target threshold tau_prod
   -> production TRAIN2 trajectory and sealed training root remain current
   -> accepted CV remains current because its policy did not move
 
-change strict P5 selection rule identity
-  -> representative/verdict/publication descendants move
+change D2.DEF.059A within-run selection identity
+  -> per-run representative and dependent verdict/publication descendants move
   -> numeric measurements and TRAIN2 trajectory remain current
+
+change D2.DEF.059B or publication mode only
+  -> aggregate final publication decision moves
+  -> final-seed assessments/representatives, numeric measurements and TRAIN2 remain current
 
 change LR/loss/exposure/foundation/training membership/seed/horizon,
 or another training-position input such as required preparation/validation lineage
@@ -906,7 +912,7 @@ During the one-time identity migration:
 
 - derive the legacy source run identity/root only from authenticated stored historical CV/final plan and run-position evidence;
 - if the historical root is sealed, validate its existing completion/topology ownership records before consuming checkpoints and never mutate it;
-- if TRAIN2 is complete but the old policy failed before terminal run evidence/completion anchor, authenticate the complete runtime summary/checkpoints and seal the root under the new **training-completion** rule before assessment;
+- if TRAIN2 is complete but the old policy failed before terminal run evidence/completion anchor, first require that the historical root is terminal-but-unsealed; authenticate the complete runtime summary/checkpoints plus every existing root node, then under the existing run-activity owner publish exactly one append-only topology manifest/anchor using create-once/verify semantics; do not rewrite any pre-existing historical byte, and fail closed on conflicting partial proof state;
 - if TRAIN2 is interrupted, resume only after exact training-equivalence proof and continue using the historical materialization/config/runtime protocol identities that created the checkpoint/optimizer/RNG state; do not rewrite them to the new identity mid-trajectory;
 - after legacy continuation completes, assess under the current policy outside the training root;
 - never locate a legacy run by scanning `runs/`, guessing hashes, newest-mtime choice, or content-store reverse lookup;
@@ -1033,21 +1039,21 @@ Also review the post-selection restoration recurrence record that required D1/D2
 54. A selected representative above the hard replay limit is impossible.
 55. `single_best_final_seed` chooses the lower authoritative target RMSE even when the other seed has better replay margin, secondary metrics, maturity or bootstrap evidence.
 56. `all_qualified_final_seeds` publishes every already-qualified required representative without cross-seed ranking.
-57. Changing the strict single-best publication ordering identity stales only dependent publication decisions, not per-seed TRAIN2 trajectories or numeric common-monitor measurements.
+57. Changing D2.DEF.059B or publication mode stales only aggregate final publication decisions, not per-seed assessments/representatives, TRAIN2 trajectories or numeric common-monitor measurements; changing D2.DEF.059A moves the affected per-run representative/assessment descendants.
 58. A post-cutover successful production run binds the complete ordered candidate-record set; a no-admissible terminal result binds the same set before failure publication.
 59. A historical successful production run whose candidate set is not durably enumerable recomputes EVAL2 from preserved checkpoints rather than scanning the evidence store or retraining.
 60. A historical foundation-adaptation config with generated CV `0.045/0.045` and production `0.030` migrates to `0.075/0.075/0.050`; with the new checkpoint-policy marker, explicit `0.045/0.045` and `0.030` remain intentional overrides; scratch legacy `0.030` remains unchanged.
 61. Historical replay `30.0` migrates to `50/100`; custom one-number replay fails actionable migration; the new marker rejects the retired one-number field and mixed old/new replay authority.
-62. Legacy run-root reuse derives its source locator from authenticated historical plan/run evidence and preserves sealed legacy topology without rename/copy/symlink.
+62. Legacy run-root reuse derives its source locator from authenticated historical plan/run evidence; already sealed roots remain strictly read-only, while a terminal-but-unsealed root may receive only the one authenticated append-only completion manifest/anchor without rename/copy/symlink or rewrite of existing bytes.
 63. A completed post-cutover TRAIN2 trajectory publishes its training completion/topology proof under the run-activity lease **before EVAL2**; simulated interruption immediately after the seal resumes at assessment with zero trainer launch.
 64. Post-cutover EVAL2/CV/final assessment writes no `fold-acceptance.json`, `run-evidence.json`, or other policy-bound state into the sealed training root; historical root-local records remain read-only compatible.
 65. A hard-policy or selection-policy change creates a new external assessment/currentness record over the same sealed trajectory; warning-only change affects diagnostic evidence only; neither mutates root topology.
 66. `_prepare_post_selection_run()` resolves replay execution from training method/replay lineage, not current checkpoint-admissibility policy; warning/hard/target/selection edits reach EVAL2 only.
-67. Preparation, materialization, checkpoint catalog, MACE config/runtime plan, and continuation lineage resolve the same training-position identity across assessment-only edits and move on every exercised training-bearing input, including composition-transfer/validation lineage.
+67. The pre-fit training-position identity is identical across assessment-only edits and moves on every exercised pre-fit training-bearing input, including authorized preparation inputs/composition-transfer consumer lineage. Fitted preparation, materialization, checkpoint catalog, MACE config/runtime plan and continuation descend from that identity and separately authenticate the exact realized fitted-preparation/result state.
 68. A pre-cutover interrupted trajectory resumes only through exact training-equivalence proof using its historical config/runtime protocol identities; no historical record is rewritten mid-trajectory.
 69. Current CV rejection blocks current final-production assessment/publication even if historical final TRAIN2 bytes are reusable; current CV acceptance plus exact production training equivalence permits reassessment with zero trainer launch.
-70. Current CV/final assessment is found through the canonical position pointer `(selected binding, role, current assessment-plan digest, training trajectory, seed, optional fold)` in the existing CampaignStore/post-selection pointer infrastructure; hard-policy/selection changes move that position, warning-only changes do not.
-71. The existing completion/topology/storage tests prove the evolved TRAIN2-terminal seal remains create-once, closed-subtree certifiable, lease-safe, and compatible with cold-storage/reclamation semantics.
+70. Current CV/final assessment is found through the canonical position pointer `(selected binding, role, assessment-position-policy digest, training trajectory, seed, optional fold)` in the existing CampaignStore/post-selection pointer infrastructure. CV uses hard+059A+outer-verdict policy; final seed uses hard+059A only. Warning-only, current-CV-authorization-only and 059B/publication-mode-only edits do not move a final-seed position; 059B moves only aggregate publication.
+71. The existing completion/topology/storage tests prove the evolved TRAIN2-terminal seal remains create-once, closed-subtree certifiable, lease-safe, uses opened-descriptor `O_NOFOLLOW`/`fstat` authority authentication, keeps manifest/anchor non-reclaimable, remains valid without hot terminal assessment files, reuses rather than reconstructs existing proof after cold movement, and fails closed on tampered/copied/partial-conflict proof state.
 72. Concurrent reassessment versus archive/dedup/reclamation proves the reassessment holds the existing run-activity lease while reading/evaluating root bytes; storage mutation waits, no root byte disappears mid-EVAL2, and publication occurs without lock-order inversion.
 73. Shipped example/generated config remain campaign schema v2 and no longer describe bootstrap/refinement/secondary ordering as P5 representative authority.
 
@@ -1230,7 +1236,7 @@ The final renderer-safe D2 ratification target is `32508991d472c1c6e4bd8b818b38d
 
 On 2026-09-18 the stakeholder explicitly accepted that exact D2 candidate. Ratification record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_R2_RATIFICATION.md`. The D2 blob remains unchanged by ratification. Gate C is closed; Gate D may proceed.
 
-### Gate D - D3 authority/currentness reconciliation - R1 REVIEW NO-PASS / REOPENED
+### Gate D - D3 authority/currentness reconciliation - R1 REPAIR CANDIDATE PREPARED / R2 REVIEW REQUIRED
 
 Before code edits:
 
@@ -1257,7 +1263,7 @@ Required repair before a new immutable D3 candidate may be reviewed:
 3. narrow final-seed assessment currentness so D2.DEF.059B publication-only policy is not a parent of each per-seed assessment position. Bind D2.DEF.059A + final hard policy to the seed-assessment projection; bind publication mode/059B only at the aggregate publication decision;
 4. restore the accepted completion-proof/storage safety invariants weakened by the candidate rewrite: race-safe no-follow opened-descriptor regular-file authentication (or an explicitly equivalent guarantee), topology/anchor owner infrastructure excluded from reclamation, completion independent of terminal assessment-file presence, idempotent reuse of an existing proof rather than reconstruction from a storage-depleted tree, and fail-closed treatment of tampered/copied/self-inconsistent proofs.
 
-Implementation remains blocked until those repairs are incorporated into a new immutable D3/D4 candidate and fresh independent D3 Review returns PASS.
+R1-D3-1 through R1-D3-4 are incorporated into the repaired candidate authored by this change: the identity graph is acyclic, legacy sealing has one explicit append-only exception, final-seed assessment excludes 059B/publication-only ancestry, and the full completion/storage safety contract is restored. Gate D remains open until a fresh independent R2 Review passes the exact immutable repair target.
 
 ### Gate E - D4 implementation - BLOCKED ON GATE D ACCEPTANCE
 
@@ -1342,12 +1348,12 @@ The cycle may close only when all of the following are true:
 17. Global campaign schema remains v2; the generated `post_selection_checkpoint_policy_generation = "p5_target_replay_v2"` marker owns the narrow migration. Historical generated foundation CV `0.045/0.045`, production target `0.030`, and replay `30.0` migrate by the explicit rules; non-default CV/production values remain explicit overrides, custom/ambiguous legacy replay values fail closed, and explicit `0.045/0.045/0.030` under the new marker remain configurable.
 18. Warning diagnostics are not hard-decision ancestors; changing only the warning threshold cannot move representative/CV/publication membership.
 19. New post-cutover run roots are training-only, are sealed under the run-activity lease at authenticated terminal TRAIN2 before EVAL2, and current assessments never mutate their topology.
-20. Training-position identity is the singular restart/root owner across fitted preparation, materialization, checkpoint catalog, MACE/runtime plan and continuation; assessment-only edits reproduce it and every tested training-bearing edit changes it.
+20. Training-position identity is the singular acyclic **pre-fit** restart/root owner; fitted preparation/materialization/checkpoint/runtime are descendants and exact realized preparation state is separately authenticated for continuation. Assessment-only edits reproduce the identity and every tested pre-fit training-bearing edit changes it.
 21. Replay execution/recovery is resolved without current checkpoint-admissibility policy; hard assessment begins only after authenticated TRAIN2 at EVAL2.
-22. Current CV/final assessments are deterministically locatable through an extension of the existing CampaignStore pointer seam keyed by selected binding + assessment role + current assessment-plan digest + training trajectory + seed/fold position; no content-store scan, run-root assessment file, or second evidence store is introduced.
-23. Historical interrupted trajectories continue only under exact historical runtime/protocol ancestry after explicit training-equivalence proof; completed historical trajectories are reused without rewriting bytes or hashes.
+22. Current CV/final assessments are deterministically locatable through the existing CampaignStore pointer seam keyed by selected binding + assessment role + narrow assessment-position-policy digest + training trajectory + seed/fold position. Final-seed assessment excludes current-CV authorization and D2.DEF.059B/publication mode; no content-store scan, run-root assessment file, or second evidence store is introduced.
+23. Historical interrupted trajectories continue only under exact historical fitted-preparation/runtime/protocol ancestry after explicit training-equivalence proof. Already sealed completed roots are reused without modification; terminal-but-unsealed roots permit only the authenticated append-only manifest/anchor seal and never rewrite existing bytes or hashes.
 24. Historical final-production training may be reassessed only after current CV reclosure accepts; current CV rejection blocks current final publication regardless of retained final checkpoint quality.
-25. Existing completion/topology/cold-storage ownership remains create-once, closed-subtree certifiable and lease-safe after TRAIN2 becomes a recognized terminal proof; every later root-consuming EVAL2/reassessment uses the existing run-activity lease to exclude concurrent storage mutation.
+25. Existing completion/topology/cold-storage ownership remains create-once, closed-subtree certifiable and lease-safe after TRAIN2 becomes a recognized terminal proof, with opened-descriptor no-follow authentication, non-reclaimable owner proof infrastructure, assessment-file-independent completion, idempotent proof reuse and fail-closed tamper handling preserved; every later root-consuming EVAL2/reassessment uses the existing run-activity lease to exclude concurrent storage mutation.
 26. Current method/policy/evidence lineage remains singular and acyclic; no compatibility wrapper, shadow registry, duplicated threshold authority, second checkpoint selector, or second evidence store is added.
 27. Focused, affected, real-owner and bounded scientific qualification evidence passes on the exact candidate.
 28. Independent assembled Protocol 6.4 review passes.

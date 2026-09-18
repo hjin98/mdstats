@@ -33,7 +33,7 @@ A lower layer may produce evidence that challenges an upstream contract, but it 
 | frozen target bindings | `cross-validate` admission / `CampaignStore` | atomically freeze and expose immutable per-size target identities | D1/D2 consequence |
 | common post-selection target monitor | P5 common-monitor owner over neutral `OUTER_MONITOR` | construct one immutable exact monitor record reused by all current CV/final P5 plans | D1/D2 |
 | post-selection training-method identity | `PostSelectionMethodIdentity` owner | one current P5 training-method authority projected from trajectory-generating component owners; assessment-only policy is excluded | D1/D2 |
-| training trajectory position/root | P5 training-position and runtime/completion owners | derive one restart/root identity from all and only training-bearing inputs; seal authenticated terminal TRAIN2 before assessment | D2 continuation/equivalence + D3 |
+| training trajectory position/root | P5 training-position and runtime/completion owners | derive one pre-fit restart/root identity from already-available training-bearing inputs; fitted preparation is its descendant and exact realized preparation/runtime ancestry is authenticated separately; seal terminal TRAIN2 before assessment | D2 continuation/equivalence + D3 |
 | evaluation measurement identity | EVAL2 measurement owner | publish assessment-independent checkpoint/population/metric/provider measurements sufficient for exact reuse proof | D2 |
 | role hard checkpoint assessment | CV/final assessment-plan owners | bind role target ceiling, shared catastrophic replay hard policy, fixed strict-selection identity, and consume complete checkpoint measurements | D1/D2 |
 | replay warning diagnostic | existing replay-policy resolver diagnostic projection | publish warning/report evidence only; no hard-decision or representative edge | D1/D2 |
@@ -62,7 +62,7 @@ Manual and automatic target-size selection consume the compact prepared P2 defin
 
 `PostSelectionMethodIdentity` is the sole current P5 training-method authority. It contains trajectory-generating method coordinates only. Checkpoint warning/hard thresholds, CV outer acceptance, within-run strict representative ordering, and final cross-seed ordering are assessment semantics and cannot enter the training method merely because historical schemas bundled them.
 
-Every P5 run has one `TrainingTrajectoryIdentity` derived from exact training-bearing position inputs. Fitted preparation, materialization, generated training configuration, checkpoint/runtime ancestry, continuation authentication, and the sealed run root descend from that identity. A policy-only edit reproduces the same training trajectory; a training-bearing edit does not.
+Every P5 run has one pre-fit `TrainingTrajectoryIdentity` derived only from already-available training-bearing position inputs. Fitted preparation, materialization, generated training configuration, checkpoint/runtime ancestry, and the sealed run root descend from that identity. The fitted-preparation/result digest is not an input to its own parent identity; materialization/runtime/continuation authenticate that exact realized state separately. A policy-only edit reproduces the same training position, while a changed realized fitted state under the same position fails closed rather than creating a dependency cycle.
 
 EVAL2 owns immutable `EvaluationMeasurementIdentity` records independently of assessment thresholds/full role plans. CV/final assessment owners apply the current hard policy and D2 strict-order identity to those records. Warning classification is a separate diagnostic descendant.
 
@@ -149,7 +149,7 @@ Key rules are architectural:
 
 Target-order OOC/packed sparse artifacts and pre-adoption checkpoints remain subordinate owner-declared prepared/storage products. Storage may inventory or reclaim them only through their real owner boundaries; it cannot infer selector currentness from their path or content-address alone.
 
-P5 post-cutover run roots are closed training-only subtrees sealed at authenticated terminal TRAIN2. Current assessment objects are external descendants, not members of that root. A root-consuming EVAL2/reassessment holds the existing P5 run-activity exclusion for the whole numerical-read interval; storage mutation honors that owner exclusion. No second reader-lock or assessment store is introduced.
+P5 post-cutover run roots are closed training-only subtrees sealed at authenticated terminal TRAIN2. Current assessment objects are external descendants, not members of that root. The completion topology/anchor remain non-reclaimable owner infrastructure and retain opened-descriptor no-follow authentication, cold-storage-independent completion, idempotent proof reuse, and fail-closed tamper behavior. Already sealed historical roots are read-only; a terminal-but-unsealed historical root has one narrow append-only seal exception under the existing run-activity owner after exact authentication, with no rewrite of pre-existing bytes. A root-consuming EVAL2/reassessment holds the existing P5 run-activity exclusion for the whole numerical-read interval; storage mutation honors that owner exclusion. No second reader-lock or assessment store is introduced.
 
 Exact filesystem layouts, record schemas, concrete lease APIs, manifests, archive codecs, and integrity procedures are D4 specification/implementation details under these constraints.
 
@@ -183,14 +183,14 @@ The architecture must preserve these structural properties:
 5. target-order pre-adoption restart state subordinate to `prepare`/prepared storage rather than CampaignStore currentness;
 6. distinct target-size screening, post-selection CV, fresh production, and qualification lifecycles;
 7. one current P5 training-method authority and no competing DATA8 protocol graph;
-8. one `TrainingTrajectoryIdentity`/root owner across fitted preparation, materialization, checkpoint/runtime ancestry and continuation, with assessment-only coordinates excluded;
+8. one acyclic pre-fit `TrainingTrajectoryIdentity`/root owner above fitted preparation/materialization/runtime; exact fitted-preparation/result ancestry is authenticated separately for continuation, and assessment-only coordinates are excluded;
 9. one external campaign-common target checkpoint monitor shared by current CV and final production;
 10. selected-fold membership limited to train/eval/purge roles;
 11. assessment-independent target/replay numerical measurement identity sufficient to prove D2 reuse or force recomputation;
 12. warning-only replay policy has no hard-admissibility, representative, CV-acceptance, production-authorization, or publication edge;
 13. complete governed-checkpoint assessment precedes strict P5 representative selection;
-14. `tau_CV`, `theta_CV`, `tau_prod`, replay hard limit, replay warning, and strict-order identity have the distinct currentness scopes required by D2;
-15. post-cutover P5 run roots are training-only and sealed at authenticated terminal TRAIN2 before EVAL2;
+14. `tau_CV`, `theta_CV`, `tau_prod`, replay hard/warning policy, D2.DEF.059A within-run ordering, and D2.DEF.059B aggregate publication ordering have distinct currentness scopes; final-seed assessment identity excludes current-CV authorization and 059B/publication mode;
+15. post-cutover P5 run roots are training-only and sealed at authenticated terminal TRAIN2 before EVAL2 with the accepted race-safe/non-reclaimable/idempotent/tamper-fail-closed topology proof; already sealed historical roots remain read-only and the only legacy mutation is the explicitly authorized append-only seal of a terminal-but-unsealed root;
 16. current CV/final assessments are immutable external descendants located through the existing CampaignStore currentness plane, never assessment files written into sealed roots;
 17. root-consuming EVAL2/reassessment is excluded from concurrent archive/dedup/reclamation by the existing P5 run-activity owner;
 18. historical verdicts remain immutable history; current reassessment publishes new records and historical numeric reuse requires exact D2 measurement equivalence;
