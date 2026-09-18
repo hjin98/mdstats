@@ -1,14 +1,14 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: active-d1-renewal-review-pending
+status: active-d1-renewal-repair-required
 highest_affected_domain: D1
 branch: design/mlff-replay-retention-target-admissibility-rework
 analysis_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 implementation_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 protocol_6_4_authority_merge: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 stakeholder_direction_date: 2026-09-18
-review_state: d1-candidate-authored-awaiting-fresh-independent-review
+review_state: d1-r1-independent-review-no-pass-repair-required
 ---
 
 # MLFF Replay Retention and Target Admissibility Rework Workplan
@@ -1134,36 +1134,30 @@ Confirmed:
 
 Branch opened from exact baseline: `design/mlff-replay-retention-target-admissibility-rework`.
 
-### Gate B - D1 renewal for replay role and production target quality - OPEN / CANDIDATE AUTHORED
+### Gate B - D1 renewal for replay role and production target quality - OPEN / R1 NO-PASS
 
-Proposed D1 authority has been authored at immutable target:
+Immutable D1 candidate `06f1255ed39f41d178daf73985829a2190a2bee8` was independently reviewed under Protocol 6.4.
 
-`06f1255ed39f41d178daf73985829a2190a2bee8`
+Review record:
 
-with canonical D1 blob:
+- `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D1_INDEPENDENT_REVIEW_R1.md`
 
-`65713ab4e8caa848e21d27a75e594664528ee6eb`.
+Disposition:
 
-The candidate amends the canonical D1 owner rather than adding a parallel policy paper. It formalizes:
+**D1 NO-PASS; no SERIOUS CHALLENGE to the intended scientific policy.**
 
-- mandatory TRUE_DFT replay retention as an authenticated signed foundation-relative observable;
-- independent configurable diagnostic-warning / catastrophic-hard replay policy with generated defaults `0.050/0.100 eV/angstrom`;
-- replay warning as explicitly non-vetoing and replay hard violation as catastrophic forgetting;
-- replay as auxiliary inherited-capability evidence with no positive checkpoint-ranking or tie-break credit;
-- strict minimum authoritative target force RMSE over the hard-admissible set as the sole foundation-P5 checkpoint quality ordering;
-- the same strict target ordering for `single_best_final_seed`, while `all_qualified_final_seeds` stays unranked;
-- foundation-production target default `tau_prod = 0.050 eV/angstrom` with foundation CV remaining `0.045/0.045`;
-- no required numerical ordering between CV and production role ceilings, explicitly superseding the old “production is necessarily stricter” calibration rationale;
-- fixed-budget training and assessment-policy noninterference with an otherwise identical realized trajectory;
-- current-CV reauthorization before a training-equivalent historical fresh final trajectory can support current production assessment/publication.
+The review accepts the policy direction as scientifically coherent in principle but identifies six blocking authority/representation defects:
 
-The author-side bounded Challenge Pass raises no SERIOUS CHALLENGE to submitting this candidate, but explicitly records that `0.100` replay-hard and `0.050` production-target defaults are stakeholder-selected current calibrations rather than universal adequacy constants, and that target-only ranking may intentionally select a replay-warning-bearing checkpoint below the catastrophic limit. Downstream qualification remains the external-adequacy owner.
+1. `D1.DEF.026` minimizes over an unspecified "fully evaluated checkpoint set" and therefore does not guarantee the stakeholder rule over every governed durable TRAIN2 checkpoint.
+2. `D1.DEF.022A` requires foundation baseline `R_replay(Phi)`, but `D1.DEF.022` does not make exact `Phi` material for true-reference replay retention.
+3. `D1.AX.010A` does not explicitly give warning-threshold edits diagnostic-only currentness, leaving a path to stale hard verdict/publication state.
+4. `D1.DEF.022A` defines strict replay classes but simultaneously delegates boundary comparison semantics/units to D2, creating an authority ambiguity.
+5. "TRUE_DFT" wording is not reconciled with accepted `TRUE_REFERENCE` replay-role terminology.
+6. New display equations use single-dollar display fences instead of the accepted renderer-safe block form.
 
-Fresh independent Review is bound by:
+Bounded repair must also refresh a non-authoritative direct-dependency trace for the changed/new D1 objects. Do not start D2/D3/D4.
 
-`workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D1_INDEPENDENT_REVIEW_HANDOFF.md`.
-
-Gate B remains **OPEN**. Close only after a fresh Protocol 6.4 D1 falsification PASS on exact target `06f1255e...` and explicit stakeholder ratification of that exact reviewed target. D2 Gate C remains blocked until then.
+Candidate `06f1255e...` is not ratifiable. Freeze a new immutable D1 repair candidate and request fresh independent re-review.
 
 ### Gate C - D2 numerical renewal
 
