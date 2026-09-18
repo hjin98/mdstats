@@ -1,7 +1,7 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: RATIFIED_PROMOTED_PENDING_ARCHIVE
+status: CLOSED_PASS
 workplan_id: MLFF-D1-D2-SSDP64-AXIOMATIC-FORMALIZATION-1
 basis_commit: cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824
 highest_domain: D1
@@ -24,7 +24,7 @@ This work does not create a universal ontology, a fifth authority layer, or a ma
 - Current owners: `docs/methods/mlff_scientific_method.md`, `docs/methods/mlff_target_training_order_scientific_method.md`, `docs/methods/mlff_numerical_algorithmic_method.md`, and `docs/methods/mlff_target_training_order_numerical_algorithmic_method.md`.
 - Accepted basis: repository `hjin98/mdstats` at `cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824`.
 - Protocol owner: SSDP 6.4.0, accepted recovery `74bc572ef516cae417437a2027eeff52a2e25c15`.
-- Proposed authority state: D1/D2 candidate only until fresh independent D1/D2 review passes and the stakeholder ratifies the exact candidate. No file in this workplan may self-promote to accepted-current authority.
+- Final authority state: independent Review PASS at `e827aef9bdceb97aae5be6e89de0585a95dcf71c`; renderer-corrected candidate `a4824d28775164aa942fd29fa97ee0957eb87e6f` stakeholder-ratified on 2026-09-17; canonical D1/D2 promoted at `e41d95493aff2c644d38f1bb7b086bfb431bb2f2`; workplan closed after exact promotion verification.
 
 ## 2. Governing contract
 
@@ -457,3 +457,40 @@ remains current because no executable owner/test/environment contract changes.
 After exact promotion verification, archive this workplan and its review/repair
 lineage and record final CLOSED/PASS status. GPU qualification remains deferred
 to final release qualification.
+
+
+## 20. Final promotion verification and closure
+
+Canonical promotion commit `e41d95493aff2c644d38f1bb7b086bfb431bb2f2` was checked against ratified source target
+`a4824d28775164aa942fd29fa97ee0957eb87e6f`.
+
+Final verification established:
+
+- current general D1 and D2 paths contain the accepted Protocol-6.4 kernels;
+- both kernels exact-import the detailed pre-promotion source papers at the
+  ratified immutable target;
+- D2.DEF.027 uses the renderer-safe restricted-index sums and no canonical
+  authority math contains unsupported stacked-index, `\\operatorname`, or raw
+  escaped-cardinality syntax from this cycle;
+- braces are balanced in all four canonical MLFF method papers;
+- scoped target-order D1/D2 remain the scoped source owners with unchanged
+  scientific/numerical semantics;
+- weighted-quantile owner/test blobs remain
+  `15d20eae5a7b481d636d20fc2281c743e9abe0df`,
+  `8da42708ac601b335dfb3c9d818c302baccb1a78`, and
+  `01c6d99872c136cff91777e65ce8331807f8a016`;
+- passing CPU evidence runs `35300235175` and `35300268107` therefore remain
+  applicable;
+- canonical method-paper paths did not change, so no D3/D4 locator migration is
+  required;
+- no new Project Engineering Memory mutation is warranted: this cycle
+  formalized accepted semantics and fixed representation/D4 conformance without
+  establishing a new recurring failure family or success-pattern occurrence.
+
+The workplan and its review/repair lineage are archived as historical
+coordination/evidence. Canonical current authority is the promoted method-paper
+chain, not the archived workplan artifacts.
+
+Final lifecycle: **CLOSED / PASS / ACCEPTED CURRENT**.
+
+GPU qualification remains deferred to the final complete MLFF release package.

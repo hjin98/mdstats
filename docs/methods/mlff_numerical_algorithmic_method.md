@@ -17,7 +17,7 @@ workplan_id: MLFF-D1-D2-SSDP64-AXIOMATIC-FORMALIZATION-1
 
 This file is the canonical current D2 authority kernel for the mdstats MLFF numerical method. It formalizes, without changing, the accepted numerical meaning reconstructed at basis `cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824` and exact-imports the detailed pre-Protocol-6.4 source papers pinned at stakeholder-ratified target `a4824d28775164aa942fd29fa97ee0957eb87e6f`.
 
-Independent assembled-candidate Review passed on immutable target `e827aef9bdceb97aae5be6e89de0585a95dcf71c` at review commit `2eddd9058beda039e0ff53d4e50a189be469173b`. The stakeholder then identified a renderer-only notation defect in D2.DEF.027. Target `a4824d28775164aa942fd29fa97ee0957eb87e6f` replaces the two `\\substack` restricted sums with algebraically identical single-line restricted-index sums, changes no numerical decision or tolerance, and was explicitly ratified for canonical promotion on 2026-09-17.
+Independent assembled-candidate Review passed on immutable target `e827aef9bdceb97aae5be6e89de0585a95dcf71c` at review commit `2eddd9058beda039e0ff53d4e50a189be469173b`. The stakeholder then identified a renderer-only notation defect in D2.DEF.027. Target `a4824d28775164aa942fd29fa97ee0957eb87e6f` replaces the two renderer-sensitive stacked-index restricted sums with algebraically identical single-line restricted-index sums, changes no numerical decision or tolerance, and was explicitly ratified for canonical promotion on 2026-09-17.
 
 Exact accepted sources are:
 
