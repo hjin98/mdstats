@@ -11,56 +11,35 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  target-order:
     runs-on: ubuntu-latest
-    outputs:
-      failure_count: ${{ steps.parse.outputs.failure_count }}
-      first_name: ${{ steps.parse.outputs.first_name }}
-      second_name: ${{ steps.parse.outputs.second_name }}
-      first_message: ${{ steps.parse.outputs.first_message }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout exact evidence commit
+        uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install
+      - name: Install accepted CPU MLFF runtime and test runner
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e '.[manifest]' pytest
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-      - name: Run exact real-owner suite and capture JUnit
-        run: |
-          set +e
-          pytest -q tests/test_mlff_target_order_real_owner.py --junitxml=/tmp/r4-real-owner.xml
-          echo "$?" > /tmp/r4-exit-code
-          exit 0
-      - id: parse
-        name: Parse failure identities and first message
+          python -m pip install 'mace-torch==0.3.16' 'ase==3.29.0'
+          python -m pip install -e '.[manifest]' pytest
+      - name: Record validation environment
         run: |
           python - <<'PY'
-          import os, re, xml.etree.ElementTree as ET
-          root = ET.parse('/tmp/r4-real-owner.xml').getroot()
-          failed = []
-          for case in root.iter('testcase'):
-              node = case.find('failure')
-              if node is None:
-                  node = case.find('error')
-              if node is not None:
-                  name = f"{case.get('classname','')}::{case.get('name','')}"
-                  msg = (node.get('message') or node.text or '').strip()
-                  msg = re.sub(r'\s+', ' ', msg)
-                  failed.append((name, msg))
-          def clean(s):
-              return s.replace('%','pct').replace('\n',' ')[:180]
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
-              fh.write(f"failure_count={len(failed)}\n")
-              fh.write(f"first_name={clean(failed[0][0]) if failed else 'NONE'}\n")
-              fh.write(f"second_name={clean(failed[1][0]) if len(failed)>1 else 'NONE'}\n")
-              fh.write(f"first_message={clean(failed[0][1]) if failed else 'NONE'}\n")
+          import importlib.metadata as md
+          import platform
+          names = ['mdstats','mace-torch','ase','torch','torch-ema','e3nn','numpy','scipy','pytest']
+          print('python=' + platform.python_version())
+          for name in names:
+              try:
+                  print(f'{name}={md.version(name)}')
+              except Exception:
+                  print(f'{name}=MISSING')
           PY
-  report:
-    needs: diagnose
-    name: "R4 torch fail=${{ needs.diagnose.outputs.failure_count }} first=${{ needs.diagnose.outputs.first_name }} second=${{ needs.diagnose.outputs.second_name }} msg=${{ needs.diagnose.outputs.first_message }}"
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo diagnostic-complete
+      - name: Focused weighted-quantile regression
+        run: pytest -q tests/test_mlff_target_order_weighted_quantiles_fp64.py
+      - name: Real-owner target-order integration/regression
+        run: pytest -q tests/test_mlff_target_order_real_owner.py
