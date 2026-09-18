@@ -1,14 +1,14 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: active-d1-r2-review-pass-awaiting-stakeholder-ratification
+status: active-d1-renderer-repair-awaiting-bounded-equivalence-review
 highest_affected_domain: D1
 branch: design/mlff-replay-retention-target-admissibility-rework
 analysis_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 implementation_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 protocol_6_4_authority_merge: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 stakeholder_direction_date: 2026-09-18
-review_state: d1-r2-independent-review-pass-awaiting-exact-target-ratification
+review_state: d1-r2-pass-renderer-only-descendant-awaiting-bounded-equivalence-review
 ---
 
 # MLFF Replay Retention and Target Admissibility Rework Workplan
@@ -1154,9 +1154,16 @@ Canonical reviewed D1 blob:
 
 The review independently verified closure of all six R1 findings, source/dependency closure, unchanged sibling D1 semantics, and the bounded Challenge Pass for replay-role separation, warning/hard policy, `50 meV/angstrom` production target default, target-only representative ordering, final publication ordering and historical-fresh-production reassessment.
 
-Gate B is **not yet closed** because Protocol 6.4 requires explicit stakeholder ratification of the exact reviewed target. Accepted-current D1 remains `main@a759e81...` until that ratification.
+Gate B is **not yet closed**. Independent R2 review passed semantic target `2549dee709fb8bb383341ee3aebca7c71973a903`, but a renderer-only descendant was required before ratification because three multiline display blocks were being misparsed by the Markdown renderer.
 
-Gate C remains blocked until the stakeholder ratifies exact target `2549dee709fb8bb383341ee3aebca7c71973a903`.
+Renderer-repair semantic descendant:
+
+- commit: `cac2524facbc3fab6956fcbfcfa16f446e0287dc`;
+- D1 blob: `3885f286db224e7f4e67abc8ce012d084615442b`.
+
+The representation-only edits flatten the three affected equations so no display block contains a standalone `=` line and simplify the hard-admissible set braces; the intended mathematics is unchanged. The reviewed target `2549dee7...` remains immutable historical review evidence.
+
+Before stakeholder ratification, perform a bounded representation-equivalence check from `2549dee7...` to `cac2524...`. Gate C remains blocked until that check passes and the stakeholder ratifies the exact renderer-repaired target.
 
 ### Gate C - D2 numerical renewal
 
