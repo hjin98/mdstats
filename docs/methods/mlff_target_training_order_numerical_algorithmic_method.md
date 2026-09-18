@@ -279,11 +279,11 @@ State includes selected/available membership and ordered prefix, each family wit
 
 ### 8.1 Candidate primitives
 
-For available candidate `c`, define
+For available candidate `c`, let `O_c(S)` denote the canonical hard obligations `o` satisfying `q_o(S)<k_o` and `c in A_o`. Define
 
-$$
-H(c)=\left|\{o:q_o(S)<k_o\text{ and }c\in A_o\}\right|,
-$$
+$
+H(c)=|O_c(S)|,
+$
 
 $$
 G_m(c)=\sum_{w:A_m(w,c)=1,\,n_m(w)=0}\omega_m(w),
@@ -297,15 +297,7 @@ $$
 R(c)=\sum_m\sum_{w:A_m(w,c)=1}\frac{\omega_m(w)}{n_m(w)+1}.
 $$
 
-For the sparse-diversity term, define
-
-$$
-W_m(c)=\{w\in W_m:A_m(w,c)=1\},
-$$
-
-$$
-M(c)=\{m:|W_m(c)|>0\}.
-$$
+For the sparse-diversity term, let `W_m(c)` denote the witnesses `w` in `W_m` satisfying `A_m(w,c)=1`, and let `M(c)` denote the family indices `m` for which `W_m(c)` is nonempty.
 
 If `M(c)` is empty, define `D(c)=0`. Otherwise,
 
