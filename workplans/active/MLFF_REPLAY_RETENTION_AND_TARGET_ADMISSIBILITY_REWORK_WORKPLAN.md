@@ -451,8 +451,8 @@ The baseline run root mixes two lifecycles: mutable TRAIN2 output and immutable 
 Post-cutover, the root under `runs/<training_trajectory_identity>` is **training-only**:
 
 - materialization/config/checkpoints/runtime history live there;
-- once TRAIN2 reaches an authenticated terminal training state, freeze the topology and completion anchor **before EVAL2**;
-- use the existing complete `Train2RuntimeSummary` and authenticated checkpoint/runtime boundary as the terminal training proof rather than requiring an assessment verdict to exist;
+- once TRAIN2 reaches an authenticated terminal training state, freeze the topology and completion anchor **before EVAL2**, while holding the existing run-activity lease so no trainer/storage writer can race the seal;
+- advance the run-completion schema/owner narrowly so a complete authenticated `Train2RuntimeSummary` plus its exact checkpoint/runtime boundary is a recognized **training terminal proof**; completion must no longer require `fold-acceptance.json` or `run-evidence.json` to exist;
 - EVAL2 and later reassessment read the sealed root but never write assessment state into it.
 
 Current policy-bound CV/final assessment evidence must live in the existing content-addressed post-selection evidence/currentness infrastructure outside the sealed training root. Each fold/final position needs a deterministic policy-bound locator/currentness record so restart can find the exact current assessment without scanning the object store. Extending the existing current-pointer/position owner is allowed; creating a second evidence store is not.
@@ -460,6 +460,7 @@ Current policy-bound CV/final assessment evidence must live in the existing cont
 After cutover:
 
 - stop writing current `fold-acceptance.json` and `run-evidence.json` into training roots;
+- retain one completion/topology owner: do not introduce a second training-root manifest format merely to recognize the TRAIN2 terminal proof;
 - retain read-only support for those files in historical roots;
 - a warning-threshold-only change may publish new diagnostic evidence without touching the sealed root or hard-assessment locator;
 - a hard-policy/selection change publishes a new assessment record/locator over the same trajectory root.
@@ -923,50 +924,58 @@ Also review the post-selection restoration recurrence record that required D1/D2
 
 ### 10.4 Configuration
 
-23. Defaults resolve to replay `50/100 meV/angstrom` and production target `50 meV/angstrom`.
+23. Defaults resolve to replay `50/100 meV/angstrom` and foundation-production target `50 meV/angstrom`.
 24. `warning >= hard` fails.
 25. zero, negative, boolean, string, NaN and infinity fail.
-26. omitted new fields and explicit default values yield identical policy identity.
-27. recognized historical generated `allowed_replay_degradation_mev_per_a = 30.0` migrates to current defaults and does not resurrect the old hard gate.
-28. historical non-default one-number replay configuration fails actionable migration unless explicitly converted.
-29. generated template, shipped example, CLI spec and guide agree.
+26. With `post_selection_checkpoint_policy_generation = "p5_target_replay_v2"`, omission and explicit current defaults yield identical resolved hard/diagnostic policy identities; explicit production `0.030` remains exactly `0.030`.
+27. A historical foundation-adaptation TRAIN2 config with no marker and generated target `0.030` resolves production to `0.050`; scratch legacy `0.030` remains `0.030`.
+28. A historical TRAIN2 config with no marker and one-number replay `30.0` migrates to `50/100`; a custom one-number value fails actionable migration.
+29. New replay fields without the marker, or mixed retired/new replay authorities, fail closed.
+30. Generated template, `init` output, shipped example, CLI spec and guide remain campaign schema v2 and agree on the marker/new fields; P5 comments no longer claim bootstrap/refinement/secondary ordering authority.
 
 ### 10.5 Currentness/recovery
 
-30. Editing only replay warning threshold changes warning/report evidence only: it does not relaunch TRAIN2 and does not stale hard assessment, representative, outer evaluation, CV acceptance, production authorization or publication membership.
-31. Editing only replay hard limit does not relaunch TRAIN2 but does stale/rebuild hard assessments and dependent representatives/verdicts.
-32. Editing only production target ceiling does not relaunch TRAIN2.
-33. Editing LR/loss/exposure/foundation/replay training membership/seed/epoch budget still invalidates affected TRAIN2 evidence as today.
-34. Old checkpoint SHA-256 values remain unchanged through reassessment.
-35. Old runtime summaries/history are not rewritten.
-36. Old EVAL2 measurements are reused only when exact measurement ancestry is provable; otherwise EVAL2 is recomputed from preserved checkpoints with zero TRAIN2 launch.
-37. Reassessment creates current verdict/assessment evidence rather than mutating old evidence.
-38. A replay-threshold-only or strict-selection-policy-only change leaves the resolved training-position identity unchanged.
-39. A production-target-threshold-only change leaves the resolved production training-position identity unchanged while changing production assessment policy.
-40. Changing fold gradient membership, seed, horizon, objective, exposure or foundation changes training-position identity and foreign continuation remains rejected.
-41. The same checkpoint + exact evaluation artifact + metric/provider policy resolves identical measurement identity across assessment-policy-only edits.
-42. Changing checkpoint SHA, monitor membership/artifact, metric policy or provider semantics changes measurement identity and prevents metric reuse.
+31. Editing only replay warning threshold changes warning/report evidence only: it does not relaunch TRAIN2 and does not stale hard assessment, representative, outer evaluation, CV acceptance, production authorization or publication membership.
+32. Editing only replay hard limit does not relaunch TRAIN2 but does stale/rebuild hard assessments and dependent representatives/verdicts.
+33. Editing only production target ceiling does not relaunch TRAIN2.
+34. Editing LR/loss/exposure/foundation/replay training membership/seed/epoch budget still invalidates affected TRAIN2 evidence as today.
+35. Old checkpoint SHA-256 values remain unchanged through reassessment.
+36. Old runtime summaries/history are not rewritten.
+37. Old EVAL2 measurements are reused only when exact measurement ancestry is provable; otherwise EVAL2 is recomputed from preserved checkpoints with zero TRAIN2 launch.
+38. Reassessment creates current verdict/assessment evidence rather than mutating old evidence.
+39. A replay-threshold-only or strict-selection-policy-only change leaves the resolved training-position identity unchanged.
+40. A production-target-threshold-only change leaves the resolved production training-position identity unchanged while changing production assessment policy.
+41. Changing fold gradient membership, seed, horizon, objective, exposure or foundation changes training-position identity and foreign continuation remains rejected.
+42. The same checkpoint + exact evaluation artifact + metric/provider policy resolves identical measurement identity across assessment-policy-only edits.
+43. Changing checkpoint SHA, monitor membership/artifact, metric policy or provider semantics changes measurement identity and prevents metric reuse.
 
 ### 10.6 CV/final integration
 
-43. Every affected historical CV fold, including previously successful folds, is reselected under the strict target-minimum/current hard policy without TRAIN2 retraining.
-44. A previously no-admissible fold can obtain a representative from reusable/recomputed EVAL2 evidence; a previously successful fold may change representative. Outer evaluation is reused only for the same representative with proven measurement equivalence, otherwise only the required outer evaluation is rerun.
-45. A historical CV verdict is never relabeled current merely by monotonic implication. Reuse its authenticated TRAIN2/measurement evidence where valid, then publish a new current fold/campaign assessment under the new policy; foundation CV target/outer thresholds themselves remain unchanged.
-46. Final production with completed TRAIN2 resumes at EVAL2 without training relaunch.
-47. Final-production all-inadmissible assessment persists all candidate records before terminal failure.
-48. A selected warning-bearing representative publishes with a visible warning and no false failure state.
-49. A selected representative above the hard replay limit is impossible.
-50. `single_best_final_seed` chooses the lower authoritative target RMSE even when the other seed has better replay margin, secondary metrics, maturity or bootstrap evidence.
-51. `all_qualified_final_seeds` publishes every already-qualified required representative without cross-seed ranking.
-52. Changing the strict single-best publication ordering identity stales only dependent publication decisions, not per-seed TRAIN2 trajectories or numeric common-monitor measurements.
-53. A post-cutover successful production run binds the complete ordered candidate-record set; a no-admissible terminal result binds the same set before failure publication.
-54. A historical successful production run whose candidate set is not durably enumerable recomputes EVAL2 from preserved checkpoints rather than scanning the evidence store or retraining.
-55. v2 foundation configuration with generated target `0.030` migrates to production `0.050`; v3 explicit `0.030` remains exactly `0.030`; scratch v2 `0.030` remains unchanged.
-56. v2 replay `30.0` migrates to `50/100`; v2 custom one-number replay fails actionable migration; v3 rejects the retired one-number field and mixed old/new replay authority.
-57. Legacy run-root reuse derives its source locator from authenticated historical plan/run evidence and preserves the sealed legacy topology without rename/copy/symlink.
-58. A v2 campaign containing the modern `fidelity_epochs` tuple loads through the v2-modern parser path after v3 is introduced; it is not routed through schema-less/v1 fixed-`3/10/30` normalization, while the bounded target/replay policy migration still applies.
-59. Config-loader tests cover every schema discriminator affected by changing the current campaign schema token, so v2 compatibility is explicit rather than accidental.
-60. The v3 shipped example and generated config no longer describe bootstrap/refinement/secondary ordering as P5 representative authority.
+44. Every affected historical CV fold, including previously successful folds, is reselected under the strict target-minimum/current hard policy without TRAIN2 retraining.
+45. A previously no-admissible fold can obtain a representative from reusable/recomputed EVAL2 evidence; a previously successful fold may change representative. Outer evaluation is reused only for the same representative with proven measurement equivalence, otherwise only the required outer evaluation is rerun.
+46. A historical CV verdict is never relabeled current merely by monotonic implication. Reuse its authenticated TRAIN2/measurement evidence where valid, then publish a new current fold/campaign assessment under the new policy; foundation CV target/outer thresholds themselves remain unchanged.
+47. Final production with completed TRAIN2 resumes at EVAL2 without training relaunch.
+48. Final-production all-inadmissible assessment persists all candidate records before terminal failure.
+49. A selected warning-bearing representative publishes with a visible warning and no false failure state.
+50. A selected representative above the hard replay limit is impossible.
+51. `single_best_final_seed` chooses the lower authoritative target RMSE even when the other seed has better replay margin, secondary metrics, maturity or bootstrap evidence.
+52. `all_qualified_final_seeds` publishes every already-qualified required representative without cross-seed ranking.
+53. Changing the strict single-best publication ordering identity stales only dependent publication decisions, not per-seed TRAIN2 trajectories or numeric common-monitor measurements.
+54. A post-cutover successful production run binds the complete ordered candidate-record set; a no-admissible terminal result binds the same set before failure publication.
+55. A historical successful production run whose candidate set is not durably enumerable recomputes EVAL2 from preserved checkpoints rather than scanning the evidence store or retraining.
+56. A historical foundation-adaptation TRAIN2 config with generated target `0.030` migrates production to `0.050`; with the new checkpoint-policy marker, explicit `0.030` remains exactly `0.030`; scratch legacy `0.030` remains unchanged.
+57. Historical replay `30.0` migrates to `50/100`; custom one-number replay fails actionable migration; the new marker rejects the retired one-number field and mixed old/new replay authority.
+58. Legacy run-root reuse derives its source locator from authenticated historical plan/run evidence and preserves sealed legacy topology without rename/copy/symlink.
+59. A completed post-cutover TRAIN2 trajectory publishes its training completion/topology proof under the run-activity lease **before EVAL2**; simulated interruption immediately after the seal resumes at assessment with zero trainer launch.
+60. Post-cutover EVAL2/CV/final assessment writes no `fold-acceptance.json`, `run-evidence.json`, or other policy-bound state into the sealed training root; historical root-local records remain read-only compatible.
+61. A hard-policy or selection-policy change creates a new external assessment/currentness record over the same sealed trajectory; warning-only change affects diagnostic evidence only; neither mutates root topology.
+62. `_prepare_post_selection_run()` resolves replay execution from training method/replay lineage, not current checkpoint-admissibility policy; warning/hard/target/selection edits reach EVAL2 only.
+63. Preparation, materialization, checkpoint catalog, MACE config/runtime plan, and continuation lineage resolve the same training-position identity across assessment-only edits and move on every exercised training-bearing input, including composition-transfer/validation lineage.
+64. A pre-cutover interrupted trajectory resumes only through exact training-equivalence proof using its historical config/runtime protocol identities; no historical record is rewritten mid-trajectory.
+65. Current CV rejection blocks current final-production assessment/publication even if historical final TRAIN2 bytes are reusable; current CV acceptance plus exact production training equivalence permits reassessment with zero trainer launch.
+66. Current CV/final assessment is found through a deterministic policy-bound locator in the existing evidence/currentness infrastructure, not object-store or run-directory scanning.
+67. The existing completion/topology/storage tests prove the evolved TRAIN2-terminal seal remains create-once, closed-subtree certifiable, lease-safe, and compatible with cold-storage/reclamation semantics.
+68. Shipped example/generated config remain campaign schema v2 and no longer describe bootstrap/refinement/secondary ordering as P5 representative authority.
 
 ### 10.7 Real-run oracle from the observed trajectory
 
