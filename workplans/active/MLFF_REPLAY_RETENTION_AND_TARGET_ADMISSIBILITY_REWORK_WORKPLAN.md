@@ -430,6 +430,8 @@ It excludes only downstream checkpoint-decision, warning, CV outer-acceptance, c
 
 For new records, `run_identity` / checkpoint-root identity must mean this training trajectory position, schema-bumped as needed. Full CV/final plan digests remain assessment/authorization parents, not restart/root identity.
 
+Because replay hard-decision and P5 selection identity are removed from `PostSelectionMethodIdentity`, evolve `PostSelectionCvPlan` and `FinalProductionPlan` (or their existing role-policy parent payloads) to bind the exact **role-effective hard checkpoint-decision policy digest** and the fixed **P5 strict-target-selection algorithm identity** explicitly. The warning-only threshold is excluded. A hard replay-limit, role target-ceiling, or strict-selection-rule edit must therefore move assessment-plan ancestry while leaving training-position identity unchanged.
+
 **Training-owned records.** Rebind the training owners that currently carry full run-plan ancestry:
 
 - `PostSelectionFittedPreparation.owner_plan_digest`;
@@ -455,7 +457,22 @@ Post-cutover, the root under `runs/<training_trajectory_identity>` is **training
 - advance the run-completion schema/owner narrowly so a complete authenticated `Train2RuntimeSummary` plus its exact checkpoint/runtime boundary is a recognized **training terminal proof**; completion must no longer require `fold-acceptance.json` or `run-evidence.json` to exist;
 - EVAL2 and later reassessment read the sealed root but never write assessment state into it.
 
-Current policy-bound CV/final assessment evidence must live in the existing content-addressed post-selection evidence/currentness infrastructure outside the sealed training root. Each fold/final position needs a deterministic policy-bound locator/currentness record so restart can find the exact current assessment without scanning the object store. Extending the existing current-pointer/position owner is allowed; creating a second evidence store is not.
+Current policy-bound CV/final assessment evidence must live in the existing content-addressed post-selection evidence/currentness infrastructure outside the sealed training root. Extend `post_selection_store.py`'s existing CampaignStore pointer seam with one position-addressed assessment pointer form; do not create a second pointer database or filesystem registry.
+
+The deterministic position key is the canonical projection:
+
+```text
+selected_binding_digest
+assessment_role = cv_fold | final_seed
+current CV/final assessment-plan digest
+training_trajectory_identity
+optimizer_seed
+fold_index for CV, absent for final production
+```
+
+The assessment-plan digest already binds the current role-effective hard-decision policy and fixed P5 strict-selection identity and excludes warning-only policy. The pointer value is the immutable current assessment-record digest. Publication uses the same commit-time selected-binding stale-generation fence as existing post-selection pointers. Thus a hard-policy/selection change derives a different assessment position; an idempotent retry of the same position resolves the same pointer; warning-only edits do not move it.
+
+Campaign-level `POINTER_CV_ACCEPTANCE` and final-publication pointers remain aggregate current authorities. The position pointer exists only so interrupted multi-fold/multi-seed assessment can resume without retraining, rerunning already-current assessment work, or scanning the object store.
 
 After cutover:
 
@@ -467,13 +484,13 @@ After cutover:
 
 The storage/topology owner must continue to certify a closed subtree and cold-storage semantics. Reassessment may consume only checkpoint/materialization bytes still available through an authenticated storage owner.
 
-### 5.5 Separate evaluation measurement from assessment policy### 5.4 Separate evaluation measurement from assessment policy
+### 5.5 Separate evaluation measurement from assessment policy
 
 Current `post_selection_eval_role_digest()` includes `run_plan_digest` and `run_identity`. That over-binds numeric measurement evidence to policy ancestry.
 
 The current measurement owner must instead bind the exact factors that can change the numeric measurement: checkpoint/model realization, dataset role, exact membership/artifact bytes, metric/reduction policy, head/provider/precision semantics as applicable. Assessment thresholds and full role-plan digest must not be measurement identity.
 
-Policy-bound checkpoint-assessment records may then consume immutable measurement records and produce current warnings/rejections/representatives. Historical baseline records may be reused only through a source-preserving derivation that proves the old measurement inputs equal the current measurement identity; never copy a scalar without its authenticated checkpoint/population/provider ancestry.
+Policy-bound checkpoint-assessment records may then consume immutable measurement records and produce current rejections/representatives. Warning diagnostics are derived separately from signed replay degradation under the diagnostic-only warning policy. Historical baseline records may be reused only through a source-preserving derivation that proves the old measurement inputs equal the current measurement identity; never copy a scalar without its authenticated checkpoint/population/provider ancestry.
 
 ### 5.6 Role target default isolation
 
@@ -973,7 +990,7 @@ Also review the post-selection restoration recurrence record that required D1/D2
 63. Preparation, materialization, checkpoint catalog, MACE config/runtime plan, and continuation lineage resolve the same training-position identity across assessment-only edits and move on every exercised training-bearing input, including composition-transfer/validation lineage.
 64. A pre-cutover interrupted trajectory resumes only through exact training-equivalence proof using its historical config/runtime protocol identities; no historical record is rewritten mid-trajectory.
 65. Current CV rejection blocks current final-production assessment/publication even if historical final TRAIN2 bytes are reusable; current CV acceptance plus exact production training equivalence permits reassessment with zero trainer launch.
-66. Current CV/final assessment is found through a deterministic policy-bound locator in the existing evidence/currentness infrastructure, not object-store or run-directory scanning.
+66. Current CV/final assessment is found through the canonical position pointer `(selected binding, role, current assessment-plan digest, training trajectory, seed, optional fold)` in the existing CampaignStore/post-selection pointer infrastructure; hard-policy/selection changes move that position, warning-only changes do not.
 67. The existing completion/topology/storage tests prove the evolved TRAIN2-terminal seal remains create-once, closed-subtree certifiable, lease-safe, and compatible with cold-storage/reclamation semantics.
 68. Shipped example/generated config remain campaign schema v2 and no longer describe bootstrap/refinement/secondary ordering as P5 representative authority.
 
@@ -1148,6 +1165,7 @@ Before code edits:
 
 - remove replay hard/diagnostic thresholds **and P5 checkpoint-selection policy** from training identity at the accepted owner;
 - freeze the dependency graph distinguishing training trajectory, numeric measurement, hard checkpoint decision, and warning-only diagnostic policy;
+- evolve CV/final assessment-plan ancestry to bind role-effective hard-decision policy + strict P5 selection identity explicitly after those parents leave the training method, while excluding warning-only policy;
 - freeze one training-position identity as the run/checkpoint/restart owner and rebind preparation, materialization, checkpoint catalog, MACE/runtime plan and continuation ancestry to it;
 - remove pre-training dependence on current checkpoint-admissibility policy; replay execution comes from training method/replay lineage and hard assessment begins only in EVAL2;
 - evolve the existing run completion/topology owner so authenticated terminal TRAIN2 can seal the training root under the run-activity lease before EVAL2;
@@ -1232,7 +1250,7 @@ The cycle may close only when all of the following are true:
 6. Replay warning/margin, secondary target diagnostics, maturity, practical-equivalence and bootstrap uncertainty cannot override a strictly better target RMSE.
 7. Replay warning alone never rejects a checkpoint; `DeltaR > 0.100` under defaults rejects as catastrophic forgetting.
 8. TRAIN2 remains fixed-budget and threshold/selection-policy independent.
-9. Replay assessment thresholds and P5 checkpoint-selection policy are no longer training-trajectory identity.
+9. Replay assessment thresholds and P5 checkpoint-selection policy are no longer training-trajectory identity; role assessment plans explicitly bind the role-effective hard-decision digest and strict P5 selection identity while excluding warning-only policy.
 10. Policy-only role-plan edits do not create a distinct training trajectory owner; genuinely different training positions remain fail-closed for continuation.
 11. Future evaluation measurement identity does not change solely because assessment policy/run-plan identity changes; reuse still requires exact checkpoint/population/provider/metric equivalence.
 12. Existing checkpoint bytes/history/runtime summaries and sealed legacy run roots remain immutable and reusable under proven training equivalence.
@@ -1245,7 +1263,7 @@ The cycle may close only when all of the following are true:
 19. New post-cutover run roots are training-only, are sealed under the run-activity lease at authenticated terminal TRAIN2 before EVAL2, and current assessments never mutate their topology.
 20. Training-position identity is the singular restart/root owner across fitted preparation, materialization, checkpoint catalog, MACE/runtime plan and continuation; assessment-only edits reproduce it and every tested training-bearing edit changes it.
 21. Replay execution/recovery is resolved without current checkpoint-admissibility policy; hard assessment begins only after authenticated TRAIN2 at EVAL2.
-22. Current CV/final assessments are deterministically locatable through the existing post-selection evidence/currentness infrastructure outside the root; no content-store scan or second evidence store is introduced.
+22. Current CV/final assessments are deterministically locatable through an extension of the existing CampaignStore pointer seam keyed by selected binding + assessment role + current assessment-plan digest + training trajectory + seed/fold position; no content-store scan, run-root assessment file, or second evidence store is introduced.
 23. Historical interrupted trajectories continue only under exact historical runtime/protocol ancestry after explicit training-equivalence proof; completed historical trajectories are reused without rewriting bytes or hashes.
 24. Historical final-production training may be reassessed only after current CV reclosure accepts; current CV rejection blocks current final publication regardless of retained final checkpoint quality.
 25. Existing completion/topology/cold-storage ownership remains create-once, closed-subtree certifiable and lease-safe after TRAIN2 becomes a recognized terminal proof.
