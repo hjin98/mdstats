@@ -1,7 +1,7 @@
 ---
 kind: semantic-definition-dependency-trace
 protocol_version: 6.4.0
-status: PROPOSED_R5_FINAL_NONAUTHORITATIVE_TRACE
+status: PROPOSED_R6_FINAL_NONAUTHORITATIVE_TRACE
 workplan_id: MLFF-D1-D2-SSDP64-AXIOMATIC-FORMALIZATION-1
 basis_commit: cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824
 scope:
@@ -13,9 +13,10 @@ supersedes_trace_drafts:
   - workplans/active/MLFF_D1_D2_SSDP64_DEFINITION_DEPENDENCY_TRACE_R2_FINAL.md
   - workplans/active/MLFF_D1_D2_SSDP64_DEFINITION_DEPENDENCY_TRACE_R3_FINAL.md
   - workplans/active/MLFF_D1_D2_SSDP64_DEFINITION_DEPENDENCY_TRACE_R4_FINAL.md
+  - workplans/active/MLFF_D1_D2_SSDP64_DEFINITION_DEPENDENCY_TRACE_R5_FINAL.md
 ---
 
-# MLFF D1/D2 Protocol-6.4 R5 definition dependency trace — final candidate
+# MLFF D1/D2 Protocol-6.4 R6 definition dependency trace — final candidate
 
 ## 1. Trace semantics and exact roots
 
@@ -43,15 +44,15 @@ Authority direction is acyclic: D1 objects depend only on D1 objects or exact D1
 | `D1.DEF.005` | `D1.DEF.001`; `D1.IMP.ROLES` |
 | `D1.DEF.006` | `D1.DEF.001`; `D1.IMP.ROLES` |
 | `D1.AX.002` | `D1.DEF.005`; `D1.DEF.006` |
-| `D1.AX.003` | `D1.DEF.006` |
+| `D1.AX.003` | `D1.DEF.006`; `D1.DEF.012` |
 | `D1.DEF.007` | `D1.IMP.STAT` |
 | `D1.DEF.008` | `D1.DEF.001`; `D1.DEF.002`; `D1.DEF.003`; `D1.DEF.005`; `D1.DEF.006`; `D1.AX.001`; `D1.AX.002`; `D1.IMP.P3` |
 | `D1.DEF.009` | `D1.IMP.P3` |
-| `D1.AX.004` | `D1.DEF.008`; `D1.DEF.009`; `D1.IMP.P3` |
+| `D1.AX.004` | `D1.DEF.008`; `D1.DEF.009`; `D1.IMP.P3`; `D1.DEF.010`; `D1.DEF.012`; `D1.DEF.013`; `D1.DEF.017` |
 | `D1.DEF.010` | `D1.DEF.008`; `D1.DEF.009`; `D1.IMP.P3` |
 | `D1.DEF.011` | `D1.DEF.002`; `D1.DEF.009`; `D1.DEF.010`; `D1.IMP.P3` |
 | `D1.DEF.012` | `D1.DEF.008`; `D1.IMP.ORDER` |
-| `D1.DEF.013` | `D1.DEF.006`; `D1.DEF.008`; `D1.IMP.ORDER` |
+| `D1.DEF.013` | `D1.DEF.006`; `D1.DEF.008`; `D1.IMP.ORDER`; `D1.DEF.010` |
 | `D1.AX.005` | `D1.DEF.012`; `D1.DEF.013` |
 | `D1.DEF.014` | `D1.DEF.005`; `D1.DEF.013`; `D1.IMP.ORDER` |
 | `D1.DEF.015` | `D1.DEF.008`; `D1.DEF.014`; `D1.IMP.ORDER` |
@@ -60,16 +61,16 @@ Authority direction is acyclic: D1 objects depend only on D1 objects or exact D1
 | `D1.AX.006` | `D1.DEF.011`; `D1.DEF.017`; `D1.IMP.P3`; `D1.IMP.ORDER` |
 | `D1.AX.007` | `D1.DEF.009`; `D1.DEF.012`; `D1.DEF.015`; `D1.DEF.016`; `D1.IMP.ORDER` |
 | `D1.DEF.018` | `D1.DEF.009`; `D1.DEF.017`; `D1.IMP.P3`; `D1.IMP.ORDER` |
-| `D1.AX.008` | `D1.DEF.011`; `D1.DEF.018`; `D1.IMP.P3` |
+| `D1.AX.008` | `D1.DEF.011`; `D1.DEF.018`; `D1.IMP.P3`; `D1.DEF.009`; `D1.DEF.012` |
 | `D1.DEF.019` | `D1.DEF.002`; `D1.IMP.P5` |
-| `D1.DEF.020` | `D1.IMP.P5` |
+| `D1.DEF.020` | `D1.IMP.P5`; `D1.DEF.006` |
 | `D1.DEF.021` | `D1.DEF.020`; `D1.IMP.P5` |
 | `D1.DEF.022` | `D1.DEF.020`; `D1.DEF.021`; `D1.IMP.P5` |
 | `D1.DEF.023` | `D1.DEF.005`; `D1.DEF.006`; `D1.DEF.009`; `D1.DEF.012`; `D1.IMP.P5` |
 | `D1.DEF.024` | `D1.DEF.005`; `D1.DEF.006`; `D1.DEF.012`; `D1.DEF.023`; `D1.IMP.P5` |
 | `D1.DEF.025` | `D1.DEF.023`; `D1.DEF.024`; `D1.IMP.P5` |
 | `D1.AX.009` | `D1.DEF.024`; `D1.DEF.025`; `D1.IMP.P5` |
-| `D1.AX.010` | `D1.DEF.012`; `D1.DEF.020`; `D1.DEF.022`; `D1.DEF.023`; `D1.DEF.025`; `D1.IMP.P5` |
+| `D1.AX.010` | `D1.DEF.012`; `D1.DEF.020`; `D1.DEF.022`; `D1.DEF.023`; `D1.DEF.025`; `D1.IMP.P5`; `D1.DEF.008` |
 | `D1.AX.011` | `D1.AX.008`; `D1.AX.010`; `D1.IMP.DOWNSTREAM` |
 
 `D1.DEF.007` is deliberately bound to `D1.IMP.STAT` (general D1 §2.2), not the evidence-role import.
@@ -89,7 +90,7 @@ Authority direction is acyclic: D1 objects depend only on D1 objects or exact D1
 | `D2.DEF.009` | `D1.DEF.008`; `D2.DEF.007`; `D2.DEF.008` |
 | `D2.DEF.010` | `D1.DEF.010`; `D2.DEF.002`; `D2.DEF.009`; `D2.IMP.SPLIT_EVAL` |
 | `D2.DEF.011` | `D1.AX.004`; `D1.DEF.012`; `D2.DEF.009`; `D2.DEF.010`; `D2.IMP.P3_PREP` |
-| `D2.DEF.012` | `D1.DEF.013`; `D1.DEF.014`; `D2.IMP.ORDER` |
+| `D2.DEF.012` | `D1.DEF.013`; `D1.DEF.014`; `D2.IMP.ORDER`; `D1.DEF.016` |
 | `D2.DEF.013` | `D1.DEF.014`; `D2.DEF.012`; `D2.IMP.ORDER` |
 | `D2.DEF.014` | `D2.DEF.013`; `D2.IMP.ORDER` |
 | `D2.DEF.015` | `D2.DEF.012`; `D2.DEF.014` |
@@ -98,7 +99,7 @@ Authority direction is acyclic: D1 objects depend only on D1 objects or exact D1
 | `D2.DEF.018` | `D2.DEF.016`; `D2.DEF.017` |
 | `D2.DEF.019` | `D1.DEF.015`; `D2.DEF.013`; `D2.DEF.018` |
 | `D2.DEF.020` | `D1.DEF.015`; `D2.DEF.019` |
-| `D2.DEF.021` | `D1.DEF.015`; `D2.DEF.012`; `D2.DEF.014` |
+| `D2.DEF.021` | `D1.DEF.015`; `D2.DEF.012`; `D2.DEF.014`; `D1.DEF.016` |
 | `D2.DEF.022` | `D1.DEF.016`; `D2.DEF.012`; `D2.DEF.021` |
 | `D2.DEF.023` | `D1.DEF.016`; `D2.DEF.022` |
 | `D2.DEF.024` | `D2.DEF.023` |
@@ -108,8 +109,8 @@ Authority direction is acyclic: D1 objects depend only on D1 objects or exact D1
 | `D2.DEF.027` | `D2.DEF.013`; `D2.DEF.018`; `D2.DEF.019`; `D2.DEF.024`; `D2.DEF.026` |
 | `D2.DEF.028` | `D2.DEF.018`; `D2.DEF.019`; `D2.DEF.026` |
 | `D2.DEF.029` | `D1.DEF.015`; `D2.DEF.019` |
-| `D2.DEF.030` | `D2.DEF.019`; `D2.DEF.024`; `D2.DEF.026`; `D2.DEF.027`; `D2.DEF.028`; `D2.DEF.029`; `D2.IMP.ORDER` |
-| `D2.DEF.031` | `D2.DEF.024`; `D2.DEF.026`; `D2.DEF.027`; `D2.DEF.028`; `D2.DEF.029`; `D2.IMP.ORDER` |
+| `D2.DEF.030` | `D2.DEF.019`; `D2.DEF.024`; `D2.DEF.026`; `D2.DEF.027`; `D2.DEF.028`; `D2.DEF.029`; `D2.IMP.ORDER`; `D2.DEF.012` |
+| `D2.DEF.031` | `D2.DEF.024`; `D2.DEF.026`; `D2.DEF.027`; `D2.DEF.028`; `D2.DEF.029`; `D2.IMP.ORDER`; `D2.DEF.012` |
 | `D2.DEF.032` | `D2.DEF.026`; `D2.DEF.027`; `D2.DEF.028`; `D2.DEF.030`; `D2.DEF.031` |
 | `D2.DEF.033` | `D2.DEF.027`; `D2.DEF.031`; `D2.DEF.032`; `D2.IMP.ORDER` |
 | `D2.DEF.034` | `D1.AX.007`; `D2.DEF.007`; `D2.DEF.019`; `D2.DEF.024`; `D2.DEF.026`; `D2.IMP.ORDER` |
@@ -120,7 +121,7 @@ Authority direction is acyclic: D1 objects depend only on D1 objects or exact D1
 | `D2.DEF.038` | `D1.DEF.017`; `D2.AX.001`; `D2.DEF.016`; `D2.DEF.017`; `D2.DEF.018`; `D2.DEF.019`; `D2.DEF.020`; `D2.DEF.021`; `D2.DEF.024` |
 | `D2.DEF.039` | `D1.DEF.018`; `D2.DEF.007`; `D2.DEF.038` |
 | `D2.DEF.040` | `D1.DEF.002`; `D1.DEF.020`; `D2.IMP.E0` |
-| `D2.DEF.041` | `D1.DEF.020`; `D1.DEF.024`; `D1.AX.010`; `D2.DEF.040`; `D2.IMP.E0` |
+| `D2.DEF.041` | `D1.DEF.020`; `D1.DEF.024`; `D1.AX.010`; `D2.DEF.040`; `D2.IMP.E0`; `D1.DEF.006` |
 | `D2.DEF.042` | `D1.DEF.020`; `D2.DEF.040`; `D2.DEF.041`; `D2.IMP.E0` |
 | `D2.DEF.043` | `D1.DEF.019`; `D2.IMP.OBJECTIVE` |
 | `D2.DEF.044` | `D1.DEF.019`; `D2.DEF.043`; `D2.IMP.OBJECTIVE` |
@@ -129,8 +130,8 @@ Authority direction is acyclic: D1 objects depend only on D1 objects or exact D1
 | `D2.DEF.047` | `D1.DEF.011`; `D2.DEF.007`; `D2.IMP.P3` |
 | `D2.DEF.048` | `D1.DEF.011`; `D2.DEF.047`; `D2.IMP.P3` |
 | `D2.DEF.049` | `D1.DEF.018`; `D2.DEF.007`; `D2.DEF.039`; `D2.DEF.047`; `D2.DEF.048`; `D2.IMP.P3` |
-| `D2.DEF.050` | `D1.AX.008`; `D1.DEF.011`; `D2.DEF.047`; `D2.DEF.048`; `D2.DEF.049`; `D2.IMP.P3` |
-| `D2.AX.003` | `D2.DEF.007`; `D2.DEF.011`; `D2.DEF.046`; `D2.IMP.P3` |
+| `D2.DEF.050` | `D1.AX.008`; `D1.DEF.011`; `D2.DEF.047`; `D2.DEF.048`; `D2.DEF.049`; `D2.IMP.P3`; `D2.DEF.007` |
+| `D2.AX.003` | `D2.DEF.007`; `D2.DEF.011`; `D2.DEF.046`; `D2.IMP.P3`; `D1.DEF.012` |
 | `D2.DEF.051` | `D1.DEF.020`; `D1.DEF.021`; `D1.DEF.022`; `D2.IMP.REPLAY` |
 | `D2.DEF.051A` | `D1.DEF.020`; `D2.DEF.041`; `D2.IMP.E0_HEADS` |
 | `D2.DEF.052` | `D1.DEF.022`; `D2.DEF.051`; `D2.DEF.051A`; `D2.IMP.REPLAY` |
@@ -151,62 +152,120 @@ Authority direction is acyclic: D1 objects depend only on D1 objects or exact D1
 
 The `D2.DEF.062` row enumerates only definitions that directly contribute one of the typed failure members; it is not a global dependency shortcut.
 
-## 4. R5 semantic directness and reverse-impact closure audit
+## 4. R6 local-symbol/domain-owner closure audit
 
-R4 independent review showed that row-count, endpoint-resolution and acyclicity checks were insufficient to establish Protocol-6.4 direct-edge completeness. R5 therefore re-audits all 106 formal subjects under the workplan criterion itself:
+R5 independent review showed that the R5 semantic pass still missed local formal
+owners when the candidate proposition used a local mathematical symbol or
+semantic domain without spelling the owner's formal ID. R6 therefore repeats
+the complete 106-object pass with three simultaneous tests:
 
-> store `A -> B` exactly when a material change to `B` can directly change `A`'s denotation, domain, validity or interpretation; omit a local edge when the effect is genuinely mediated by another stored prerequisite.
+1. explicit formal-ID prerequisites;
+2. local symbol/domain owner resolution (for example `T_N`, `pi_train`,
+   `M_i`, `M3`, role/permission domains, required-family domains and
+   configured-policy coordinates); and
+3. reverse-impact reachability from each local D1/D2 owner.
 
-This audit is author-side repair evidence, not acceptance authority.
+An edge is stored only when changing the prerequisite itself can directly change
+the subject's denotation, domain, validity or interpretation. Runtime consumer
+relationships and genuinely mediated effects remain transitive.
 
-### 4.1 Direct edges added in R5
+This is author-side repair evidence, not acceptance authority.
 
-The semantic pass adds fourteen direct edges across nine rows:
+### 4.1 R6 direct-edge additions
 
-1. `D1.DEF.015 -> D1.DEF.008`: covered mass is defined on selected subsets of exact `P_train`; changing the target-size population/split changes the domain directly.
-2. `D1.DEF.016 -> D1.DEF.005, D1.DEF.008, D1.DEF.015`: canonical obligations directly consume protected correlation/event loci, exact current-`P_train` incidence, and extent-side coordinates.
-3. `D1.DEF.017 -> D1.DEF.009, D1.DEF.014`: membership admissibility is defined only for configured sizes and quantifies over every required family.
-4. `D1.AX.007 -> D1.DEF.009`: configured-shell repair continuity depends directly on the configured candidate-size shell boundaries.
-5. `D1.DEF.023 -> D1.DEF.009, D1.DEF.012`: monitor validity requires protected separation from every configured exact target prefix; both the configured-size family and exact prefix definition are direct prerequisites.
-6. `D1.DEF.024 -> D1.DEF.006`: the fold partition assigns frames to gradient, held-out and purge/exclusion roles, so the formal role/permission system directly determines its interpretation.
-7. `D2.DEF.019 -> D1.DEF.015`: numerical multiplicity/covered mass is the direct D2 concretization of the D1 covered-mass object.
-8. `D2.DEF.034 -> D2.DEF.007`: configured repair shells are numerically defined by the exact configured-size tuple.
-9. `D2.DEF.041 -> D1.DEF.024, D1.AX.010`: CV and final-production E0 fit domains are directly the D1 fold-gradient and fresh-production target domains.
-
-These additions include every R4 review witness and the additional same-class omissions found by the full semantic pass.
-
-### 4.2 Challenged non-edges retained intentionally
-
-The audit also explicitly challenged likely over-connection cases:
-
-- `D2.DEF.029` mentions `D2.DEF.020` only to state that the Phase-A selector predicate is intentionally **distinct** from MVQUAL. `D2.DEF.020` does not define the selector predicate, so no edge is stored.
-- `D2.DEF.060A` remains a comparison-relation registry. Value-producing operands are not direct prerequisites merely because their values are compared; the exact local tolerance/predicate owners and basis-pinned source roots remain the direct relation-definition prerequisites.
-- `D1.DEF.023` does not depend on the later CV/production consumer objects merely because the same monitor is reused there. Those consumers depend on the monitor, not vice versa.
-- `D2.DEF.056` does not duplicate direct edges to `D1.DEF.012` or `D1.DEF.023`: exact frozen-prefix fold semantics and monitor externality are already part of its direct parent `D1.DEF.024`.
-- generic foundation/head identity used by P3 preparation and selector evidence remains source-owned through the exact P3/order imports unless the local object explicitly consumes `D1.DEF.020`'s post-selection composition-correction/selected-foundation object. R5 does not create a cross-scope edge solely from shared terminology.
-
-### 4.3 Structural and reverse-impact checks
-
-After the semantic additions:
-
-- all 106 candidate formal subjects occur exactly once;
-- every prerequisite resolves to a candidate object or exact basis-pinned import;
-- the object-to-object graph is acyclic;
-- no D1 object depends on a D2 concretization;
-- the only explicit local formal-ID mention not represented as an edge is the deliberate `D2.DEF.029` “distinct from D2.DEF.020” non-dependency above.
-
-Reverse-impact challenges now recover the previously disconnected owner chains, including:
+R6 adds seventeen direct edges across thirteen subjects:
 
 ```text
-D1.DEF.015 -> D2.DEF.019 -> selector / repair / MVQUAL descendants
-D1.DEF.009 -> D1.AX.007 and D1.DEF.023 -> repair / monitor descendants
-D1.DEF.006 -> D1.DEF.024 -> CV / E0-fit descendants
-D1.DEF.024 -> D2.DEF.041
-D1.AX.010 -> D2.DEF.041
-D2.DEF.007 -> D2.DEF.034 -> REPAIR2 descendants
+D1.AX.003  -> D1.DEF.012
+
+D1.AX.004  -> D1.DEF.010
+D1.AX.004  -> D1.DEF.012
+D1.AX.004  -> D1.DEF.013
+D1.AX.004  -> D1.DEF.017
+
+D1.DEF.013 -> D1.DEF.010
+
+D1.DEF.020 -> D1.DEF.006
+
+D1.AX.008  -> D1.DEF.009
+D1.AX.008  -> D1.DEF.012
+
+D1.AX.010  -> D1.DEF.008
+
+D2.DEF.012 -> D1.DEF.016
+D2.DEF.021 -> D1.DEF.016
+
+D2.DEF.030 -> D2.DEF.012
+D2.DEF.031 -> D2.DEF.012
+
+D2.DEF.041 -> D1.DEF.006
+
+D2.DEF.050 -> D2.DEF.007
+
+D2.AX.003  -> D1.DEF.012
 ```
 
-Fresh independent review must still attempt to falsify semantic completeness row by row; these checks do not self-prove acceptance.
+The first ten close every direct-owner witness named by Independent Review R5.
+The remaining seven arise from the same full local-owner pass rather than from
+patching only review examples:
+
+- `D1.AX.004` also directly holds the local pre-order authority and membership
+  rule fixed, so the local owners `D1.DEF.013` and `D1.DEF.017` are direct;
+- `D1.AX.008` explicitly freezes candidate `N` as well as
+  `T_N/pi_train`, so `D1.DEF.009` is direct;
+- `D2.DEF.012` and `D2.DEF.021` explicitly create/mark hard-obligation
+  semantics, so the D1 hard-obligation owner `D1.DEF.016` is direct;
+- `D2.DEF.050` directly uses the configured maximum `N_max`, whose exact
+  numerical configured-policy domain is `D2.DEF.007`;
+- `D2.AX.003` explicitly forbids restart from changing target membership, so
+  the exact target-membership owner `D1.DEF.012` is direct.
+
+### 4.2 Intentionally transitive or non-dependency cases
+
+The local-symbol pass also challenged likely false positives and retained them
+as non-edges where a current direct parent already owns the proposition:
+
+- `D2.DEF.056` uses frozen `T_N` and states `M_mon` is external, but its
+  direct scientific parent `D1.DEF.024` already defines that exact fold
+  domain and monitor externality. Direct edges to `D1.DEF.012` or
+  `D1.DEF.023` would duplicate a mediated dependency.
+- `D2.AX.005` mentions `M3`, `M_mon`, current `Q_r` and `tau_prod`,
+  but those production constraints are already directly owned by
+  `D1.AX.010`, `D2.DEF.052` and `D2.DEF.058`; lower source objects remain
+  transitive.
+- `D1.DEF.013` excludes post-selection monitor/CV/replay-monitor evidence as
+  role classes through exact `D1.IMP.ORDER` and `D1.DEF.006`; it does not
+  depend on the later realized monitor/fold/replay memberships merely because
+  those memberships instantiate excluded roles.
+- `D1.DEF.020` obtains the authorization relation for E0 fitting from
+  `D1.DEF.006`; exact CV/production memberships are concretized downstream.
+  The D2 fit object `D2.DEF.041`, by contrast, already directly binds
+  `D1.DEF.024` and `D1.AX.010` because it names those exact fit domains.
+- `D2.DEF.029` continues to mention `D2.DEF.020` only to say that its
+  selector predicate is intentionally distinct from MVQUAL; that remains a
+  deliberate non-dependency.
+- `D2.DEF.060A` remains a relation-selection registry rather than depending
+  directly on every value-producing operand. Exact tolerance/predicate owners
+  that select a comparison relation remain direct; ordinary operands remain
+  transitive.
+
+### 4.3 Closure checks
+
+After the R6 additions:
+
+- all 106 formal D1/D2 subjects occur exactly once;
+- every stored prerequisite resolves to a candidate object or exact basis-pinned
+  import;
+- the object-to-object graph is acyclic;
+- no D1 object depends on a D2 concretization;
+- the explicit formal-ID scan leaves only the deliberate
+  `D2.DEF.029 !-> D2.DEF.020` distinction;
+- reverse traversal now reaches the previously disconnected controlled-variable,
+  selector-exclusion, E0-permission and required-family propositions from their
+  local owners.
+
+Fresh independent Review must still attempt to falsify both missing and excess
+edges; these author checks do not establish acceptance.
 
 
 ## 5. High-risk D2 -> D1 concretization edges
@@ -217,12 +276,15 @@ D2.DEF.009 -> D1.DEF.008
 D2.DEF.010 -> D1.DEF.010
 D2.DEF.011 -> D1.AX.004
 D2.DEF.012 -> D1.DEF.014
+D2.DEF.012 -> D1.DEF.016
 D2.DEF.019 -> D1.DEF.015
 D2.DEF.020 -> D1.DEF.015
 D2.DEF.021 -> D1.DEF.015
+D2.DEF.021 -> D1.DEF.016
 D2.DEF.022 -> D1.DEF.016
 D2.DEF.038 -> D1.DEF.017
 D2.DEF.039 -> D1.DEF.018
+D2.DEF.041 -> D1.DEF.006
 D2.DEF.041 -> D1.DEF.020
 D2.DEF.041 -> D1.DEF.024
 D2.DEF.041 -> D1.AX.010
@@ -270,4 +332,4 @@ Reverse-impact tests begin at every fixed/configurable/derived currentness param
 
 ## 8. Completion rule
 
-This trace may accompany R5 only if independent review confirms: every material formal object in the two scoped R3 candidate files appears exactly once; every prerequisite resolves to an exact candidate object or basis-pinned import; no material direct edge is missing; no edge inverts D1/D2 ownership; reverse traversal reaches all materially affected descendants; and no completeness claim escapes the declared two-file scope.
+This trace may accompany R6 only if independent review confirms: every material formal object in the two scoped R3 candidate files appears exactly once; every prerequisite resolves to an exact candidate object or basis-pinned import; no material direct edge is missing; no edge inverts D1/D2 ownership; reverse traversal reaches all materially affected descendants; and no completeness claim escapes the declared two-file scope.

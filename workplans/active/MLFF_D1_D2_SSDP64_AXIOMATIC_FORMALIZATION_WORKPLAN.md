@@ -300,3 +300,33 @@ The same-class audit also requires challenging/repairing direct local-owner edge
 Repair the derived trace only unless the new semantic audit independently finds a kernel defect. Re-run all 106 objects with explicit local-symbol/local-domain owner resolution plus reverse impact; structural row/endpoint/acyclicity checks remain necessary but are not sufficient.
 
 Cut a new immutable target after the repaired trace. Existing passing CPU D4 evidence may remain applicable only if the weighted-quantile owner, focused regression and real-owner suite blobs remain unchanged and no environment contract changes. GPU qualification remains outside this gate.
+
+
+## 15. R6 author repair closure and fresh-review gate
+
+R6 repairs the sole blocker from Independent Review R5 at the derived dependency
+representation owner. Neither proposed D1/D2 semantic kernel nor any executable
+D4 owner/test is changed.
+
+The R6 pass resolves both explicit formal IDs and local mathematical/semantic
+symbols to their formal owners across all 106 objects. It adds seventeen direct
+edges across thirteen subjects: every witness named by R5 plus seven additional
+same-class dependencies found during the complete pass. The audit separately
+records intentionally transitive/non-dependency cases so the graph is not
+densified merely to avoid future review.
+
+The resulting graph has one row per formal subject, exact endpoint/source
+closure, no object-level cycle and no D1->D2 authority inversion. The explicit
+formal-ID scan leaves only the deliberate `D2.DEF.029` statement that its
+selector predicate is distinct from `D2.DEF.020`.
+
+The D1 kernel, D2 kernel, weighted-quantile D4 owner, focused FP64 regression and
+full real-owner test suite remain unchanged. Passing CPU runs `35300235175`
+and `35300268107` therefore remain applicable to a documentation-only R6
+descendant if exact blob identity is reverified at the immutable target.
+
+Cut a new immutable R6 target containing the R6 trace, this workplan state and
+the R6 repair-closure record. A descendant handoff must request a fresh complete
+assembled-candidate Review. Author repair closure is not PASS, stakeholder
+ratification, promotion or merge. GPU qualification remains deferred and
+outside this gate.
