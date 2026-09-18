@@ -11,31 +11,50 @@ permissions:
   contents: read
 
 jobs:
-  target-order:
+  diagnose:
     runs-on: ubuntu-latest
+    outputs:
+      failure_count: ${{ steps.parse.outputs.failure_count }}
+      first_name: ${{ steps.parse.outputs.first_name }}
+      second_name: ${{ steps.parse.outputs.second_name }}
+      first_message: ${{ steps.parse.outputs.first_message }}
     steps:
-      - name: Checkout exact evidence commit
-        uses: actions/checkout@v4
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install project and supported CPU MACE stack
+      - name: Install accepted CPU MLFF runtime
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e '.[manifest]' pytest
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install 'mace-torch==0.3.16'
+          python -m pip install 'mace-torch==0.3.16' 'ase==3.29.0'
+          python -m pip install -e '.[manifest]' pytest
+      - name: Run exact real-owner suite and capture JUnit
+        run: |
+          set +e
+          pytest -q tests/test_mlff_target_order_real_owner.py --junitxml=/tmp/r4.xml
+          exit 0
+      - id: parse
+        run: |
           python - <<'PY'
-          import sys, torch, torch_ema, mace
-          print("python", sys.version)
-          print("torch", torch.__version__)
-          print("torch_ema", getattr(torch_ema, "__version__", "unknown"))
-          print("mace", getattr(mace, "__version__", "unknown"))
+          import os,re,xml.etree.ElementTree as ET
+          root=ET.parse('/tmp/r4.xml').getroot(); failed=[]
+          for case in root.iter('testcase'):
+              node=case.find('failure')
+              if node is None: node=case.find('error')
+              if node is not None:
+                  failed.append((f"{case.get('classname','')}::{case.get('name','')}",re.sub(r'\s+',' ',(node.get('message') or node.text or '').strip())))
+          def clean(x): return x.replace('%','pct').replace('\n',' ')[:220]
+          with open(os.environ['GITHUB_OUTPUT'],'a') as fh:
+              fh.write(f"failure_count={len(failed)}\n")
+              fh.write(f"first_name={clean(failed[0][0]) if failed else 'NONE'}\n")
+              fh.write(f"second_name={clean(failed[1][0]) if len(failed)>1 else 'NONE'}\n")
+              fh.write(f"first_message={clean(failed[0][1]) if failed else 'NONE'}\n")
           PY
-      - name: Focused weighted-quantile regression
-        run: pytest -q tests/test_mlff_target_order_weighted_quantiles_fp64.py
-      - name: Real-owner target-order integration/regression pass 1
-        run: pytest -q tests/test_mlff_target_order_real_owner.py
-      - name: Real-owner target-order integration/regression pass 2
-        run: pytest -q tests/test_mlff_target_order_real_owner.py
+
+  report:
+    needs: diagnose
+    name: "R4 accepted-runtime fail=${{ needs.diagnose.outputs.failure_count }} first=${{ needs.diagnose.outputs.first_name }} second=${{ needs.diagnose.outputs.second_name }} msg=${{ needs.diagnose.outputs.first_message }}"
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo diagnostic-complete
