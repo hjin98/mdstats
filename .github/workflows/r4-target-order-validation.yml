@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  target-order-diagnostic:
+  target-order:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout exact evidence commit
@@ -26,102 +26,7 @@ jobs:
           python -m pip install -e '.[manifest]' pytest
       - name: Focused weighted-quantile regression
         run: pytest -q tests/test_mlff_target_order_weighted_quantiles_fp64.py
-      - name: test_real_owner_native_and_serial_ranks_match_on_wide_csr_rows
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_native_and_serial_ranks_match_on_wide_csr_rows
-      - name: test_real_owner_shared_geometry_and_mvidx_match_direct_coverage
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_shared_geometry_and_mvidx_match_direct_coverage
-      - name: test_real_owner_mvqual_is_independent_and_canonical
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_mvqual_is_independent_and_canonical
-      - name: test_real_owner_repair_swaps_and_reconstructs_cold_continuation
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_repair_swaps_and_reconstructs_cold_continuation
-      - name: test_real_owner_suffix_and_checkpoint_resume_beyond_nmax
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_suffix_and_checkpoint_resume_beyond_nmax
-      - name: test_real_owner_stale_and_corrupt_checkpoints_are_rejected
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_stale_and_corrupt_checkpoints_are_rejected
-      - name: test_real_owner_many_family_forward_restore_maps_constant_fds
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_many_family_forward_restore_maps_constant_fds
-      - name: test_real_owner_write_failure_leaves_no_partial_accepted_artifact
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_write_failure_leaves_no_partial_accepted_artifact
-      - name: test_real_owner_native_preflight_reports_real_mvidx_rows
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_native_preflight_reports_real_mvidx_rows
-      - name: test_real_owner_performance_checkpoint
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_performance_checkpoint
-      - name: test_real_owner_assembled_campaign_uses_prepared_order_through_production
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_assembled_campaign_uses_prepared_order_through_production
-      - name: test_installed_package_native_equivalence
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_installed_package_native_equivalence
-      - name: test_real_owner_prepare_build_reuse_crash_resume_and_scratch_cleanup
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_prepare_build_reuse_crash_resume_and_scratch_cleanup
-      - name: test_real_owner_repair2_zero_new_coverage_swap_strictly_improves_representative_utility
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_repair2_zero_new_coverage_swap_strictly_improves_representative_utility
-      - name: test_real_owner_repair2_v1_build_identity_is_not_current
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_repair2_v1_build_identity_is_not_current
-      - name: test_real_owner_same_build_prepare_is_single_flight
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_same_build_prepare_is_single_flight
-      - name: test_real_owner_interrupted_fence_holder_releases_and_successor_resumes
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_interrupted_fence_holder_releases_and_successor_resumes
-      - name: test_real_owner_required_structural_families_are_complete_or_fail_closed
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_required_structural_families_are_complete_or_fail_closed
-      - name: test_real_owner_molecular_phase_plan_cannot_thin_target_order_families
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_molecular_phase_plan_cannot_thin_target_order_families
-      - name: test_real_owner_corrupt_published_target_order_artifacts_are_not_replaced
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_corrupt_published_target_order_artifacts_are_not_replaced
-      - name: test_real_owner_repair2_batch_quantities_are_bitwise_equal_to_the_scalar_oracle
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_repair2_batch_quantities_are_bitwise_equal_to_the_scalar_oracle
-      - name: test_real_owner_repair2_batch_fails_closed_on_an_illegal_removal
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_repair2_batch_fails_closed_on_an_illegal_removal
-      - name: test_real_owner_repair2_batch_state_arrays_are_invalidated_by_an_accepted_swap
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_repair2_batch_state_arrays_are_invalidated_by_an_accepted_swap
-      - name: test_real_owner_repair2_best_relative_mask_matches_the_selector_filter
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_repair2_best_relative_mask_matches_the_selector_filter
-      - name: test_real_owner_repair2_has_no_python_worker_queue_left_in_the_proposal_path
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_repair2_has_no_python_worker_queue_left_in_the_proposal_path
-      - name: test_real_owner_r13_campaign_ram_budget_reaches_target_order_preparation
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_r13_campaign_ram_budget_reaches_target_order_preparation
-      - name: test_real_owner_r13_covref_and_mvidx_inherit_the_finite_ram_budget
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_r13_covref_and_mvidx_inherit_the_finite_ram_budget
-      - name: test_real_owner_r13_finite_budget_does_not_change_any_scientific_identity
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_r13_finite_budget_does_not_change_any_scientific_identity
-      - name: test_real_owner_r13_a_small_finite_budget_reaches_queue_admission
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_r13_a_small_finite_budget_reaches_queue_admission
-      - name: test_real_owner_r14_feas1_inherits_the_campaign_scope_and_owns_its_native_limits
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_r14_feas1_inherits_the_campaign_scope_and_owns_its_native_limits
-      - name: test_real_owner_r14_a_small_finite_budget_reaches_feas1_queue_admission
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_r14_a_small_finite_budget_reaches_feas1_queue_admission
-      - name: test_real_owner_r14_a_locally_synthesized_feas1_scope_is_still_applied
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_r14_a_locally_synthesized_feas1_scope_is_still_applied
-      - name: test_real_owner_r14_feas1_products_are_identical_under_the_resource_routing
-        continue-on-error: true
-        run: pytest -q tests/test_mlff_target_order_real_owner.py::test_real_owner_r14_feas1_products_are_identical_under_the_resource_routing
+      - name: Real-owner target-order integration/regression pass 1
+        run: pytest -q tests/test_mlff_target_order_real_owner.py
+      - name: Real-owner target-order integration/regression pass 2
+        run: pytest -q tests/test_mlff_target_order_real_owner.py
