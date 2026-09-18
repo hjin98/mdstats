@@ -1,7 +1,7 @@
 ---
 kind: proposed-D1-authority-kernel
 protocol_version: 6.4.0
-status: PROPOSED_RENEWAL_CANDIDATE_AWAITING_INDEPENDENT_REVIEW
+status: PROPOSED_RENEWAL_REPAIR_CANDIDATE_AWAITING_INDEPENDENT_REVIEW
 accepted_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_baseline_date: 2026-09-17
 accepted_basis: cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824
@@ -10,6 +10,8 @@ prior_independent_review_commit: 2eddd9058beda039e0ff53d4e50a189be469173b
 prior_ratified_candidate_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-REWORK-1
 stakeholder_direction_date: 2026-09-18
+repaired_from_reviewed_candidate: 06f1255ed39f41d178daf73985829a2190a2bee8
+repair_basis_review_commit: a1e086645708b273382ed3742a8788ce01592b80
 ---
 
 # mdstats MLFF D1 axiomatic authority kernel — Protocol 6.4 proposed replay/target-policy renewal
@@ -354,51 +356,51 @@ Let `Q_r` denote the exact replay **evidence-qualification** identity and curren
 
 Replay lineage is
 
-$
+$$
 \Lambda_{\mathrm{replay}}=(D_r^{\mathrm{geom}},\ell_{\mathrm{replay}},M_r^{\mathrm{true}},\Phi,Q_r,\Pi_r),
-$
+$$
 
-where `D_r^geom` is authenticated replay geometry/source membership and split, `M_r^true` is mandatory independent true-reference replay-monitor lineage, `Phi` is material when pseudo labels or head-local foundation references are used, `Q_r` binds replay evidence qualification/current state, and `Pi_r` is governed realized exposure identity.
+where `D_r^geom` is authenticated replay geometry/source membership and split, `M_r^true` is mandatory independent true-reference replay-monitor lineage, `Phi` is the exact frozen foundation checkpoint/head/model identity whose inherited capability is being retained, `Q_r` binds replay evidence qualification/current state, and `Pi_r` is governed realized exposure identity. Whenever replay-retention assessment is enabled for foundation adaptation, exact `Phi` is a mandatory replay-lineage parent regardless of replay training-label mode. `FOUNDATION_PSEUDO` additionally uses that same exact `Phi` as the pseudo-label provider.
 
 Switching label mode over the same authenticated prepared source/split must not change `D_r^geom`. Pseudo replay still requires `M_r^true`. Replay configurations are not target-size `N`, replay does not rank target sizes, and hidden target duplication is outside the method. Changing source/split, label mode, prediction policy, foundation/head, true monitor, replay evidence qualification, or governed exposure changes replay lineage and invalidates dependent evidence. A label-mode change alone does not authorize a replay-geometry membership change.
 
-### D1.DEF.022A — TRUE_DFT replay-retention observable and decision roles
+### D1.DEF.022A — TRUE_REFERENCE replay-retention observable and decision roles
 
 For a fully evaluated foundation-adaptation checkpoint `c`, let
 
-$
+$$
 R_{\mathrm{replay}}(c)
-$
+$$
 
-be the authoritative force-component RMSE on the exact independent TRUE_DFT replay monitor `M_r^{\mathrm{true}}`, and let
+be the authoritative force-component RMSE on the exact independent true-reference replay monitor `M_r^{\mathrm{true}}` (currently realized by project DFT / `true_dft` evidence), and let
 
-$
+$$
 R_{\mathrm{replay}}(\Phi)
-$
+$$
 
 be the same observable on the same exact replay membership under the authenticated frozen foundation identity `\Phi`. Define signed replay degradation
 
-$
+$$
 \Delta_{\mathrm{replay}}(c)
 =
 R_{\mathrm{replay}}(c)-R_{\mathrm{replay}}(\Phi).
-$
+$$
 
 The replay decision-policy family is
 
-$
+$$
 \Psi_{\mathrm{replay}}
 =
 (\delta_{\mathrm{warn}},\delta_{\mathrm{hard}}),
-$
+$$
 
 where both coordinates are finite positive `CONFIGURABLE_WITH_GENERATED_DEFAULT` values satisfying `\delta_{\mathrm{warn}}<\delta_{\mathrm{hard}}`. Current generated defaults are
 
-$
+$$
 \delta_{\mathrm{warn}}=50\ \mathrm{meV/angstrom},
 \qquad
 \delta_{\mathrm{hard}}=100\ \mathrm{meV/angstrom}.
-$
+$$
 
 Their scientific roles are distinct:
 
@@ -406,9 +408,11 @@ Their scientific roles are distinct:
 2. degradation above `\delta_{\mathrm{warn}}` but not above `\delta_{\mathrm{hard}}` is a **diagnostic retention warning only** and does not by itself make the checkpoint inadmissible;
 3. degradation above `\delta_{\mathrm{hard}}` is classified as catastrophic forgetting and is a mandatory hard checkpoint failure.
 
-Missing, stale, unauthenticated, incompatible or non-finite required TRUE_DFT replay evidence remains a hard evidence-validity failure independently of the numeric degradation class.
+Missing, stale, unauthenticated, incompatible or non-finite required true-reference replay evidence remains a hard evidence-validity failure independently of the numeric degradation class.
 
-TRUE_DFT replay is an auxiliary inherited-capability retention observable for foundation adaptation. It is not the target-domain quality estimand, is not a deployment/release-adequacy metric, receives no positive checkpoint-ranking or tie-break credit, and cannot rank target sizes. The current default thresholds are stakeholder-selected policy calibrations, not universal physical constants; external adequacy remains downstream. D2 owns exact finite arithmetic, units and boundary comparison semantics without changing these roles.
+True-reference replay is an auxiliary inherited-capability retention observable for foundation adaptation. It is not the target-domain quality estimand, is not a deployment/release-adequacy metric, receives no positive checkpoint-ranking or tie-break credit, and cannot rank target sizes. The current default thresholds are stakeholder-selected policy calibrations, not universal physical constants; external adequacy remains downstream.
+
+The force-error dimension and the scientific boundary relations above are D1 authority: equality at `delta_warn` does not create a warning, equality at `delta_hard` does not create catastrophic failure, and only strict exceedance changes the corresponding class. D2 owns the numerical realization of these relations, including canonical unit representation/conversion, finite machine representation, comparison implementation, boundary oracles and typed numerical failure; D2 may not change the dimension or strict/inclusive scientific relation.
 
 ## 7. Common monitor, CV and production
 
@@ -435,33 +439,48 @@ by protected components into gradient, held-out and purge/exclusion roles; `M_mo
 
 ### D1.DEF.025 — Foundation role-threshold family
 
-$
+$$
 \Theta_{\mathrm{role}}=(\tau_{\mathrm{CV}},\theta_{\mathrm{CV}},\tau_{\mathrm{prod}})
-$
+$$
 
 are independent finite positive `CONFIGURABLE_WITH_GENERATED_DEFAULT` coordinates. `tau_CV` is target-force checkpoint competence on `M_mon`; `theta_CV` is held-out acceptance on `O_i` in configured outer-metric units; `tau_prod` is production target-force checkpoint quality on `M_mon`. Current defaults for the default force outer metric are
 
-$
+$$
 45,45,50\ \mathrm{meV/angstrom},
-$
+$$
 
 respectively.
 
 The three coordinates are role-specific policy claims. Their numerical ordering has no independent scientific meaning: `tau_prod > tau_CV` under the current defaults does not merge their evidence roles, does not make held-out CV evidence a production checkpoint substitute, and does not assert that production is globally less demanding than CV. Production target admission remains checkpoint/model-control evidence rather than external adequacy; downstream qualification remains separate.
 
-### D1.DEF.026 — Foundation-P5 checkpoint representative
+### D1.DEF.026 — Foundation-P5 checkpoint universe and representative
 
-For role `rho` and its fully evaluated checkpoint set, let `H_rho` be the subset satisfying every current hard requirement: evidence validity, finite/integrity/physical constraints, the role-effective target ceiling, and catastrophic replay protection where replay is enabled.
+For role `rho`, let `C_rho` be the **governed checkpoint universe** of the realized fixed-budget TRAIN2 trajectory: every checkpoint position required by the accepted checkpoint cadence that was durably committed by that trajectory and is therefore required to enter checkpoint assessment. A quality-dependent shortlist, refinement subset, rescue subset or evaluator-purchased subset cannot replace `C_rho`.
+
+Every member of `C_rho` must receive the required checkpoint assessment. Failure to authenticate, reconstruct or evaluate a required member is handled through the applicable hard evidence/integrity failure semantics; it is not permission to silently remove that checkpoint position from the scientific alternative set.
+
+Let
+
+$$
+H_\rho
+=
+\left\{
+c\in C_\rho:
+c\text{ satisfies every current hard checkpoint requirement}
+\right\},
+$$
+
+where the hard requirements include evidence validity, finite/integrity/physical constraints, the role-effective target ceiling, and catastrophic replay protection where replay is enabled.
 
 For `c in H_rho`, let `r_mon(c)` be authoritative target force-component RMSE on exact `M_mon`. If `H_rho` is nonempty, the foundation-P5 representative is selected from
 
-$
+$$
 \mathop{\mathrm{argmin}}_{c\in H_\rho} r_{\mathrm{mon}}(c).
-$
+$$
 
 A checkpoint with strictly worse `r_mon` cannot be promoted by replay margin or warning state, secondary target metrics, energy/stress diagnostics, maturity/refinement phase, practical-equivalence bands, bootstrap uncertainty, or historical checkpoint score weights. Replay receives no positive ranking or tie-break credit. If more than one checkpoint has exactly equal authoritative target RMSE, D2 supplies a deterministic non-quality tie rule that cannot depend on replay or another quality metric.
 
-If `H_rho` is empty, the run has no representative. Diagnostic replay warning alone can never make `H_rho` empty.
+If `H_rho` is empty, the run has no representative. Diagnostic replay warning alone can never make `H_rho` empty. D2 owns exact durable enumeration/authentication mechanics for `C_rho` but may not reduce the governed universe by a quality-dependent evaluation policy.
 
 ### D1.DEF.027 — Final-production publication ordering
 
@@ -479,13 +498,19 @@ Every required `(fold,seed)` trains to frozen horizon; target or replay threshol
 
 ### D1.AX.010 — Fresh production
 
-Current final production requires current accepted CV authorization for the frozen method/design. Fresh production starts a new model/optimizer lineage from accepted `Phi`, trains complete exact `T_selected`, fits training-dependent state only on that authorized target membership, uses the same `M_mon` and checkpoint mechanics as CV, and applies `tau_prod` rather than `tau_CV`. Where replay is enabled, `Lambda_replay`, mandatory TRUE_DFT replay evidence and the catastrophic protection of `D1.DEF.022A` remain binding. P3 `M3` has no production checkpoint role.
+Current final production requires current accepted CV authorization for the frozen method/design. Fresh production starts a new model/optimizer lineage from accepted `Phi`, trains complete exact `T_selected`, fits training-dependent state only on that authorized target membership, uses the same `M_mon` and checkpoint mechanics as CV, and applies `tau_prod` rather than `tau_CV`. Where replay is enabled, `Lambda_replay`, mandatory independent true-reference replay evidence (currently realized by project DFT / `true_dft` evidence) and the catastrophic protection of `D1.DEF.022A` remain binding. P3 `M3` has no production checkpoint role.
 
 ### D1.AX.010A — Assessment-policy noninterference and reassessment
 
-A change only to replay warning/hard policy, a role target ceiling, or foundation-P5 representative/publication ordering cannot alter an already-realized training trajectory when every training-affecting scientific input and training method coordinate is unchanged. Such a change does alter the dependent current assessment according to its role; a historical verdict is never silently relabeled current under a new policy.
+A change only to replay warning/hard policy, a role target ceiling, or foundation-P5 representative/publication ordering cannot alter an already-realized training trajectory when every training-affecting scientific input and training method coordinate is unchanged.
 
-A historically fresh final-production trajectory may support a new current production assessment only after the current CV authority has been reclosed and accepted and exact training-semantic equivalence is established. If current CV rejects, retained historical final-training evidence cannot authorize current publication. D2/D3 own the exact equivalence and durable currentness realization without weakening this scientific dependency.
+The assessment-currentness consequences are intentionally asymmetric:
+
+1. changing only `delta_warn` changes replay-warning/diagnostic classification only; it cannot by itself change `H_rho`, the representative, outer-evaluation membership, CV pass/fail, production authorization or publication membership;
+2. changing `delta_hard`, a role-effective target ceiling, or the foundation-P5 representative/publication ordering may change the corresponding hard checkpoint assessment, representative and dependent CV/final decision according to its role;
+3. neither class of assessment-policy change changes the realized training trajectory when all training-bearing scientific semantics are unchanged.
+
+A historical verdict is never silently relabeled current under a changed hard-decision or selection policy. A historically fresh final-production trajectory may support a new current production assessment only after the current CV authority has been reclosed and accepted and exact training-semantic equivalence is established. If current CV rejects, retained historical final-training evidence cannot authorize current publication. D2/D3 own the exact equivalence and durable currentness realization without weakening these scientific dependencies.
 
 ### D1.AX.011 — Downstream no-feedback
 
@@ -504,7 +529,7 @@ Downstream physical/deployment/calibration/locked/release evidence consumes froz
 | practical `epsilon` | `CONFIGURABLE_FAMILY` | finite positive response-unit value | configuration-bound | P3 reducer |
 | replay label mode | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | true or pseudo under validity conditions | true-reference default when labels exist | P5 replay |
 | replay qualification identity/state | `DERIVED` | replay source/label/provider/evidence qualification excluding checkpoint decision thresholds | lineage-bound | P5 replay evidence |
-| replay degradation | `DERIVED` | signed TRUE_DFT replay force-RMSE change relative to exact foundation baseline | computed | P5 replay evidence |
+| replay degradation | `DERIVED` | signed true-reference replay force-RMSE change relative to exact foundation baseline `Phi` on the same monitor | computed | P5 replay evidence |
 | `delta_warn` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | finite positive replay-degradation warning threshold | `50 meV/angstrom` | replay diagnostic policy |
 | `delta_hard` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | finite positive catastrophic-forgetting threshold with `delta_warn < delta_hard` | `100 meV/angstrom` | hard checkpoint policy |
 | CV `K` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | integer `K>=2` | `3` | CV policy |
@@ -519,7 +544,7 @@ Downstream physical/deployment/calibration/locked/release evidence consumes froz
 
 ## 9. Validity, uncertainty and D1 -> D2 handoff
 
-The method fails/defers rather than redefining itself when required compatible labels cannot be formed; protected allocation is impossible; exact reserve/monitor cannot be realized; complete `P_train` cannot satisfy support; fewer than the required qualified candidates exist for automatic comparison; governed E0 transfer is non-identifiable; pseudo replay lacks exact foundation or true-reference monitor; required TRUE_DFT replay evidence is missing/stale/incompatible/non-finite; replay degradation violates the current catastrophic hard policy; required CV position fails/missing/no admissible checkpoint; current CV authorization is absent for current final production; or runtime realizes a materially different objective/exposure/method. Replay warning below the catastrophic hard limit is explicitly not a method failure. An individual configured prefix with `Q_mem(N)=false` is excluded from `Q_cfg` and cannot be manually admitted, but is not by itself whole-method failure when the remaining qualified set satisfies automatic-comparison sufficiency. No threshold widening, support relaxation, rescue-size invention, role substitution, pseudo-label fallback, warning-to-failure promotion or fabricated evidence is authorized.
+The method fails/defers rather than redefining itself when required compatible labels cannot be formed; protected allocation is impossible; exact reserve/monitor cannot be realized; complete `P_train` cannot satisfy support; fewer than the required qualified candidates exist for automatic comparison; governed E0 transfer is non-identifiable; pseudo replay lacks exact foundation or true-reference monitor; required true-reference replay evidence is missing/stale/incompatible/non-finite; replay degradation violates the current catastrophic hard policy; required CV position fails/missing/no admissible checkpoint; current CV authorization is absent for current final production; or runtime realizes a materially different objective/exposure/method. Replay warning below the catastrophic hard limit is explicitly not a method failure. An individual configured prefix with `Q_mem(N)=false` is excluded from `Q_cfg` and cannot be manually admitted, but is not by itself whole-method failure when the remaining qualified set satisfies automatic-comparison sufficiency. No threshold widening, support relaxation, rescue-size invention, role substitution, pseudo-label fallback, warning-to-failure promotion or fabricated evidence is authorized.
 
 Uncertainty/limitations and downstream adequacy remain exact imports from `D1.IMP.DOWNSTREAM`; this kernel does not convert them into a scalar uncertainty claim.
 
@@ -530,7 +555,7 @@ D2 must concretize, without changing meaning:
 3. exact target-order family catalog/applicability, one-time correlation-balanced weights, metrics/radii/adjacency, distinct selector/qualification coverage predicates, extents, obligations, FEAS1, MVSEL2, REPAIR2 and MVQUAL;
 4. P3 common preparation, optimizer normalization, evaluator, complete-seed score, practical-equivalence ranking, exact funnel/success-sufficiency/configured-ceiling rule and authenticated continuation;
 5. selected-head foundation-residual E0 fit, replay/pretraining-head foundation E0 binding, and composition transfer;
-6. replay label-mode/lineage concretization, geometry invariance, evidence-qualification currentness, TRUE_DFT replay retention observable, signed degradation, configurable diagnostic-warning/catastrophic-hard policy with generated defaults `50/100 meV/angstrom`, robust P5 objective and exposure;
+6. replay label-mode/lineage concretization, geometry invariance, evidence-qualification currentness, true-reference replay retention observable (currently DFT / `true_dft`), exact foundation-relative signed degradation, configurable diagnostic-warning/catastrophic-hard policy with generated defaults `50/100 meV/angstrom`, robust P5 objective and exposure;
 7. deterministic monitor/folds/purge; independent role target policies with generated defaults `tau_CV = 45`, `theta_CV = 45`, `tau_prod = 50 meV/angstrom`; strict minimum-target-RMSE foundation-P5 checkpoint and `single_best_final_seed` ordering; deterministic non-quality exact ties; fixed-budget semantics; assessment-policy currentness; fresh production and current-CV reauthorization;
 8. typed numerical failure, precision/equivalence, exact reassessment/reuse conditions and falsification oracles.
 
@@ -540,7 +565,7 @@ Any needed change to a scientific estimand, role, support predicate, replay inte
 
 The accepted current D1 kernel remains `main@a759e81aa1b4c70c8fb513c569ddce57e99cbdb2`. This branch file is a **proposed material D1 renewal** responding to the 2026-09-18 stakeholder direction and the replay/target-admissibility workplan. It is not accepted authority until a fresh independent Protocol-6.4 D1 Review passes on an immutable candidate target and the stakeholder explicitly ratifies that exact reviewed target.
 
-The bounded D1 Challenge Pass raises **no SERIOUS CHALLENGE** to drafting this amendment, but it records four material scientific cautions that remain part of the validity regime:
+Independent D1 Review R1 of immutable candidate `06f1255ed39f41d178daf73985829a2190a2bee8` returned **NO-PASS with no SERIOUS CHALLENGE** to the intended scientific policy. This repaired candidate closes the six R1 authority/representation findings while preserving the same policy direction. The material scientific cautions remain part of the validity regime:
 
 1. the `100 meV/angstrom` catastrophic replay default is not established as a universal inherited-capability safety boundary; the motivating production trajectory shows that the old `30 meV/angstrom` hard budget can reject target-competent checkpoints, but it does not prove `100` universally adequate;
 2. current defaults `tau_CV=45` and `tau_prod=50 meV/angstrom` reverse the imported historical rationale that production is numerically stricter than CV. This candidate deliberately removes any required ordering between the role ceilings; their adequacy is role-specific, and production admission remains distinct from downstream physical/release qualification;
