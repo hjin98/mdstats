@@ -12,11 +12,11 @@ candidate_date: "2026-09-18"
 
 This branch carries a proposed D3 renewal of the MLFF software architecture. Until the renewed candidate passes the required independent D3 Review and is accepted-current, the accepted baseline remains the pre-renewal canonical architecture. The candidate preserves that baseline except for the explicitly reviewed replay-retention/target-admissibility ownership/currentness cutover described here. It continues the post-SSDP separation from the former mixed scientific/numerical/architecture manual.
 
-The current authority chain is directional:
+The layered authority chain is directional; for D3 this branch carries the proposed replacement while the pre-renewal revision remains accepted-current until Gate D closes:
 
 1. **D1 - scientific/mathematical authority:** `docs/methods/mlff_scientific_method.md`, with `docs/methods/mlff_target_training_order_scientific_method.md` as the accepted scoped owner for `TargetTrainingOrder` / `pi_train` scientific meaning.
 2. **D2 - numerical/algorithmic authority:** `docs/methods/mlff_numerical_algorithmic_method.md`, with `docs/methods/mlff_target_training_order_numerical_algorithmic_method.md` as the accepted scoped owner for target-training-order numerics.
-3. **D3 - software architecture/integration authority:** this manual and the detailed chapter set under `docs/arch_manuals/mlff_training_data/`, including `45_target_training_order.md` as the canonical detailed D3 owner for the restored target-order subsystem.
+3. **D3 - software architecture/integration authority:** the accepted-current pre-renewal revision of this manual/chapter set; this branch revision is the proposed replacement candidate. `45_target_training_order.md` remains the unchanged canonical detailed D3 owner for the restored target-order subsystem.
 4. **D4 - exact specification/concretization authority:** `docs/specs/training_data/` and the implementation owners it indexes.
 
 D3 owns subsystem decomposition, dependency and control flow, lifecycle boundaries, interfaces, durable state and currentness, persistence/recovery, concurrency/resource topology, deployment seams, and architectural compatibility. D3 may restate a D1/D2 consequence where local comprehension requires it, but such restatement is not independently tunable authority.

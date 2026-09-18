@@ -2,7 +2,7 @@
 
 This directory contains narrow MLFF specification owner paths plus a temporary residue of superseded documents being consolidated into `docs/history/mlff/` by `DOC-MLFF-ARCH-RESET1` A4. On `design/mlff-replay-retention-target-admissibility-rework`, `mlff_post_selection_p5_spec.md` is a **proposed renewal candidate**; its pre-renewal version remains accepted-current until Gate D review/acceptance.
 
-Only the specifications listed in this index are current normative owners. Unlisted release/gate/migration-era files do not override the current D1-D4 authority and are scheduled for historical consolidation/removal where applicable.
+Except where an entry is explicitly marked as a proposed renewal candidate, the specifications listed in this index are the current normative owners. An explicitly proposed branch revision does not displace its accepted-current predecessor until the owning review/acceptance gate closes. Unlisted release/gate/migration-era files do not override current D1-D4 authority.
 
 The cross-cutting D3 architecture is defined by `docs/arch_manuals/mlff_training_data_architecture.md` together with the canonical chapters under `docs/arch_manuals/mlff_training_data/`. This specification layer owns exact current schemas, policy values, algorithms, failure modes, and runtime behavior under accepted D1-D3 authority.
 
