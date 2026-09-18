@@ -372,13 +372,13 @@ $$
 R_{\mathrm{replay}}(c)
 $$
 
-be the authoritative force-component RMSE on the exact independent true-reference replay monitor `M_r^{\mathrm{true}}` (currently realized by project DFT / `true_dft` evidence), and let
+be the authoritative force-component RMSE on the exact independent true-reference replay monitor $M_r^{\mathrm{true}}$ (currently realized by project DFT / `true_dft` evidence), and let
 
 $$
 R_{\mathrm{replay}}(\Phi)
 $$
 
-be the same observable on the same exact replay membership under the authenticated frozen foundation identity `\Phi`. Define signed replay degradation
+be the same observable on the same exact replay membership under the authenticated frozen foundation identity $\Phi$. Define signed replay degradation
 
 $$
 \Delta_{\mathrm{replay}}(c)=R_{\mathrm{replay}}(c)-R_{\mathrm{replay}}(\Phi).
@@ -390,7 +390,7 @@ $$
 \Psi_{\mathrm{replay}}=(\delta_{\mathrm{warn}},\delta_{\mathrm{hard}}),
 $$
 
-where both coordinates are finite positive `CONFIGURABLE_WITH_GENERATED_DEFAULT` values satisfying `\delta_{\mathrm{warn}}<\delta_{\mathrm{hard}}`. Current generated defaults are
+where both coordinates are finite positive `CONFIGURABLE_WITH_GENERATED_DEFAULT` values satisfying $\delta_{\mathrm{warn}}<\delta_{\mathrm{hard}}$. Current generated defaults are
 
 $$
 \delta_{\mathrm{warn}}=50\ \mathrm{meV/angstrom},
@@ -400,9 +400,9 @@ $$
 
 Their scientific roles are distinct:
 
-1. replay degradation not exceeding `\delta_{\mathrm{warn}}` carries no replay-degradation warning;
-2. degradation above `\delta_{\mathrm{warn}}` but not above `\delta_{\mathrm{hard}}` is a **diagnostic retention warning only** and does not by itself make the checkpoint inadmissible;
-3. degradation above `\delta_{\mathrm{hard}}` is classified as catastrophic forgetting and is a mandatory hard checkpoint failure.
+1. replay degradation not exceeding $\delta_{\mathrm{warn}}$ carries no replay-degradation warning;
+2. degradation above $\delta_{\mathrm{warn}}$ but not above $\delta_{\mathrm{hard}}$ is a **diagnostic retention warning only** and does not by itself make the checkpoint inadmissible;
+3. degradation above $\delta_{\mathrm{hard}}$ is classified as catastrophic forgetting and is a mandatory hard checkpoint failure.
 
 Missing, stale, unauthenticated, incompatible or non-finite required true-reference replay evidence remains a hard evidence-validity failure independently of the numeric degradation class.
 
