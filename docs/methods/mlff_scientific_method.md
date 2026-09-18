@@ -1,7 +1,7 @@
 ---
 kind: proposed-D1-authority-kernel
 protocol_version: 6.4.0
-status: PROPOSED_RENEWAL_REPAIR_CANDIDATE_AWAITING_INDEPENDENT_REVIEW
+status: PROPOSED_RENEWAL_AMENDED_CANDIDATE_AWAITING_INDEPENDENT_REVIEW
 accepted_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_baseline_date: 2026-09-17
 accepted_basis: cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824
@@ -12,6 +12,9 @@ workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-REWORK-1
 stakeholder_direction_date: 2026-09-18
 repaired_from_reviewed_candidate: 06f1255ed39f41d178daf73985829a2190a2bee8
 repair_basis_review_commit: a1e086645708b273382ed3742a8788ce01592b80
+prior_r2_reviewed_candidate: 2549dee709fb8bb383341ee3aebca7c71973a903
+prior_r2_review_commit: 8bf25f37e74667ff897e938a9b17830ea9fee225
+post_r2_stakeholder_amendment: foundation_cv_defaults_75_75_and_universalloss_coefficient_clarification
 ---
 
 # mdstats MLFF D1 axiomatic authority kernel — Protocol 6.4 proposed replay/target-policy renewal
@@ -312,7 +315,7 @@ The P3 reducer produces diagnostic evidence/recommendation. The operator owns th
 
 ### D1.DEF.019 — Property availability and foundation objective
 
-For `p in {E,F,S}`, `m_p(x) in {0,1}` denotes property availability. P3 and post-selection scratch retain their imported accepted weighted objectives. Foundation P5 (`naive_fine_tuning`, `multihead_replay`) uses the D2 robust E/F/S objective with fixed global coefficients `1:10:1`, binary property masks, no nontrivial per-configuration loss weight and no target/replay **training-head** scalar.
+For `p in {E,F,S}`, `m_p(x) in {0,1}` denotes property availability. P3 and post-selection scratch retain their imported accepted weighted objectives. Foundation P5 (`naive_fine_tuning`, `multihead_replay`) uses the D2 robust UniversalLoss E/F/S objective with fixed **global property-loss coefficients** `1:10:1`. These coefficients multiply the separately reduced energy, force and stress loss components; they are not target/replay data-balance weights, not per-configuration weights, and not per-frame property-availability masks. Binary property masks, no nontrivial per-configuration loss weight and no target/replay **training-head** scalar remain part of the method.
 
 Historical checkpoint-control `target_score_weight`/`replay_score_weight` remain provenance for consumers that still legitimately own them, but they have no authority in current foundation-P5 checkpoint representative or final single-best-seed ordering under `D1.DEF.026-027`. They remain distinct from training-head loss weights.
 
@@ -442,12 +445,12 @@ $$
 are independent finite positive `CONFIGURABLE_WITH_GENERATED_DEFAULT` coordinates. `tau_CV` is target-force checkpoint competence on `M_mon`; `theta_CV` is held-out acceptance on `O_i` in configured outer-metric units; `tau_prod` is production target-force checkpoint quality on `M_mon`. Current defaults for the default force outer metric are
 
 $$
-45,45,50\ \mathrm{meV/angstrom},
+75,75,50\ \mathrm{meV/angstrom},
 $$
 
 respectively.
 
-The three coordinates are role-specific policy claims. Their numerical ordering has no independent scientific meaning: `tau_prod > tau_CV` under the current defaults does not merge their evidence roles, does not make held-out CV evidence a production checkpoint substitute, and does not assert that production is globally less demanding than CV. Production target admission remains checkpoint/model-control evidence rather than external adequacy; downstream qualification remains separate.
+The three coordinates are role-specific policy claims. For the default force outer metric, the current generated defaults intentionally make both CV ceilings numerically more permissive than production checkpoint admission: $\tau_{\mathrm{CV}}=\theta_{\mathrm{CV}}=75\ \mathrm{meV/angstrom}$ and $\tau_{\mathrm{prod}}=50\ \mathrm{meV/angstrom}$. This ordering does not merge their evidence roles and does not make held-out CV evidence a production checkpoint substitute. CV is intentionally a looser method-competence/held-out screen; final production applies the stricter target checkpoint ceiling. Production target admission remains checkpoint/model-control evidence rather than external adequacy; downstream qualification remains separate.
 
 ### D1.DEF.026 — Foundation-P5 checkpoint universe and representative
 
@@ -525,12 +528,12 @@ Downstream physical/deployment/calibration/locked/release evidence consumes froz
 | `delta_hard` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | finite positive catastrophic-forgetting threshold with `delta_warn < delta_hard` | `100 meV/angstrom` | hard checkpoint policy |
 | CV `K` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | integer `K>=2` | `3` | CV policy |
 | `n_mon` | `FIXED_METHOD_COORDINATE` | current foundation-P5 method | `256` | P5 method |
-| `tau_CV` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | finite positive force ceiling | `45 meV/angstrom` | CV role |
-| `theta_CV` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | finite positive outer-metric threshold | `45 meV/angstrom` for default force metric | CV role |
+| `tau_CV` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | finite positive force ceiling | `75 meV/angstrom` | CV role |
+| `theta_CV` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | finite positive outer-metric threshold | `75 meV/angstrom` for default force metric | CV role |
 | `tau_prod` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | finite positive force ceiling | `50 meV/angstrom` | production role |
 | P5 checkpoint representative ordering | `FIXED_METHOD_COORDINATE` | minimum authoritative target force RMSE over hard-admissible checkpoints; non-quality exact-tie rule only | target-only | P5 checkpoint selection |
 | `single_best_final_seed` ordering | `FIXED_METHOD_COORDINATE` | minimum authoritative target force RMSE over frozen admissible seed representatives; non-quality exact-tie rule only | target-only | final publication |
-| P5 E:F:S coefficients | `FIXED_METHOD_COORDINATE` | current foundation-P5 method | `1:10:1` | P5 method |
+| P5 UniversalLoss global E:F:S property-loss coefficients | `FIXED_METHOD_COORDINATE` | multipliers on the separately reduced D2 energy/force/stress loss components; not target/replay balance, per-configuration weighting or property-availability masks | `1:10:1` | P5 method |
 | `T_N`, `M_i`, `Q_mem`, `Q_cfg` | `DERIVED` | governing definitions above | computed | D1/D2 |
 
 ## 9. Validity, uncertainty and D1 -> D2 handoff
@@ -547,7 +550,7 @@ D2 must concretize, without changing meaning:
 4. P3 common preparation, optimizer normalization, evaluator, complete-seed score, practical-equivalence ranking, exact funnel/success-sufficiency/configured-ceiling rule and authenticated continuation;
 5. selected-head foundation-residual E0 fit, replay/pretraining-head foundation E0 binding, and composition transfer;
 6. replay label-mode/lineage concretization, geometry invariance, evidence-qualification currentness, true-reference replay retention observable (currently DFT / `true_dft`), exact foundation-relative signed degradation, configurable diagnostic-warning/catastrophic-hard policy with generated defaults `50/100 meV/angstrom`, robust P5 objective and exposure;
-7. deterministic monitor/folds/purge; independent role target policies with generated defaults `tau_CV = 45`, `theta_CV = 45`, `tau_prod = 50 meV/angstrom`; strict minimum-target-RMSE foundation-P5 checkpoint and `single_best_final_seed` ordering; deterministic non-quality exact ties; fixed-budget semantics; assessment-policy currentness; fresh production and current-CV reauthorization;
+7. deterministic monitor/folds/purge; independent role target policies with generated defaults `tau_CV = 75`, `theta_CV = 75`, `tau_prod = 50 meV/angstrom`; strict minimum-target-RMSE foundation-P5 checkpoint and `single_best_final_seed` ordering; deterministic non-quality exact ties; fixed-budget semantics; assessment-policy currentness; fresh production and current-CV reauthorization;
 8. typed numerical failure, precision/equivalence, exact reassessment/reuse conditions and falsification oracles.
 
 Any needed change to a scientific estimand, role, support predicate, replay interpretation, parameter-family meaning or validity regime is an upward D1 Challenge.
@@ -556,16 +559,16 @@ Any needed change to a scientific estimand, role, support predicate, replay inte
 
 The accepted current D1 kernel remains `main@a759e81aa1b4c70c8fb513c569ddce57e99cbdb2`. This branch file is a **proposed material D1 renewal** responding to the 2026-09-18 stakeholder direction and the replay/target-admissibility workplan. It is not accepted authority until a fresh independent Protocol-6.4 D1 Review passes on an immutable candidate target and the stakeholder explicitly ratifies that exact reviewed target.
 
-Independent D1 Review R1 of immutable candidate `06f1255ed39f41d178daf73985829a2190a2bee8` returned **NO-PASS with no SERIOUS CHALLENGE** to the intended scientific policy. This repaired candidate closes the six R1 authority/representation findings while preserving the same policy direction. The material scientific cautions remain part of the validity regime:
+Independent D1 Review R1 of immutable candidate `06f1255ed39f41d178daf73985829a2190a2bee8` returned **NO-PASS with no SERIOUS CHALLENGE**; repaired candidate `2549dee709fb8bb383341ee3aebca7c71973a903` then received independent R2 **PASS**. After that PASS, the stakeholder materially amended the foundation-CV defaults from `45/45` to `75/75 meV/angstrom` while retaining production `50 meV/angstrom`, and requested clarification—not alteration—of the existing UniversalLoss `1:10:1` global property coefficients. Because the threshold amendment changes D1 semantics after R2, this new exact candidate requires fresh independent review before ratification. The material scientific cautions are:
 
 1. the `100 meV/angstrom` catastrophic replay default is not established as a universal inherited-capability safety boundary; the motivating production trajectory shows that the old `30 meV/angstrom` hard budget can reject target-competent checkpoints, but it does not prove `100` universally adequate;
-2. current defaults `tau_CV=45` and `tau_prod=50 meV/angstrom` reverse the imported historical rationale that production is numerically stricter than CV. This candidate deliberately removes any required ordering between the role ceilings; their adequacy is role-specific, and production admission remains distinct from downstream physical/release qualification;
+2. current defaults `tau_CV=theta_CV=75` and `tau_prod=50 meV/angstrom` deliberately make CV more permissive than final production. This increases the need to verify that CV still rejects materially incompetent methods while preserving its role as a screening/held-out authorization layer rather than a production-quality substitute;
 3. strict target-RMSE ordering can intentionally select a checkpoint carrying a replay-retention warning when its degradation remains below the catastrophic hard limit. That is acceptable here only because replay is defined as auxiliary inherited-capability evidence with no positive target-quality ranking role and downstream qualification remains independent;
 4. `single_best_final_seed` now chooses strictly by the same authoritative target metric rather than practical-equivalence/bootstrap/secondary/maturity semantics. This narrows publication selection and must be independently falsified as a material D1 publication change.
 
-The generated defaults `50/100 meV/angstrom` replay and `50 meV/angstrom` foundation-production target are therefore current stakeholder-selected policy calibrations, not externally validated universal constants and not substitutes for downstream adequacy evidence.
+The generated defaults `50/100 meV/angstrom` replay, `75/75 meV/angstrom` foundation-CV ceilings and `50 meV/angstrom` foundation-production target ceiling are current stakeholder-selected policy calibrations, not externally validated universal constants and not substitutes for downstream adequacy evidence.
 
-Fresh independent D1 Review must attempt to falsify at least: replay-domain/target-domain role separation; warning non-veto semantics; catastrophic hard protection; absence of replay ranking credit; target-only checkpoint and single-best publication ordering; the lack of a required numerical ordering between CV and production target ceilings; scratch/P3 isolation; fixed-budget training; current-CV authorization for current final publication; and the claim that assessment-policy-only revision does not scientifically redefine an otherwise identical realized training trajectory.
+Fresh independent D1 Review must attempt to falsify at least: replay-domain/target-domain role separation; warning non-veto semantics; catastrophic hard protection; absence of replay ranking credit; target-only checkpoint and single-best publication ordering; whether `75/75 meV/angstrom` CV ceilings are sufficiently discriminating while intentionally more permissive than the `50 meV/angstrom` production ceiling; scratch/P3 isolation; the distinction between UniversalLoss global E/F/S coefficients and forbidden target/replay or per-frame weighting; fixed-budget training; current-CV authorization for current final publication; and the claim that assessment-policy-only revision does not scientifically redefine an otherwise identical realized training trajectory.
 
 If Review passes, explicit stakeholder ratification of the exact immutable candidate is still required before this file becomes accepted-current and before Gate C may treat these D1 semantics as authority.
 
