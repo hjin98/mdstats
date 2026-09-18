@@ -37,7 +37,12 @@ import pytest
 
 import tests._mlff_post_selection_fixture as fx
 from mdstats.training_data import campaign_post_selection_runtime as runtime
-from mdstats.training_data.post_selection_store import post_selection_root
+from mdstats.training_data.eval2 import Eval2TargetMetricRecord
+from mdstats.training_data.post_selection_execution import EvaluationMeasurementIdentity
+from mdstats.training_data.post_selection_store import (
+    PostSelectionEvidenceStore,
+    post_selection_root,
+)
 
 pytestmark = pytest.mark.slow
 
@@ -267,6 +272,92 @@ def test_eval2_scratch_deletion_does_not_invalidate_durable_measurements(
     assert recorded and all(not path.exists() for path in recorded)
     assert all(runs not in path.parents and path != runs for path in recorded)
     assert harness.runs == [] and harness.evaluations == []
+
+
+def test_fresh_held_out_measurement_is_committed_before_scratch_cleanup(
+    tmp_path, monkeypatch
+):
+    config, _workspace = fx.build_selected_campaign(tmp_path)
+    runs = _runs_root(config)
+    original_transport = runtime.write_outer_evaluation_transport
+    original_put = PostSelectionEvidenceStore.put
+    scratches: list[Path] = []
+    committed_identities: set[str] = set()
+    committed_metric_digests: set[str] = set()
+    committed_metric_target_roles: set[str] = set()
+    commit_events: list[str] = []
+
+    def record_transport(selected, *, scratch_directory, frame_uids, extxyz_policy):
+        scratches.append(Path(scratch_directory))
+        return original_transport(
+            selected,
+            scratch_directory=scratch_directory,
+            frame_uids=frame_uids,
+            extxyz_policy=extxyz_policy,
+        )
+
+    def observe_put(store, record):
+        if (
+            isinstance(record, EvaluationMeasurementIdentity)
+            and record.dataset_role == runtime.DATASET_ROLE_OUTER_EVALUATION
+            and record.content_digest not in committed_identities
+        ):
+            scratch = scratches[-1]
+            assert scratch.exists()
+            assert runs not in scratch.parents
+            assert any(
+                item.name.startswith("outer_evaluation.extxyz")
+                for item in scratch.iterdir()
+            )
+            committed_identities.add(record.content_digest)
+            commit_events.append("identity")
+        elif (
+            isinstance(record, Eval2TargetMetricRecord)
+            and record.target_role_digest in committed_identities
+            and record.content_digest not in committed_metric_digests
+        ):
+            scratch = scratches[-1]
+            assert scratch.exists()
+            assert any(
+                item.name.startswith("outer_evaluation.extxyz")
+                for item in scratch.iterdir()
+            )
+            committed_metric_digests.add(record.content_digest)
+            committed_metric_target_roles.add(record.target_role_digest)
+            commit_events.append("metric")
+        return original_put(store, record)
+
+    monkeypatch.setattr(runtime, "write_outer_evaluation_transport", record_transport)
+    monkeypatch.setattr(PostSelectionEvidenceStore, "put", observe_put)
+
+    harness = fx.PostSelectionHarness()
+    assert fx.run_cross_validate(config, harness) == 0
+    assert commit_events == ["identity", "metric", "identity", "metric"]
+    assert committed_identities == committed_metric_target_roles
+    assert scratches and all(not scratch.exists() for scratch in scratches)
+    assert all(runs not in scratch.parents for scratch in scratches)
+
+    contexts, store = _contexts(config)
+    evidence_store = contexts[0].evidence_store
+    try:
+        acceptance = runtime.resolve_current_cv_acceptance(contexts[0])
+        assert acceptance is not None
+        outer_digests = {
+            fold.outer_metric_record_digest
+            for seed in acceptance.seed_acceptances
+            for fold in seed.fold_acceptances
+        }
+        assert outer_digests == committed_metric_digests
+        assert all(evidence_store.has(digest) for digest in outer_digests)
+        assert all(
+            evidence_store.get(
+                digest, Eval2TargetMetricRecord.from_dict
+            ).target_role_digest
+            in committed_identities
+            for digest in outer_digests
+        )
+    finally:
+        store.close()
 
 
 def test_required_composition_projection_is_training_bearing_and_label_blind(

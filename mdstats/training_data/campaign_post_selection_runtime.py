@@ -1303,8 +1303,9 @@ def execute_post_selection_run(
     archive/dedup/reclamation cannot move its bytes mid-evaluation.  The
     representative is frozen from the common monitor before any held-out
     transport exists; held-out EXTXYZ is realized only afterwards, in bounded
-    attempt scratch outside the root.  The caller publishes the returned
-    measurements and assessment outside this lease.
+    attempt scratch outside the root.  Fresh held-out identity/metric evidence
+    is committed before that scratch is reclaimed; the caller publishes the
+    remaining returned measurements and assessment outside this lease.
 
     ``stop_after_training`` ends at the sealed terminal boundary and returns
     ``None``; the TRAIN scheduler uses it so a training slot never carries EVAL2.
@@ -2668,7 +2669,9 @@ def _evaluate_held_out_representative(
 
     The held-out EXTXYZ is realized only now, after D2.DEF.059A froze the
     representative, in bounded attempt-local scratch that is not beneath any
-    training root; it is removed when this call returns.  Its exact membership,
+    training root.  A fresh measurement is committed to the existing evidence
+    store before this call returns, so the ``TemporaryDirectory`` cleanup is
+    downstream of durable measurement publication.  Its exact membership,
     serialized label/reference bytes and transport policy enter the immutable
     measurement identity - the scratch locator does not - so a later retry may
     regenerate identical transport and reuse the published measurement.
@@ -2711,7 +2714,10 @@ def _evaluate_held_out_representative(
         )
         prior = offered.outer_by_checkpoint.get(checkpoint_sha256)
         if prior is not None and prior.target_role_digest == identity.content_digest:
-            return prior, (_publishable_measurement(identity, prior),)
+            # The offered metric and its identity were read from the durable
+            # evidence store before this attempt; no caller-side write is
+            # needed for a reusable measurement.
+            return prior, ()
         catalog = _checkpoint_catalog(root.identity, sealed.checkpoint_directory)
         checkpoint = catalog.checkpoint_by_sha256(checkpoint_sha256)
         provider, _evaluated = authenticate_post_selection_provider(
@@ -2740,7 +2746,17 @@ def _evaluate_held_out_representative(
             )
         finally:
             _retire_post_selection_provider(provider)
-    return metrics, (_publishable_measurement(identity, metrics),)
+        measurement = _publishable_measurement(identity, metrics)
+        # The attempt-local transport must still be live at both immutable
+        # object writes.  This is the existing content-addressed evidence owner;
+        # no scratch locator or publication marker becomes durable currentness.
+        store = context.evidence_store
+        store.put(measurement[0])
+        store.put(measurement[1])
+    # The fresh outer identity and metric are already durable.  Keeping them
+    # out of the later generic publication pass avoids a redundant write while
+    # leaving monitor/candidate evidence on that existing path.
+    return metrics, ()
 
 
 def publish_post_selection_run_measurements(

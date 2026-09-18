@@ -85,7 +85,9 @@ def _no_replay(**kwargs) -> mdstats.CheckpointAdmissibilityPolicy:
     )
 
 
-_REPLAY = mdstats.CheckpointAdmissibilityPolicy()
+_REPLAY = mdstats.CheckpointAdmissibilityPolicy(
+    replay_degradation_hard_limit_ev_per_angstrom=0.100
+)
 
 
 def _decide(candidates, *, outer_rmse: float | None = None):
@@ -419,7 +421,11 @@ def test_property_outcome_is_determined_by_admissibility_alone(specs, outer):
 
 
 def test_mandatory_admissibility_boundaries_follow_the_ratified_hard_limit():
-    policy = mdstats.CheckpointAdmissibilityPolicy()
+    # Current P5 receives its ratified 0.100 hard limit explicitly from the
+    # P5 method-policy owner; the generic exported TRAIN2 default is 0.030.
+    policy = mdstats.CheckpointAdmissibilityPolicy(
+        replay_degradation_hard_limit_ev_per_angstrom=0.100
+    )
     assert policy.maximum_target_force_rmse_ev_per_angstrom == 0.030
     assert policy.replay_enabled is True
     assert policy.replay_degradation_hard_limit_ev_per_angstrom == 0.100
@@ -472,6 +478,10 @@ from mdstats.training_data.post_selection_cv_plan import (  # noqa: E402
 )
 from mdstats.training_data.post_selection_execution import (  # noqa: E402
     DATASET_ROLE_OUTER_EVALUATION,
+    EvaluationMeasurementIdentity,
+)
+from mdstats.training_data.post_selection_store import (  # noqa: E402
+    PostSelectionEvidenceStore,
 )
 
 #: Admissible under the mandatory 0.030 eV/A target gate and inside the
@@ -678,6 +688,61 @@ def test_outer_evaluation_failure_after_selection_stays_a_hard_failure(
     (size,) = _fold_verdicts(config)
     assert all(entry is None for entry in size.folds.values())
     assert size.acceptance is None
+
+
+@pytest.mark.slow
+def test_outer_measurement_publication_failure_keeps_assessment_unpublished_and_retries(
+    tmp_path: Path, monkeypatch
+):
+    """A store failure cleans attempt scratch without publishing currentness."""
+
+    config, _workspace = fx.build_selected_campaign(tmp_path)
+    original_put = PostSelectionEvidenceStore.put
+    injected = False
+
+    def fail_outer_measurement(store, record):
+        nonlocal injected
+        if (
+            not injected
+            and isinstance(record, EvaluationMeasurementIdentity)
+            and record.dataset_role == DATASET_ROLE_OUTER_EVALUATION
+        ):
+            injected = True
+            raise RuntimeError("injected outer measurement publication failure")
+        return original_put(store, record)
+
+    monkeypatch.setattr(PostSelectionEvidenceStore, "put", fail_outer_measurement)
+    with pytest.raises(RuntimeError, match="outer measurement publication"):
+        fx.run_cross_validate(config, fx.PostSelectionHarness())
+    assert injected
+
+    (size,) = _fold_verdicts(config)
+    assert all(entry is None for entry in size.folds.values())
+    assert size.acceptance is None
+    # Resolve every assessment position through the current owner; no position
+    # locator may have become current merely because a measurement object failed.
+    cfg, paths, store = fx.load_context(config)
+    try:
+        context = build_post_selection_contexts(cfg, paths, store)[0]
+        plan = resolve_current_cv_plan(context)
+        assert plan is not None
+        for seed, fold_index in plan.required_run_matrix:
+            run_plan = build_cv_fold_run_plan(
+                plan,
+                fold_index=fold_index,
+                optimizer_seed=seed,
+                planned_epochs=context.cv_policy.cv_max_num_epochs,
+            )
+            assert resolve_current_cv_fold_assessment(context, run_plan) is None
+        assert resolve_current_cv_acceptance(context) is None
+    finally:
+        store.close()
+
+    monkeypatch.setattr(PostSelectionEvidenceStore, "put", original_put)
+    retry = fx.PostSelectionHarness()
+    assert fx.run_cross_validate(config, retry) == 0
+    assert retry.runs == []
+    assert retry.evaluations
 
 
 def _five_fold_campaign(tmp_path: Path, sizes, *, acceptance_maximum: str = "0.5") -> Path:

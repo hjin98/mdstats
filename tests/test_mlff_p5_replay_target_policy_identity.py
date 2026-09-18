@@ -195,6 +195,16 @@ def test_foundation_defaults_resolve_75_75_50_and_replay_50_100(mode, foundation
     assert configuration.replay_hard_limit_ev_per_angstrom == 0.100
 
 
+def test_generic_train2_default_stays_0030_while_p5_resolves_0100(foundation):
+    generic = CheckpointAdmissibilityPolicy()
+    assert generic.replay_degradation_hard_limit_ev_per_angstrom == 0.030
+    policies, _method, _cv, production = _resolved(
+        _config("multihead_replay", foundation=foundation)
+    )
+    effective = post_selection_checkpoint_admissibility(policies, production)
+    assert effective.replay_degradation_hard_limit_ev_per_angstrom == 0.100
+
+
 @pytest.mark.parametrize("mode", FOUNDATION_MODES)
 def test_role_boundaries_75_and_50_are_inclusive_and_60_is_discriminating(mode, foundation):
     policies, _method, cv, production = _resolved(_config(mode, foundation=foundation))

@@ -13,10 +13,10 @@ def test_train2a_manual_and_generated_config_contract() -> None:
     manual = (ROOT / "docs" / "arch_manuals" / "mlff_training_data_architecture.md").read_text(
         encoding="utf-8"
     )
-    assert "TRAIN2A is implemented in `mdstats 0.20.169a0`" in manual
-    assert "Replay has already spent" in manual
-    assert "unused replay margin cannot separate" in manual
-    assert "stable candidate identity" in manual
+    assert "assessment-independent `EvaluationMeasurementIdentity`" in manual
+    assert "strict D2 lexicographic minimum" in manual
+    assert "replay-warning diagnostic policy" in manual
+    assert "checkpoint SHA-256" in manual
 
     cfg = campaign_cli._config_template(
         workspace="work",

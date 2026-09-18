@@ -11,6 +11,7 @@ import mdstats
 from mdstats.training_data import _campaign_cli_core as campaign_core
 from mdstats.training_data.model_features import AtomicModelPrediction
 from mdstats.training_data._common import digest
+from mdstats.training_data.train2_policy import CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA_V1
 
 D1 = "1" * 64
 D2 = "2" * 64
@@ -241,7 +242,13 @@ def test_practical_equivalence_prefers_target_secondary_and_refinement_not_repla
 
 
 def test_replay_is_hard_constraint_only():
-    policy = mdstats.CheckpointAdmissibilityPolicy(replay_degradation_budget_ev_per_angstrom=0.030)
+    # This oracle is intentionally historical: v1 owns the legacy reason and
+    # serialization spelling.  Current P5 v2 uses the explicit hard-limit
+    # constructor and catastrophic-forgetting reason.
+    policy = mdstats.CheckpointAdmissibilityPolicy(
+        replay_degradation_budget_ev_per_angstrom=0.030,
+        serialization_schema=CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA_V1,
+    )
     accepted = checkpoint(point(25, 0.020, refinement=True), 0.020, replay=0.049, baseline=0.020, policy=policy)
     rejected = checkpoint(point(26, 0.019, refinement=True), 0.019, replay=0.051, baseline=0.020, policy=policy)
     assert accepted.admissible

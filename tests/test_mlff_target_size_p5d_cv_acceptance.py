@@ -33,7 +33,7 @@ from mdstats.training_data.post_selection_cv_acceptance import (
     build_cv_fold_acceptance,
     cv_acceptance_metric_value,
     require_cv_acceptance_for_method,
-    select_cv_fold_representative,
+    select_post_selection_representative,
 )
 from mdstats.training_data.post_selection_cv_plan import (
     build_cv_fold_run_plan,
@@ -60,9 +60,11 @@ def _fold_acceptance(plan, policy, *, seed: int, fold_index: int, value: float):
         plan, fold_index=fold_index, optimizer_seed=seed, planned_epochs=2
     )
     return CvFoldAcceptance(
-        cv_plan_digest=plan.content_digest,
-        run_plan_digest=run_plan.content_digest,
-        run_identity=run_plan.run_identity,
+        selected_binding_digest=plan.binding.content_digest,
+        assessment_position_policy_digest="1" * 64,
+        training_trajectory_identity=run_plan.training_trajectory_identity,
+        training_root_identity="2" * 64,
+        runtime_summary_digest="3" * 64,
         fold_index=fold_index,
         cv_seed=seed,
         representative_candidate_identity=f"epoch-1:{'a' * 64}",
@@ -77,6 +79,22 @@ def _fold_acceptance(plan, policy, *, seed: int, fold_index: int, value: float):
         else ("outer_target_metric_above_configured_maximum",),
         candidate_record_digests=("b" * 64,),
     )
+
+
+def _expected_positions(plan, policy):
+    return {
+        (seed, fold.fold_index): (
+            build_cv_fold_run_plan(
+                plan,
+                fold_index=fold.fold_index,
+                optimizer_seed=seed,
+                planned_epochs=2,
+            ).training_trajectory_identity,
+            "1" * 64,
+        )
+        for seed in policy.required_cv_seeds
+        for fold in plan.folds
+    }
 
 
 # --- fold-level acceptance --------------------------------------------------
@@ -109,6 +127,9 @@ def test_p5d_fold_acceptance_uses_the_configured_target_only_predicate(
             representative=representative,
             outer_metrics=target_metrics(policy.acceptance_maximum / 2.0),
             policy=policy,
+            assessment_position_policy_digest="1" * 64,
+            training_root_identity="2" * 64,
+            runtime_summary_digest="3" * 64,
         )
         assert passing.accepted
         assert passing.outer_metric_value == pytest.approx(
@@ -121,6 +142,9 @@ def test_p5d_fold_acceptance_uses_the_configured_target_only_predicate(
             representative=representative,
             outer_metrics=target_metrics(policy.acceptance_maximum * 2.0),
             policy=policy,
+            assessment_position_policy_digest="1" * 64,
+            training_root_identity="2" * 64,
+            runtime_summary_digest="3" * 64,
         )
         assert not failing.accepted
         assert "outer_target_metric_above_configured_maximum" in (
@@ -157,7 +181,7 @@ def test_p5d_replay_cannot_reverse_the_target_only_representative_ordering():
 
     admissibility = mdstats.CheckpointAdmissibilityPolicy(
         replay_enabled=True,
-        replay_degradation_budget_ev_per_angstrom=0.030,
+        replay_degradation_hard_limit_ev_per_angstrom=0.100,
         replay_label_requirement="true_dft",
     )
     better_target = mdstats.assess_eval2_checkpoint(
@@ -184,10 +208,8 @@ def test_p5d_replay_cannot_reverse_the_target_only_representative_ordering():
     legacy_b = 0.5 * 0.030 + 0.5 * (0.021 - 0.020)
     assert legacy_b < legacy_a
 
-    representative = select_cv_fold_representative(
-        [better_replay, better_target],
-        selection_policy=mdstats.CheckpointSelectionPolicy(),
-        seed_material_digest="5" * 64,
+    representative = select_post_selection_representative(
+        [better_replay, better_target]
     )
     assert representative.stable_candidate_identity == (
         better_target.stable_candidate_identity
@@ -205,7 +227,7 @@ def test_p5d_an_inadmissible_checkpoint_is_never_a_representative():
 
     admissibility = mdstats.CheckpointAdmissibilityPolicy(
         replay_enabled=True,
-        replay_degradation_budget_ev_per_angstrom=0.001,
+        replay_degradation_hard_limit_ev_per_angstrom=0.001,
         replay_label_requirement="true_dft",
     )
     rejected = mdstats.assess_eval2_checkpoint(
@@ -231,22 +253,15 @@ def test_p5d_an_inadmissible_checkpoint_is_never_a_representative():
         rejected.target_metrics.force_component_rmse_ev_per_angstrom
         < admissible.target_metrics.force_component_rmse_ev_per_angstrom
     )
-    selection = mdstats.CheckpointSelectionPolicy()
-    chosen = select_cv_fold_representative(
-        [rejected, admissible], selection_policy=selection, seed_material_digest="5" * 64
-    )
+    chosen = select_post_selection_representative([rejected, admissible])
     assert chosen is admissible
 
     assert (
-        select_cv_fold_representative(
-            [rejected], selection_policy=selection, seed_material_digest="5" * 64
-        )
+        select_post_selection_representative([rejected])
         is None
     )
     with pytest.raises(PostSelectionError, match="no checkpoint candidates"):
-        select_cv_fold_representative(
-            [], selection_policy=selection, seed_material_digest="5" * 64
-        )
+        select_post_selection_representative([])
 
 
 # --- campaign-level acceptance is exact, not aggregate ---------------------
@@ -265,7 +280,12 @@ def test_p5d_one_failing_fold_fails_the_campaign_despite_a_passing_mean(
         mean = (good.outer_metric_value + bad.outer_metric_value) / 2.0
         assert mean > policy.acceptance_maximum or True  # mean is never consulted
 
-        acceptance = accept_post_selection_cv_campaign(plan, policy, [good, bad])
+        acceptance = accept_post_selection_cv_campaign(
+            plan,
+            policy,
+            [good, bad],
+            expected_positions=_expected_positions(plan, policy),
+        )
         assert not acceptance.accepted
         assert f"cv_seed_{seed}_rejected" in acceptance.rejection_reasons
         seed_record = acceptance.seed_acceptances[0]
@@ -279,7 +299,12 @@ def test_p5d_a_missing_required_fold_fails_the_campaign(tmp_path: Path):
     try:
         seed = policy.required_cv_seeds[0]
         only_one = _fold_acceptance(plan, policy, seed=seed, fold_index=0, value=0.001)
-        acceptance = accept_post_selection_cv_campaign(plan, policy, [only_one])
+        acceptance = accept_post_selection_cv_campaign(
+            plan,
+            policy,
+            [only_one],
+            expected_positions=_expected_positions(plan, policy),
+        )
         assert not acceptance.accepted
         assert "missing_required_fold_1" in acceptance.seed_acceptances[0].rejection_reasons
     finally:
@@ -295,7 +320,10 @@ def test_p5d_a_duplicated_fold_does_not_stand_in_for_a_missing_one(tmp_path: Pat
             {**first.to_dict(), "outer_metric_value": 0.002, "content_digest": None}
         )
         acceptance = accept_post_selection_cv_campaign(
-            plan, policy, [first, duplicate]
+            plan,
+            policy,
+            [first, duplicate],
+            expected_positions=_expected_positions(plan, policy),
         )
         assert not acceptance.accepted
         reasons = acceptance.seed_acceptances[0].rejection_reasons
@@ -327,7 +355,12 @@ def test_p5d_all_required_seeds_must_pass(tmp_path: Path):
                 value=policy.acceptance_maximum * 10,
             ),
         ]
-        acceptance = accept_post_selection_cv_campaign(plan, policy, acceptances)
+        acceptance = accept_post_selection_cv_campaign(
+            plan,
+            policy,
+            acceptances,
+            expected_positions=_expected_positions(plan, policy),
+        )
         assert not acceptance.accepted
         assert "cv_seed_12_rejected" in acceptance.rejection_reasons
         # "best seed wins" is not representable: seed 11 passing changes nothing.
@@ -347,7 +380,12 @@ def test_p5d_dispersion_is_recorded_but_never_gates(tmp_path: Path):
                 value=policy.acceptance_maximum * 0.99,
             ),
         ]
-        acceptance = accept_post_selection_cv_campaign(plan, policy, spread)
+        acceptance = accept_post_selection_cv_campaign(
+            plan,
+            policy,
+            spread,
+            expected_positions=_expected_positions(plan, policy),
+        )
         assert acceptance.accepted
         assert acceptance.cross_fold_dispersion is not None
         assert acceptance.cross_fold_dispersion > 0.0
@@ -369,7 +407,12 @@ def test_p5d_a_fold_judged_under_another_predicate_is_refused(tmp_path: Path):
             }
         )
         with pytest.raises(PostSelectionError, match="different acceptance predicate"):
-            accept_post_selection_cv_campaign(plan, policy, [relaxed])
+            accept_post_selection_cv_campaign(
+                plan,
+                policy,
+                [relaxed],
+                expected_positions=_expected_positions(plan, policy),
+            )
     finally:
         store.close()
 
@@ -385,6 +428,7 @@ def test_p5d_cv_of_one_method_cannot_authorize_another(tmp_path: Path):
                 _fold_acceptance(plan, policy, seed=seed, fold_index=0, value=0.001),
                 _fold_acceptance(plan, policy, seed=seed, fold_index=1, value=0.001),
             ],
+            expected_positions=_expected_positions(plan, policy),
         )
         assert acceptance.accepted
         require_cv_acceptance_for_method(
