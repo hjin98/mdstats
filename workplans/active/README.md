@@ -4,6 +4,19 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 ## Current active MLFF work
 
+### Replay retention and target-admissibility rework
+
+Branch: `design/mlff-replay-retention-target-admissibility-rework`
+
+Canonical workplan:
+
+- `workplans/active/MLFF_REPLAY_RETENTION_AND_TARGET_ADMISSIBILITY_REWORK_WORKPLAN.md`
+
+This cycle reopens accepted Protocol 6.4 D1/D2 for a narrow post-selection policy revision: TRUE_DFT replay degradation becomes a configurable 50 meV/angstrom diagnostic-warning threshold plus configurable 100 meV/angstrom catastrophic hard limit; foundation-production target checkpoint admissibility defaults to 50 meV/angstrom; and P5 checkpoint/final single-best selection becomes strict minimum authoritative target RMSE among hard-admissible checkpoints. The workplan also requires assessment-policy/currentness ownership to be separated from TRAIN2 trajectory and reusable EVAL2 measurement identity so policy-only edits do not force retraining or discard valid measurements.
+
+Implementation is blocked until the new D1 then D2 authority amendments pass Protocol 6.4 review/ratification. The branch currently contains workplan/design material only.
+
+
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
 Branch: `design/mlff-pi-train-fps-diversity-restoration`
