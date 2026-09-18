@@ -1,7 +1,7 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: active-d2-renewal
+status: active-d3-review-reopen
 highest_affected_domain: D1
 branch: design/mlff-replay-retention-target-admissibility-rework
 analysis_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
@@ -1230,7 +1230,7 @@ The final renderer-safe D2 ratification target is `32508991d472c1c6e4bd8b818b38d
 
 On 2026-09-18 the stakeholder explicitly accepted that exact D2 candidate. Ratification record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_R2_RATIFICATION.md`. The D2 blob remains unchanged by ratification. Gate C is closed; Gate D may proceed.
 
-### Gate D - D3 authority/currentness reconciliation - CANDIDATE PREPARED / INDEPENDENT REVIEW REQUIRED
+### Gate D - D3 authority/currentness reconciliation - R1 REVIEW NO-PASS / REOPENED
 
 Before code edits:
 
@@ -1248,7 +1248,16 @@ Before code edits:
 - prove currentness/recovery can preserve old TRAIN2 without a shadow compatibility subsystem or second evidence store;
 - reconcile the narrow `post_selection_checkpoint_policy_generation` migration without changing global campaign schema v2, while deliberately migrating foundation CV defaults and preserving collateral scratch semantics.
 
-This cycle does materially change durable D3 ownership/currentness. The canonical D3 architecture candidate and proposed D4 child contract are prepared on this branch together with the focused D3->D4 implementation workplan. They are not accepted-current until a fresh independent D3 Review falsifies the immutable candidate and returns PASS. Implementation remains blocked until that Review closes Gate D.
+Fresh independent D3 Review R1 of immutable candidate `119c4067b1852be127134d6b0fb1aae6cace4bd6` returned **NO-PASS** with a **SERIOUS CHALLENGE to the proposed D3 candidate only**; ratified D1/D2 remain coherent. Review record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_INDEPENDENT_REVIEW_R1.md`.
+
+Required repair before a new immutable D3 candidate may be reviewed:
+
+1. remove the cycle between `TrainingTrajectoryIdentity` and `PostSelectionFittedPreparation`: the trajectory/root identity must be derived only from pre-fit training-bearing inputs/policies/authorized memberships and other already-available parents; the fitted preparation is a descendant that binds that trajectory position, and continuation separately authenticates the exact fitted-preparation/result digest required by D2.DEF.060;
+2. resolve legacy-root mutability explicitly: already sealed historical roots remain read-only; for terminal-but-unsealed legacy roots either authorize exactly one append-only completion-manifest/anchor publication under the existing run-activity owner without rewriting any pre-existing historical byte, or place the proof at an already accepted external owner. Do not simultaneously require a read-only root and a new in-root seal;
+3. narrow final-seed assessment currentness so D2.DEF.059B publication-only policy is not a parent of each per-seed assessment position. Bind D2.DEF.059A + final hard policy to the seed-assessment projection; bind publication mode/059B only at the aggregate publication decision;
+4. restore the accepted completion-proof/storage safety invariants weakened by the candidate rewrite: race-safe no-follow opened-descriptor regular-file authentication (or an explicitly equivalent guarantee), topology/anchor owner infrastructure excluded from reclamation, completion independent of terminal assessment-file presence, idempotent reuse of an existing proof rather than reconstruction from a storage-depleted tree, and fail-closed treatment of tampered/copied/self-inconsistent proofs.
+
+Implementation remains blocked until those repairs are incorporated into a new immutable D3/D4 candidate and fresh independent D3 Review returns PASS.
 
 ### Gate E - D4 implementation - BLOCKED ON GATE D ACCEPTANCE
 

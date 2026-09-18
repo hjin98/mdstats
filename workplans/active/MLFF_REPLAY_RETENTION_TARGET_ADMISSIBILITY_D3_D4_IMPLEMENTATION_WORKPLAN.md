@@ -4,7 +4,7 @@ protocol_version: 6.4.0
 workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-D3-D4-1
 parent_workplan: workplans/active/MLFF_REPLAY_RETENTION_AND_TARGET_ADMISSIBILITY_REWORK_WORKPLAN.md
 branch: design/mlff-replay-retention-target-admissibility-rework
-status: PREPARED_BLOCKED_PENDING_INDEPENDENT_D3_REVIEW
+status: REVIEW_R1_NO_PASS_D3_REOPENED
 parent_d1_target: d761171f3c86c3c79b87a90cfc02ac324c261b1a
 parent_d1_blob: 612294ec4680db01a18085e13fbfe5dcfa9fb7ed
 parent_d2_target: 32508991d472c1c6e4bd8b818b38d0880401845f
@@ -12,6 +12,19 @@ parent_d2_blob: 30e6e6336cf41a05879650a3a2d7d583c4ef713a
 ---
 
 # MLFF replay retention / target admissibility D3 -> D4 implementation workplan
+
+## 0. Independent D3 Review R1 disposition
+
+Immutable candidate `119c4067b1852be127134d6b0fb1aae6cace4bd6` is **NO-PASS**. Review record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_INDEPENDENT_REVIEW_R1.md`.
+
+Do not hand this plan to the implementer yet. The D3/D4 authority must first be repaired so that:
+
+- `TrainingTrajectoryIdentity` contains no descendant fitted-preparation/result and therefore has no cycle;
+- already sealed legacy roots remain read-only, while any one-time seal of an unsealed terminal legacy root has one explicit append-only authority and cannot rewrite historical bytes;
+- per-seed final assessment currentness excludes D2.DEF.059B/publication mode, which belongs only to aggregate publication;
+- the prior P5 completion/topology security and cold-storage invariants are preserved losslessly.
+
+A repaired candidate requires fresh independent D3 Review before Gate E can open.
 
 ## 1. Governing outcome and implementation gate
 
@@ -55,14 +68,14 @@ No parallel trainer/evaluator/policy/currentness/storage graph is authorized.
 ### Cycle-frozen D3 decisions
 
 1. `PostSelectionMethodIdentity` is training-only.
-2. One `TrainingTrajectoryIdentity` is the singular root/restart owner across fitted preparation, materialization, generated training config, checkpoint/runtime lineage, and continuation.
+2. One `TrainingTrajectoryIdentity` is the singular root/restart owner derived from already-available training-bearing inputs. `PostSelectionFittedPreparation` is its descendant, not an input to it; continuation separately authenticates the exact fitted-preparation/result evidence required by D2.DEF.060.
 3. CV/final plans bind current hard-decision and strict-selection policy explicitly; warning-only policy is excluded.
 4. Numeric EVAL2 measurement identity excludes assessment thresholds/full role-plan ancestry.
-5. Post-cutover P5 run roots are training-only and seal at authenticated terminal TRAIN2 before EVAL2 using the existing completion/topology owner.
+5. Post-cutover P5 run roots are training-only and seal at authenticated terminal TRAIN2 before EVAL2 using the existing completion/topology owner while preserving all accepted topology/anchor race-safety, non-reclaimability, idempotent-republication, and tamper-fail-closed invariants.
 6. Current CV/final assessments live outside sealed roots in the existing immutable evidence/currentness plane.
 7. The existing CampaignStore pointer seam gains one position-addressed assessment locator; no second registry/store.
 8. Root-consuming EVAL2/reassessment reuses the existing P5 run-activity exclusion; lock order with publication is run-activity first, publication barrier second.
-9. Historical reuse is a narrow source-preserving equivalence derivation at the existing recovery/currentness owner; no root rename/copy/symlink/scan or general compatibility translator.
+9. Historical reuse is a narrow source-preserving equivalence derivation at the existing recovery/currentness owner; no root rename/copy/symlink/scan or general compatibility translator. Already sealed historical roots remain read-only; any terminal-but-unsealed legacy root may receive a new completion proof only after D3 explicitly chooses and authorizes one append-only proof location/owner.
 10. Existing configuration owners remain singular; global campaign schema stays v2 and a narrow `post_selection_checkpoint_policy_generation` marker owns migration.
 
 ### Delegated D4 space
@@ -73,7 +86,7 @@ Exact helper names, dataclass decomposition, private function placement, seriali
 
 ### I1 - Narrow P5 training identity
 
-Remove assessment-only hard/warning thresholds and P5 representative-selection policy from `PostSelectionMethodIdentity`. Introduce or expose the minimum training-position projection needed for `TrainingTrajectoryIdentity` and route fitted preparation, materialization, checkpoint catalog/file identity, generated MACE config, runtime summary, and continuation through it.
+Remove assessment-only hard/warning thresholds and P5 representative-selection policy from `PostSelectionMethodIdentity`. Define `TrainingTrajectoryIdentity` only from pre-fit training-bearing inputs and policies that are already available when the trajectory position is created. Do **not** include `PostSelectionFittedPreparation`, its fitted E0 result, or another descendant digest in the identity. The fitted preparation binds the trajectory identity; materialization/runtime bind the fitted-preparation digest; restart/continuation authenticates both the root identity and the exact fitted-preparation/result evidence required by D2.
 
 Acceptance:
 - warning/hard/target/selection edits do not move training identity;
@@ -92,7 +105,7 @@ Acceptance: a policy-only change can reach existing terminal TRAIN2 without laun
 
 Evolve the existing completion/topology owner so terminal `Train2RuntimeSummary` + checkpoint/runtime boundary is sufficient to seal the root while the existing run-activity lease is held. Remove current assessment-file requirements from new root completion.
 
-Stop writing current `fold-acceptance.json` / `run-evidence.json` into post-cutover roots. Keep historical roots read-only.
+Stop writing current `fold-acceptance.json` / `run-evidence.json` into post-cutover roots. Keep every already sealed historical root read-only. For a legacy root whose TRAIN2 is terminal but which lacks the old assessment-coupled completion proof, D3 must first freeze one lawful append-only completion-proof route; no pre-existing checkpoint/config/runtime/summary byte may be rewritten.
 
 Acceptance:
 - root is closed/certifiable immediately after terminal TRAIN2;
@@ -134,7 +147,7 @@ Acceptance:
 
 Persist every candidate assessment first. Evolve final `PostSelectionRunEvidence` into a tagged selected/no-admissible assessment binding the complete ordered candidate set. Keep `CvFoldAcceptance` as CV assessment owner.
 
-Extend existing CampaignStore pointer seam with the canonical assessment-position key. Keep aggregate CV/final pointers.
+Extend the existing CampaignStore pointer seam with the canonical assessment-position key. For final production, key the per-seed assessment position by a projection containing the final hard-decision policy + D2.DEF.059A only; exclude publication mode and D2.DEF.059B. Keep aggregate CV/final publication pointers, and bind publication mode/059B only at the aggregate publication owner.
 
 Acceptance:
 - idempotent same-position publication;
@@ -144,7 +157,7 @@ Acceptance:
 
 ### I9 - Historical training and measurement reuse
 
-For legacy completed/interrupted roots, derive source location only from authenticated historical plan/run evidence. Prove exact training equivalence. Continue interrupted work only under historical runtime/protocol/optimizer/EMA/RNG ancestry. If old root lacks assessment-coupled completion but TRAIN2 is terminal, seal it under the new training-terminal rule without rewriting historical bytes.
+For legacy completed/interrupted roots, derive source location only from authenticated historical plan/run evidence. Prove exact training equivalence. Continue interrupted work only under historical runtime/protocol/optimizer/EMA/RNG ancestry. If an old root lacks assessment-coupled completion but TRAIN2 is terminal, use only the D3-approved one-time append-only completion-proof route; do not write into an already sealed historical root and do not rewrite any pre-existing historical byte.
 
 Reassess every affected historical CV fold. Recompute EVAL2 only where measurement equivalence is unprovable. Historical final production is eligible only after current CV reclosure accepts.
 
