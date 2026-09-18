@@ -356,6 +356,18 @@ Amend `D2.DEF.060/060A` as needed to distinguish exact training continuation ide
 
 Amend `D2.AX.005` so current CV authorization remains mandatory for current production assessment/publication, while a historically fresh final-production trajectory may be reused after CV reclosure iff current CV accepts and exact production training-position equivalence is proven. A current CV rejection leaves the historical final trajectory noncurrent regardless of its checkpoint quality.
 
+### 4.7 Required downstream authority reconciliation after D1 ratification
+
+Do not mutate accepted-current D2/D3/D4 authority before Gate B closes. Once exact D1 is ratified, reconcile the canonical descendants rather than leaving this workplan as a shadow owner:
+
+- **D2:** `D2.DEF.058` retains its inclusive `<=` role-checkpoint predicate but resolves `tau_CV=0.075` and `tau_prod=0.050 eV/angstrom`; `D2.DEF.059` resolves default-force `theta_CV=0.075 eV/angstrom`; `D2.AX.004` must distinguish `tau_CV` checkpoint/reselection currentness from `theta_CV` outer-verdict-only currentness; the D2 parameter ledger becomes `75/75/50`; UniversalLoss `L_P5=L_E+10L_F+L_S` remains unchanged.
+- **D3:** preserve the existing three role-policy owners and configuration sources, but make threshold-only changes assessment/currentness descendants rather than training-trajectory identity; `theta_CV` must not move checkpoint representative identity.
+- **D4 P5 specification:** section 12.1 resolution table becomes foundation `0.075/0.075/0.050`, scratch remains `0.030`; generated/shipped config and public docs must agree; historical generated `0.045/0.045` receives the migration treatment in section 7.
+- **D4 counterexamples/documentation:** retire the old assertion that a foundation checkpoint at `42 meV/angstrom` should fail production. Under the new defaults, `42` is below the `50` production ceiling. Use a discriminating example such as `60 meV/angstrom`: it may satisfy the default `75` CV checkpoint ceiling but must fail the default `50` production checkpoint ceiling. Held-out `theta_CV` remains a separate population/role.
+- **Currentness:** a historical CV pass under `45/45` is not simply carried forward as current, despite the new thresholds being looser; publish a new current assessment under `75/75` from reusable exact measurements or recomputed EVAL2 evidence as required.
+
+Archived closeout records remain historical and must not be edited to pretend they originally used `75/75/50`.
+
 ## 5. D3 ownership and dependency repair
 
 ### 5.1 Separate four dependency classes
@@ -1008,7 +1020,7 @@ Also review the post-selection restoration recurrence record that required D1/D2
 48. A historical CV verdict is never relabeled current merely by monotonic implication. Reuse its authenticated TRAIN2/measurement evidence where valid, then publish a new current fold/campaign assessment under the new `0.075/0.075` CV policy.
 49. An old default-force CV result between `0.045` and `0.075` is newly admissible only through a fresh current assessment; the stored numeric measurement may be reused if exact measurement identity is proven.
 50. CV acceptance under `0.075/0.075` authorizes a production attempt but does not guarantee a `<=0.050` production representative; a fresh or reused production trajectory can still end in a current no-admissible result.
-55. Final production with completed TRAIN2 resumes at EVAL2 without training relaunch.
+51. Final production with completed TRAIN2 resumes at EVAL2 without training relaunch.
 52. Final-production all-inadmissible assessment persists all candidate records before terminal failure.
 53. A selected warning-bearing representative publishes with a visible warning and no false failure state.
 54. A selected representative above the hard replay limit is impossible.
@@ -1017,7 +1029,7 @@ Also review the post-selection restoration recurrence record that required D1/D2
 57. Changing the strict single-best publication ordering identity stales only dependent publication decisions, not per-seed TRAIN2 trajectories or numeric common-monitor measurements.
 58. A post-cutover successful production run binds the complete ordered candidate-record set; a no-admissible terminal result binds the same set before failure publication.
 59. A historical successful production run whose candidate set is not durably enumerable recomputes EVAL2 from preserved checkpoints rather than scanning the evidence store or retraining.
-64. A historical foundation-adaptation config with generated CV `0.045/0.045` and production `0.030` migrates to `0.075/0.075/0.050`; with the new checkpoint-policy marker, explicit `0.045/0.045` and `0.030` remain intentional overrides; scratch legacy `0.030` remains unchanged.
+60. A historical foundation-adaptation config with generated CV `0.045/0.045` and production `0.030` migrates to `0.075/0.075/0.050`; with the new checkpoint-policy marker, explicit `0.045/0.045` and `0.030` remain intentional overrides; scratch legacy `0.030` remains unchanged.
 61. Historical replay `30.0` migrates to `50/100`; custom one-number replay fails actionable migration; the new marker rejects the retired one-number field and mixed old/new replay authority.
 62. Legacy run-root reuse derives its source locator from authenticated historical plan/run evidence and preserves sealed legacy topology without rename/copy/symlink.
 63. A completed post-cutover TRAIN2 trajectory publishes its training completion/topology proof under the run-activity lease **before EVAL2**; simulated interruption immediately after the seal resumes at assessment with zero trainer launch.
@@ -1248,7 +1260,7 @@ Do not introduce a new parallel trainer/evaluator/policy graph.
 
 Execute the complete matrix in section 10 through real semantic owners.
 
-Include an old-workspace recovery fixture whose only obsolete ancestry is the former replay threshold binding. Prove zero training launch.
+Include old-workspace recovery fixtures whose obsolete assessment ancestry covers the former replay threshold binding and historical generated foundation-CV `0.045/0.045` / production `0.030` defaults. Prove zero training launch whenever training-bearing semantics are otherwise identical.
 ### Gate G - Bounded real scientific qualification
 
 After CPU/real-owner correctness passes, use a bounded representative real-data run to confirm:

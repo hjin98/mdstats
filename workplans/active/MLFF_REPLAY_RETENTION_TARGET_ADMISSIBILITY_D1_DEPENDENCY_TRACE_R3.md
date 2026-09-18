@@ -6,7 +6,7 @@ workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-REWORK-1
 accepted_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 prior_r2_reviewed_candidate: 2549dee709fb8bb383341ee3aebca7c71973a903
 prior_r2_review_commit: 8bf25f37e74667ff897e938a9b17830ea9fee225
-d1_candidate_blob: 0d99debca98b70992fd89c3b04fe9ab78b3a0a9a
+d1_candidate_blob: 479ff368917baf576d12f553caad571da856ae28
 scope:
   - docs/methods/mlff_scientific_method.md
 ---
@@ -33,7 +33,7 @@ This trace is a Protocol-6.4 review aid, not D1 authority. It preserves the R2 d
 
 Fresh review must challenge:
 
-1. whether `tau_CV=75 meV/angstrom` is appropriately more permissive than production `tau_prod=50 meV/angstrom` without making common-monitor CV competence vacuous;
+1. whether `tau_CV=75 meV/angstrom` is appropriately more permissive than production `tau_prod=50 meV/angstrom` without making common-monitor CV competence vacuous, given that historical `45` was itself a stakeholder calibration rather than an externally proved boundary;
 2. whether `theta_CV=75 meV/angstrom` remains meaningful held-out force-RMSE authorization across every required fold/seed;
 3. whether making both CV ceilings looser can authorize a method whose fresh production cannot meet the 50-meV target ceiling, and whether the explicit meaning 'CV authorizes an attempt but does not guarantee production success' is scientifically coherent;
 4. whether `tau_CV` and `theta_CV` have correctly separated currentness (`tau_CV` may change representative; `theta_CV` may not) and both remain assessment-only with respect to TRAIN2;
