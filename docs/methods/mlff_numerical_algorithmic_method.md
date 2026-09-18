@@ -1,7 +1,10 @@
 ---
 kind: proposed-D2-authority-kernel
 protocol_version: 6.4.0
-status: PROPOSED_RENEWAL_CANDIDATE_AWAITING_INDEPENDENT_REVIEW
+status: PROPOSED_RENEWAL_REPAIR_R2_CANDIDATE_AWAITING_INDEPENDENT_REVIEW
+repaired_from_D2_R1_candidate: e2b39917ab8c16556eb218d6a41e9682331bbca0
+repair_basis_D2_R1_review: workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_INDEPENDENT_REVIEW_R1.md
+repair_basis_D2_R1_review_commit: 786dd6fd40f15a048eb53dcb3c75b39087ed2ce4
 accepted_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 prior_independent_review_target: e827aef9bdceb97aae5be6e89de0585a95dcf71c
@@ -713,12 +716,16 @@ denote the replay/pretraining-head foundation elemental-reference mapping import
 
 Let `Q_r` be the exact replay **evidence-qualification** identity/state required by D1.DEF.022: source/label/provider validity, independent true-reference replay-monitor validity, and other evidence conditions needed to interpret replay training and replay-retention measurements. `Q_r` does not contain `delta_warn`, `delta_hard`, a role target ceiling, or checkpoint-selection ordering.
 
-The D1 replay lineage has two numerical dependency projections:
+For currentness, project `Q_r` by numerical consumption. Let `Q_r^train` contain every qualification coordinate whose governed semantics can alter replay training labels, predictions, admissibility into the training corpus, or another trainer-consumed replay value. Let `Q_r^ret` contain every qualification coordinate whose governed semantics can alter the independent true-reference retention measurement. A coordinate may belong to both projections when both computations consume it; omission from a projection is valid only when that coordinate cannot alter the corresponding numerical computation.
 
-- the **training projection** binds replay geometry/source membership/split, training label mode, foundation/head and prediction policy when consumed by pseudo labels, exact replay/pretraining-head E0 mapping where consumed, and realized exposure;
-- the **retention-measurement projection** binds the exact true-reference replay monitor, evidence qualification `Q_r`, exact foundation checkpoint/head `Phi` as the baseline model, and evaluator/provider/metric/precision semantics needed to compute D2.DEF.057.
+The D1 replay lineage therefore has two numerical dependency projections:
 
-A change stales TRAIN2 only when a training-projection coordinate changes. A change confined to the retention-measurement projection leaves an already-realized TRAIN2 trajectory numerically unchanged but stales dependent replay measurements/assessments. Changing label mode over one authenticated prepared source/split does not by itself change replay geometry membership.
+- the **training projection** binds replay geometry/source membership/split; exact replay training label payload/reference identity; the training-label provider/prediction semantics; label mode; `Q_r^train`; exact frozen foundation/head and prediction policy for FOUNDATION_PSEUDO; exact replay/pretraining-head E0 mapping where trainer-consumed; and realized exposure;
+- the **retention-measurement projection** binds the exact true-reference replay monitor membership and reference-label payload; `Q_r^ret`; exact foundation checkpoint/head `Phi` as the baseline model; and the evaluator/provider/metric/reduction/precision semantics needed to compute D2.DEF.057.
+
+For TRUE_REFERENCE replay, changing DFT/reference training labels or any numerically material training-label provider semantics changes the training projection even when geometry membership and label-mode enum are unchanged. For FOUNDATION_PSEUDO, changing the frozen foundation prediction payload/provider semantics changes the training projection.
+
+A change stales TRAIN2 exactly when it changes a training-projection coordinate under its accepted relation. A change confined to the retention-measurement projection leaves an already-realized TRAIN2 trajectory numerically unchanged but stales dependent replay measurements/assessments. Changing label mode over one authenticated prepared source/split does not by itself change replay geometry membership.
 
 Changing only `delta_warn` or `delta_hard` changes neither projection. Those thresholds classify already-defined replay measurements later under D2.DEF.057.
 
@@ -782,7 +789,7 @@ $$
 R_c=R_{\mathrm{replay}}(c),\qquad R_0=R_{\mathrm{replay}}(\Phi)
 $$
 
-be finite canonical binary64 force-component RMSE values in `eV/angstrom` computed on the **same exact** authenticated true-reference replay monitor under the same metric/reduction, label/reference, evaluator/provider and precision semantics. The model-state coordinate is intentionally different: `R_c` evaluates checkpoint `c`, while `R_0` evaluates the exact frozen foundation identity `Phi`; each uses the output/head mapping required by the same replay force observable. A scalar value without this common numerical provenance cannot enter the degradation calculation.
+be finite canonical binary64 force-component RMSE values in `eV/angstrom` computed on the **same exact** authenticated true-reference replay monitor under the same metric/reduction, label/reference, evaluator and precision semantics. The evaluator/provider realizations need not have identical software identities, but their numerical semantics for this observable must be identical or already established equivalent under the accepted D2 execution-equivalence relation. The model-state coordinate is intentionally different: `R_c` evaluates checkpoint `c`, while `R_0` evaluates the exact frozen foundation identity `Phi`; each uses the output/head mapping required by the same replay force observable. A scalar value without this common numerical provenance cannot enter the degradation calculation.
 
 Define the canonical signed degradation by one IEEE-754 binary64 round-to-nearest, ties-to-even subtraction,
 
@@ -948,7 +955,7 @@ Two target or replay numerical measurement records are equivalent for policy rea
 - exact checkpoint/model-state identity;
 - exact evaluation population/membership/artifact and labels/reference values;
 - metric definition, units, reduction and aggregation policy;
-- model/head/provider/prediction realization and numerically material precision semantics.
+- model/head identity and prediction semantics; evaluator/provider realization and numerically material precision semantics, where differing realizations are admissible only when their governed numerical outputs are already established equivalent under the accepted D2 execution-equivalence relation.
 
 Assessment thresholds, warning policy, representative-ordering policy, committee/publication policy and a full role-plan digest are not numerical measurement inputs merely because historical schemas hashed them together.
 
@@ -956,7 +963,7 @@ Scalar equality alone is insufficient evidence of measurement equivalence. If hi
 
 ### D2.DEF.060C — Policy reassessment from immutable measurements
 
-A current checkpoint assessment is produced by applying current D2.DEF.057-059B policy to current or D2.DEF.060B-equivalent immutable measurements. Historical `admissible`, rejection-reason, warning, rank, representative, fold-verdict or production-publication classifications are never mutated or relabeled current in place.
+A current checkpoint assessment/representative is produced by applying current D2.DEF.057-059A policy to current or D2.DEF.060B-equivalent immutable measurements; D2.DEF.059B is applied only afterward when `single_best_final_seed` publication is requested. Historical `admissible`, rejection-reason, warning, rank, representative, fold-verdict or production-publication classifications are never mutated or relabeled current in place.
 
 For historical CV:
 
@@ -983,7 +990,7 @@ Worker count, queue completion order, chunk/block size, mmap layout, cache resid
 
 ### D2.DEF.062 — Typed failure set
 
-Fail closed for non-finite fitted statistics; invalid/empty required family mass; unreachable exact `M3`; malformed structural policy; unsupported provider/family; zero leave-one-out denominator; unreachable local mass; missing witness support; impossible hard obligation; configured-ladder infeasibility; stale lazy certification; repair invariant failure; direct/MVIDX mismatch; non-identifiable E0 transfer; pseudo replay without exact `Phi` or true monitor; missing/mismatched replay-head E0; invalid or stale replay qualification/lineage; impossible 256-monitor; insufficient fold components; missing required fold/seed; no admissible checkpoint; non-finite P3 outcome; insufficient reducer comparison; stale/mismatched continuation; materially different objective/exposure/method. Tolerance widening, support relaxation, role substitution, pseudo fallback, or rescue-size invention are not error handlers.
+Fail closed for non-finite fitted statistics; invalid/empty required family mass; unreachable exact `M3`; malformed structural policy; unsupported provider/family; zero leave-one-out denominator; unreachable local mass; missing witness support; impossible hard obligation; configured-ladder infeasibility; stale lazy certification; repair invariant failure; direct/MVIDX mismatch; non-identifiable E0 transfer; pseudo replay without exact `Phi` or true monitor; missing/mismatched replay-head E0; invalid or stale replay qualification/lineage; invalid/non-finite/nonpositive replay decision thresholds; `delta_warn >= delta_hard` after canonical conversion, including conversion collapse; impossible 256-monitor; insufficient fold components; missing required fold/seed; missing, unauthenticated or unreconstructable governed checkpoint position/required checkpoint assessment; no admissible checkpoint; non-finite P3 outcome; insufficient reducer comparison; stale/mismatched continuation; unprovable required measurement equivalence when the underlying authenticated checkpoint/evaluation evidence needed for recomputation is unavailable; absent current-CV authorization for current final assessment/publication; materially different objective/exposure/method. Tolerance widening, support relaxation, role substitution, pseudo fallback, scalar-only metric reuse, checkpoint omission, content-store winner inference, or rescue-size invention are not error handlers.
 
 ## 16. Parameter binding ledger
 

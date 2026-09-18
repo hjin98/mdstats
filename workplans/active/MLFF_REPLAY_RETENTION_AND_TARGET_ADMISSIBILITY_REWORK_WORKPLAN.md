@@ -1201,7 +1201,7 @@ On 2026-09-18 the stakeholder explicitly accepted that exact candidate. Ratifica
 
 The reviewed D1 blob is not rewritten by ratification. It is the accepted branch-local D1 parent for Gate C.
 
-### Gate C - D2 numerical renewal - R1 NO-PASS / REPAIR OPEN
+### Gate C - D2 numerical renewal - R1 REPAIR AUTHORED / R2 REVIEW PENDING
 
 Formally define:
 
@@ -1213,7 +1213,7 @@ Formally define:
 - replay warning/rejection numerical oracle;
 - old-measurement reassessment equivalence.
 
-Independent D2 Review R1 of `e2b39917ab8c16556eb218d6a41e9682331bbca0` returned **NO-PASS with no SERIOUS CHALLENGE to D1**. Blocking findings are recorded in `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_INDEPENDENT_REVIEW_R1.md`: replay training-label/provider identity was incomplete in the training projection; provider identity was over-strengthened where numerical equivalence is sufficient; and new fail-closed states were missing from D2.DEF.062. Repair these narrowly and freeze a new candidate for re-review.
+Independent D2 Review R1 of `e2b39917ab8c16556eb218d6a41e9682331bbca0` returned **NO-PASS with no SERIOUS CHALLENGE to D1**. The narrow repair now binds exact replay training label/provider semantics and consumption-projected `Q_r`, permits differing evaluator/provider realizations only under accepted numerical equivalence, and closes the new typed failure states. Freeze the repaired D2 blob for R2 review.
 
 ### Gate D - D3 authority/currentness reconciliation
 
