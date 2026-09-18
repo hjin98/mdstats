@@ -1201,7 +1201,7 @@ On 2026-09-18 the stakeholder explicitly accepted that exact candidate. Ratifica
 
 The reviewed D1 blob is not rewritten by ratification. It is the accepted branch-local D1 parent for Gate C.
 
-### Gate C - D2 numerical renewal - R2 AWAITING INDEPENDENT REVIEW
+### Gate C - D2 numerical renewal - R2 REVIEW PASS / AWAITING STAKEHOLDER RATIFICATION
 
 Formally define:
 
@@ -1213,7 +1213,7 @@ Formally define:
 - replay warning/rejection numerical oracle;
 - old-measurement reassessment equivalence.
 
-Independent D2 Review R1 of `e2b39917ab8c16556eb218d6a41e9682331bbca0` returned **NO-PASS with no SERIOUS CHALLENGE to D1**. The narrow repair now binds exact replay training label/provider semantics and consumption-projected `Q_r`, permits differing evaluator/provider realizations only under accepted numerical equivalence, and closes the new typed failure states. Repaired R2 candidate is `4f161b1c4820de10abe638287b13152147d12fd9` with canonical D2 blob `3e7fb744fc733f23bbd93a8347246cfa306ebe89`. Fresh independent R2 handoff: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_INDEPENDENT_REVIEW_R2_HANDOFF.md`.
+Independent D2 Review R1 of `e2b39917ab8c16556eb218d6a41e9682331bbca0` returned **NO-PASS with no SERIOUS CHALLENGE to D1**. The narrow repair now binds exact replay training label/provider semantics and consumption-projected `Q_r`, permits differing evaluator/provider realizations only under accepted numerical equivalence, and closes the new typed failure states. Fresh independent D2 R2 review of exact candidate `4f161b1c4820de10abe638287b13152147d12fd9` with canonical D2 blob `3e7fb744fc733f23bbd93a8347246cfa306ebe89` returned **PASS with no SERIOUS CHALLENGE**. Review record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_INDEPENDENT_REVIEW_R2.md`. Gate C remains open only for exact-target stakeholder ratification; D3 stays blocked until ratification.
 
 ### Gate D - D3 authority/currentness reconciliation
 
