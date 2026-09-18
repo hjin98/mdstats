@@ -48,13 +48,21 @@ POINTER_CV_ACCEPTANCE = "cv_acceptance"
 POINTER_FINAL_PLAN = "final_production_plan"
 POINTER_PREDECESSOR_RECLOSURE = "p5_p6_predecessor_reclosure"
 POINTER_FINAL_PUBLICATION = "final_production_publication"
+#: The one position-addressed locator form: the current immutable assessment
+#: record of one ``(role, assessment-position policy, training trajectory,
+#: seed, fold)`` position.  It is a locator, never authority by itself.
+POINTER_ASSESSMENT_POSITION = "assessment_position"
 POINTER_KINDS = (
     POINTER_CV_PLAN,
     POINTER_CV_ACCEPTANCE,
     POINTER_FINAL_PLAN,
     POINTER_PREDECESSOR_RECLOSURE,
     POINTER_FINAL_PUBLICATION,
+    POINTER_ASSESSMENT_POSITION,
 )
+ASSESSMENT_POSITION_SCHEMA = "mdstats.post-selection-assessment-position.v1"
+ASSESSMENT_ROLE_CV_FOLD = "cv_fold"
+ASSESSMENT_ROLE_FINAL_SEED = "final_seed"
 
 
 class PostSelectionPublicationConflictError(PostSelectionError):
@@ -193,10 +201,55 @@ def post_selection_publication_barrier(
         yield
 
 
-def _pointer_key(binding: PostSelectionBinding, kind: str) -> str:
+def assessment_position_digest(
+    *,
+    assessment_role: str,
+    assessment_position_policy_digest: str,
+    training_trajectory_identity: str,
+    optimizer_seed: int,
+    fold_index: int | None,
+) -> str:
+    """Canonical digest of one assessment position (selected binding is the key prefix)."""
+
+    role = str(assessment_role)
+    if role not in (ASSESSMENT_ROLE_CV_FOLD, ASSESSMENT_ROLE_FINAL_SEED):
+        raise TrainingDataInputError(f"Unknown assessment role {role!r}.")
+    if (role == ASSESSMENT_ROLE_CV_FOLD) != (fold_index is not None):
+        raise TrainingDataInputError(
+            "A CV fold assessment position has a fold index; a final seed has none."
+        )
+    return digest(
+        {
+            "schema": ASSESSMENT_POSITION_SCHEMA,
+            "assessment_role": role,
+            "assessment_position_policy_digest": validate_digest(
+                str(assessment_position_policy_digest),
+                name="assessment_position_policy_digest",
+            ),
+            "training_trajectory_identity": validate_digest(
+                str(training_trajectory_identity), name="training_trajectory_identity"
+            ),
+            "optimizer_seed": int(optimizer_seed),
+            "fold_index": None if fold_index is None else int(fold_index),
+        }
+    )
+
+
+def _pointer_key(
+    binding: PostSelectionBinding, kind: str, position: str | None = None
+) -> str:
     if kind not in POINTER_KINDS:
         raise TrainingDataInputError(f"Unknown post-selection pointer kind {kind!r}.")
-    return f"post_selection:{binding.content_digest}:{kind}"
+    if (kind == POINTER_ASSESSMENT_POSITION) != (position is not None):
+        raise TrainingDataInputError(
+            "Only the assessment-position locator is addressed by a position digest."
+        )
+    if position is None:
+        return f"post_selection:{binding.content_digest}:{kind}"
+    return (
+        f"post_selection:{binding.content_digest}:{kind}:"
+        f"{validate_digest(str(position), name='assessment_position')}"
+    )
 
 
 def _current_campaign_revision(db: Any) -> Any:
@@ -211,6 +264,7 @@ def publish_current_post_selection_pointer(
     binding: PostSelectionBinding,
     kind: str,
     content_digest: str,
+    position: str | None = None,
 ) -> None:
     """Make one record current, under a commit-time stale-generation fence.
 
@@ -220,7 +274,7 @@ def publish_current_post_selection_pointer(
     Republishing the same digest under a still-current binding is idempotent.
     """
 
-    key = _pointer_key(binding, kind)
+    key = _pointer_key(binding, kind, position)
     value = validate_digest(str(content_digest), name="content_digest")
     with campaign_store.exclusive_transaction() as db:
         revision = _current_campaign_revision(db)
@@ -263,11 +317,15 @@ def publish_current_post_selection_pointer(
 
 
 def read_current_post_selection_pointer(
-    campaign_store: Any, *, binding: PostSelectionBinding, kind: str
+    campaign_store: Any,
+    *,
+    binding: PostSelectionBinding,
+    kind: str,
+    position: str | None = None,
 ) -> str | None:
     """Return the digest currently published for this binding, if any."""
 
-    key = _pointer_key(binding, kind)
+    key = _pointer_key(binding, kind, position)
     with campaign_store._connect() as db:  # noqa: SLF001 - store owns its pool
         row = db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
     return None if row is None else str(row[0])
@@ -280,6 +338,7 @@ def resolve_current_post_selection_record(
     *,
     kind: str,
     deserializer: Callable[[Mapping[str, Any]], Any],
+    position: str | None = None,
 ) -> Any | None:
     """Resolve a current descendant through freshly established P4 authority.
 
@@ -290,7 +349,7 @@ def resolve_current_post_selection_record(
     """
 
     pointer = read_current_post_selection_pointer(
-        campaign_store, binding=context.binding, kind=kind
+        campaign_store, binding=context.binding, kind=kind, position=position
     )
     if pointer is None:
         return None
@@ -312,6 +371,11 @@ def resolve_current_post_selection_record(
 
 
 __all__ = [
+    "ASSESSMENT_POSITION_SCHEMA",
+    "ASSESSMENT_ROLE_CV_FOLD",
+    "ASSESSMENT_ROLE_FINAL_SEED",
+    "POINTER_ASSESSMENT_POSITION",
+    "assessment_position_digest",
     "POINTER_CV_ACCEPTANCE",
     "POINTER_CV_PLAN",
     "POINTER_FINAL_PLAN",

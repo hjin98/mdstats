@@ -65,12 +65,57 @@ from .mace_compatibility import (
 )
 
 # v2 replaced the whole P3 common-training-policy parent with mode-specific
-# objective, preparation, and exposure identities.  v3 binds only the shared
-# checkpoint constraints: the target-force ceiling is role policy, not method.
-POST_SELECTION_METHOD_IDENTITY_SCHEMA = "mdstats.post-selection-method-identity.v3"
-POST_SELECTION_SHARED_CHECKPOINT_CONSTRAINTS_SCHEMA = (
-    "mdstats.post-selection-shared-checkpoint-constraints.v1"
+# objective, preparation, and exposure identities.  v3 still bound the shared
+# checkpoint constraints and the checkpoint-selection policy.  v4 is
+# training-only: assessment thresholds and representative ordering cannot
+# change a fixed-budget trajectory, so they are not method parents.
+POST_SELECTION_METHOD_IDENTITY_SCHEMA = "mdstats.post-selection-method-identity.v4"
+#: The superseded policy-overbound generation.  Readable only by the one-time
+#: historical training-equivalence derivation; never current authority.
+POST_SELECTION_METHOD_IDENTITY_SCHEMA_V3 = "mdstats.post-selection-method-identity.v3"
+#: The two v3 fields that were assessment-only and are excluded, and only they,
+#: by the historical training-equivalence projection.
+RETIRED_ASSESSMENT_ONLY_METHOD_FIELDS = (
+    "shared_checkpoint_constraints_digest",
+    "checkpoint_selection_policy_digest",
 )
+POST_SELECTION_REPLAY_HARD_DECISION_SCHEMA = (
+    "mdstats.post-selection-replay-hard-decision.v1"
+)
+CV_ASSESSMENT_POSITION_POLICY_SCHEMA = (
+    "mdstats.post-selection-cv-assessment-position-policy.v1"
+)
+FINAL_SEED_ASSESSMENT_POLICY_SCHEMA = (
+    "mdstats.post-selection-final-seed-assessment-policy.v1"
+)
+FINAL_PUBLICATION_POLICY_SCHEMA = "mdstats.post-selection-final-publication-policy.v1"
+
+#: D2.DEF.059A: within-run representative = lexicographic minimum over hard-
+#: admissible checkpoints of ``(target RMSE, epoch, checkpoint SHA-256)``.
+P5_WITHIN_RUN_SELECTION_IDENTITY = (
+    "mdstats.p5-within-run-representative.d2-def-059a."
+    "target-rmse-then-epoch-then-sha256.v1"
+)
+#: D2.DEF.059B: ``single_best_final_seed`` = lexicographic minimum over frozen
+#: admissible seed representatives of ``(target RMSE, optimizer seed, SHA-256)``.
+P5_CROSS_SEED_SELECTION_IDENTITY = (
+    "mdstats.p5-single-best-final-seed.d2-def-059b."
+    "target-rmse-then-seed-then-sha256.v1"
+)
+
+#: The narrow campaign-v2 migration discriminator under ``[acceptance]``.
+P5_CHECKPOINT_POLICY_GENERATION_FIELD = "post_selection_checkpoint_policy_generation"
+P5_CHECKPOINT_POLICY_GENERATION = "p5_target_replay_v2"
+REPLAY_WARNING_FIELD = "replay_degradation_warning_mev_per_a"
+REPLAY_HARD_LIMIT_FIELD = "replay_degradation_hard_limit_mev_per_a"
+#: Superseded one-number replay fields (generated default 30 meV/angstrom).
+LEGACY_REPLAY_FIELDS = (
+    ("acceptance", "allowed_replay_degradation_mev_per_a"),
+    ("training", "replay_degradation_budget_mev_per_a"),
+)
+LEGACY_GENERATED_REPLAY_MEV_PER_A = 30.0
+DEFAULT_REPLAY_WARNING_MEV_PER_A = 50.0
+DEFAULT_REPLAY_HARD_LIMIT_MEV_PER_A = 100.0
 FOUNDATION_ADAPTATION_OBJECTIVE_POLICY_SCHEMA = (
     "mdstats.post-selection-foundation-objective-policy.v1"
 )
@@ -124,16 +169,27 @@ DEFAULT_CV_MAX_NUM_EPOCHS = 30
 #: The one current default outer-fold count.  An explicit override must be K>=2.
 DEFAULT_CV_FOLD_COUNT = 3
 
-#: Foundation-CV checkpoint competence: a fixed, identity-bound role value.  It
-#: is deliberately not the production ceiling and not ``acceptance_maximum``,
-#: whose units follow the configured outer metric.
-FOUNDATION_CV_CHECKPOINT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM = 0.045
+#: Foundation-CV checkpoint competence default ``tau_CV``.  It is deliberately
+#: not the production ceiling and not ``acceptance_maximum``, whose units follow
+#: the configured outer metric.
+FOUNDATION_CV_CHECKPOINT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM = 0.075
 
-#: Default foundation-CV held-out target-force acceptance ceiling.
-FOUNDATION_CV_DEFAULT_ACCEPTANCE_MAXIMUM_EV_PER_ANGSTROM = 0.045
+#: Default foundation-CV held-out ``theta_CV`` under the default force metric.
+FOUNDATION_CV_DEFAULT_ACCEPTANCE_MAXIMUM_EV_PER_ANGSTROM = 0.075
 
-#: Pre-separation target ceiling that scratch keeps for both roles and that
-#: foundation production keeps; ``[acceptance]`` may set it explicitly.
+#: Foundation final-production checkpoint ceiling default ``tau_prod``.
+FOUNDATION_PRODUCTION_DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM = 0.050
+
+#: Historical generated foundation defaults that the no-marker migration treats
+#: as generated-default ancestry (``0.045/0.045`` CV, ``0.030`` production).
+LEGACY_GENERATED_FOUNDATION_CV_EV_PER_ANGSTROM = 0.045
+LEGACY_GENERATED_FOUNDATION_PRODUCTION_EV_PER_ANGSTROM = 0.030
+
+#: The accepted pre-amendment foundation-CV ``acceptance_maximum`` resolution a
+#: non-default outer metric keeps: it is never migrated to the force-RMSE 0.075.
+FOUNDATION_CV_NON_DEFAULT_METRIC_ACCEPTANCE_MAXIMUM = 0.045
+
+#: Scratch target ceiling for both roles (separately accepted; unchanged).
 DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM = 0.030
 
 #: The default CV outer metric.  Only under this metric does
@@ -400,7 +456,9 @@ class PostSelectionMethodIdentity:
     different method, so both CV and final-production descendants are stale.
     Nothing role-specific belongs here: not the CV folds, not the CV budget, not
     the production horizon, not a role's checkpoint target-force ceiling, not
-    M3, and not any fitted product.
+    M3, and not any fitted product.  Nothing assessment-only belongs here
+    either: replay warning/hard limits, role target ceilings, and the P5
+    representative ordering cannot change a fixed-budget TRAIN2 trajectory.
 
     It binds only method-bearing P5 components.  In particular it does not bind
     the whole P3 ``TargetSizeCommonTrainingPolicy``: a P3-only objective,
@@ -415,8 +473,6 @@ class PostSelectionMethodIdentity:
     preparation_policy_digest: str
     exposure_policy: str
     learning_rate_schedule_policy_digest: str
-    shared_checkpoint_constraints_digest: str
-    checkpoint_selection_policy_digest: str
     shared_optimizer_settings_digest: str
     replay_exposure_policy_digest: str
     extxyz_policy_digest: str
@@ -431,8 +487,6 @@ class PostSelectionMethodIdentity:
             "objective_policy_digest",
             "preparation_policy_digest",
             "learning_rate_schedule_policy_digest",
-            "shared_checkpoint_constraints_digest",
-            "checkpoint_selection_policy_digest",
             "shared_optimizer_settings_digest",
             "replay_exposure_policy_digest",
             "extxyz_policy_digest",
@@ -486,12 +540,6 @@ class PostSelectionMethodIdentity:
             "learning_rate_schedule_policy_digest": (
                 self.learning_rate_schedule_policy_digest
             ),
-            "shared_checkpoint_constraints_digest": (
-                self.shared_checkpoint_constraints_digest
-            ),
-            "checkpoint_selection_policy_digest": (
-                self.checkpoint_selection_policy_digest
-            ),
             "shared_optimizer_settings_digest": self.shared_optimizer_settings_digest,
             "replay_exposure_policy_digest": self.replay_exposure_policy_digest,
             "extxyz_policy_digest": self.extxyz_policy_digest,
@@ -511,8 +559,8 @@ class PostSelectionMethodIdentity:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PostSelectionMethodIdentity":
-        # Only the current generation deserializes.  A pre-restoration payload
-        # authorized a materially different foundation method and is history.
+        # Only the current generation deserializes.  A v3 payload is readable
+        # only through ``historical_method_training_projection``.
         if payload.get("schema") != POST_SELECTION_METHOD_IDENTITY_SCHEMA:
             raise TrainingDataSerializationError(
                 "Unsupported post-selection method-identity schema."
@@ -525,12 +573,6 @@ class PostSelectionMethodIdentity:
             exposure_policy=str(payload["exposure_policy"]),
             learning_rate_schedule_policy_digest=str(
                 payload["learning_rate_schedule_policy_digest"]
-            ),
-            shared_checkpoint_constraints_digest=str(
-                payload["shared_checkpoint_constraints_digest"]
-            ),
-            checkpoint_selection_policy_digest=str(
-                payload["checkpoint_selection_policy_digest"]
             ),
             shared_optimizer_settings_digest=str(
                 payload["shared_optimizer_settings_digest"]
@@ -548,6 +590,44 @@ class PostSelectionMethodIdentity:
                 "Post-selection method-identity digest mismatch."
             )
         return result
+
+    def training_projection(self) -> dict[str, Any]:
+        """Every training-bearing field, without the schema token."""
+
+        return {
+            key: value for key, value in self._payload().items() if key != "schema"
+        }
+
+
+def historical_method_training_projection(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Project one authenticated historical v3 method record onto training fields.
+
+    This is the bounded source-preserving derivation of the one-time cutover,
+    not a general translator: the payload must be the exact v3 schema and must
+    reproduce its own recorded digest, and only the two retired assessment-only
+    parents are excluded.  Every other field is compared exactly by the caller
+    against :meth:`PostSelectionMethodIdentity.training_projection`.
+    """
+
+    if payload.get("schema") != POST_SELECTION_METHOD_IDENTITY_SCHEMA_V3:
+        raise TrainingDataSerializationError(
+            "Historical training-equivalence accepts only the exact v3 method schema."
+        )
+    body = {key: value for key, value in payload.items() if key != "content_digest"}
+    if str(payload.get("content_digest", "")) != digest(body):
+        raise TrainingDataSerializationError(
+            "Historical v3 method record does not reproduce its own digest."
+        )
+    missing = [name for name in RETIRED_ASSESSMENT_ONLY_METHOD_FIELDS if name not in body]
+    if missing:
+        raise TrainingDataSerializationError(
+            f"Historical v3 method record lacks retired fields {missing}."
+        )
+    return {
+        key: value
+        for key, value in body.items()
+        if key != "schema" and key not in RETIRED_ASSESSMENT_ONLY_METHOD_FIELDS
+    }
 
 
 @dataclass(frozen=True, slots=True)
@@ -1330,6 +1410,12 @@ class PostSelectionMethodPolicies:
     Both the identity and the execution owners resolve the method through this
     one function, so the policy a run actually executes and the digest that
     claims to describe it cannot drift apart.
+
+    The replay hard limit and warning threshold are resolved here by the same
+    configuration owner, but they are *assessment* coordinates: neither enters
+    :class:`PostSelectionMethodIdentity`.  They are exposed as two separate
+    dependency projections - the hard-decision constraints and the
+    diagnostic-only warning policy - so a warning edit has no hard edge.
     """
 
     objective: Any
@@ -1337,8 +1423,8 @@ class PostSelectionMethodPolicies:
     replay_exposure_policy_digest: str
     learning_rate_schedule: Any
     replay_enabled: bool
-    replay_degradation_budget_ev_per_angstrom: float | None
-    checkpoint_selection: Any
+    replay_hard_limit_ev_per_angstrom: float | None
+    replay_warning_ev_per_angstrom: float | None
     extxyz: Any
     training_mode: str
     acceleration_backend: str
@@ -1353,32 +1439,44 @@ class PostSelectionMethodPolicies:
     target_head_name: str = POST_SELECTION_TARGET_HEAD_NAME
     replay_head_name: str = POST_SELECTION_REPLAY_HEAD_NAME
     replay_training_label_mode: Any = None
+    checkpoint_policy_configuration: Any = None
 
-    def _shared_checkpoint_constraints(self) -> dict[str, Any]:
-        """The method-level checkpoint constraints every role applies identically."""
+    def replay_hard_constraints(self) -> dict[str, Any]:
+        """The shared hard constraints every role applies identically."""
 
         return {
             "replay_enabled": bool(self.replay_enabled),
-            "replay_degradation_budget_ev_per_angstrom": (
-                self.replay_degradation_budget_ev_per_angstrom
+            "replay_degradation_hard_limit_ev_per_angstrom": (
+                self.replay_hard_limit_ev_per_angstrom if self.replay_enabled else None
             ),
             "replay_label_requirement": "true_dft",
             "required_physical_gates": (),
         }
 
     @property
-    def shared_checkpoint_constraints_digest(self) -> str:
-        from .train2_policy import CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA
+    def replay_hard_decision_digest(self) -> str:
+        """Dependency projection of the shared replay hard decision only."""
 
-        constraints = self._shared_checkpoint_constraints()
         return digest(
             {
-                "schema": POST_SELECTION_SHARED_CHECKPOINT_CONSTRAINTS_SCHEMA,
-                "admissibility_policy_schema": CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA,
-                **constraints,
-                "require_finite_metrics": True,
-                "required_physical_gates": list(constraints["required_physical_gates"]),
+                "schema": POST_SELECTION_REPLAY_HARD_DECISION_SCHEMA,
+                **{
+                    key: (list(value) if isinstance(value, tuple) else value)
+                    for key, value in self.replay_hard_constraints().items()
+                },
             }
+        )
+
+    @property
+    def replay_warning_policy(self) -> Any | None:
+        """The diagnostic-only warning policy, or ``None`` without replay."""
+
+        if not self.replay_enabled or self.replay_warning_ev_per_angstrom is None:
+            return None
+        from .train2_policy import ReplayWarningDiagnosticPolicy
+
+        return ReplayWarningDiagnosticPolicy(
+            warning_threshold_ev_per_angstrom=self.replay_warning_ev_per_angstrom
         )
 
 
@@ -1386,10 +1484,12 @@ def post_selection_checkpoint_admissibility(
     policies: PostSelectionMethodPolicies,
     role_policy: CvValidationPolicyIdentity | FinalProductionPolicyIdentity,
 ) -> Any:
-    """Compose the one role-effective checkpoint-admissibility policy of a run.
+    """Compose the one role-effective hard checkpoint-decision policy of a run.
 
-    The shared constraints come from the method and the target-force ceiling
-    from the run's role policy; there is no other source of either.
+    The shared replay hard constraint comes from the configuration owner's
+    hard-decision projection and the target-force ceiling from the run's role
+    policy; there is no other source of either.  The replay warning threshold
+    is never a parent of this policy.
     """
 
     from .train2_policy import CheckpointAdmissibilityPolicy
@@ -1404,7 +1504,265 @@ def post_selection_checkpoint_admissibility(
         maximum_target_force_rmse_ev_per_angstrom=(
             role_policy.checkpoint_maximum_target_force_rmse_ev_per_angstrom
         ),
-        **policies._shared_checkpoint_constraints(),
+        **policies.replay_hard_constraints(),
+    )
+
+
+def cv_assessment_position_policy_digest(
+    admissibility: Any, cv_policy: CvValidationPolicyIdentity
+) -> str:
+    """CV fold assessment position: hard policy + D2.DEF.059A + outer verdict policy.
+
+    It deliberately excludes the replay warning policy and every training
+    coordinate (those move the training trajectory, not the assessment).
+    """
+
+    return digest(
+        {
+            "schema": CV_ASSESSMENT_POSITION_POLICY_SCHEMA,
+            "hard_checkpoint_policy_digest": admissibility.policy_digest,
+            "within_run_selection_identity": P5_WITHIN_RUN_SELECTION_IDENTITY,
+            "acceptance_metric": cv_policy.acceptance_metric,
+            "acceptance_maximum": cv_policy.acceptance_maximum,
+        }
+    )
+
+
+def final_seed_assessment_policy_digest(admissibility: Any) -> str:
+    """Final-seed assessment position: final hard policy + D2.DEF.059A only.
+
+    Current-CV authorization, publication mode and D2.DEF.059B are excluded:
+    they are separate authorization/aggregate-publication parents.
+    """
+
+    return digest(
+        {
+            "schema": FINAL_SEED_ASSESSMENT_POLICY_SCHEMA,
+            "hard_checkpoint_policy_digest": admissibility.policy_digest,
+            "within_run_selection_identity": P5_WITHIN_RUN_SELECTION_IDENTITY,
+        }
+    )
+
+
+def final_publication_policy_digest(policy: FinalProductionPolicyIdentity) -> str:
+    """Aggregate publication policy: publication mode (+ D2.DEF.059B if single-best)."""
+
+    committee = str(policy.committee_policy)
+    return digest(
+        {
+            "schema": FINAL_PUBLICATION_POLICY_SCHEMA,
+            "committee_policy": committee,
+            "cross_seed_selection_identity": (
+                P5_CROSS_SEED_SELECTION_IDENTITY
+                if committee == "single_best_final_seed"
+                else None
+            ),
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# P5 checkpoint-policy configuration generation (campaign schema v2)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class P5CheckpointPolicyConfiguration:
+    """The one resolution of every P5 threshold coordinate, with migration.
+
+    ``generation`` is the migration discriminator only; it is never hashed.
+    Every value here is already validated and in eV/angstrom (the CV outer
+    maximum keeps the units of its configured metric).
+    """
+
+    generation: str
+    replay_warning_ev_per_angstrom: float
+    replay_hard_limit_ev_per_angstrom: float
+    production_target_ev_per_angstrom: float
+    cv_checkpoint_target_ev_per_angstrom: float | None
+    cv_acceptance_metric: str
+    cv_acceptance_maximum: float
+    migration_notices: tuple[str, ...] = ()
+
+
+def _config_number(value: Any, *, name: str) -> float:
+    return _finite_positive_threshold(value, name=name)
+
+
+def resolve_p5_checkpoint_policy_configuration(
+    config: Mapping[str, Any], *, training_mode: str
+) -> P5CheckpointPolicyConfiguration:
+    """Resolve replay/role thresholds under the narrow policy-generation rules.
+
+    Global campaign schema stays v2.  ``[acceptance].post_selection_checkpoint_
+    policy_generation = "p5_target_replay_v2"`` marks the current authored
+    contract; without it the historical generated defaults are migrated by the
+    exact ratified table and ambiguous historical states fail closed.
+    """
+
+    acceptance = _table(config, "acceptance")
+    training = _table(config, "training")
+    cv = _table(config, "post_selection", "cv")
+    mode = str(training_mode)
+    if mode not in POST_SELECTION_TRAINING_MODES:
+        raise TrainingDataInputError(f"Unsupported post-selection training mode: {mode!r}.")
+    foundation = mode in FOUNDATION_ADAPTATION_TRAINING_MODES
+
+    raw_marker = acceptance.get(P5_CHECKPOINT_POLICY_GENERATION_FIELD)
+    if raw_marker is not None and raw_marker != P5_CHECKPOINT_POLICY_GENERATION:
+        raise PostSelectionError(
+            f"[acceptance].{P5_CHECKPOINT_POLICY_GENERATION_FIELD} must be "
+            f"{P5_CHECKPOINT_POLICY_GENERATION!r}; received {raw_marker!r}."
+        )
+    current = raw_marker == P5_CHECKPOINT_POLICY_GENERATION
+    legacy_present = {
+        f"[{table}].{name}": (acceptance if table == "acceptance" else training)[name]
+        for table, name in LEGACY_REPLAY_FIELDS
+        if name in (acceptance if table == "acceptance" else training)
+    }
+    new_present = [name for name in (REPLAY_WARNING_FIELD, REPLAY_HARD_LIMIT_FIELD) if name in acceptance]
+    notices: list[str] = []
+
+    # --- replay warning/hard -------------------------------------------------
+    if current:
+        if legacy_present:
+            raise PostSelectionError(
+                "The retired one-number replay field(s) "
+                f"{sorted(legacy_present)} are invalid under "
+                f"{P5_CHECKPOINT_POLICY_GENERATION!r}: set "
+                f"[acceptance].{REPLAY_WARNING_FIELD} and "
+                f"[acceptance].{REPLAY_HARD_LIMIT_FIELD} instead."
+            )
+        warning_mev = _config_number(
+            acceptance.get(REPLAY_WARNING_FIELD, DEFAULT_REPLAY_WARNING_MEV_PER_A),
+            name=f"[acceptance].{REPLAY_WARNING_FIELD}",
+        )
+        hard_mev = _config_number(
+            acceptance.get(REPLAY_HARD_LIMIT_FIELD, DEFAULT_REPLAY_HARD_LIMIT_MEV_PER_A),
+            name=f"[acceptance].{REPLAY_HARD_LIMIT_FIELD}",
+        )
+    else:
+        if new_present:
+            raise PostSelectionError(
+                f"Replay field(s) {['[acceptance].' + n for n in new_present]} "
+                "belong to the current checkpoint-policy generation. Add "
+                f"[acceptance].{P5_CHECKPOINT_POLICY_GENERATION_FIELD} = "
+                f"{P5_CHECKPOINT_POLICY_GENERATION!r}"
+                + (
+                    f" and remove the retired {sorted(legacy_present)}"
+                    if legacy_present
+                    else ""
+                )
+                + "; mixed or unmarked replay authorities are refused."
+            )
+        for name, value in legacy_present.items():
+            legacy = _config_number(value, name=name)
+            if legacy != LEGACY_GENERATED_REPLAY_MEV_PER_A:
+                raise PostSelectionError(
+                    f"{name} = {value!r} is a custom historical one-number replay "
+                    "budget whose meaning under the current warning/hard replay "
+                    "policy is ambiguous. Add "
+                    f"[acceptance].{P5_CHECKPOINT_POLICY_GENERATION_FIELD} = "
+                    f"{P5_CHECKPOINT_POLICY_GENERATION!r}, remove {name}, and set "
+                    f"{REPLAY_WARNING_FIELD}/{REPLAY_HARD_LIMIT_FIELD} explicitly."
+                )
+        if legacy_present:
+            notices.append(
+                f"migrated historical generated replay budget {sorted(legacy_present)} "
+                f"= {LEGACY_GENERATED_REPLAY_MEV_PER_A:g} meV/angstrom to the current "
+                f"diagnostic warning {DEFAULT_REPLAY_WARNING_MEV_PER_A:g} and catastrophic "
+                f"hard limit {DEFAULT_REPLAY_HARD_LIMIT_MEV_PER_A:g} meV/angstrom; add "
+                f"{P5_CHECKPOINT_POLICY_GENERATION_FIELD} = "
+                f"{P5_CHECKPOINT_POLICY_GENERATION!r} to adopt the current fields"
+            )
+        warning_mev = DEFAULT_REPLAY_WARNING_MEV_PER_A
+        hard_mev = DEFAULT_REPLAY_HARD_LIMIT_MEV_PER_A
+    if not warning_mev < hard_mev:
+        raise PostSelectionError(
+            f"Replay warning ({warning_mev:g}) must be strictly below the replay hard "
+            f"limit ({hard_mev:g}) meV/angstrom."
+        )
+
+    # --- role target thresholds ---------------------------------------------
+    acceptance_metric = str(cv.get("acceptance_metric", CV_DEFAULT_ACCEPTANCE_METRIC))
+    default_metric = acceptance_metric == CV_DEFAULT_ACCEPTANCE_METRIC
+    raw_production = acceptance.get("maximum_target_force_rmse_ev_per_angstrom")
+    raw_cv_checkpoint = cv.get("checkpoint_maximum_target_force_rmse_ev_per_angstrom")
+    raw_cv_maximum = cv.get("acceptance_maximum")
+    if foundation:
+        if raw_production is None:
+            production = FOUNDATION_PRODUCTION_DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM
+        else:
+            production = _config_number(
+                raw_production, name="maximum_target_force_rmse_ev_per_angstrom"
+            )
+            if not current and production == LEGACY_GENERATED_FOUNDATION_PRODUCTION_EV_PER_ANGSTROM:
+                production = FOUNDATION_PRODUCTION_DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM
+                notices.append(
+                    "migrated historical generated foundation production target 0.030 "
+                    "-> 0.050 eV/angstrom"
+                )
+        if raw_cv_checkpoint is None:
+            cv_checkpoint = FOUNDATION_CV_CHECKPOINT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM
+        else:
+            cv_checkpoint = _config_number(
+                raw_cv_checkpoint,
+                name="checkpoint_maximum_target_force_rmse_ev_per_angstrom",
+            )
+            if not current and cv_checkpoint == LEGACY_GENERATED_FOUNDATION_CV_EV_PER_ANGSTROM:
+                cv_checkpoint = FOUNDATION_CV_CHECKPOINT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM
+                notices.append(
+                    "migrated historical generated foundation CV checkpoint ceiling "
+                    "0.045 -> 0.075 eV/angstrom"
+                )
+        if default_metric:
+            if raw_cv_maximum is None:
+                cv_maximum = FOUNDATION_CV_DEFAULT_ACCEPTANCE_MAXIMUM_EV_PER_ANGSTROM
+            else:
+                cv_maximum = _config_number(raw_cv_maximum, name="acceptance_maximum")
+                if not current and cv_maximum == LEGACY_GENERATED_FOUNDATION_CV_EV_PER_ANGSTROM:
+                    cv_maximum = FOUNDATION_CV_DEFAULT_ACCEPTANCE_MAXIMUM_EV_PER_ANGSTROM
+                    notices.append(
+                        "migrated historical generated foundation CV held-out ceiling "
+                        "0.045 -> 0.075 eV/angstrom"
+                    )
+        else:
+            # A non-default outer metric keeps its accepted units/resolution and
+            # is never force-RMSE-migrated.
+            cv_maximum = (
+                FOUNDATION_CV_NON_DEFAULT_METRIC_ACCEPTANCE_MAXIMUM
+                if raw_cv_maximum is None
+                else _config_number(raw_cv_maximum, name="acceptance_maximum")
+            )
+    else:
+        if raw_cv_checkpoint is not None:
+            raise PostSelectionError(
+                "[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom "
+                "is valid only for foundation adaptation modes. Scratch CV reads its "
+                "checkpoint target-force ceiling from [acceptance]."
+            )
+        production = _config_number(
+            DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM
+            if raw_production is None
+            else raw_production,
+            name="maximum_target_force_rmse_ev_per_angstrom",
+        )
+        cv_checkpoint = None
+        cv_maximum = _config_number(
+            DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM
+            if raw_cv_maximum is None
+            else raw_cv_maximum,
+            name="acceptance_maximum",
+        )
+    return P5CheckpointPolicyConfiguration(
+        generation=P5_CHECKPOINT_POLICY_GENERATION if current else "historical_unmarked",
+        replay_warning_ev_per_angstrom=warning_mev / 1000.0,
+        replay_hard_limit_ev_per_angstrom=hard_mev / 1000.0,
+        production_target_ev_per_angstrom=production,
+        cv_checkpoint_target_ev_per_angstrom=cv_checkpoint,
+        cv_acceptance_metric=acceptance_metric,
+        cv_acceptance_maximum=cv_maximum,
+        migration_notices=tuple(notices),
     )
 
 
@@ -1458,8 +1816,8 @@ def resolve_post_selection_method_policies(
     Replay admissibility follows the campaign's configured replay corpus: a
     campaign with no TRUE_DFT replay source does not acquire a replay
     constraint it cannot satisfy, and one that configures replay cannot lose it.
-    Either way replay only ever gates admissibility - the selection policy below
-    is target-only.
+    Replay only ever hard-gates at the catastrophic limit and warns below it;
+    representative ordering is strict target RMSE.
     """
 
     from .mace_export import MaceExtxyzPolicy
@@ -1471,13 +1829,9 @@ def resolve_post_selection_method_policies(
     from .reference_fit import resolve_atomic_reference_fit_policy
     from .reference_fit import AtomicReferenceFitMode, AtomicReferenceFitPolicy
     from .replay import ReplayLabelMode, single_source_replay_config_from_campaign
-    from .train2_policy import (
-        CheckpointSelectionPolicy,
-        LearningRateSchedulePolicy,
-    )
+    from .train2_policy import LearningRateSchedulePolicy
 
     training = _table(config, "training")
-    acceptance = _table(config, "acceptance")
     acceleration = _table(config, "acceleration")
     paths = _table(config, "paths")
     model = _table(config, "model")
@@ -1707,21 +2061,11 @@ def resolve_post_selection_method_policies(
     mace_architecture = canonicalize_mace_candidate_architecture(raw_arch)
     mace_architecture_digest = digest(mace_architecture)
 
-    # 7. Shared checkpoint constraints and LR schedule.  The target-force
-    # ceiling is not resolved here: it belongs to each run's role policy.
-    replay_budget_mev = float(
-        acceptance.get(
-            "allowed_replay_degradation_mev_per_a",
-            training.get("replay_degradation_budget_mev_per_a", 30.0),
-        )
-    )
-    replay_degradation_budget = (
-        _finite_positive_threshold(
-            replay_budget_mev / 1000.0,
-            name="replay degradation budget",
-        )
-        if replay_enabled
-        else None
+    # 7. Assessment thresholds and LR schedule.  One configuration owner
+    # resolves every threshold coordinate (with the narrow generation
+    # migration); none of them enters the training method identity.
+    checkpoint_policy_configuration = resolve_p5_checkpoint_policy_configuration(
+        config, training_mode=training_mode
     )
     from .acceleration import MaceAccelerationBackend, MaceAccelerationPolicy
     source_backend = str(acceleration.get("backend", "e3nn")).strip().lower()
@@ -1757,8 +2101,16 @@ def resolve_post_selection_method_policies(
             native_adaptive_scheduler_enabled=False,
         ),
         replay_enabled=replay_enabled,
-        replay_degradation_budget_ev_per_angstrom=replay_degradation_budget,
-        checkpoint_selection=CheckpointSelectionPolicy(),
+        replay_hard_limit_ev_per_angstrom=(
+            checkpoint_policy_configuration.replay_hard_limit_ev_per_angstrom
+            if replay_enabled
+            else None
+        ),
+        replay_warning_ev_per_angstrom=(
+            checkpoint_policy_configuration.replay_warning_ev_per_angstrom
+            if replay_enabled
+            else None
+        ),
         extxyz=MaceExtxyzPolicy(),
         training_mode=training_mode,
         acceleration_backend=acceleration_backend,
@@ -1773,6 +2125,7 @@ def resolve_post_selection_method_policies(
         target_head_name=target_head_name,
         replay_head_name=replay_head_name,
         replay_training_label_mode=replay_training_label_mode,
+        checkpoint_policy_configuration=checkpoint_policy_configuration,
     )
 
 
@@ -1808,10 +2161,6 @@ def resolve_post_selection_method_identity(
         learning_rate_schedule_policy_digest=(
             resolved.learning_rate_schedule.policy_digest
         ),
-        shared_checkpoint_constraints_digest=(
-            resolved.shared_checkpoint_constraints_digest
-        ),
-        checkpoint_selection_policy_digest=resolved.checkpoint_selection.policy_digest,
         shared_optimizer_settings_digest=digest(
             shared_optimizer_settings_payload(config)
         ),
@@ -1843,12 +2192,11 @@ def resolve_cv_validation_policy_identity(
     Every other field still comes from its existing configuration owner: this is
     one field substitution, not a second policy resolver.
 
-    Target ceilings are method-aware.  Foundation adaptation reads optional
-    ``[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom``
-    (default 0.045) for checkpoints and defaults its held-out target-force
-    ceiling to the same value; scratch keeps its pre-separation behavior, the
-    ``[acceptance]`` target ceiling and a 0.030 outer default.  An explicit
-    ``acceptance_maximum`` is always used as written.
+    Target ceilings are method-aware and resolved by the one P5 threshold
+    owner :func:`resolve_p5_checkpoint_policy_configuration`: foundation CV
+    defaults to ``tau_CV = theta_CV = 0.075`` under the default force metric
+    (with the narrow historical-generation migration), and scratch keeps its
+    separately accepted ``[acceptance]`` ceiling and 0.030 outer default.
     """
 
     cv = _table(config, "post_selection", "cv")
@@ -1871,27 +2219,12 @@ def resolve_cv_validation_policy_identity(
         if training_mode is None
         else str(training_mode)
     )
-    if mode in FOUNDATION_ADAPTATION_TRAINING_MODES:
-        checkpoint_ceiling = cv.get(
-            "checkpoint_maximum_target_force_rmse_ev_per_angstrom",
-            FOUNDATION_CV_CHECKPOINT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM,
-        )
-        default_acceptance_maximum = (
-            FOUNDATION_CV_DEFAULT_ACCEPTANCE_MAXIMUM_EV_PER_ANGSTROM
-        )
-    elif mode in POST_SELECTION_TRAINING_MODES:
-        if "checkpoint_maximum_target_force_rmse_ev_per_angstrom" in cv:
-            raise PostSelectionError(
-                "[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom "
-                "is valid only for foundation adaptation modes. Scratch CV reads its "
-                "checkpoint target-force ceiling from [acceptance]."
-            )
-        checkpoint_ceiling = _configured_maximum_target_force_rmse(config)
-        default_acceptance_maximum = DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM
-    else:
-        raise TrainingDataInputError(
-            f"Unsupported post-selection training mode: {mode!r}."
-        )
+    thresholds = resolve_p5_checkpoint_policy_configuration(config, training_mode=mode)
+    checkpoint_ceiling = (
+        thresholds.production_target_ev_per_angstrom
+        if thresholds.cv_checkpoint_target_ev_per_angstrom is None
+        else thresholds.cv_checkpoint_target_ev_per_angstrom
+    )
     return CvValidationPolicyIdentity(
         fold_count=int(cv.get("fold_count", DEFAULT_CV_FOLD_COUNT)),
         partition_seed=int(cv.get("partition_seed", 104729)),
@@ -1904,10 +2237,8 @@ def resolve_cv_validation_policy_identity(
             else int(cv.get("max_num_epochs", DEFAULT_CV_MAX_NUM_EPOCHS))
         ),
         checkpoint_maximum_target_force_rmse_ev_per_angstrom=checkpoint_ceiling,
-        acceptance_metric=str(
-            cv.get("acceptance_metric", CV_DEFAULT_ACCEPTANCE_METRIC)
-        ),
-        acceptance_maximum=cv.get("acceptance_maximum", default_acceptance_maximum),
+        acceptance_metric=thresholds.cv_acceptance_metric,
+        acceptance_maximum=thresholds.cv_acceptance_maximum,
         aggregation_rule=CV_AGGREGATION_ALL_REQUIRED,
         dispersion_policy=CV_DISPERSION_DIAGNOSTIC_ONLY,
         required_cv_seeds=cv.get("seeds", (0,)),
@@ -1918,6 +2249,7 @@ def resolve_final_production_policy_identity(
     config: Mapping[str, Any],
     *,
     max_num_epochs: int | None = None,
+    training_mode: str | None = None,
 ) -> FinalProductionPolicyIdentity:
     """Resolve the production-only policy, including the effective horizon.
 
@@ -1925,7 +2257,9 @@ def resolve_final_production_policy_identity(
     it from target-size ``n3`` and nothing derives ``n3`` from it.
 
     The production checkpoint target ceiling is the ``[acceptance]`` target
-    ceiling for every training mode.
+    ceiling for every training mode; its omitted/historical-generated value is
+    resolved mode-aware by :func:`resolve_p5_checkpoint_policy_configuration`
+    (foundation 0.050, scratch 0.030).
 
     ``max_num_epochs`` is the frozen effective production horizon admitted with
     the target selection, and it substitutes for the configured value alone.  It
@@ -1955,22 +2289,15 @@ def resolve_final_production_policy_identity(
             production.get("allow_performance_driven_termination", False)
         ),
         checkpoint_maximum_target_force_rmse_ev_per_angstrom=(
-            _configured_maximum_target_force_rmse(config)
+            resolve_p5_checkpoint_policy_configuration(
+                config,
+                training_mode=(
+                    resolve_post_selection_training_mode(config)
+                    if training_mode is None
+                    else str(training_mode)
+                ),
+            ).production_target_ev_per_angstrom
         ),
-    )
-
-
-def _configured_maximum_target_force_rmse(config: Mapping[str, Any]) -> Any:
-    """The pre-separation ``[acceptance]`` target ceiling (eV/angstrom).
-
-    Production reads it for every mode and scratch CV reads it; foundation CV
-    never does.  The raw value is returned so the consuming policy identity
-    validates its original type.
-    """
-
-    return _table(config, "acceptance").get(
-        "maximum_target_force_rmse_ev_per_angstrom",
-        DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM,
     )
 
 
@@ -2005,11 +2332,27 @@ def final_production_training_budget_policy(
 
 
 __all__ = [
+    "CV_ASSESSMENT_POSITION_POLICY_SCHEMA",
+    "FINAL_PUBLICATION_POLICY_SCHEMA",
+    "FINAL_SEED_ASSESSMENT_POLICY_SCHEMA",
+    "FOUNDATION_PRODUCTION_DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM",
+    "P5_CHECKPOINT_POLICY_GENERATION",
+    "P5_CHECKPOINT_POLICY_GENERATION_FIELD",
+    "P5_CROSS_SEED_SELECTION_IDENTITY",
+    "P5_WITHIN_RUN_SELECTION_IDENTITY",
+    "P5CheckpointPolicyConfiguration",
+    "POST_SELECTION_METHOD_IDENTITY_SCHEMA_V3",
+    "POST_SELECTION_REPLAY_HARD_DECISION_SCHEMA",
+    "RETIRED_ASSESSMENT_ONLY_METHOD_FIELDS",
+    "cv_assessment_position_policy_digest",
+    "final_publication_policy_digest",
+    "final_seed_assessment_policy_digest",
+    "historical_method_training_projection",
+    "resolve_p5_checkpoint_policy_configuration",
     "CV_DEFAULT_ACCEPTANCE_METRIC",
     "DEFAULT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM",
     "FOUNDATION_CV_CHECKPOINT_MAXIMUM_TARGET_FORCE_RMSE_EV_PER_ANGSTROM",
     "FOUNDATION_CV_DEFAULT_ACCEPTANCE_MAXIMUM_EV_PER_ANGSTROM",
-    "POST_SELECTION_SHARED_CHECKPOINT_CONSTRAINTS_SCHEMA",
     "post_selection_checkpoint_admissibility",
     "resolve_post_selection_training_mode",
     "CV_AGGREGATION_ALL_REQUIRED",

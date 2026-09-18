@@ -4,7 +4,7 @@ protocol_version: 6.4.0
 workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-D3-D4-1
 parent_workplan: workplans/active/MLFF_REPLAY_RETENTION_AND_TARGET_ADMISSIBILITY_REWORK_WORKPLAN.md
 branch: design/mlff-replay-retention-target-admissibility-rework
-status: READY_FOR_D4_IMPLEMENTATION_AFTER_GATE_D_R3_PASS
+status: READY_FOR_INDEPENDENT_D4_REVIEW
 parent_d1_target: d761171f3c86c3c79b87a90cfc02ac324c261b1a
 parent_d1_blob: 612294ec4680db01a18085e13fbfe5dcfa9fb7ed
 parent_d2_target: 32508991d472c1c6e4bd8b818b38d0880401845f
@@ -19,6 +19,11 @@ r2_repair_binding: workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D
 gate_d_r3_review_target: de360579686bd6f06eae8a6a5e26b232d7db847e
 gate_d_r3_review_record: workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_INDEPENDENT_REVIEW_R3.md
 gate_d_r3_disposition: PASS
+implementation_base: afe6cb50dc6840799e86e1183c071761dab4e246e
+semantic_authority_target: de360579686bd6f06eae8a6a5e26b232d7db847e
+implementation_candidate_state: dirty-worktree candidate prepared; no historical authoritative bytes rewritten; no commit created
+implementation_candidate_tracked_diff_sha256_excluding_this_workplan: 80f0d07231b4c30a0f34f9a47a14cdd1be317f9f2b3afd2c1e7889d208b5330c
+implementation_candidate_untracked_test_content_sha256: 9649c44b016e0cc7a4124a70f5ae5ffa51b32bb9084ab7e2cfba0a2d5095509f
 ---
 
 # MLFF replay retention / target admissibility D3 -> D4 implementation workplan
@@ -251,6 +256,37 @@ Capability-transfer map:
 | real-owner qualification (SP-004) | D3/D4 acceptance contract | assembled cross-validate/train-production path | real-owner integration and bounded scientific qualification |
 
 No historical mechanism is mandatory merely because PEM records it; the table binds only capabilities independently required by current D2/D3.
+
+## 5A. Implementation and evidence state (2026-09-18)
+
+The implementation candidate is the current dirty worktree on `design/mlff-replay-retention-target-admissibility`, based on Gate-D PASS descendant `afe6cb50dc6840799e86e1183c071761dab4e246` and preserving semantic authority target `de360579686bd6f06eae8a6a5e26b232d7db847e`. No historical authoritative bytes were rewritten and no commit was created; the worktree remains available for independent D4 Review.
+
+| Obligation | Implementation state | Evidence/owner reconciliation |
+|---|---|---|
+| I1 | complete | Training-only method and pre-fit `TrainingTrajectoryIdentity`; fitted preparation/result descendants are separately authenticated. Policy-only versus training-bearing identity counterfactuals pass. |
+| I2 | complete | TRAIN2 preparation and replay resolution consume training-bearing authority; hard admissibility and outer assessment occur only after terminal TRAIN2. |
+| I3 | complete | Current roots publish the existing topology manifest plus `train2_terminal` completion anchor before EVAL2; current roots contain no assessment files; legacy sealed roots remain read-only and terminal-unsealed roots have only the authenticated append-only completion path. |
+| I3A | complete | Current materialization is v3 and has no held-out artifact; held-out transport is attempt-local scratch outside the root and is reclaimed after durable measurement publication. Historical v2 transport remains immutable compatibility history. |
+| I4 | complete | `EvaluationMeasurementIdentity` is assessment-independent and excludes full run-plan/threshold/publication ancestry; artifact projection retains numerical bytes, membership, label/reference content, sidecar, metric/reduction, provider/model, and precision-bearing coordinates while excluding scratch locators. |
+| I5 | complete | Replay hard admissibility is 100 meV/angstrom with strict exceedance; 50 meV/angstrom warning is diagnostic-only; missing/nonfinite TRUE_DFT evidence remains hard failure. |
+| I6 | complete | Existing configuration owner resolves marker `p5_target_replay_v2` and the specified foundation/replay migration defaults, with ambiguous legacy replay configurations rejected. |
+| I7 | complete | Every durable TRAIN2 checkpoint enters the candidate set; representative and cross-seed ordering use only the ratified target-RMSE tie keys. No-admissible outcomes retain complete typed candidate evidence. |
+| I8 | complete | CV/final assessments are external immutable evidence-store records behind the existing position locator; final-seed currentness is hard policy + 059A only, CV authorization is rechecked before publication, and 059B remains aggregate-publication-only. Current reads authenticate every referenced candidate/measurement record. |
+| I9 | complete | Historical reuse follows authenticated exact-equivalence recovery without scan/rename/copy or historical-byte mutation; current CV is reauthorized before historical final-production reuse. |
+| I10 | complete | Existing run-activity lease covers root reads and storage/publication ordering remains lease first, publication barrier second. |
+| I11 | complete | Candidate diagnostics expose target/replay values, thresholds, margins, reasons, checkpoint identity, and selected/warning state without giving warning evidence decision authority. |
+
+Executed evidence, all with at most 16 concurrent test workers:
+
+- package/test `compileall`: pass;
+- replay policy/identity/migration tests: 55 passed;
+- replay/target real-owner tests: 8 passed;
+- no-admissible/typed-outcome/recovery tests: 37 passed;
+- complete P5 production/restart module: 27 passed;
+- complete storage-core module: 291 passed;
+- directly affected storage-integration subset covering P5/P7 publication, stale/foreign roots, cleanup protection, fresh-process reauthentication, historical completion fixtures, dedup lease ordering, partial reclaim, and concurrent storage reauthentication: 15 passed.
+
+The unfiltered 167-test storage-integration invocation was attempted independently after the core module passed, but the test runner stopped returning output with no live pytest process and no result; it is recorded as inconclusive rather than green. Production-scale GPU qualification remains intentionally deferred to the final complete release package. Independent D4 Review is the remaining approval gate; this workplan stays active and is not archived or self-closed.
 
 ## 5. Evidence and dependency plan
 

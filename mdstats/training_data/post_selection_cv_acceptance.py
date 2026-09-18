@@ -5,8 +5,8 @@ The order of operations is the science, and it is fixed:
 ```text
 fresh fold training
  -> checkpoint candidates
- -> mandatory target/replay/physical admissibility
- -> target-only checkpoint selection on the fold's own monitor
+ -> mandatory hard target/replay/physical admissibility
+ -> strict minimum-target-RMSE representative on the common monitor
  -> freeze representative
  -> outer target evaluation on the held-out fold
  -> fold acceptance
@@ -21,9 +21,9 @@ missing evidence, never a verdict.
 Two separations do the work.  The held-out outer fold is never visible to the
 checkpoint-selection owner, so a fold cannot choose the checkpoint that happens
 to score well on its own evaluation.  And replay evidence is a *constraint*, not
-a score: it can make a checkpoint inadmissible through the TRAIN2 admissibility
-policy, but it contributes no weight, bonus, tie-break, or acceptance credit -
-ordering among admissible candidates is target-only.
+a score: above the catastrophic hard limit it makes a checkpoint inadmissible,
+below it it may only warn, and it contributes no weight, bonus, tie-break, or
+acceptance credit - ordering among admissible candidates is strict target RMSE.
 
 Acceptance is then exact rather than aggregate.  Every required fold of every
 required CV seed must pass its configured target-only predicate; a good mean
@@ -46,19 +46,27 @@ from .campaign_post_selection import PostSelectionError
 from .post_selection_cv_plan import PostSelectionCvPlan
 from .post_selection_identity import CvValidationPolicyIdentity
 
-#: v2 names the fold outcome explicitly and binds the candidate evidence the
-#: outcome was decided from.  v1 records predate the no-admissible outcome, so
-#: each of them is a representative-selected fold; they stay readable and
-#: re-serialize byte-identically under their own schema.
-CV_FOLD_ACCEPTANCE_SCHEMA = "mdstats.post-selection-cv-fold-acceptance.v2"
+#: v3 is the current external fold *assessment*: it binds its assessment
+#: position (selected binding, CV assessment-position policy, training
+#: trajectory/root, seed, fold) instead of the policy-bearing run plan, and it
+#: lives in the evidence store behind the position locator, never in a training
+#: root.  v2 named the outcome and bound candidate evidence; v1 predates the
+#: no-admissible outcome.  v1/v2 stay readable and re-serialize byte-identically
+#: under their own schema as historical, root-local provenance.
+CV_FOLD_ACCEPTANCE_SCHEMA = "mdstats.post-selection-cv-fold-acceptance.v3"
+CV_FOLD_ACCEPTANCE_SCHEMA_V2 = "mdstats.post-selection-cv-fold-acceptance.v2"
 CV_FOLD_ACCEPTANCE_SCHEMA_V1 = "mdstats.post-selection-cv-fold-acceptance.v1"
+_HISTORICAL_FOLD_SCHEMAS = (CV_FOLD_ACCEPTANCE_SCHEMA_V1, CV_FOLD_ACCEPTANCE_SCHEMA_V2)
 
 CV_FOLD_OUTCOME_REPRESENTATIVE_SELECTED = "representative_selected"
 CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE = "no_admissible_representative"
 CV_FOLD_NO_ADMISSIBLE_REASON = "no_admissible_checkpoint"
 
 CV_SEED_ACCEPTANCE_SCHEMA = "mdstats.post-selection-cv-seed-acceptance.v1"
-CV_CAMPAIGN_ACCEPTANCE_SCHEMA = "mdstats.post-selection-cv-campaign-acceptance.v1"
+# v2 aggregates only current position-bound (v3) fold assessments; a v1
+# aggregate is historical and is never relabeled current.
+CV_CAMPAIGN_ACCEPTANCE_SCHEMA = "mdstats.post-selection-cv-campaign-acceptance.v2"
+CV_CAMPAIGN_ACCEPTANCE_SCHEMA_V1 = "mdstats.post-selection-cv-campaign-acceptance.v1"
 
 #: Configured acceptance-metric names and the EVAL2 target-metric field each
 #: names.  Every entry is target-side; no replay quantity is addressable.
@@ -100,38 +108,40 @@ def cv_acceptance_metric_value(
     return float(value)
 
 
-def select_cv_fold_representative(
-    candidates: Sequence[Any],
-    *,
-    selection_policy: Any,
-    seed_material_digest: str,
-) -> Any | None:
-    """Freeze one fold representative from admissible candidates, target-only.
+def post_selection_representative_key(candidate: Any) -> tuple[float, int, str]:
+    """D2.DEF.059A ordering key ``(target RMSE, epoch, checkpoint SHA-256)``.
 
-    Both steps are delegated to the current TRAIN2/EVAL2 owners: admissibility
-    was already decided per candidate by the checkpoint-admissibility policy
-    (which is where replay belongs), and ordering is the accepted target-only
-    EVAL2 ordering.  No combined target+replay score exists on this path.
-
-    ``None`` means the candidates exist and every one of them failed mandatory
-    admissibility: the fold has no representative, which is a scientific result
-    for the fold rather than an execution failure.  No inadmissible candidate is
-    ever returned, however it ranks.  An empty candidate set is missing evidence
-    and still raises.
+    Target RMSE is the exact stored binary64 value on the common monitor and
+    the only quality authority; epoch and lowercase SHA-256 are consulted only
+    after exact target equality.  No replay, secondary, maturity, practical-
+    equivalence or bootstrap quantity is an argument.
     """
 
-    from .eval2 import order_eval2_admissible_candidates
+    return (
+        float(candidate.target_metrics.force_component_rmse_ev_per_angstrom),
+        int(candidate.trajectory_point.epoch),
+        str(candidate.trajectory_point.checkpoint_sha256).lower(),
+    )
+
+
+def select_post_selection_representative(candidates: Sequence[Any]) -> Any | None:
+    """Freeze one run representative by the strict D2.DEF.059A minimum.
+
+    Admissibility was decided per candidate by the hard checkpoint-decision
+    policy; ordering is strict minimum target RMSE with the frozen exact-tie
+    key.  ``None`` means candidates exist and every one of them failed
+    mandatory admissibility: the run has no representative, which is a typed
+    scientific outcome rather than an execution failure.  No inadmissible
+    candidate is ever returned, however it ranks.  An empty candidate set is
+    missing evidence and still raises.
+    """
 
     if not candidates:
-        raise PostSelectionError("A CV fold produced no checkpoint candidates.")
-    ordered, _comparisons = order_eval2_admissible_candidates(
-        candidates,
-        policy=selection_policy,
-        seed_material_digest=validate_digest(
-            str(seed_material_digest), name="seed_material_digest"
-        ),
-    )
-    return ordered[0] if ordered else None
+        raise PostSelectionError("A post-selection run produced no checkpoint candidates.")
+    admissible = [item for item in candidates if item.admissible]
+    if not admissible:
+        return None
+    return min(admissible, key=post_selection_representative_key)
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,9 +156,6 @@ class CvFoldAcceptance:
     refused at construction rather than normalized.
     """
 
-    cv_plan_digest: str
-    run_plan_digest: str
-    run_identity: str
     fold_index: int
     cv_seed: int
     representative_candidate_identity: str | None
@@ -166,20 +173,49 @@ class CvFoldAcceptance:
     candidate_record_digests: tuple[str, ...] = ()
     #: Union of the mandatory admissibility reasons across those candidates.
     checkpoint_rejection_reasons: tuple[str, ...] = ()
+    #: v3 assessment position (``None`` on historical v1/v2 records).
+    selected_binding_digest: str | None = None
+    assessment_position_policy_digest: str | None = None
+    training_trajectory_identity: str | None = None
+    training_root_identity: str | None = None
+    runtime_summary_digest: str | None = None
+    #: Historical v1/v2 plan lineage (``None`` on current v3 records).
+    cv_plan_digest: str | None = None
+    run_plan_digest: str | None = None
+    run_identity: str | None = None
     serialization_schema: str = field(
         default=CV_FOLD_ACCEPTANCE_SCHEMA, repr=False, compare=False
     )
 
+    _POSITION_FIELDS = (
+        "selected_binding_digest",
+        "assessment_position_policy_digest",
+        "training_trajectory_identity",
+        "training_root_identity",
+        "runtime_summary_digest",
+    )
+    _HISTORICAL_FIELDS = ("cv_plan_digest", "run_plan_digest", "run_identity")
+
     def __post_init__(self) -> None:
-        for name in ("cv_plan_digest", "run_plan_digest", "run_identity"):
-            object.__setattr__(
-                self, name, validate_digest(getattr(self, name), name=name)
-            )
         if self.serialization_schema not in (
             CV_FOLD_ACCEPTANCE_SCHEMA,
-            CV_FOLD_ACCEPTANCE_SCHEMA_V1,
+            *_HISTORICAL_FOLD_SCHEMAS,
         ):
             raise TrainingDataInputError("Unsupported CV fold-acceptance schema.")
+        current = self.serialization_schema == CV_FOLD_ACCEPTANCE_SCHEMA
+        required, forbidden = (
+            (self._POSITION_FIELDS, self._HISTORICAL_FIELDS)
+            if current
+            else (self._HISTORICAL_FIELDS, self._POSITION_FIELDS)
+        )
+        for name in required:
+            object.__setattr__(
+                self, name, validate_digest(str(getattr(self, name)), name=name)
+            )
+        if any(getattr(self, name) is not None for name in forbidden):
+            raise TrainingDataInputError(
+                "A CV fold assessment mixes current position and historical plan lineage."
+            )
         object.__setattr__(self, "fold_index", int(self.fold_index))
         object.__setattr__(self, "cv_seed", int(self.cv_seed))
         object.__setattr__(self, "acceptance_metric", str(self.acceptance_metric))
@@ -276,12 +312,19 @@ class CvFoldAcceptance:
         else:
             raise TrainingDataInputError(f"Unsupported CV fold outcome {self.outcome!r}.")
 
+    @property
+    def is_current(self) -> bool:
+        return self.serialization_schema == CV_FOLD_ACCEPTANCE_SCHEMA
+
     def _payload(self) -> dict[str, Any]:
+        lineage = (
+            {name: getattr(self, name) for name in self._POSITION_FIELDS}
+            if self.is_current
+            else {name: getattr(self, name) for name in self._HISTORICAL_FIELDS}
+        )
         payload = {
             "schema": self.serialization_schema,
-            "cv_plan_digest": self.cv_plan_digest,
-            "run_plan_digest": self.run_plan_digest,
-            "run_identity": self.run_identity,
+            **lineage,
             "fold_index": self.fold_index,
             "cv_seed": self.cv_seed,
             "representative_candidate_identity": self.representative_candidate_identity,
@@ -316,20 +359,25 @@ class CvFoldAcceptance:
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CvFoldAcceptance":
         schema = payload.get("schema")
-        if schema not in (CV_FOLD_ACCEPTANCE_SCHEMA, CV_FOLD_ACCEPTANCE_SCHEMA_V1):
+        if schema not in (CV_FOLD_ACCEPTANCE_SCHEMA, *_HISTORICAL_FOLD_SCHEMAS):
             raise TrainingDataSerializationError(
                 "Unsupported CV fold-acceptance schema."
             )
-        current = schema == CV_FOLD_ACCEPTANCE_SCHEMA
+        # ``current`` here means "records the explicit outcome/candidate set",
+        # which both v2 and v3 do.
+        current = schema != CV_FOLD_ACCEPTANCE_SCHEMA_V1
+        lineage_fields = (
+            cls._POSITION_FIELDS
+            if schema == CV_FOLD_ACCEPTANCE_SCHEMA
+            else cls._HISTORICAL_FIELDS
+        )
 
         def optional(name: str, kind: Any) -> Any:
             value = payload[name] if current else payload.get(name)
             return None if value is None else kind(value)
 
         result = cls(
-            cv_plan_digest=str(payload["cv_plan_digest"]),
-            run_plan_digest=str(payload["run_plan_digest"]),
-            run_identity=str(payload["run_identity"]),
+            **{name: str(payload[name]) for name in lineage_fields},
             fold_index=int(payload["fold_index"]),
             cv_seed=int(payload["cv_seed"]),
             representative_candidate_identity=optional(
@@ -378,6 +426,9 @@ def build_cv_fold_acceptance(
     representative: Any | None,
     outer_metrics: Any | None,
     policy: CvValidationPolicyIdentity,
+    assessment_position_policy_digest: str,
+    training_root_identity: str,
+    runtime_summary_digest: str,
 ) -> CvFoldAcceptance:
     """Decide one fold from its checkpoint candidates and frozen representative.
 
@@ -396,9 +447,11 @@ def build_cv_fold_acceptance(
     if not candidates:
         raise PostSelectionError("A CV fold produced no checkpoint candidates.")
     common = {
-        "cv_plan_digest": run_plan.cv_plan_digest,
-        "run_plan_digest": run_plan.content_digest,
-        "run_identity": run_plan.run_identity,
+        "selected_binding_digest": run_plan.selected_binding_digest,
+        "assessment_position_policy_digest": assessment_position_policy_digest,
+        "training_trajectory_identity": run_plan.training_trajectory_identity,
+        "training_root_identity": training_root_identity,
+        "runtime_summary_digest": runtime_summary_digest,
         "fold_index": run_plan.fold_index,
         "cv_seed": run_plan.optimizer_seed,
         "acceptance_metric": policy.acceptance_metric,
@@ -544,8 +597,28 @@ class CvCampaignAcceptance:
     rejection_reasons: tuple[str, ...]
     cross_fold_dispersion: float | None = None
     dispersion_policy: str = "diagnostic_only"
+    serialization_schema: str = field(
+        default=CV_CAMPAIGN_ACCEPTANCE_SCHEMA, repr=False, compare=False
+    )
+
+    @property
+    def is_current(self) -> bool:
+        return self.serialization_schema == CV_CAMPAIGN_ACCEPTANCE_SCHEMA
 
     def __post_init__(self) -> None:
+        if self.serialization_schema not in (
+            CV_CAMPAIGN_ACCEPTANCE_SCHEMA,
+            CV_CAMPAIGN_ACCEPTANCE_SCHEMA_V1,
+        ):
+            raise TrainingDataInputError("Unsupported CV campaign-acceptance schema.")
+        if self.is_current and any(
+            not fold.is_current
+            for seed in self.seed_acceptances
+            for fold in seed.fold_acceptances
+        ):
+            raise TrainingDataInputError(
+                "A current CV campaign acceptance aggregates only current fold assessments."
+            )
         for name in (
             "cv_plan_digest",
             "method_identity_digest",
@@ -578,7 +651,7 @@ class CvCampaignAcceptance:
 
     def _payload(self) -> dict[str, Any]:
         return {
-            "schema": CV_CAMPAIGN_ACCEPTANCE_SCHEMA,
+            "schema": self.serialization_schema,
             "cv_plan_digest": self.cv_plan_digest,
             "method_identity_digest": self.method_identity_digest,
             "cv_policy_identity_digest": self.cv_policy_identity_digest,
@@ -599,7 +672,8 @@ class CvCampaignAcceptance:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CvCampaignAcceptance":
-        if payload.get("schema") != CV_CAMPAIGN_ACCEPTANCE_SCHEMA:
+        schema = payload.get("schema")
+        if schema not in (CV_CAMPAIGN_ACCEPTANCE_SCHEMA, CV_CAMPAIGN_ACCEPTANCE_SCHEMA_V1):
             raise TrainingDataSerializationError(
                 "Unsupported CV campaign-acceptance schema."
             )
@@ -619,6 +693,7 @@ class CvCampaignAcceptance:
                 else float(payload["cross_fold_dispersion"])
             ),
             dispersion_policy=str(payload.get("dispersion_policy", "diagnostic_only")),
+            serialization_schema=str(schema),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -639,19 +714,32 @@ def accept_post_selection_cv_campaign(
     plan: PostSelectionCvPlan,
     policy: CvValidationPolicyIdentity,
     fold_acceptances: Sequence[CvFoldAcceptance],
+    *,
+    expected_positions: Mapping[tuple[int, int], tuple[str, str]],
 ) -> CvCampaignAcceptance:
-    """Reduce fold outcomes into the one current CV acceptance record.
+    """Reduce fold assessments into the one current CV acceptance record.
 
-    The reduction is coverage-first: for each required seed, every configured
-    fold must appear exactly once and every one of them must pass.  A duplicate
-    fold does not stand in for a missing one, and no average, majority, or
-    best-seed rule is representable here.
+    ``expected_positions`` maps ``(seed, fold)`` to the current
+    ``(training trajectory identity, assessment-position policy digest)`` the
+    plan derives; every fold assessment must be the current assessment of that
+    exact position.  The reduction is coverage-first: for each required seed,
+    every configured fold must appear exactly once and every one of them must
+    pass.  A duplicate fold does not stand in for a missing one, and no average,
+    majority, or best-seed rule is representable here.
     """
 
     for item in fold_acceptances:
-        if item.cv_plan_digest != plan.content_digest:
+        if not item.is_current:
             raise PostSelectionError(
-                "A fold acceptance belongs to a different CV plan."
+                "A historical fold verdict is never relabeled current; reassess it."
+            )
+        expected = expected_positions.get((item.cv_seed, item.fold_index))
+        if expected is None or (
+            item.training_trajectory_identity,
+            item.assessment_position_policy_digest,
+        ) != tuple(expected) or item.selected_binding_digest != plan.binding.content_digest:
+            raise PostSelectionError(
+                "A fold assessment belongs to a different CV assessment position."
             )
         if item.acceptance_metric != policy.acceptance_metric or (
             item.acceptance_maximum != policy.acceptance_maximum
@@ -736,6 +824,11 @@ def require_cv_acceptance_for_method(
     before any final-production work begins.
     """
 
+    if not acceptance.is_current:
+        raise PostSelectionCvRejectedError(
+            "A historical (pre-cutover) CV verdict is never relabeled current; "
+            "reclose cross-validation under the current policy."
+        )
     if acceptance.cv_plan_digest != plan.content_digest:
         raise PostSelectionCvRejectedError(
             "The supplied CV acceptance belongs to a different cross-validation plan."
@@ -785,5 +878,6 @@ __all__ = [
     "build_cv_fold_acceptance",
     "cv_acceptance_metric_value",
     "require_cv_acceptance_for_method",
-    "select_cv_fold_representative",
+    "post_selection_representative_key",
+    "select_post_selection_representative",
 ]

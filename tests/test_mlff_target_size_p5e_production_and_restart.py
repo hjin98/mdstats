@@ -94,7 +94,8 @@ def test_p5e_production_trains_on_the_full_exact_t_selected(tmp_path: Path):
         assert not set(monitor.frame_uids) & set(context.selected_membership)
 
         # Production has no held-out outer fold; CV owns that role.
-        assert request.materialization.outer_evaluation_artifact is None
+        # Training materialization is training-only: no held-out transport.
+        assert "outer_evaluation_artifact" not in request.materialization.to_dict()
     finally:
         store.close()
 
@@ -629,12 +630,13 @@ def test_p5e_restart_does_not_retrain_completed_folds_or_production_runs(
 def test_p5e_a_changed_acceptance_predicate_reruns_rather_than_reinterprets(
     tmp_path: Path,
 ):
-    """A CV policy edit is a different campaign, not a re-reading of the old one.
+    """An outer-predicate edit is re-assessed, never reinterpreted or retrained.
 
-    The acceptance predicate is part of the CV policy identity, so changing it
-    moves the plan digest and therefore every run identity. The previous folds
-    stay as their own historical evidence; the new question is answered by new
-    runs rather than by reinterpreting old verdicts.
+    ``theta_CV`` is an assessment coordinate (D2.AX.004): it moves the CV plan
+    and the fold assessment positions but not the pre-fit training trajectory.
+    The sealed training roots are reused with zero TRAIN2 launch, and the new
+    question is answered by *new* immutable fold assessments rather than by
+    relabeling the historical verdicts.
     """
 
     config, _workspace = build_selected_campaign(tmp_path)
@@ -647,11 +649,18 @@ def test_p5e_a_changed_acceptance_predicate_reruns_rather_than_reinterprets(
     finally:
         store.close()
 
+    before_acceptance = None
+    cfg, paths, store = load_context(config)
+    try:
+        before_acceptance = resolve_current_cv_acceptance(
+            build_post_selection_context(cfg, paths, store, trainer=object())
+        )
+    finally:
+        store.close()
     rewrite_config(config, "acceptance_maximum = 0.5", "acceptance_maximum = 0.25")
     second = PostSelectionHarness()
     assert run_cross_validate(config, second) == 0
-    assert len(second.runs) == len(first.runs)
-    assert not set(second.runs) & set(first.runs)
+    assert second.runs == []  # zero TRAIN2: the trajectories are unchanged
 
     cfg, paths, store = load_context(config)
     try:
@@ -661,6 +670,20 @@ def test_p5e_a_changed_acceptance_predicate_reruns_rather_than_reinterprets(
         store.close()
     assert after.content_digest != before.content_digest
     assert after.cv_policy_identity_digest != before.cv_policy_identity_digest
+    cfg, paths, store = load_context(config)
+    try:
+        after_acceptance = resolve_current_cv_acceptance(
+            build_post_selection_context(cfg, paths, store, trainer=object())
+        )
+    finally:
+        store.close()
+    assert after_acceptance.content_digest != before_acceptance.content_digest
+    old_folds = {
+        f.content_digest for s in before_acceptance.seed_acceptances for f in s.fold_acceptances
+    }
+    new_folds = [f for s in after_acceptance.seed_acceptances for f in s.fold_acceptances]
+    assert old_folds.isdisjoint({f.content_digest for f in new_folds})
+    assert all(f.acceptance_maximum == 0.25 for f in new_folds)
     # The scientific plan - universe, components, fold roles - is unchanged; only
     # the policy the folds are judged under moved.
     assert after.projection_digest == before.projection_digest
@@ -860,8 +883,8 @@ def test_p5e_r9_mandatory_case1_plan_published_zero_runs_complete(tmp_path: Path
     """Case 1: Plan published, zero runs complete -> incomplete/resumable."""
     from mdstats.training_data import _campaign_cli_core as cli
     from mdstats.training_data.campaign_post_selection_runtime import (
-        _completed_run_evidence,
         resolve_current_final_production_completion,
+        resolve_current_final_seed_assessment,
     )
 
     config, _workspace = _build_two_seed_campaign(tmp_path)
@@ -897,7 +920,7 @@ def test_p5e_r9_mandatory_case1_plan_published_zero_runs_complete(tmp_path: Path
         # No required seed has authenticated run evidence
         for seed in (5, 6):
             run_plan = build_final_production_run_plan(plan, optimizer_seed=seed)
-            assert _completed_run_evidence(context, run_plan) is None
+            assert resolve_current_final_seed_assessment(context, run_plan) is None
     finally:
         store.close()
 
@@ -908,8 +931,8 @@ def test_p5e_r9_mandatory_case2_one_of_two_runs_complete_resumes_only_missing_ru
     """Case 2: Exactly 1 of 2 runs complete -> resume executes only missing run."""
     from mdstats.training_data import _campaign_cli_core as cli
     from mdstats.training_data.campaign_post_selection_runtime import (
-        _completed_run_evidence,
         resolve_current_final_production_completion,
+        resolve_current_final_seed_assessment,
     )
     from mdstats.training_data.train2_runtime import load_train2_runtime_summary
 
@@ -944,9 +967,9 @@ def test_p5e_r9_mandatory_case2_one_of_two_runs_complete_resumes_only_missing_ru
             context.run_root(run5_plan.run_identity) / "checkpoints"
         )
         assert summary5.content_digest
-        assert _completed_run_evidence(context, run5_plan) is None
+        assert resolve_current_final_seed_assessment(context, run5_plan) is None
 
-        assert _completed_run_evidence(context, run6_plan) is None
+        assert resolve_current_final_seed_assessment(context, run6_plan) is None
         assert resolve_current_final_production_completion(context) is None
 
         lifecycle = cli._current_public_lifecycle(cfg, paths, store)
@@ -1002,27 +1025,56 @@ def test_p5e_r9_mandatory_case3_corrupt_or_mismatched_evidence_fails_closed(
         completion = resolve_current_final_production_completion(context)
         assert completion is not None
 
-        # 3A: Truncate / invalid JSON in run evidence
-        ev_file = context.run_root(completion.runs[0].run_identity) / "run-evidence.json"
+        # Current seed assessments live in the evidence store behind the
+        # position locator, never as a root-local file.
+        assessment = completion.runs[0]
+        assert not (context.run_root(assessment.run_identity) / "run-evidence.json").exists()
+        ev_file = context.evidence_store.object_path(assessment.content_digest)
         original_bytes = ev_file.read_bytes()
+
+        # 3A: Truncate / invalid JSON in the located assessment object
         ev_file.write_text("{corrupt json", encoding="utf-8")
         with pytest.raises(Exception):
             resolve_current_final_production_completion(context)
 
-        # 3B: Altered run_plan_digest (with digest check failure)
+        # 3B: Altered content (digest check failure)
         ev_dict = json.loads(original_bytes.decode("utf-8"))
-        ev_dict["run_plan_digest"] = "f" * 64
+        ev_dict["optimizer_seed"] = 99
         ev_file.write_text(json.dumps(ev_dict), encoding="utf-8")
         with pytest.raises(Exception):
             resolve_current_final_production_completion(context)
 
-        # 3C: Self-consistent run evidence from a different run plan
+        # 3C: A self-consistent assessment of a different position planted
+        # under this position's locator fails closed.
         from mdstats.training_data.post_selection_execution import PostSelectionRunEvidence
-        ev_obj = PostSelectionRunEvidence.from_dict(
-            dict(ev_dict, content_digest=None)
+        from mdstats.training_data.campaign_post_selection_runtime import (
+            POINTER_ASSESSMENT_POSITION,
+            _final_position,
+            final_seed_assessment_policy_digest,
+            post_selection_checkpoint_admissibility,
         )
-        ev_file.write_text(json.dumps(ev_obj.to_dict()), encoding="utf-8")
-        with pytest.raises(PostSelectionError, match="belongs to a different run plan"):
+        from mdstats.training_data.post_selection_store import (
+            publish_current_post_selection_pointer,
+        )
+
+        ev_file.write_bytes(original_bytes)
+        foreign = PostSelectionRunEvidence.from_dict(
+            dict(json.loads(original_bytes.decode("utf-8")), optimizer_seed=99, content_digest=None)
+        )
+        context.evidence_store.put(foreign)
+        plan = completion.plan
+        run_plan = build_final_production_run_plan(plan, optimizer_seed=assessment.optimizer_seed)
+        policy = final_seed_assessment_policy_digest(
+            post_selection_checkpoint_admissibility(context.method_policies, context.production_policy)
+        )
+        publish_current_post_selection_pointer(
+            context.store,
+            binding=context.selected.binding,
+            kind=POINTER_ASSESSMENT_POSITION,
+            content_digest=foreign.content_digest,
+            position=_final_position(context, run_plan, policy),
+        )
+        with pytest.raises(PostSelectionError, match="different assessment position"):
             resolve_current_final_production_completion(context)
     finally:
         store.close()

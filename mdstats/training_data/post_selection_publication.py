@@ -33,18 +33,23 @@ from ._common import (
 from .campaign_post_selection import PostSelectionBinding, PostSelectionError
 from .online_monitor import OnlineMonitorRecord
 
+# v2 seed evidence binds the seed's training trajectory; ``run_identity`` is
+# the training *root* holding its bytes (the trajectory, or an authenticated
+# historical root reused under exact training equivalence).
 FINAL_PUBLICATION_SEED_EVIDENCE_SCHEMA = (
-    "mdstats.post-selection-final-publication-seed-evidence.v1"
+    "mdstats.post-selection-final-publication-seed-evidence.v2"
 )
+# v3 binds the narrow aggregate publication policy (mode + D2.DEF.059B).
 FINAL_PUBLICATION_DECISION_SCHEMA = (
-    "mdstats.post-selection-final-publication-decision.v2"
+    "mdstats.post-selection-final-publication-decision.v3"
 )
 
 #: Identity of the deterministic decision procedure itself.  Changing how the
 #: published member set is derived changes this string, which changes the
-#: decision digest and therefore stales every descendant.
+#: decision digest and therefore stales every descendant.  v3 is the strict
+#: D2.DEF.059B minimum ``(target RMSE, optimizer seed, checkpoint SHA-256)``.
 FINAL_PUBLICATION_DECISION_POLICY_IDENTITY = (
-    "mdstats.p5-final-publication-decision.frozen-common-monitor-eval2-ordering.v2"
+    "mdstats.p5-final-publication-decision.strict-target-rmse-seed-sha256.v3"
 )
 
 COMMITTEE_ALL_QUALIFIED = "all_qualified_final_seeds"
@@ -62,6 +67,7 @@ class FinalPublicationSeedEvidence:
 
     optimizer_seed: int
     run_identity: str
+    training_trajectory_identity: str
     run_plan_digest: str
     run_evidence_digest: str
     representative_candidate_identity: str
@@ -74,6 +80,7 @@ class FinalPublicationSeedEvidence:
     def __post_init__(self) -> None:
         for name in (
             "run_identity",
+            "training_trajectory_identity",
             "run_plan_digest",
             "run_evidence_digest",
             "representative_checkpoint_sha256",
@@ -105,6 +112,7 @@ class FinalPublicationSeedEvidence:
             "schema": FINAL_PUBLICATION_SEED_EVIDENCE_SCHEMA,
             "optimizer_seed": self.optimizer_seed,
             "run_identity": self.run_identity,
+            "training_trajectory_identity": self.training_trajectory_identity,
             "run_plan_digest": self.run_plan_digest,
             "run_evidence_digest": self.run_evidence_digest,
             "representative_candidate_identity": self.representative_candidate_identity,
@@ -131,6 +139,7 @@ class FinalPublicationSeedEvidence:
         result = cls(
             optimizer_seed=int(payload["optimizer_seed"]),
             run_identity=str(payload["run_identity"]),
+            training_trajectory_identity=str(payload["training_trajectory_identity"]),
             run_plan_digest=str(payload["run_plan_digest"]),
             run_evidence_digest=str(payload["run_evidence_digest"]),
             representative_candidate_identity=str(
@@ -168,6 +177,7 @@ class FinalProductionPublicationDecision:
     decision_policy_identity: str
     seed_evidence: tuple[FinalPublicationSeedEvidence, ...]
     published_member_ids: tuple[str, ...]
+    publication_policy_digest: str = ""
 
     def __post_init__(self) -> None:
         if not isinstance(self.binding, PostSelectionBinding):
@@ -182,6 +192,7 @@ class FinalProductionPublicationDecision:
             "cv_authorization_digest",
             "common_monitor_record_digest",
             "completion_digest",
+            "publication_policy_digest",
         ):
             object.__setattr__(self, name, validate_digest(getattr(self, name), name=name))
         head = str(self.target_head_name).strip()
@@ -252,6 +263,7 @@ class FinalProductionPublicationDecision:
             "completion_digest": self.completion_digest,
             "target_head_name": self.target_head_name,
             "committee_policy": self.committee_policy,
+            "publication_policy_digest": self.publication_policy_digest,
             "decision_policy_identity": self.decision_policy_identity,
             "seed_evidence": [item.to_dict() for item in self.seed_evidence],
             "published_member_ids": list(self.published_member_ids),
@@ -302,6 +314,7 @@ class FinalProductionPublicationDecision:
             completion_digest=str(payload["completion_digest"]),
             target_head_name=str(payload["target_head_name"]),
             committee_policy=str(payload["committee_policy"]),
+            publication_policy_digest=str(payload["publication_policy_digest"]),
             decision_policy_identity=str(payload["decision_policy_identity"]),
             seed_evidence=tuple(
                 FinalPublicationSeedEvidence.from_dict(item)
@@ -319,27 +332,57 @@ class FinalProductionPublicationDecision:
 def _seed_evidence_for_run(context: Any, plan: Any, evidence: Any) -> tuple[
     FinalPublicationSeedEvidence, Any
 ]:
-    """Authenticate one completed seed and return (evidence record, EVAL2 record)."""
+    """Authenticate one seed's current assessment and return (evidence, EVAL2 record).
 
-    from .campaign_post_selection_runtime import authenticated_run_representative_records
+    The monitor metric is re-authenticated through its own published
+    measurement identity: it must describe the exact common monitor bound by
+    the final plan, the representative checkpoint, and the current numerically
+    material provider (model/dtype/device/backend) and metric realization.  The
+    execution-only forward-substitution marker is not compared on this read
+    path: a read-only consumer has no forward of its own.  No run plan or
+    assessment policy is consulted to decide what the measurement *is*.
+    """
+
+    from .campaign_post_selection_runtime import (
+        _checkpoint_provider_realization,
+        _eval2_target_metric_policy_digest,
+        authenticated_post_selection_candidate_records,
+        authenticated_run_representative_records,
+    )
     from .post_selection_execution import (
         DATASET_ROLE_CHECKPOINT_MONITOR,
-        PostSelectionMaterialization,
+        EvaluationMeasurementIdentity,
         post_selection_checkpoint_catalog,
-        post_selection_eval_role_digest,
     )
     from .post_selection_production import build_final_production_run_plan
 
-    seed = _seed_for_run(plan, evidence)
-    run_plan = build_final_production_run_plan(plan, optimizer_seed=seed)
-    if run_plan.content_digest != evidence.run_plan_digest:
+    seed = int(evidence.optimizer_seed)
+    if seed not in plan.required_final_seeds:
         raise PostSelectionError(
-            "Final-production run evidence does not bind its own run plan."
+            "Final-production evidence does not correspond to any required production seed."
+        )
+    run_plan = build_final_production_run_plan(plan, optimizer_seed=seed)
+    if run_plan.training_trajectory_identity != evidence.training_trajectory_identity:
+        raise PostSelectionError(
+            "Final-seed assessment does not bind its own training trajectory."
         )
     catalog = post_selection_checkpoint_catalog(
-        run_plan=run_plan,
-        checkpoint_directory=context.run_root(run_plan.run_identity) / "checkpoints",
+        run_identity=evidence.training_root_identity,
+        checkpoint_directory=context.run_root(evidence.training_root_identity) / "checkpoints",
     )
+    candidate_records = authenticated_post_selection_candidate_records(
+        context,
+        candidate_record_digests=evidence.candidate_record_digests,
+        runtime_summary_digest=evidence.runtime_summary_digest,
+        representative_record_digest=evidence.representative_record_digest,
+    )
+    if {
+        item.trajectory_point.checkpoint_sha256 for item in candidate_records
+    } != {item.sha256 for item in catalog.checkpoints}:
+        raise PostSelectionError(
+            "Final-seed evidence does not cover the complete durable TRAIN2 "
+            "checkpoint universe."
+        )
     record = catalog.checkpoint_by_sha256(evidence.representative_checkpoint_sha256)
     representative, monitor_metrics = authenticated_run_representative_records(
         context, run_plan, evidence
@@ -358,40 +401,48 @@ def _seed_evidence_for_run(context: Any, plan: Any, evidence: Any) -> tuple[
             "The durable representative record does not carry its own common-"
             "monitor target metric record."
         )
-    # Re-authenticate the monitor role itself.  A metric digest alone is not
-    # enough: it must describe the exact common monitor bound by the final plan.
-    materialization = context.evidence_store.get(
-        evidence.materialization_digest, PostSelectionMaterialization.from_dict
+    identity = context.evidence_store.get(
+        monitor_metrics.target_role_digest, EvaluationMeasurementIdentity.from_dict
     )
-    monitor_artifact = materialization.checkpoint_monitor_artifact
     common_monitor = context.evidence_store.get(
         plan.common_monitor_record_digest, OnlineMonitorRecord.from_dict
     )
-    membership = tuple(common_monitor.selected_identities)
+    membership = [str(value) for value in common_monitor.selected_identities]
+    artifact = identity.artifact
     if (
-        tuple(str(value) for value in monitor_artifact.frame_uids) != membership
-        or str(monitor_artifact.membership_digest)
-        != digest({"frame_uids": list(membership)})
-        or int(monitor_artifact.configuration_count) != len(membership)
+        identity.dataset_role != DATASET_ROLE_CHECKPOINT_MONITOR
+        or list(artifact.get("frame_uids", ())) != membership
+        or str(artifact.get("membership_digest")) != digest({"frame_uids": membership})
+        or int(artifact.get("configuration_count", -1)) != len(membership)
     ):
         raise PostSelectionError(
             "Final-production checkpoint-monitor evidence is not the exact common "
             "target monitor bound by the final plan."
         )
-    expected_role_digest = post_selection_eval_role_digest(
-        run_plan=run_plan,
-        dataset_role=DATASET_ROLE_CHECKPOINT_MONITOR,
-        artifact=monitor_artifact,
-    )
-    if monitor_metrics.target_role_digest != expected_role_digest:
+    if (
+        identity.model_state.get("checkpoint_sha256")
+        != evidence.representative_checkpoint_sha256
+        or {
+            key: value
+            for key, value in identity.provider_realization.items()
+            if key != "forward_realization"
+        }
+        != {
+            key: value
+            for key, value in _checkpoint_provider_realization(context).items()
+            if key != "forward_realization"
+        }
+        or identity.metric_policy_digest != _eval2_target_metric_policy_digest()
+    ):
         raise PostSelectionError(
-            "Final-production monitor metrics are bound to a different evaluation "
-            "role than the authenticated checkpoint monitor artifact."
+            "Final-production monitor metrics are bound to a different measurement "
+            "(checkpoint, provider or metric realization) than the current one."
         )
     return (
         FinalPublicationSeedEvidence(
-            optimizer_seed=run_plan.optimizer_seed,
-            run_identity=run_plan.run_identity,
+            optimizer_seed=seed,
+            run_identity=evidence.training_root_identity,
+            training_trajectory_identity=evidence.training_trajectory_identity,
             run_plan_digest=run_plan.content_digest,
             run_evidence_digest=evidence.content_digest,
             representative_candidate_identity=evidence.representative_candidate_identity,
@@ -405,36 +456,17 @@ def _seed_evidence_for_run(context: Any, plan: Any, evidence: Any) -> tuple[
     )
 
 
-def _seed_for_run(plan: Any, evidence: Any) -> int:
-    from .post_selection_production import build_final_production_run_plan
-
-    for seed in plan.required_final_seeds:
-        if build_final_production_run_plan(plan, optimizer_seed=seed).run_identity == (
-            evidence.run_identity
-        ):
-            return int(seed)
-    raise PostSelectionError(
-        "Final-production evidence does not correspond to any required production seed."
-    )
-
-
 def _rank_single_best(
     representatives: Sequence[tuple[FinalPublicationSeedEvidence, Any]],
-    *,
-    selection_policy: Any,
-    seed_material_digest: str,
 ) -> FinalPublicationSeedEvidence:
-    """Choose the first canonical admissible representative across seeds.
+    """D2.DEF.059B: strict minimum over already-frozen admissible representatives.
 
-    The ordering owner is the accepted target-only EVAL2 ordering that already
-    chose each seed's representative, applied over each representative's frozen
-    metric record on the exact common target monitor.  No evaluation is rerun.  Replay evidence contributed admissibility only and
-    contributes no ranking weight here either.  Tie material descends from the
-    final-production plan identity, so the answer does not depend on process
-    order, completion order, or when the decision is taken.
+    The key is ``(common-monitor target RMSE, optimizer seed, checkpoint
+    SHA-256)``; seed and digest are consulted only after exact binary64 target
+    equality.  No evaluation is rerun, and replay values/warnings, secondary
+    metrics, maturity, practical-equivalence and bootstrap quantities have no
+    ordering authority.
     """
-
-    from .eval2 import order_eval2_admissible_candidates
 
     admissible = [item for item in representatives if item[1].admissible]
     if not admissible:
@@ -442,20 +474,15 @@ def _rank_single_best(
             "No required production seed produced an admissible representative, so "
             "there is no publishable single best final seed."
         )
-    by_identity = {record.stable_candidate_identity: seed for seed, record in admissible}
-    if len(by_identity) != len(admissible):
-        raise PostSelectionError(
-            "Two production seeds report the same representative candidate identity; "
-            "the cross-seed ranking is not well defined."
-        )
-    ordered, _comparisons = order_eval2_admissible_candidates(
-        [record for _seed, record in admissible],
-        policy=selection_policy,
-        seed_material_digest=validate_digest(
-            str(seed_material_digest), name="seed_material_digest"
+    best = min(
+        admissible,
+        key=lambda item: (
+            float(item[1].target_metrics.force_component_rmse_ev_per_angstrom),
+            int(item[0].optimizer_seed),
+            str(item[0].representative_checkpoint_sha256).lower(),
         ),
     )
-    return by_identity[ordered[0].stable_candidate_identity]
+    return best[0]
 
 
 def decide_final_production_publication(
@@ -488,14 +515,12 @@ def decide_final_production_publication(
             )
         member_ids = tuple(item.member_id for item in published)
     elif committee == COMMITTEE_SINGLE_BEST:
-        best = _rank_single_best(
-            pairs,
-            selection_policy=context.method_policies.checkpoint_selection,
-            seed_material_digest=plan.content_digest,
-        )
+        best = _rank_single_best(pairs)
         member_ids = (best.member_id,)
     else:  # pragma: no cover - FinalProductionPolicyIdentity restricts the vocabulary
         raise PostSelectionError(f"Unsupported committee policy {committee!r}.")
+    from .post_selection_identity import final_publication_policy_digest
+
     return FinalProductionPublicationDecision(
         binding=plan.binding,
         final_plan_digest=plan.content_digest,
@@ -507,6 +532,7 @@ def decide_final_production_publication(
         completion_digest=completion.content_digest,
         target_head_name=str(context.method_policies.target_head_name),
         committee_policy=committee,
+        publication_policy_digest=final_publication_policy_digest(policy),
         decision_policy_identity=FINAL_PUBLICATION_DECISION_POLICY_IDENTITY,
         seed_evidence=tuple(item[0] for item in pairs),
         published_member_ids=member_ids,

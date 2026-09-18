@@ -248,21 +248,31 @@ class _Campaign:
 
     @staticmethod
     def finish_run(run_root: Path) -> None:
-        """Publish the terminal record and freeze the owner's completion anchor.
+        """Seal the training-only root at its terminal TRAIN2 boundary.
 
-        This is the real P5 publication order: the terminal evidence becomes
-        durable first, and only then does the owner record the member set that
-        certifies the finished run.
+        This is the real P5 order: the terminal TRAIN2 summary is durable
+        first, and only then does the owner freeze the create-once topology
+        manifest and completion anchor - no assessment file is involved.
         """
 
+        from types import SimpleNamespace
+
         from mdstats.training_data.campaign_post_selection_runtime import (
-            record_post_selection_run_members,
+            record_post_selection_training_completion,
         )
 
-        evidence = Path(run_root) / "run-evidence.json"
-        if not evidence.is_file():
-            evidence.write_text("{}\n", encoding="utf-8")
-        record_post_selection_run_members(run_root)
+        summary = Path(run_root) / "checkpoints" / "train2_runtime.json"
+        summary.parent.mkdir(parents=True, exist_ok=True)
+        if not summary.is_file():
+            summary.write_text("{}\n", encoding="utf-8")
+        record_post_selection_training_completion(
+            run_root,
+            runtime_summary=SimpleNamespace(
+                content_digest="a" * 64, completed_epochs=1, planned_epochs=1
+            ),
+            runtime_plan_digest="b" * 64,
+            materialization_digest="c" * 64,
+        )
 
 
 @pytest.fixture()
@@ -953,7 +963,7 @@ def test_a_run_stays_certified_after_its_terminal_evidence_goes_cold(campaign) -
     )
 
     run_root = campaign.historical_run()
-    (run_root / "run-evidence.json").unlink()
+    (run_root / "checkpoints" / "train2_runtime.json").unlink()
     certified, detail = certify_closed_post_selection_run_root(run_root)
     assert certified, detail
     snapshot = campaign.snapshot()
@@ -977,7 +987,6 @@ def test_a_second_terminal_publication_verifies_rather_than_recomputes(
         RUN_COMPLETION_ANCHOR_FILENAME,
         RUN_TOPOLOGY_MANIFEST_FILENAME,
         certify_closed_post_selection_run_root,
-        record_post_selection_run_members,
     )
 
     run_root = campaign.historical_run()
@@ -985,18 +994,18 @@ def test_a_second_terminal_publication_verifies_rather_than_recomputes(
     topology = run_root / RUN_TOPOLOGY_MANIFEST_FILENAME
     before = (anchor.read_bytes(), topology.read_bytes())
 
-    record_post_selection_run_members(run_root)
+    campaign.finish_run(run_root)
     assert (anchor.read_bytes(), topology.read_bytes()) == before
 
     # Members going cold is the normal case, not a conflict.
     (run_root / "checkpoints" / "epoch-1.pt").unlink()
-    record_post_selection_run_members(run_root)
+    campaign.finish_run(run_root)
     assert (anchor.read_bytes(), topology.read_bytes()) == before
 
     # A foreign descendant does not become owned by republishing either; it
     # simply makes the run uncertifiable.
     (run_root / "checkpoints" / "epoch-2.pt").write_bytes(b"later")
-    record_post_selection_run_members(run_root)
+    campaign.finish_run(run_root)
     assert (anchor.read_bytes(), topology.read_bytes()) == before
     certified, why = certify_closed_post_selection_run_root(run_root)
     assert not certified and "did not write" in why
@@ -1216,7 +1225,7 @@ def _create_archive(campaign, *, keep_hot: bool = False, cfg=None, failpoint=Non
         cfg or campaign.cfg, campaign.paths, campaign.store, campaign.boundary
     )
     if not any(
-        (campaign.paths.internal / "post-selection").glob("g*/runs/*/run-evidence.json")
+        (campaign.paths.internal / "post-selection").glob("g*/runs/*/run-completion.json")
     ):
         campaign.historical_run()
     payload = storage_commands.storage_archive(
@@ -3366,7 +3375,7 @@ def test_the_bounded_report_follows_the_owner_after_terminal_evidence_goes_cold(
     """IR17-6: reporting uses the same completion authority as certification."""
 
     run_root = campaign.historical_run()
-    (run_root / "run-evidence.json").unlink()
+    (run_root / "checkpoints" / "train2_runtime.json").unlink()
     bounded = campaign.snapshot(certify=False).view("p5:run:g7:run-a")
     exact = campaign.snapshot(certify=True).view("p5:run:g7:run-a")
     assert bounded.archive_eligible is exact.archive_eligible is True
@@ -3470,7 +3479,7 @@ def test_a_tampered_completion_proof_never_widens_authority(campaign, damage) ->
     elif damage == "topology_digest":
         _rewrite_json(topology, content_digest="0" * 64)
     elif damage == "anchor_terminal_records":
-        _rewrite_json(anchor, terminal_records=["not-a-terminal-record.json"])
+        _rewrite_json(anchor, terminal_proof={"kind": "not-a-terminal-proof"})
     elif damage == "anchor_run_root":
         _rewrite_json(anchor, run_root="some-other-run")
     elif damage == "anchor_node_count":
@@ -3875,7 +3884,7 @@ def test_a_same_name_node_substitution_is_never_the_node_the_owner_certified(
         victim = owned_dir
     elif substitution == "symlink":
         checkpoint.unlink()
-        checkpoint.symlink_to(run_root / "run-evidence.json")
+        checkpoint.symlink_to(run_root / "checkpoints" / "train2_runtime.json")
         victim = checkpoint
     else:
         checkpoint.unlink()

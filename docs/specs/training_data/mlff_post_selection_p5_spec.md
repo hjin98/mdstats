@@ -1,6 +1,6 @@
 # MLFF post-selection P5 renewal candidate specification
 
-**Status:** proposed renewed D4 contract; R2 handoff repair prepared, implementation blocked until fresh Gate-D independent Review passes the repaired candidate  
+**Status:** renewed D4 contract; Gate-D R3 independent Review PASS of `de360579`; D4 implementation candidate prepared, pending independent D4 Review
 **Upstream authority:** ratified D1, stakeholder-ratified D2 target `32508991d472c1c6e4bd8b818b38d0880401845f` / D2 blob `30e6e6336cf41a05879650a3a2d7d583c4ef713a`, and the accompanying D3 MLFF training-data architecture candidate  
 **Scope:** current P5 only; P3 target-size screening and P5 scratch retain their separately accepted contracts
 
@@ -739,3 +739,24 @@ Focused tests alone do not close the work. Final acceptance also requires affect
 ## 21. Documentation boundary
 
 This specification is the pre-code G1B handoff freeze. Later implementation documentation may add examples, concrete schema tokens, generated views, and explanatory history, but it may not change method-bearing schema presence/absence, failure behavior, currentness, public/config semantics, or owner-facing interfaces without reopening G1B and any upstream owner actually affected.
+
+## 22. Implementation realization (informative)
+
+This section records concrete D4 tokens chosen within the delegated space of sections 3-17; it changes no contract above.
+
+| Contract object | Realization |
+|---|---|
+| training-only method identity | `mdstats.post-selection-method-identity.v4` (v3 readable only by the one-time training-equivalence projection) |
+| `TrainingTrajectoryIdentity` | `mdstats.post-selection-training-trajectory.v1`; run root = its digest |
+| CV / final run plans | `...-cv-fold-run-plan.v2`, `...-final-production-run-plan.v2` (carry the trajectory) |
+| CV / final plans | `...-cv-plan.v3`, `...-final-production-plan.v3` (label-blind transfer-consumer composition identity; one-time `legacy_source_plan_digest` locator) |
+| fitted preparation | `mdstats.post-selection-fitted-preparation.v4` (binds the trajectory) |
+| training materialization | `mdstats.post-selection-materialization.v3` (no held-out transport) |
+| completion proof | `mdstats.post-selection-run-completion.v2` with a `train2_terminal` proof; v1 anchors remain valid historical proofs |
+| hard policy / warning | `mdstats.train2-checkpoint-admissibility-policy.v2` (`replay_catastrophic_forgetting_limit_exceeded`); `mdstats.train2-replay-warning-diagnostic-policy.v1` (`replay_degradation_warning_threshold_exceeded`) |
+| measurement identity | `mdstats.post-selection-eval2-measurement.v2` (`EvaluationMeasurementIdentity`, published as its own evidence object); predictions `...-eval2-predictions.v2`; `mdstats.eval2-checkpoint-record.v2` links replay measurement records |
+| assessments | `mdstats.post-selection-cv-fold-acceptance.v3`, `mdstats.post-selection-run-evidence.v2`, `mdstats.post-selection-cv-campaign-acceptance.v2` |
+| assessment locator | CampaignStore pointer kind `assessment_position` keyed by `mdstats.post-selection-assessment-position.v1` |
+| publication | `mdstats.post-selection-final-publication-decision.v3`, seed evidence v2, decision identity `...strict-target-rmse-seed-sha256.v3`, `mdstats.post-selection-final-publication-policy.v1` |
+| diagnostics | `mdstats.post-selection-checkpoint-diagnostics.v1` (unreferenced diagnostic evidence) |
+| held-out transport | bounded `tempfile` scratch outside every training root, removed on return |

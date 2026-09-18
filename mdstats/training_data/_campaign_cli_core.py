@@ -7309,19 +7309,20 @@ max_num_epochs = 30
 # drawn from the neutral OUTER_MONITOR role, outside every fold; the held-out
 # outer fold never controls checkpoint choice.
 purge_components_between_roles = 0
-# CV checkpoint competence ceiling on the campaign-common target monitor
-# (eV/angstrom). Foundation CV checkpoints must reach this target-force RMSE
-# ceiling to be considered admissible candidates. Default is 0.045 eV/angstrom.
-checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.045
-# The target-only outer-fold acceptance predicate. Replay evidence gates
-# admissibility but contributes no acceptance or ranking credit. The threshold
-# has the units of acceptance_metric. Foundation CV (naive_fine_tuning,
-# multihead_replay) asks whether every required fold/seed reaches a competent
-# regime: its held-out default is 0.045 eV/angstrom (configurable here) and its
-# checkpoint competence ceiling defaults to 0.045 eV/angstrom (configurable
-# above). Scratch defaults to 0.030. An explicit value is used as written.
+# CV checkpoint competence ceiling tau_CV on the campaign-common target monitor
+# (eV/angstrom, inclusive). Foundation CV checkpoints must reach this
+# target-force RMSE to be hard-admissible. Default 0.075 eV/angstrom. It is an
+# assessment coordinate: editing it re-assesses existing CV training without
+# retraining.
+checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.075
+# The target-only outer-fold acceptance predicate theta_CV (inclusive). Replay
+# evidence contributes no acceptance or ranking credit. The threshold has the
+# units of acceptance_metric; the 0.075 eV/angstrom default applies to the
+# default target_force_rmse_ev_per_angstrom metric only (an alternative metric
+# keeps its own resolution). Scratch defaults to 0.030. An explicit value is
+# used as written under the current checkpoint-policy generation.
 acceptance_metric = "target_force_rmse_ev_per_angstrom"
-acceptance_maximum = 0.045
+acceptance_maximum = 0.075
 
 [post_selection.production]
 # Fresh final training on the full exact T_selected, run by `train-production`
@@ -7569,23 +7570,33 @@ allow_small_corpus = false
 allow_unspecified_label_provenance = false
 
 [acceptance]
-# TRAIN2A target qualification boundary plus foundation-relative TRUE_DFT replay
-# retention budget. Replay is a hard admissibility constraint only; extra replay
-# margin earns zero checkpoint or seed ranking credit. In post-selection the
-# target ceiling is the final-production checkpoint quality criterion (and the
-# scratch CV checkpoint ceiling), default 0.030 eV/angstrom; foundation CV
-# checkpoints use their own configurable competence ceiling (default 0.045
-# eV/angstrom under [post_selection.cv]). The replay budget is shared by CV and production.
-maximum_target_force_rmse_ev_per_angstrom = 0.030
-allowed_replay_degradation_mev_per_a = 30.0
+# P5 checkpoint-policy generation (campaign schema stays v2). With this marker
+# every value below is used exactly as written; without it, historical generated
+# defaults are migrated and ambiguous historical replay budgets fail closed.
+post_selection_checkpoint_policy_generation = "p5_target_replay_v2"
+# Final-production checkpoint target-force ceiling tau_prod (eV/angstrom,
+# inclusive) on the campaign-common monitor; also the scratch CV checkpoint
+# ceiling. Foundation default 0.050 (scratch 0.030).
+maximum_target_force_rmse_ev_per_angstrom = 0.050
+# Signed candidate-minus-foundation TRUE_DFT replay force-RMSE degradation,
+# shared by CV and production (meV/angstrom, strict >, require warning < hard).
+# Above the warning threshold a checkpoint carries a diagnostic warning only;
+# above the hard limit it is rejected as catastrophic forgetting. Replay earns
+# zero checkpoint or seed ranking credit; the representative is the strict
+# minimum target RMSE among hard-admissible checkpoints. Both are assessment
+# coordinates: editing either never retrains.
+replay_degradation_warning_mev_per_a = 50.0
+replay_degradation_hard_limit_mev_per_a = 100.0
 # Other safety thresholds remain independent hard/diagnostic gates.
 maximum_energy_mae_ev_per_atom = 0.005
 maximum_focus_force_rmse_ev_per_angstrom = 0.10
 maximum_stress_rmse_ev_per_angstrom3 = 0.02
 maximum_worst_condition_force_rmse_ev_per_angstrom = 0.15
 [evaluation]
-# TRAIN2A/EVAL2 selection authority is target-only after hard admissibility.
-# No replay score weight or replay tie-break exists in the new schema.
+# Generic EVAL2 settings. P5 post-selection does NOT use the refinement
+# reservation, practical-equivalence/bootstrap bands, secondary metrics or
+# maturity: every durable P5 checkpoint is assessed and the representative is
+# the strict minimum target RMSE (exact ties by epoch, then checkpoint SHA-256).
 primary_target_metric = "target_force_rmse_ev_per_angstrom"
 refinement_reserved_candidates = 2
 bootstrap_replicates = 2000
@@ -7593,8 +7604,8 @@ bootstrap_confidence = 0.95
 bootstrap_min_independent_blocks = 10
 device = "{default_device}"
 dtype = "{precision['evaluation_dtype']}"
-# TRAIN2A/EVAL2 authority: target-ranked shortlist with reserved refinement candidates;
-# replay remains a hard TRUE_DFT retention gate with zero ranking/tie-break credit.
+# checkpoint_strategy names the TRAIN2/EVAL2 generation; P5 replay is a
+# catastrophic hard gate plus diagnostic warning with zero ranking credit.
 # Historical MLCV configs retain checkpoint_strategy="mlcv_nested_cv" and older
 # adaptive configs retain their original checkpoint_strategy values.
 checkpoint_strategy = "train2_target_first"
