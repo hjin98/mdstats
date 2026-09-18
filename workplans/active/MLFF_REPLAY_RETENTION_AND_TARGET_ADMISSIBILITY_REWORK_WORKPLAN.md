@@ -1150,7 +1150,7 @@ The stakeholder also questioned the D1 ledger entry `P5 E:F:S coefficients = 1:1
 
 New immutable D1 R3 candidate:
 
-- commit: `30277f816b847aadf361a4baa888853d36854e6b`;
+- commit: `e29030ff9501ed2df6e0a96c693b4f98f3aa4c94`;
 - canonical D1 blob: `93db84050e68ec5488282e75463556d02d0973af`;
 - dependency trace: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D1_DEPENDENCY_TRACE_R3.md`.
 
