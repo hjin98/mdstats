@@ -921,30 +921,37 @@ Project engineering memory is applicable because this cycle changes mature P5 id
 
 ```yaml
 pem_basis:
-  current_project_state: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
-  published_pem_reconciled_through: 4eabe2ae9783c7ff92f3a1093c37502a01380812
+  accepted_project_state: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
+  accepted_pem: hjin98/mdstats@a759e81aa1b4c70c8fb513c569ddce57e99cbdb2:PROJECT-ENGINEERING-MEMORY.md
   candidate_overlay_semantic_candidate: NONE
 has:
-
   - id: FF-002
     disposition: APPLICABLE
-    reason: Currentness must distinguish genuinely incompatible historical training semantics from policy-only assessment changes; old incompatible trajectories must still fail closed.
+    reason: Historical continuation must distinguish authenticated training semantics from assessment-only changes and fail closed before an exact restart boundary.
+
+  - id: FF-003
+    disposition: APPLICABLE
+    reason: Sealed P5 root reads and assessment publication must reuse the existing P5/storage ownership and exclusion order rather than create a second mutation or reader-lock route.
 
   - id: SP-001
     disposition: APPLICABLE
-    reason: Remove the replay threshold from over-broad training identity rather than add compatibility wrappers, shadow policy owners or duplicated checkpoint-selection paths.
+    reason: Remove assessment coordinates from over-broad training identity and reuse existing pointer/evidence owners rather than add wrappers, shadow registries, or a second checkpoint selector.
 
   - id: SP-002
     disposition: APPLICABLE
-    reason: Method, role-policy, run-plan, assessment and recovery boundaries must remain explicit and fail closed when a true semantic mismatch occurs.
+    reason: Training, measurement, assessment, restart, and storage boundaries must remain authenticated and fail closed on real semantic disagreement.
 
   - id: SP-003
     disposition: APPLICABLE
-    reason: Preserve valid immutable selection, replay source/split/cache, common-monitor, foundation, TRAIN2 checkpoint and measurement evidence rather than globally invalidating it.
+    reason: Preserve immutable valid TRAIN2 roots and exact measurements when their governing equivalence remains applicable; publish new assessments rather than rewrite history.
 
   - id: SP-004
     disposition: APPLICABLE
-    reason: Qualification must exercise the real cross-validate/train-production -> TRAIN2 recovery -> full EVAL2 -> representative -> verdict/publication path, including old-workspace reuse.
+    reason: Acceptance must exercise the real cross-validate/train-production -> TRAIN2 recovery -> EVAL2 -> assessment -> publication owners, including historical-workspace reuse.
+
+  - id: NT-001
+    disposition: NOT_APPLICABLE
+    reason: The notice is retired; its durable lessons are carried by the current FF/SP entries above and it is not an active authority or recurrence claim for this cycle.
 ```
 
 Also review the post-selection restoration recurrence record that required D1/D2 reopening if correctly restored TRUE_DFT replay still showed material forgetting inconsistent with accepted gates.
@@ -1201,7 +1208,7 @@ On 2026-09-18 the stakeholder explicitly accepted that exact candidate. Ratifica
 
 The reviewed D1 blob is not rewritten by ratification. It is the accepted branch-local D1 parent for Gate C.
 
-### Gate C - D2 numerical renewal - R2 REVIEW PASS / AWAITING STAKEHOLDER RATIFICATION
+### Gate C - D2 numerical renewal - CLOSED / ACCEPTED
 
 Formally define:
 
@@ -1219,9 +1226,11 @@ A renderer-only descendant then removed disallowed `\\operatorname` constructs a
 
 A second renderer-only repair was required because D2.DEF.027 still used escaped set braces and compound restricted-sum subscripts that triggered the renderer's “Extra open brace or missing close brace” failure. The exact sets and sums are now expressed through named restricted witness sets and simple sums. Repair record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_R2_RENDER_REPAIR_2.md`.
 
-The final renderer-safe D2 ratification target is `32508991d472c1c6e4bd8b818b38d0880401845f`, with D2 blob `30e6e6336cf41a05879650a3a2d7d583c4ef713a`. Its semantic basis remains the independently reviewed D2 R2 target `4f161b1c4820de10abe638287b13152147d12fd9`. Gate C remains open only for ratification of this exact representation-safe target; D3 stays blocked until ratification.
+The final renderer-safe D2 ratification target is `32508991d472c1c6e4bd8b818b38d0880401845f`, with D2 blob `30e6e6336cf41a05879650a3a2d7d583c4ef713a`. Its semantic basis remains the independently reviewed D2 R2 target `4f161b1c4820de10abe638287b13152147d12fd9`.
 
-### Gate D - D3 authority/currentness reconciliation
+On 2026-09-18 the stakeholder explicitly accepted that exact D2 candidate. Ratification record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_R2_RATIFICATION.md`. The D2 blob remains unchanged by ratification. Gate C is closed; Gate D may proceed.
+
+### Gate D - D3 authority/currentness reconciliation - CANDIDATE PREPARED / INDEPENDENT REVIEW REQUIRED
 
 Before code edits:
 
@@ -1239,9 +1248,9 @@ Before code edits:
 - prove currentness/recovery can preserve old TRAIN2 without a shadow compatibility subsystem or second evidence store;
 - reconcile the narrow `post_selection_checkpoint_policy_generation` migration without changing global campaign schema v2, while deliberately migrating foundation CV defaults and preserving collateral scratch semantics.
 
-Independent D3 review required if durable architecture changes.
+This cycle does materially change durable D3 ownership/currentness. The canonical D3 architecture candidate and proposed D4 child contract are prepared on this branch together with the focused D3->D4 implementation workplan. They are not accepted-current until a fresh independent D3 Review falsifies the immutable candidate and returns PASS. Implementation remains blocked until that Review closes Gate D.
 
-### Gate E - D4 implementation
+### Gate E - D4 implementation - BLOCKED ON GATE D ACCEPTANCE
 
 Implement by reduction/rewiring at current owners:
 
