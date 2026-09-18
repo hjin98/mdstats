@@ -266,3 +266,14 @@ One blocker remains:
 Repair the derived trace at its real representation owner, perform a fresh semantic directness/reverse-impact pass over all 106 objects, and cut a new immutable target. Do not change the accepted/proposed D1/D2 kernels or D4 weighted-quantile implementation merely to close this representation defect unless the audit independently discovers a semantic defect.
 
 Current R4 D4 evidence may remain applicable to an R5 documentation-only descendant only if the D4 owner and both affected test blobs remain identical and no executable dependency/environment assumption changes. GPU qualification remains outside this gate.
+
+
+## 13. R5 author repair closure and fresh-review gate
+
+R5 repairs the sole blocker from Independent Review R4 without changing either proposed semantic kernel or any executable owner.
+
+The R5 trace replaces the R4 trace after a complete semantic directness/reverse-impact pass over all 106 formal objects. The repair adds fourteen direct edges across nine rows, including the four R4 review witness classes and additional same-class omissions found during the full pass. Mechanical validation after those semantic decisions reports one row per formal subject, no unresolved prerequisite and no object-level cycle. A formal-ID mention cross-check leaves only the deliberate `D2.DEF.029` statement that its Phase-A predicate is distinct from `D2.DEF.020`; that mention is intentionally not a dependency.
+
+The D1 kernel, D2 kernel, weighted-quantile D4 owner, focused FP64 regression and full real-owner test suite are unchanged from R4. Therefore passing CPU evidence runs `35300235175` and `35300268107` remain applicable provided blob identity is rechecked at the new immutable target. No functional rerun is required for this documentation-only trace repair unless an executable blob or environment contract changes.
+
+R5 must cut a new immutable target containing the R5 trace, this workplan state and an R5 repair-closure record. A descendant handoff must request a fresh full assembled-candidate Review; author-side closure is not PASS, ratification or promotion. GPU qualification remains deferred and outside this gate.
