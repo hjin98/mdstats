@@ -144,10 +144,10 @@ Acceptance:
 
 ### I4 - Assessment-independent measurement identity
 
-Advance target/replay metric role/prediction schemas as needed so future records directly bind checkpoint/model state, exact evaluation artifact/membership, metric/reduction/units, head/prediction/provider semantics, and numerically material precision. Exclude thresholds/full assessment-plan digest.
+Advance target/replay/held-out metric role/prediction schemas so future records directly bind checkpoint/model state, exact evaluation artifact/membership, metric/reduction/units, head/prediction/provider semantics, and numerically material precision. Rework `post_selection_eval_role_digest()` or its successor so full `run_plan_digest` / assessment-policy ancestry is absent unless a projected field independently changes the numerical experiment. Exclude thresholds/full assessment-plan digest.
 
 Acceptance:
-- policy-only edit preserves measurement identity;
+- policy-only/full-plan-only edit preserves measurement and evaluation-role identity;
 - materially changed evaluation input moves it;
 - historical scalar-only equivalence is rejected.
 

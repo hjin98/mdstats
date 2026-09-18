@@ -524,7 +524,7 @@ Historical materialization schema v2 may contain `outer_evaluation_artifact` and
 
 ### 15.2 Assessment-independent measurement records
 
-Advance the target/replay measurement identity/schema wherever current role/prediction digests inherit a full run-plan ancestry. A current measurement record SHALL directly bind all numerically material inputs needed by D2.DEF.060B:
+Advance the target/replay/held-out measurement identity/schema wherever current role/prediction digests inherit full run-plan ancestry. In particular, `post_selection_eval_role_digest()` or its successor SHALL NOT hash the full `run_plan_digest`, current hard/outer policy, or publication policy merely to preserve the historical schema shape. It binds only the exact evaluation experiment coordinates that are numerically material. A current measurement record SHALL directly bind all numerically material inputs needed by D2.DEF.060B:
 
 ```text
 exact checkpoint/model-state identity
@@ -709,7 +709,7 @@ Implementation acceptance SHALL exercise the real P5 owners and reject at least 
 21. warning-only diagnostics, current-CV-authorization-only edits, or D2.DEF.059B/publication-mode-only edits move a final-seed hard-assessment position locator;
 22. a final hard-policy or D2.DEF.059A change fails to derive a new final-seed assessment position over the same training trajectory, or a 059B-only change fails to derive a new aggregate publication decision;
 23. a second pointer database, assessment filesystem registry, shadow evidence store, or content-store scan is introduced;
-24. a future target/replay measurement digest changes solely because an assessment threshold/full role-plan digest changed;
+24. a future target/replay/held-out measurement or evaluation-role digest changes solely because an assessment threshold/full role-plan digest changed, or `post_selection_eval_role_digest()` retains full `run_plan_digest` ancestry without independent numerical meaning;
 25. historical scalar equality alone is accepted as measurement equivalence;
 26. failure to reuse historical measurement triggers TRAIN2 rather than EVAL2-only recomputation;
 27. any affected historical CV fold is skipped because it previously passed;
