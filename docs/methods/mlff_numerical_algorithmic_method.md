@@ -1,23 +1,27 @@
 ---
-kind: accepted-D2-authority-kernel
+kind: proposed-D2-authority-kernel
 protocol_version: 6.4.0
-status: ACCEPTED_CURRENT
-accepted_date: 2026-09-17
-accepted_basis: cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824
-independent_review_target: e827aef9bdceb97aae5be6e89de0585a95dcf71c
-independent_review_commit: 2eddd9058beda039e0ff53d4e50a189be469173b
-ratified_candidate_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
-parent_D1_authority: docs/methods/mlff_scientific_method.md
-workplan_id: MLFF-D1-D2-SSDP64-AXIOMATIC-FORMALIZATION-1
+status: PROPOSED_RENEWAL_CANDIDATE_AWAITING_INDEPENDENT_REVIEW
+accepted_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
+accepted_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
+prior_independent_review_target: e827aef9bdceb97aae5be6e89de0585a95dcf71c
+prior_independent_review_commit: 2eddd9058beda039e0ff53d4e50a189be469173b
+parent_D1_ratified_target: d761171f3c86c3c79b87a90cfc02ac324c261b1a
+parent_D1_blob: 612294ec4680db01a18085e13fbfe5dcfa9fb7ed
+parent_D1_ratification_record: workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D1_R3_RATIFICATION.md
+workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-REWORK-1
+stakeholder_direction_date: 2026-09-18
 ---
 
-# mdstats MLFF D2 formal numerical authority kernel — Protocol 6.4 accepted current
+# mdstats MLFF D2 formal numerical authority kernel — Protocol 6.4 proposed replay/target-policy renewal
 
 ## 1. Authority and exact import registry
 
-This file is the canonical current D2 authority kernel for the mdstats MLFF numerical method. It formalizes, without changing, the accepted numerical meaning reconstructed at basis `cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824` and exact-imports the detailed pre-Protocol-6.4 source papers pinned at stakeholder-ratified target `a4824d28775164aa942fd29fa97ee0957eb87e6f`.
+The accepted-current D2 authority remains the repository state on `main@a759e81aa1b4c70c8fb513c569ddce57e99cbdb2` until this candidate passes fresh independent Protocol-6.4 D2 Review and receives the required stakeholder ratification. This file is the proposed D2 replacement on the replay-retention, foundation role-threshold, foundation-P5 representative-selection, reassessment, and training/measurement-equivalence surface.
 
-Independent assembled-candidate Review passed on immutable target `e827aef9bdceb97aae5be6e89de0585a95dcf71c` at review commit `2eddd9058beda039e0ff53d4e50a189be469173b`. The stakeholder then identified a renderer-only notation defect in D2.DEF.027. Target `a4824d28775164aa942fd29fa97ee0957eb87e6f` replaces the two renderer-sensitive stacked-index restricted sums with algebraically identical single-line restricted-index sums, changes no numerical decision or tolerance, and was explicitly ratified for canonical promotion on 2026-09-17.
+Its parent D1 authority is the independently reviewed and stakeholder-ratified immutable target `d761171f3c86c3c79b87a90cfc02ac324c261b1a` with canonical D1 blob `612294ec4680db01a18085e13fbfe5dcfa9fb7ed`.
+
+The accepted D2 numerical meaning reconstructed at basis `cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824` and exact sources pinned at `a4824d28775164aa942fd29fa97ee0957eb87e6f` remain imported for every unaffected surface. The prior assembled-candidate Review passed on `e827aef9bdceb97aae5be6e89de0585a95dcf71c` at `2eddd9058beda039e0ff53d4e50a189be469173b`; that prior PASS is historical evidence, not acceptance of this material renewal.
 
 Exact accepted sources are:
 
@@ -43,7 +47,15 @@ Exact specialized imports are:
 - `D2.IMP.PRODUCTION` = `D2.SRC.GENERAL`, Sections 19-23;
 - `D2.IMP.ORDER` = `D2.SRC.ORDER`, Sections 2-16.
 
-These exact imports are normative roots for accepted details not restated below. Definitions below formalize high-risk semantics but cannot change imported meaning.
+These exact imports are normative roots for accepted details not restated below. Definitions below formalize high-risk semantics. On this candidate only, the local definitions/axioms below supersede conflicting imported clauses on these bounded surfaces:
+
+- `D2.DEF.052`: replay evidence qualification/lineage excludes checkpoint warning/hard thresholds and checkpoint-ordering policy;
+- `D2.DEF.057-059B`: signed replay degradation, diagnostic/hard classification, role thresholds `75/75/50 meV/angstrom`, complete-checkpoint strict target ordering, and final single-best-seed ordering;
+- `D2.AX.004-005`: assessment-policy currentness and current-CV reauthorization of historically fresh final production;
+- `D2.DEF.060-060C`: training-semantic continuation/reuse, measurement equivalence, and policy reassessment;
+- the parameter ledger, falsification oracles, D2-to-D3 handoff, and candidate lifecycle statements descending from those changes.
+
+In particular, imported prose that treats replay degradation as one hard budget, gives replay/secondary/uncertainty/maturity evidence authority to outrank a lower foundation-P5 target RMSE, binds assessment-only thresholds/order into training continuation semantics, or fixes foundation role defaults at `45/45/30 meV/angstrom` is superseded here. P3 practical-equivalence ranking and every unaffected numerical method remain imported unchanged.
 
 Unless narrowed below: scientific scalar decision arithmetic is IEEE-754 binary64; counts/indices are exact integers of sufficient range; canonical ordering is accepted deterministic identity order; non-finite/undefined/stale/impossible cases fail closed; and optimized execution is admissible only under the accepted equivalence relation. Binding classes are those of the current accepted D1 authority.
 
@@ -697,11 +709,13 @@ $$
 
 denote the replay/pretraining-head foundation elemental-reference mapping imported exactly from `D2.IMP.E0_HEADS`. It must be extracted from the same authenticated selected foundation checkpoint/head/lineage that initializes the accepted replay method. It is distinct from the fitted target correction `e_target(Phi)` of D2.DEF.041. A first/default/other-head fallback is non-equivalent. If the exact replay-head mapping cannot be established for the selected lineage, replay preparation is undefined and fails closed.
 
-### D2.DEF.052 — Replay lineage and qualification currentness
+### D2.DEF.052 — Replay lineage and evidence-qualification currentness
 
-Let `Q_r` be the exact replay qualification-policy/evidence identity and current qualification state required by D1.DEF.022 and the accepted replay/checkpoint owners. It includes the independent true-reference retention qualification applicable to the configured replay method and is separate from training label mode.
+Let `Q_r` be the exact replay **evidence-qualification** identity/state required by D1.DEF.022: source/label/provider validity, independent true-reference replay-monitor validity, and other evidence conditions needed to interpret replay training and replay-retention measurements. `Q_r` does not contain `delta_warn`, `delta_hard`, a role target ceiling, or checkpoint-selection ordering.
 
-Replay lineage binds replay geometry/source membership/split, label mode, true-reference monitor, `Q_r`, foundation/head where applicable, `e_replay(Phi)` where applicable, prediction policy, and realized exposure. Changing any component, including replay qualification policy/evidence/state, invalidates dependent P5 evidence. Changing label mode over the same authenticated prepared source/split does not by itself change replay geometry membership.
+Replay lineage binds replay geometry/source membership/split, label mode, exact true-reference monitor, `Q_r`, exact foundation checkpoint/head `Phi`, `e_replay(Phi)` where applicable, prediction policy, and realized exposure. Changing any lineage component invalidates dependent replay training/evaluation evidence according to the affected component. Changing label mode over one authenticated prepared source/split does not by itself change replay geometry membership.
+
+Changing only `delta_warn` or `delta_hard` does not change replay geometry, training labels, realized exposure, foundation identity, true-reference measurement identity, or TRAIN2 trajectory. Those thresholds classify already-defined replay measurements later under D2.DEF.057.
 
 ### D2.DEF.053 — Combined corpus and update geometry
 
@@ -755,50 +769,198 @@ If zero purge is empty; if one choose middle; if greater than one use ties-to-ev
 
 ## 14. Checkpoint predicates, CV, and production
 
-### D2.DEF.057 — Shared checkpoint constraint
+### D2.DEF.057 — True-reference replay degradation and decision classification
 
-For checkpoint `c`, `S(c)` is exact shared mandatory constraint conjunction imported from `D2.IMP.CV`: finite required metrics, replay degradation within accepted budget using authenticated true-reference replay monitor when replay active, plus required physical/integrity gates. Pseudo labels cannot satisfy true-reference retention. Replay-active evidence must belong to the current `Q_r` lineage of D2.DEF.052.
+For replay-enabled foundation adaptation and checkpoint `c`, let
+
+$$
+R_c=R_{\mathrm{replay}}(c),\qquad R_0=R_{\mathrm{replay}}(\Phi)
+$$
+
+be finite canonical binary64 force-component RMSE values in `eV/angstrom` computed on the **same exact** authenticated true-reference replay monitor under the same metric/reduction, label/reference, provider/model-realization, head and precision semantics. A scalar value without this common provenance cannot enter the degradation calculation.
+
+Define the canonical signed degradation by one IEEE-754 binary64 round-to-nearest, ties-to-even subtraction,
+
+$$
+\Delta_R(c)=\operatorname{RN}_{64}(R_c-R_0).
+$$
+
+No absolute value, ratio, percentage, normalization, clipping, epsilon, or rounding-before-comparison is introduced.
+
+The replay decision-policy family is `(delta_warn,delta_hard)` in internal `eV/angstrom`. Public values expressed in `meV/angstrom` are converted once by
+
+$$
+\delta=\operatorname{RN}_{64}(10^{-3}v_{\mathrm{meV/angstrom}}).
+$$
+
+The resolved internal values must be finite and positive and must satisfy
+
+$$
+0<\delta_{\mathrm{warn}}<\delta_{\mathrm{hard}}.
+$$
+
+If conversion collapses two distinct public values to equal binary64 internal values, the policy is invalid rather than silently reordered.
+
+For finite authenticated replay evidence,
+
+$$
+W(c)=[\Delta_R(c)>\delta_{\mathrm{warn}}],
+$$
+
+$$
+F_{\mathrm{replay}}(c)=[\Delta_R(c)>\delta_{\mathrm{hard}}],
+$$
+
+with generated defaults `delta_warn = 0.050 eV/angstrom` and `delta_hard = 0.100 eV/angstrom`. Equality at either threshold does not trigger its strict-exceedance predicate. Negative degradation is neither warning nor catastrophic failure.
+
+Let `S(c)` be the shared hard checkpoint-constraint conjunction: every required finite/evidence-validity and physical/integrity condition plus, when replay is enabled, `not F_replay(c)`. Missing, stale, unauthenticated, incompatible or non-finite required replay evidence is a hard evidence-validity failure independent of the numeric degradation class. `W(c)` is diagnostic only and is not an argument of `S(c)`.
+
+The decision is defined on the canonical binary64 measurements and thresholds above. Representation rounding is therefore part of the numerical method; it does not create an uncertainty band or permission to widen either comparison.
 
 ### D2.DEF.058 — Role-effective checkpoint predicate
 
-Let `r_mon(c)` be target force-component RMSE on exact `M_mon` in `eV/angstrom`. For role `rho`,
+Let `r_mon(c)` be the finite canonical binary64 target force-component RMSE on exact `M_mon` in `eV/angstrom`. For foundation role `rho`,
 
 $$
 A_\rho(c)=S(c)\wedge r_{\mathrm{mon}}(c)\le\tau_\rho.
 $$
 
-CV uses `tau_CV`, production `tau_prod`. Inclusive binary64 boundary: equality passes, next representable double above resolved ceiling fails.
+CV uses generated/default `tau_CV = 0.075 eV/angstrom`; production uses generated/default `tau_prod = 0.050 eV/angstrom`. Each resolved threshold is a finite positive canonical binary64 value in `eV/angstrom`; explicit configured values remain their resolved values.
+
+The comparison is direct binary64 `<=` with no epsilon or practical-equivalence band. Exact equality passes. The next representable binary64 value above the resolved ceiling fails. Scratch retains its separately accepted threshold semantics.
 
 ### D2.DEF.059 — CV outer predicate and all-position acceptance
 
-Frozen fold representative passes outer criterion iff exact configured held-out metric is finite and `<=theta_CV`. Alternative outer metrics retain own units/threshold and never supply `tau_CV`.
+Let the frozen representative's configured held-out metric on exact `O_i` be `r_out`. Under the default outer metric `target_force_rmse_ev_per_angstrom`, `r_out` is finite canonical binary64 target force-component RMSE in `eV/angstrom` and generated/default
 
-CV accepts iff every required `(fold,seed)` position completes frozen method/horizon, has nonempty admissible checkpoint set under D2.DEF.058, freezes a representative under imported accepted target-side ranking, and that representative passes outer predicate. No mean/majority/best-seed/dispersion rescue exists.
+$$
+\theta_{\mathrm{CV}}=0.075\ \mathrm{eV/angstrom}.
+$$
 
-### D2.AX.004 — Role currentness
+The representative passes iff `r_out <= theta_CV`, with the same direct inclusive binary64 boundary rule as D2.DEF.058.
 
-Changing `tau_CV` or `theta_CV` stales dependent CV evidence and production authorization derived from it while leaving `tau_prod` and shared method unchanged. Changing `tau_prod` stales production role evidence only. Changing shared `S` can stale both. A replay-qualification change stales replay-dependent P5 evidence through D2.DEF.052 without changing replay geometry membership solely because label mode changed. Re-thresholding stored classifications does not create current evidence.
+An explicitly different outer metric retains its own accepted units, estimator and threshold-resolution semantics. This renewal does **not** assign `0.075` to another metric merely because its threshold is omitted or numerically resembles the old force-RMSE default; an alternative outer metric never supplies `tau_CV`.
 
-### D2.AX.005 — Fresh production
+CV accepts iff every required `(fold,seed)` position completes the frozen fixed-budget method/horizon, every governed checkpoint position is assessed as required by D1.DEF.026, the position has a nonempty hard-admissible set under D2.DEF.058, its representative is frozen under D2.DEF.059A, and that representative passes the outer predicate. No mean, majority, best-seed or dispersion rescue exists.
 
-Fresh production starts new model/optimizer lineage on exact complete `T_selected`, fits training-dependent state there only, uses same `M_mon` and shared checkpoint mechanics as CV, and applies `tau_prod`. P3 `M3` has no production checkpoint role. Replay-enabled production retains D2.DEF.051-053, current `Q_r`, exact `e_replay(Phi)` where applicable, plus true-reference retention.
+### D2.DEF.059A — Complete-checkpoint strict target representative order
+
+For a realized foundation-P5 role `rho`, let `C_rho` be the governed durable checkpoint universe from D1.DEF.026 and
+
+$$
+H_\rho=\{c\in C_\rho:A_\rho(c)\}.
+$$
+
+Every member of `C_rho` receives its required assessment; a missing/invalid measurement or evidence item is handled by the applicable hard failure and is never silently removed by shortlist/rescue logic.
+
+If `H_rho` is empty, there is no representative. Otherwise define the deterministic within-run key
+
+$$
+K_{\mathrm{run}}(c)=
+\bigl(r_{\mathrm{mon}}(c),\operatorname{epoch}(c),\operatorname{sha256}(c)\bigr),
+$$
+
+ordered lexicographically ascending, where `r_mon` is the exact canonical binary64 value, `epoch` is the exact checkpoint epoch integer, and `sha256` is the canonical lowercase hexadecimal checkpoint digest.
+
+The representative is
+
+$$
+c^*=\arg\min_{c\in H_\rho}K_{\mathrm{run}}(c).
+$$
+
+The first coordinate is strict primary authority: a checkpoint with larger finite `r_mon` can never win because of replay margin/warning state, energy/stress/secondary target diagnostics, maturity/refinement phase, practical-equivalence bands, bootstrap uncertainty, historical score weights, or evaluator shortlist status. The epoch/digest coordinates are consulted only when the canonical binary64 target RMSE values are exactly equal.
+
+Quality-dependent thinning of `C_rho` is not equivalent to this algorithm.
+
+### D2.DEF.059B — Final single-best-seed order
+
+Each required production seed first freezes its representative under D2.DEF.059A.
+
+For `all_qualified_final_seeds`, no cross-seed numerical ranking is performed.
+
+For `single_best_final_seed`, for every already-frozen admissible seed representative `c_s`, define
+
+$$
+K_{\mathrm{seed}}(s)=
+\bigl(r_{\mathrm{mon}}(c_s),\operatorname{optimizer\_seed}(s),\operatorname{sha256}(c_s)\bigr).
+$$
+
+The published member is the lexicographic minimum. No new target evaluation is performed. Replay values/warnings, secondary metrics, maturity/refinement, practical-equivalence and bootstrap quantities cannot affect the ordering. Seed and digest are consulted only after exact equality of canonical binary64 target RMSE.
+
+### D2.AX.004 — Assessment-policy currentness and numerical noninterference
+
+The following dependency consequences are normative:
+
+1. changing only `delta_warn` changes warning/report classification only; replay measurements, hard admissibility, `H_rho`, representative identity, outer measurement, CV verdict, production authorization, publication membership and TRAIN2 remain current;
+2. changing `delta_hard` changes hard checkpoint assessment, `H_rho`, representative and dependent CV/final verdict/publication, but not authenticated replay numeric measurements or TRAIN2;
+3. changing `tau_CV` changes CV hard checkpoint assessment, `H_CV`, representative, and therefore dependent outer evaluation/verdict and production authorization, but not CV TRAIN2 or already-authenticated checkpoint/common-monitor measurements;
+4. changing `theta_CV` changes only the CV outer pass/fail decision and dependent production authorization; it does not change `C_CV`, `H_CV`, representative identity, TRAIN2, or an already-authenticated outer numeric measurement;
+5. changing `tau_prod` changes production hard checkpoint assessment, representative and dependent publication decision, but not production TRAIN2 or accepted CV evidence;
+6. changing the D2.DEF.059A/059B selection algorithm identity changes the corresponding representative/publication descendants, but not TRAIN2 or already-authenticated numeric measurements;
+7. changing replay evidence qualification/lineage under D2.DEF.052 invalidates only descendants whose numerical meaning depends on the changed evidence component; decision thresholds are not part of that lineage.
+
+No hard-decision, outer-acceptance or selection-policy edit can change an already-realized TRAIN2 trajectory when every training-bearing numerical input/method coordinate is unchanged.
+
+A stored historical verdict/classification is never made current by monotonic threshold implication. Currentness requires a new assessment under the current decision policy; numeric measurement reuse is governed by D2.DEF.060B-060C.
+
+### D2.AX.005 — Fresh production and current-CV reauthorization
+
+A newly executed final-production trajectory starts a fresh model/optimizer lineage from the accepted foundation checkpoint/head on exact complete `T_selected`, fits training-dependent state there only, uses the same exact `M_mon` and checkpoint mechanics as CV, and applies `tau_prod`. No P3 or CV checkpoint is a warm-start parent; P3 `M3` has no production checkpoint role.
+
+Replay-enabled production retains D2.DEF.051-053, current evidence-valid replay lineage, exact `e_replay(Phi)` where applicable, and D2.DEF.057 true-reference retention classification.
+
+Current accepted CV authorization is required before a current final-production assessment/publication may be issued. A historically fresh completed final-production trajectory may be reassessed under current policy without retraining only when current CV has been reclosed and accepted and D2.DEF.060 proves exact training-semantic equivalence for that production trajectory. If current CV rejects, retained final-production bytes remain historical/nonpublishable under the current authority regardless of checkpoint quality.
 
 ## 15. Continuation, equivalence, and fail-closed semantics
 
-### D2.DEF.060 — Authenticated continuation
+## 15. Continuation, equivalence, and fail-closed semantics
 
-Continuation is admissible only when all identities needed to prove exact run boundary match: population/membership, method/policy parameters, foundation/head, objective/exposure, selector/reference where applicable, optimizer/EMA/RNG state and accepted predecessor boundary. Uncommitted scratch is not continuation authority.
+### D2.DEF.060 — Authenticated continuation and training-semantic equivalence
+
+Assessment-only policy is not a training-continuation coordinate.
+
+For an interrupted trajectory, continuation is admissible only from the exact authenticated predecessor state with matching trajectory-generating semantics: training/fold role and exact gradient/replay-training memberships; optimizer seed and planned horizon; foundation checkpoint/head and training replay lineage; fitted/prepared training state; objective/loss, exposure/corpus order, optimizer, learning-rate schedule, precision and other numerically material execution semantics; checkpoint cadence; trainer-consumed validation/preparation inputs; optimizer/EMA/RNG state; and accepted predecessor boundary. Uncommitted scratch is never continuation authority.
+
+For reuse of a completed historical TRAIN2 trajectory under a later assessment policy, **training-semantic equivalence** holds only when every numerical input/coordinate capable of changing the realized TRAIN2 trajectory is proven equal under its accepted relation. `delta_warn`, `delta_hard`, `tau_CV`, `theta_CV`, `tau_prod`, D2.DEF.059A/059B selection policy, and later verdict/publication policy are excluded because they are not consumed by fixed-budget training.
+
+A pre-cutover interrupted trajectory continues under its authenticated historical runtime/protocol ancestry after that exact training-equivalence proof; no policy migration rewrites historical optimizer state, summaries, checkpoint bytes, hashes or RNG lineage.
 
 ### D2.DEF.060A — Numerical-equivalence relation registry
 
 For authoritative outputs, the comparison relation is source-closed as follows:
 
-1. canonical memberships, UIDs, component/order/rank sequences, discrete decisions, integer counts, lineage identities and repair traces compare by exact identity/equality under their defining objects;
-2. local numerical predicates with explicit fixed tolerances/guards use exactly D2.DEF.018, D2.DEF.020-021, D2.DEF.029-030, D2.DEF.033, D2.DEF.036, D2.DEF.038 and D2.DEF.058-059 as applicable;
+1. canonical memberships, UIDs, component/order/rank sequences, discrete decisions, integer counts, lineage identities, checkpoint/model identities and repair traces compare by exact identity/equality under their defining objects;
+2. local numerical predicates with explicit fixed tolerances/guards use exactly D2.DEF.018, D2.DEF.020-021, D2.DEF.029-030, D2.DEF.033, D2.DEF.036, D2.DEF.038 and D2.DEF.057-059B as applicable;
 3. accepted source-owned metric/equality relations not restated locally are imported only from exact `D2.SRC.GENERAL` or `D2.SRC.ORDER`;
 4. every other governed binary64 scientific output whose owner supplies no nonzero tolerance compares by exact canonical binary64 value/reference arithmetic.
 
-No backend-observed discrepancy, performance result, generic “close enough” rule, or unlisted tolerance can create a new equivalence relation.
+No backend-observed discrepancy, performance result, generic "close enough" rule, monotonic-policy implication or unlisted tolerance can create a new equivalence relation.
+
+### D2.DEF.060B — Evaluation-measurement equivalence
+
+Two target or replay numerical measurement records are equivalent for policy reassessment only when the exact numerical experiment is provably the same, including as applicable:
+
+- exact checkpoint/model-state identity;
+- exact evaluation population/membership/artifact and labels/reference values;
+- metric definition, units, reduction and aggregation policy;
+- model/head/provider/prediction realization and numerically material precision semantics.
+
+Assessment thresholds, warning policy, representative-ordering policy, committee/publication policy and a full role-plan digest are not numerical measurement inputs merely because historical schemas hashed them together.
+
+Scalar equality alone is insufficient evidence of measurement equivalence. If historical provenance cannot prove the required equality of numerical inputs, recompute the measurement from the preserved authenticated checkpoint and evaluation evidence rather than copying the scalar.
+
+### D2.DEF.060C — Policy reassessment from immutable measurements
+
+A current checkpoint assessment is produced by applying current D2.DEF.057-059B policy to current or D2.DEF.060B-equivalent immutable measurements. Historical `admissible`, rejection-reason, warning, rank, representative, fold-verdict or production-publication classifications are never mutated or relabeled current in place.
+
+For historical CV:
+
+1. reassess every governed checkpoint under current hard policy and D2.DEF.059A;
+2. if the current representative is the same checkpoint and its held-out measurement is D2.DEF.060B-equivalent, that outer measurement may be reused;
+3. if the representative changes, evaluate the new representative on the exact held-out population before applying current `theta_CV`;
+4. publish a new current fold/seed/campaign assessment.
+
+For historical final production, reassess the complete governed checkpoint universe after current-CV reauthorization. If the old candidate-set provenance is incomplete, recompute required EVAL2 measurements from preserved checkpoints; never infer the current winner from a historical shortlist or content-store scan.
 
 ### D2.DEF.061 — Numerical equivalence
 
@@ -836,25 +998,49 @@ Fail closed for non-finite fitted statistics; invalid/empty required family mass
 | candidate/evaluation/fidelity/seed values | `CONFIGURABLE_FAMILY` | D2.DEF.007 |
 | practical `epsilon` | `CONFIGURABLE_FAMILY` | finite positive response-unit value |
 | Huber thresholds/factors | `FIXED_METHOD_COORDINATE` | D2.DEF.044 |
-| P5 coefficients | `FIXED_METHOD_COORDINATE` | `1:10:1` |
+| P5 global E:F:S property-loss coefficients | `FIXED_METHOD_COORDINATE` | `1:10:1` |
 | replay label mode | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | true-reference default; pseudo explicit opt-in |
-| replay qualification identity/state | `DERIVED` | configured replay policy/evidence/current qualification |
+| replay evidence qualification/state | `DERIVED` | source/label/provider/true-monitor qualification; excludes checkpoint decision thresholds |
 | replay-head E0 | `DERIVED` | exact selected foundation checkpoint/head mapping |
 | P5 corpus order/drop policy | `FIXED_METHOD_COORDINATE` | replay then target; `drop_last=true` |
 | monitor cardinality/seed | `FIXED_METHOD_COORDINATE` | `256`, `161803` |
 | CV fold count | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | integer `K>=2`, default `3` |
-| `tau_CV`,`theta_CV`,`tau_prod` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | current defaults `45/45/30 meV/angstrom` for default force metric |
+| `delta_warn`,`delta_hard` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | `50/100 meV/angstrom`, strict-exceedance replay classification |
+| `tau_CV`,`theta_CV`,`tau_prod` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | `75/75/50 meV/angstrom` for default force outer metric; alternative outer metric keeps own `theta` units/resolution |
+| foundation-P5 within-run representative order | `FIXED_METHOD_COORDINATE` | strict `(target RMSE, epoch, checkpoint SHA-256)` |
+| `single_best_final_seed` order | `FIXED_METHOD_COORDINATE` | strict `(target RMSE, optimizer seed, checkpoint SHA-256)` |
 
 ## 17. Current falsification and reopen oracles
 
-Qualification and any future reopen review must attempt at least: one-normalization governed-quantile adversaries; selector-vs-MVQUAL tolerance interval adversary; exact component-order/first-predecessor `M3`; condition-balanced `pi_eval`; structural-policy rejection; candidate-common-preparation perturbation; minimum-three-qualified admission including an unqualified configured prefix with at least three remaining qualified candidates; exact funnel/sufficiency/ceiling cases; autocorrelation/block/event fixtures; required-family applicability fixtures; exact adjacency boundaries; full-forward/lazy rank equality; Phase-A tie behavior; REPAIR2 frontier/trace/limits/rank inheritance/no-extra-shell; direct/MVIDX mass and MVQUAL monotonicity; E0 null-space transfer; replay-head E0 selected-head binding and target/replay E0 separation; robust P5 dimensional/nine-stress/mask/no-head-scalar; true-vs-pseudo replay geometry invariance and true retention; replay qualification-lineage invalidation; replay-first seeded exposure/drop-last; monitor/fold reconstruction; role-threshold boundaries/selective invalidation; equivalence-registry source closure; and worker/backend/restart invariance.
+Qualification and any future reopen review must attempt at least: one-normalization governed-quantile adversaries; selector-vs-MVQUAL tolerance interval adversary; exact component-order/first-predecessor `M3`; condition-balanced `pi_eval`; structural-policy rejection; candidate-common-preparation perturbation; minimum-three-qualified admission including an unqualified configured prefix with at least three remaining qualified candidates; exact funnel/sufficiency/ceiling cases; autocorrelation/block/event fixtures; required-family applicability fixtures; exact adjacency boundaries; full-forward/lazy rank equality; Phase-A tie behavior; REPAIR2 frontier/trace/limits/rank inheritance/no-extra-shell; direct/MVIDX mass and MVQUAL monotonicity; E0 null-space transfer; replay-head E0 selected-head binding and target/replay E0 separation; robust P5 dimensional/nine-stress/mask/no-head-scalar; true-vs-pseudo replay geometry invariance; replay evidence-qualification invalidation; replay-first seeded exposure/drop-last; monitor/fold reconstruction; exact replay warning/hard boundaries; role-threshold boundaries/selective invalidation; strict foundation-P5 target ordering and exact ties; measurement/training equivalence; policy reassessment; equivalence-registry source closure; and worker/backend/restart invariance.
+
+The replay oracle must include `Delta_R = delta_warn`, `nextafter(delta_warn,+inf)`, `Delta_R = delta_hard`, `nextafter(delta_hard,+inf)`, negative degradation, and a conversion case proving `50 meV/angstrom -> RN64(0.050 eV/angstrom)` and `100 -> RN64(0.100)`. Equality must not warn/reject; the next representable value above each threshold must trigger the corresponding strict predicate. No epsilon may change those outcomes.
+
+The role-threshold oracle must include exact `0.075` and `nextafter(0.075,+inf)` for default-force CV checkpoint/outer predicates and exact `0.050` plus its next representable value for production. A `0.060 eV/angstrom` common-monitor checkpoint is a required discriminating example: it may pass default foundation CV `tau_CV=0.075` but must fail default production `tau_prod=0.050`. Alternative outer metrics must demonstrate that omission does not import the force-RMSE `0.075` value.
+
+Strict-order adversaries must include a lower-target checkpoint with worse replay margin/warning, worse secondary diagnostics, lower maturity and an unfavorable bootstrap/practical-equivalence status; the lower exact target RMSE must still win when both checkpoints satisfy hard gates. Exact target ties must resolve only by `(epoch,sha256)`, and cross-seed exact ties only by `(optimizer_seed,sha256)`.
+
+Currentness/reassessment oracles must separately perturb `delta_warn`, `delta_hard`, `tau_CV`, `theta_CV`, `tau_prod` and strict-order identity, proving the descendant movement in D2.AX.004 while TRAIN2 remains unchanged for assessment-only edits. Historical scalar reuse must fail when checkpoint/population/provider/metric provenance is incomplete and succeed only under D2.DEF.060B-equivalent numerical inputs.
 
 The weighted-quantile oracle must exercise actual governed quantiles and one-time stored binary64 weights, and it must reproduce the exact prior D4 rescaling quantity `t = cumulative[-1]` with `cumulative = np.cumsum(stored_weights, dtype=np.float64)`. Required discriminating cases generated by the accepted correlation-balanced weight constructor are: counts `(50,1)` at `q=0.01` (direct index 0, residual-terminal-mass-rescaled index 1); `(2,6)` at `q=0.25` (direct index 0, rescaled index 1); `(1,6)` at `q=0.75` (direct index 4, rescaled index 3); and `(1,150)` at `q=0.99` (direct index 148, rescaled index 147). Each case must verify `t != 1.0` and compare cumulative stored mass directly with `q`. `np.sum(stored_weights)` is not a substitute for `t`, because the prior D4 implementation used terminal cumulative mass and binary64 reduction order can make the two residual sums differ.
 
-## 18. D2 -> D3 handoff, acceptance and reopen condition
+## 18. D2 -> D3 handoff, candidate status and reopen condition
 
-D3 owns persistence, concurrency, resource admission, software decomposition, dependency adaptation, build topology, and durable restart representation. It may simplify execution but may not create a second numerical owner or weaken/change the method above.
+D3 owns persistence, concurrency, resource admission, software decomposition, dependency adaptation, build topology and durable restart/assessment representation. It may simplify execution but may not create a second numerical owner or weaken/change the method above.
 
-This kernel is accepted-current under Protocol 6.4 after independent Review PASS of `e827aef9bdceb97aae5be6e89de0585a95dcf71c`, the renderer-only D2.DEF.027 correction bound at `a4824d28775164aa942fd29fa97ee0957eb87e6f`, and stakeholder ratification on 2026-09-17. The correction preserves the exact candidate-gain sets and sums and therefore changes no numerical result, decision, tolerance, failure classification, family/applicability set, stochastic exposure, or replay lineage.
+For this renewal D3 must preserve at minimum:
 
-Any future change to one of those governed semantics requires D2 adjudication. Pure renderer/editorial repairs remain representation work only when algebraic and decision equivalence are explicitly verified.
+1. replay evidence/measurement identity separately from `delta_warn`/`delta_hard` decision policy;
+2. assessment-only thresholds and strict-order identity outside training-trajectory/restart identity;
+3. complete governed-checkpoint assessment before foundation-P5 representative selection;
+4. exact D2.DEF.059A/059B ordering and tie keys;
+5. `tau_CV`, `theta_CV`, and `tau_prod` as distinct currentness coordinates;
+6. assessment-independent numerical measurement provenance sufficient to prove D2.DEF.060B reuse or force recomputation;
+7. immutable historical evidence with new current reassessment records rather than in-place reclassification;
+8. current-CV reauthorization before current assessment/publication of a reusable historically fresh final-production trajectory.
+
+The accepted-current D2 kernel remains `main@a759e81aa1b4c70c8fb513c569ddce57e99cbdb2`. This file is a **proposed material D2 renewal** under ratified D1 target `d761171f3c86c3c79b87a90cfc02ac324c261b1a`. It is not accepted authority until fresh independent Protocol-6.4 D2 Review passes on an immutable candidate target and the stakeholder explicitly ratifies that exact reviewed target.
+
+Fresh D2 Review must challenge at least: binary64 unit conversion and boundary semantics; subtraction/cancellation near replay thresholds; same-monitor/provenance requirements for signed degradation; exclusion of warning from hard admissibility; complete-checkpoint strict ordering; exact tie determinism; separation from P3 practical-equivalence semantics; alternative-outer-metric units/defaults; threshold-specific currentness; training-semantic versus assessment equivalence; historical measurement reuse without scalar-only inference; and current-CV reauthorization of retained final-production trajectories.
+
+Reopen D2 after acceptance if material evidence shows that canonical binary64 comparison/conversion is numerically unstable for the claimed threshold resolution, the strict order cannot be reconstructed deterministically, measurement/training equivalence is insufficient to prevent stale numerical reuse, or another algorithm/precision/stochastic/error semantic needs revision. Pure renderer/editorial repairs remain representation work only when algebraic and decision equivalence are explicitly verified.

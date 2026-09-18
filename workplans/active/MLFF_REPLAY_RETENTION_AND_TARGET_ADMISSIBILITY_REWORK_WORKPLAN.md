@@ -1201,7 +1201,7 @@ On 2026-09-18 the stakeholder explicitly accepted that exact candidate. Ratifica
 
 The reviewed D1 blob is not rewritten by ratification. It is the accepted branch-local D1 parent for Gate C.
 
-### Gate C - D2 numerical renewal - OPEN
+### Gate C - D2 numerical renewal - CANDIDATE AUTHORING
 
 Formally define:
 
@@ -1213,7 +1213,7 @@ Formally define:
 - replay warning/rejection numerical oracle;
 - old-measurement reassessment equivalence.
 
-Independent Protocol 6.4 D2 review is required after D1 acceptance; D2 may not pre-accept the requested numbers/order by implementation precedent.
+Independent Protocol 6.4 D2 review is required on the exact authored candidate; D2 may not inherit acceptance from implementation precedent or the prior Protocol-6.4 reconstruction.
 
 ### Gate D - D3 authority/currentness reconciliation
 
