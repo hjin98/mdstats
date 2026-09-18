@@ -14,8 +14,10 @@ jobs:
   diagnose:
     runs-on: ubuntu-latest
     outputs:
-      failure_name: ${{ steps.parse.outputs.failure_name }}
       failure_count: ${{ steps.parse.outputs.failure_count }}
+      first_name: ${{ steps.parse.outputs.first_name }}
+      second_name: ${{ steps.parse.outputs.second_name }}
+      first_message: ${{ steps.parse.outputs.first_message }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,10 +34,10 @@ jobs:
           echo "$?" > /tmp/r4-exit-code
           exit 0
       - id: parse
-        name: Parse failing test identity
+        name: Parse failure identities and first message
         run: |
           python - <<'PY'
-          import os, pathlib, xml.etree.ElementTree as ET
+          import os, re, xml.etree.ElementTree as ET
           root = ET.parse('/tmp/r4-real-owner.xml').getroot()
           failed = []
           for case in root.iter('testcase'):
@@ -43,18 +45,22 @@ jobs:
               if node is None:
                   node = case.find('error')
               if node is not None:
-                  failed.append(f"{case.get('classname','')}::{case.get('name','')}")
-          exit_code = pathlib.Path('/tmp/r4-exit-code').read_text().strip()
-          first = failed[0] if failed else f"NO_TEST_FAILURE_exit_{exit_code}"
-          first = first.replace('%','pct').replace('\n',' ')
+                  name = f"{case.get('classname','')}::{case.get('name','')}"
+                  msg = (node.get('message') or node.text or '').strip()
+                  msg = re.sub(r'\s+', ' ', msg)
+                  failed.append((name, msg))
+          def clean(s):
+              return s.replace('%','pct').replace('\n',' ')[:180]
           with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
-              fh.write(f"failure_name={first}\n")
               fh.write(f"failure_count={len(failed)}\n")
+              fh.write(f"first_name={clean(failed[0][0]) if failed else 'NONE'}\n")
+              fh.write(f"second_name={clean(failed[1][0]) if len(failed)>1 else 'NONE'}\n")
+              fh.write(f"first_message={clean(failed[0][1]) if failed else 'NONE'}\n")
           PY
 
   report:
     needs: diagnose
-    name: "R4 diagnostic count=${{ needs.diagnose.outputs.failure_count }} first=${{ needs.diagnose.outputs.failure_name }}"
+    name: "R4 fail=${{ needs.diagnose.outputs.failure_count }} first=${{ needs.diagnose.outputs.first_name }} second=${{ needs.diagnose.outputs.second_name }} msg=${{ needs.diagnose.outputs.first_message }}"
     runs-on: ubuntu-latest
     steps:
       - run: echo diagnostic-complete
