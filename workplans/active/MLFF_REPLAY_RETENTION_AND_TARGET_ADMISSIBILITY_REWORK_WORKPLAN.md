@@ -1213,7 +1213,11 @@ Formally define:
 - replay warning/rejection numerical oracle;
 - old-measurement reassessment equivalence.
 
-Independent D2 Review R1 of `e2b39917ab8c16556eb218d6a41e9682331bbca0` returned **NO-PASS with no SERIOUS CHALLENGE to D1**. The narrow repair now binds exact replay training label/provider semantics and consumption-projected `Q_r`, permits differing evaluator/provider realizations only under accepted numerical equivalence, and closes the new typed failure states. Fresh independent D2 R2 review of exact candidate `4f161b1c4820de10abe638287b13152147d12fd9` with canonical D2 blob `3e7fb744fc733f23bbd93a8347246cfa306ebe89` returned **PASS with no SERIOUS CHALLENGE**. Review record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_INDEPENDENT_REVIEW_R2.md`. Gate C remains open only for exact-target stakeholder ratification; D3 stays blocked until ratification.
+Independent D2 Review R1 of `e2b39917ab8c16556eb218d6a41e9682331bbca0` returned **NO-PASS with no SERIOUS CHALLENGE to D1**. The narrow repair now binds exact replay training label/provider semantics and consumption-projected `Q_r`, permits differing evaluator/provider realizations only under accepted numerical equivalence, and closes the new typed failure states. Fresh independent D2 R2 review of semantic candidate `4f161b1c4820de10abe638287b13152147d12fd9` with canonical reviewed D2 blob `3e7fb744fc733f23bbd93a8347246cfa306ebe89` returned **PASS with no SERIOUS CHALLENGE**. Review record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_INDEPENDENT_REVIEW_R2.md`.
+
+A renderer-only descendant then removed disallowed `\\operatorname` constructs and replaced the tie-key function names by explicitly defined renderer-safe symbols, with no numerical or decision-semantic change. Representation-repair record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_R2_RENDER_REPAIR.md`.
+
+The exact renderer-safe D2 target for stakeholder ratification is `1505a22b0940eb44f4c8a1820e3e26e2263c8a79`, whose D2 blob is `e6f0cdea54964a3bc2962a4ecacf44a7625f33fa`. Gate C remains open only for ratification of this representation-safe target; D3 stays blocked until ratification.
 
 ### Gate D - D3 authority/currentness reconciliation
 
