@@ -8,7 +8,7 @@ analysis_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 implementation_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 protocol_6_4_authority_merge: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 stakeholder_direction_date: 2026-09-18
-review_state: second-pass-baseline-reconciled-awaiting-d1-d2-renewal
+review_state: third-pass-baseline-reconciled-awaiting-d1-d2-renewal
 ---
 
 # MLFF Replay Retention and Target Admissibility Rework Workplan
@@ -34,6 +34,15 @@ A second baseline pass found six additional closure requirements:
 8. Successful final-production `PostSelectionRunEvidence` binds only the selected representative, not the complete candidate-record set. Under a changed selection rule, old production candidates cannot be discovered authoritatively by reverse-scanning the content store. Future terminal run evidence must bind the complete assessed candidate set; historical production may require EVAL2 recomputation.
 9. The plan left exact target-RMSE ties under-specified. Protocol 6.4 D2 must freeze deterministic non-quality tie keys separately for within-run checkpoints and cross-seed publication.
 10. A clean training-position identity does not by itself locate sealed historical run roots whose directory names are old full-plan-derived run identities. The one-time cutover must derive any legacy source root from authenticated historical plan/run evidence, never from directory scanning, copying, renaming, or weakening completion-manifest ownership.
+
+A third baseline pass found six more structural requirements:
+
+11. Current `_prepare_post_selection_run()` resolves `context.checkpoint_admissibility(run_plan)` before continuation/materialization recovery and uses that assessment policy merely to decide replay execution. A changed hard policy can therefore block an otherwise identical trajectory before reuse. Replay execution/monitor transport must be resolved from the training method/replay lineage; hard admissibility must not be consulted until EVAL2.
+12. `PostSelectionFittedPreparation.owner_plan_digest`, `PostSelectionMaterialization.run_plan_digest`, checkpoint catalogs/records, TRAIN2 runtime summaries and continuation checks still bind full run-plan/method ancestry. Correcting only `run_identity` is insufficient: every training/restart owner must bind the training-position authority rather than policy-bearing assessment ancestry.
+13. Run roots are create-once topology-sealed only after `fold-acceptance.json` or `run-evidence.json` is written. Reassessing the same trajectory under a new policy cannot lawfully overwrite those fixed files or append new assessment state to the sealed root. Training-root completion and policy assessment need separate durable lifecycles.
+14. A global campaign-schema v3 bump is broader than necessary and would perturb unrelated config parsing. The migration discriminator should be a narrow post-selection checkpoint-policy generation marker inside the existing campaign-v2 contract.
+15. `FinalProductionPlan` binds the historical CV authorization even though CV verdict bytes cannot influence already-produced final TRAIN2 bytes. D1/D2 must explicitly decide when a historically fresh final-production trajectory may be reassessed after the current CV policy is reclosed; a current CV rejection must still block current production publication.
+16. Foundation P5 preparation consumes common-monitor and held-out composition-transfer requirements before training. The training-position projection must preserve every preparation/validation input capable of changing exact materialization or continuation, not merely gradient membership.
 
 The current P5 runtime already fully evaluates every durable TRAIN2 checkpoint before selecting its representative: `post_selection_checkpoint_candidates()` authenticates the entire saved trajectory and `evaluate_post_selection_run_candidates()` evaluates every returned checkpoint. Therefore this workplan does **not** need a new shortlist/rescue/evaluation-purchase mechanism for P5. Generic EVAL2 shortlist machinery may remain for other consumers unless independently affected.
 
@@ -251,7 +260,8 @@ The D1 revision must state at least:
 8. Foundation final-production target checkpoint quality defaults to `0.050 eV/angstrom`, configurable by policy; foundation CV remains `0.045/0.045` and scratch remains separately governed.
 9. Downstream qualification remains separate and may still reject a frozen final publication for deployment/physics reasons.
 10. Assessment-threshold/selection-policy changes that cannot influence training do not redefine the realized training trajectory.
-11. Existing valid measurements may support a new current assessment only through explicit policy-bound reassessment; historical evidence is never rewritten or silently relabeled current.
+11. Current CV authorization is a prerequisite for current final-production assessment/publication, but a change in CV decision policy does not by itself alter the bytes of an already-realized genuinely fresh final-production trajectory. Reuse is allowed only when current CV reclosure accepts and exact final-production training equivalence is proven; if current CV rejects, historical final-production bytes remain historical/nonpublishable.
+12. Existing valid measurements may support a new current assessment only through explicit policy-bound reassessment; historical evidence is never rewritten or silently relabeled current.
 
 ### D1 challenge/falsification questions
 
@@ -262,7 +272,8 @@ The D1 renewal must explicitly challenge:
 - whether raising production target default to `0.050 eV/angstrom` conflicts with observed downstream MD adequacy requirements;
 - whether `tau_CV=0.045` with `tau_prod=0.050` is coherent: CV competence may be numerically stricter than production admission, but the roles/estimands remain distinct and this must be intentional rather than accidental;
 - whether any current physical/integrity gate implicitly depended on the old `0.030` replay value;
-- whether final cross-seed strict target ordering changes publication semantics in a way requiring a distinct D1 publication statement.
+- whether final cross-seed strict target ordering changes publication semantics in a way requiring a distinct D1 publication statement;
+- whether D1.AX.010 fresh-production semantics permit reassessment of an already-realized fresh final trajectory after current CV reauthorization, provided no CV trajectory/checkpoint initialized that production run and every training-bearing parent is exact.
 
 If those challenges establish a different accepted D1 rule, reconcile this plan before D2/D3 implementation.
 
@@ -336,7 +347,9 @@ Amend `D2.AX.004` currentness with distinct dependency classes:
 
 Do not declare old verdicts current by monotonic implication: a current verdict must be newly assessed under the current hard-decision/selection policy. Reuse of an old numeric measurement is permitted only when exact measurement identity/equivalence is proven.
 
-Amend `D2.DEF.060/060A` as needed to distinguish exact training continuation identity from later assessment-policy ancestry without weakening fail-closed restart authentication.
+Amend `D2.DEF.060/060A` as needed to distinguish exact training continuation identity from later assessment-policy ancestry without weakening fail-closed restart authentication. For a pre-cutover interrupted trajectory, continuation may use the historical runtime-plan/protocol identity only after an explicit exact training-equivalence proof; do not rewrite its summaries/config/checkpoints to a new digest.
+
+Amend `D2.AX.005` so current CV authorization remains mandatory for current production assessment/publication, while a historically fresh final-production trajectory may be reused after CV reclosure iff current CV accepts and exact production training-position equivalence is proven. A current CV rejection leaves the historical final trajectory noncurrent regardless of its checkpoint quality.
 
 ## 5. D3 ownership and dependency repair
 
@@ -392,17 +405,68 @@ Neither may remain in the TRAIN2 training-protocol identity after this revision 
 
 A one-time projection from the baseline `PostSelectionMethodIdentity` schema v3 may prove an existing historical method record training-equivalent to the new training identity by comparing every training-bearing field exactly and explicitly excluding only the retired assessment-only parents. This projection belongs in the existing currentness/recovery owner; it is not a general-purpose compatibility translator.
 
-### 5.3 Correct run identity without weakening continuation guards
+### 5.3 Freeze the training-trajectory / assessment-position split
 
-Current `post_selection_run_identity()` hashes the complete CV/final plan digest. Since those plans bind assessment policy, policy-only edits currently create a foreign run even when training inputs are identical.
+Current `post_selection_run_identity()` hashes the complete CV/final plan digest. That is the wrong steady-state owner because the same filesystem root also carries training bytes and policy-bound terminal verdict files.
 
-Repair by making the run/checkpoint namespace depend on an exact **training-position projection** rather than the full assessment plan. The projection must include every coordinate capable of changing TRAIN2 bytes (role, selected/fold gradient membership, training method, seed, horizon, preparation/exposure, etc.) and exclude only post-training assessment policy.
+This workplan freezes one architecture rather than leaving two alternatives.
 
-Keep full CV/final plans as assessment/verdict authorization parents. Keep `reject_foreign_run_continuation()` fail-closed for genuinely different training positions. Do not copy checkpoints into a newly invented run merely to bypass identity mismatch and do not globally ignore plan digests.
+**Training trajectory identity.** Define one exact role-specific training-position projection and derive the post-selection run/checkpoint root from it. The projection includes every input capable of changing exact TRAIN2/materialization/restart behavior, including at least:
 
-If D3 chooses to retain full-plan `run_identity` for bookkeeping, then introduce the minimum separate authenticated training-trajectory identity used by checkpoint/restart ownership; do not weaken either identity. The required invariant is that a policy-only edit resolves to the **same training trajectory owner** while a training-bearing edit never does.
+```text
+run role
+selected/fold gradient membership
+optimizer seed + planned horizon
+training-only PostSelectionMethodIdentity
+objective / optimizer / LR / exposure / precision / backend / architecture
+foundation checkpoint/head and replay-training lineage
+target/replay validation artifacts when consumed by the trainer
+common-monitor identity where preparation/runtime consumes it
+composition-transfer required-composition set derived from governed consumers
+checkpoint cadence and MACE execution semantics
+```
 
-### 5.4 Separate evaluation measurement from assessment policy
+It excludes only downstream checkpoint-decision, warning, CV outer-acceptance, committee/publication and other post-training policy coordinates.
+
+For new records, `run_identity` / checkpoint-root identity must mean this training trajectory position, schema-bumped as needed. Full CV/final plan digests remain assessment/authorization parents, not restart/root identity.
+
+**Training-owned records.** Rebind the training owners that currently carry full run-plan ancestry:
+
+- `PostSelectionFittedPreparation.owner_plan_digest`;
+- `PostSelectionMaterialization.run_plan_digest/run_identity`;
+- checkpoint catalog/file lineage;
+- generated post-selection MACE configuration identity/name;
+- TRAIN2 runtime-plan/summary/continuation authentication.
+
+They must bind the training-position authority while preserving every training-bearing field listed above. A policy-only edit must reproduce the same training-position digest. A changed training-bearing coordinate must not.
+
+**No pre-training assessment dependency.** `_prepare_post_selection_run()` must not compose current checkpoint admissibility to decide whether replay training/TRUE_DFT runtime monitoring exists. Resolve replay execution from the training method/replay lineage. Construct hard checkpoint admissibility only when EVAL2 assessment begins.
+
+Keep `reject_foreign_run_continuation()` fail-closed on the training trajectory identity. Never satisfy it by ignoring a digest, copying checkpoints, or substituting a different role.
+
+### 5.4 Seal the training root before assessment
+
+The baseline run root mixes two lifecycles: mutable TRAIN2 output and immutable policy verdict. That is incompatible with later policy-only reassessment because `fold-acceptance.json` / `run-evidence.json` are fixed create-once files and the topology anchor is create-once.
+
+Post-cutover, the root under `runs/<training_trajectory_identity>` is **training-only**:
+
+- materialization/config/checkpoints/runtime history live there;
+- once TRAIN2 reaches an authenticated terminal training state, freeze the topology and completion anchor **before EVAL2**;
+- use the existing complete `Train2RuntimeSummary` and authenticated checkpoint/runtime boundary as the terminal training proof rather than requiring an assessment verdict to exist;
+- EVAL2 and later reassessment read the sealed root but never write assessment state into it.
+
+Current policy-bound CV/final assessment evidence must live in the existing content-addressed post-selection evidence/currentness infrastructure outside the sealed training root. Each fold/final position needs a deterministic policy-bound locator/currentness record so restart can find the exact current assessment without scanning the object store. Extending the existing current-pointer/position owner is allowed; creating a second evidence store is not.
+
+After cutover:
+
+- stop writing current `fold-acceptance.json` and `run-evidence.json` into training roots;
+- retain read-only support for those files in historical roots;
+- a warning-threshold-only change may publish new diagnostic evidence without touching the sealed root or hard-assessment locator;
+- a hard-policy/selection change publishes a new assessment record/locator over the same trajectory root.
+
+The storage/topology owner must continue to certify a closed subtree and cold-storage semantics. Reassessment may consume only checkpoint/materialization bytes still available through an authenticated storage owner.
+
+### 5.5 Separate evaluation measurement from assessment policy### 5.4 Separate evaluation measurement from assessment policy
 
 Current `post_selection_eval_role_digest()` includes `run_plan_digest` and `run_identity`. That over-binds numeric measurement evidence to policy ancestry.
 
@@ -410,7 +474,7 @@ The current measurement owner must instead bind the exact factors that can chang
 
 Policy-bound checkpoint-assessment records may then consume immutable measurement records and produce current warnings/rejections/representatives. Historical baseline records may be reused only through a source-preserving derivation that proves the old measurement inputs equal the current measurement identity; never copy a scalar without its authenticated checkpoint/population/provider ancestry.
 
-### 5.5 Role target default isolation
+### 5.6 Role target default isolation
 
 Current `[acceptance].maximum_target_force_rmse_ev_per_angstrom` supplies production for every mode and scratch CV. Preserve the single explicit public field. Change only omitted/default resolution:
 
@@ -423,21 +487,21 @@ foundation CV -> its existing independent 0.045 checkpoint default
 
 Use the existing mode-aware role-policy resolver. Do not add a duplicate production-target knob.
 
-### 5.6 Shared replay assessment policy
+### 5.7 Shared replay assessment policy
 
 Replay hard limit is a shared checkpoint-decision coordinate for CV/final replay-enabled foundation adaptation. It moves hard checkpoint assessments, representatives and dependent CV/final decisions in both roles while leaving the training trajectory current.
 
 Replay warning threshold is a separate diagnostic-only coordinate. It must not be included in a digest whose change stales hard admissibility, representative selection, CV acceptance, production authorization or publication membership. Resolve both values once from the same configuration owner, but preserve distinct dependency projections. This does not require a second policy graph: one resolver may expose a hard-decision digest plus a diagnostic-warning digest/value.
 
-### 5.7 Publication ordering
+### 5.8 Publication ordering
 
 `single_best_final_seed` currently imports the old EVAL2 uncertainty/secondary/maturity ordering and has a dedicated decision-policy identity. Update that decision-policy identity/schema as needed so strict minimum target RMSE is reconstructable from publication evidence. `all_qualified_final_seeds` is unaffected.
 
-### 5.8 No second policy graph
+### 5.9 No second policy graph
 
-Do not add a generic P5 `TrainingProtocolIdentity`, generic `Eval2EvaluationPlan`, shadow replay-policy registry, checkpoint-selection wrapper, mutable alias, or second cache keyed only by thresholds. Current P5 authority remains role plan/run plan + existing method/policy/evidence owners, with the over-broad dependencies reduced.
+Do not add a shadow replay-policy registry, checkpoint-selection wrapper, mutable alias, second cache keyed only by thresholds, or second evidence store. The one training-position projection required by section 5.3 is the replacement restart/root owner, not a parallel training protocol. Current role plans remain assessment/authorization parents and existing evidence/currentness infrastructure owns assessment locators.
 
-### 5.9 Currentness model
+### 5.10 Currentness model
 
 Expected steady-state invalidation:
 
@@ -454,14 +518,15 @@ change replay hard threshold
 
 change production target threshold
   -> production assessments/representative/publication move
-  -> production TRAIN2 trajectory remains current
+  -> production TRAIN2 trajectory and sealed training root remain current
   -> accepted CV remains current because its policy did not move
 
 change strict P5 selection rule identity
   -> representative/verdict/publication descendants move
   -> numeric measurements and TRAIN2 trajectory remain current
 
-change LR/loss/exposure/foundation/training membership/seed/horizon
+change LR/loss/exposure/foundation/training membership/seed/horizon,
+or another training-position input such as required preparation/validation lineage
   -> training trajectory identity moves; restart/reuse fails closed as today
 
 change evaluation population/metric/provider semantics
