@@ -20,26 +20,22 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install accepted CPU MLFF runtime and test runner
+      - name: Install project and supported CPU MACE stack
         run: |
           python -m pip install --upgrade pip
-          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install 'mace-torch==0.3.16' 'ase==3.29.0'
           python -m pip install -e '.[manifest]' pytest
-      - name: Record validation environment
-        run: |
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install 'mace-torch==0.3.16'
           python - <<'PY'
-          import importlib.metadata as md
-          import platform
-          names = ['mdstats','mace-torch','ase','torch','torch-ema','e3nn','numpy','scipy','pytest']
-          print('python=' + platform.python_version())
-          for name in names:
-              try:
-                  print(f'{name}={md.version(name)}')
-              except Exception:
-                  print(f'{name}=MISSING')
+          import sys, torch, torch_ema, mace
+          print("python", sys.version)
+          print("torch", torch.__version__)
+          print("torch_ema", getattr(torch_ema, "__version__", "unknown"))
+          print("mace", getattr(mace, "__version__", "unknown"))
           PY
       - name: Focused weighted-quantile regression
         run: pytest -q tests/test_mlff_target_order_weighted_quantiles_fp64.py
-      - name: Real-owner target-order integration/regression
+      - name: Real-owner target-order integration/regression pass 1
+        run: pytest -q tests/test_mlff_target_order_real_owner.py
+      - name: Real-owner target-order integration/regression pass 2
         run: pytest -q tests/test_mlff_target_order_real_owner.py
