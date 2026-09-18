@@ -1,7 +1,7 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: REVIEW_NO_PASS_REOPENED
+status: PROPOSED_REVIEW_PASS_AWAITING_STAKEHOLDER_RATIFICATION
 workplan_id: MLFF-D1-D2-SSDP64-AXIOMATIC-FORMALIZATION-1
 basis_commit: cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824
 highest_domain: D1
@@ -389,3 +389,32 @@ test blobs are unchanged.
 A descendant handoff must request a fresh complete assembled-candidate Review.
 Author closure is not PASS, ratification, promotion or merge. GPU qualification
 remains deferred and outside this gate.
+
+
+## 18. Independent Review R7 — PASS; awaiting stakeholder ratification
+
+Fresh independent review of immutable R7 target
+`e827aef9bdceb97aae5be6e89de0585a95dcf71c` is recorded in
+`MLFF_D1_D2_SSDP64_INDEPENDENT_REVIEW_R7.md` and returned **PASS** with no
+Serious Challenge to accepted D1/D2.
+
+The review independently closed:
+
+- D1 scientific equivalence to accepted basis;
+- D2 numerical equivalence to accepted basis;
+- all 106 dependency rows, including the R7 evidence-role and robust-scale
+  typed-failure edges;
+- source/endpoint closure, acyclicity and abstraction direction;
+- first-use closure through the up-front exact-import registry;
+- renderer-safe algebraic equivalence;
+- D4 weighted-quantile real-owner conformance and current evidence
+  applicability;
+- PEM/HAS applicability.
+
+The lifecycle is now
+`PROPOSED_REVIEW_PASS_AWAITING_STAKEHOLDER_RATIFICATION`.
+
+No canonical paper is promoted by review alone. Stakeholder ratification must
+bind the exact reviewed R7 target before canonical D1/D2 reconciliation,
+semantic-history closure, or merge. GPU qualification remains deferred to final
+release qualification.
