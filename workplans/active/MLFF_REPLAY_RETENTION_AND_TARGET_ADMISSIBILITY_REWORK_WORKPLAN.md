@@ -608,19 +608,26 @@ The future numeric measurement identity must be assessment-independent and direc
 
 Historical checkpoint/metric records remain immutable/readable under their historical schema. Do not rewrite old `admissible` bits or old rejection reasons in place. A current reassessment may reuse historical numeric values only after an explicit proof of exact measurement equivalence; otherwise recompute EVAL2 from the preserved checkpoint.
 
-### 6.5 Final-production candidate-set and negative evidence persistence
+### 6.5 Policy assessment evidence and complete candidate-set persistence
 
-Repair both the negative-evidence defect and the successful-run candidate-set gap at the same assessment owner:
+Repair both the negative-evidence defect and the successful-run candidate-set gap at the policy-assessment owner, outside the sealed training root.
 
-- persist preparation/materialization as appropriate;
-- persist every evaluated EVAL2 checkpoint assessment;
-- bind the **complete ordered candidate-record digest set** in terminal run assessment evidence for successful and no-admissible outcomes;
-- for a selected run, bind the representative as a member of that candidate set;
-- for a no-admissible run, publish a typed terminal methodological outcome that binds the candidate set before surfacing the terminal failure.
+For final production, evolve the existing `PostSelectionRunEvidence` concept into one outcome-discriminated current assessment schema rather than inventing a parallel negative-result subsystem. It must bind:
 
-Baseline `PostSelectionRunEvidence` does not bind candidate-record digests, so merely storing candidate objects is insufficient for future reselection. Do not discover candidates later by content-store scanning or filename heuristics.
+```text
+training_trajectory_identity
+current final-plan / hard-decision / selection-policy ancestry
+outcome = representative_selected | no_admissible_representative
+complete ordered candidate_record_digests
+representative identity/checkpoint/record only when selected
+current monitor metric identity as required
+```
 
-CV already binds candidate digests in current fold-acceptance evidence. Production must achieve the same reconstructability without creating a second evaluator.
+The constructor must enforce the tagged outcome invariants. A selected representative is one member of the bound candidate set; a no-admissible outcome carries no representative.
+
+For CV, retain `CvFoldAcceptance` as the fold assessment owner, but store/locate current fold assessments outside the training root after cutover.
+
+Persist every EVAL2 checkpoint assessment before publishing either outcome. Baseline `PostSelectionRunEvidence` does not bind candidate-record digests, so merely storing candidate objects is insufficient for future reselection. Do not discover candidates later by content-store scanning or filename heuristics.
 
 This is required for future policy reassessment and diagnostic transparency; it does not permit promotion of an inadmissible checkpoint.
 
@@ -648,87 +655,78 @@ A run-level warning should summarize when the selected representative exceeds th
 
 ## 7. Configuration migration
 
-### 7.1 Schema-versioned cutover
+### 7.1 Keep campaign schema v2; add one narrow policy-generation discriminator
 
-Bump the current campaign configuration schema from `mdstats.mlff-campaign-cli.v2` to a new v3 contract for newly generated configuration. Continue to read v2 only through an explicit migration resolver; do not mutate campaign TOML in place.
+Do **not** bump the global `mdstats.mlff-campaign-cli.v2` schema for this local P5 policy change. That schema already governs unrelated target-size/config parsing and changing it would broaden the repair unnecessarily.
 
-This is a **three-generation parser contract**, not a rename of the existing constant:
-
-```text
-schema-less / v1 -> historical pre-v2 normalization only
-v2               -> prior modern campaign contract + bounded v2->v3 policy migration
-v3               -> current campaign contract
-```
-
-Implementation must preserve a distinct named v2 schema token after introducing v3. `_load_config()` must accept v1, v2 and v3 explicitly. Every schema discriminator that currently tests `schema == CAMPAIGN_CLI_SCHEMA` must be audited before changing the current token: in particular, `_normalize_target_size_fidelity_config()` must treat **both v2 and v3** as the modern `fidelity_epochs` contract and reserve the historical fixed-`3/10/30` branch for schema-less/v1 only. A v2 file must never become "historical v1" merely because v3 became current.
-
-The generator/`init` path emits v3 only after this reader compatibility is in place.
-
-New v3 generated/current replay fields are:
+Add one generated migration discriminator under the existing `[acceptance]` table:
 
 ```toml
 [acceptance]
+post_selection_checkpoint_policy_generation = "p5_target_replay_v2"
+```
+
+This field exists only to distinguish the new authored contract from historical TRAIN2 configs whose generated defaults were written explicitly. It is not an independent scientific score and must not be hashed separately from the resolved rule/value identities.
+
+New generated/current fields are:
+
+```toml
+[acceptance]
+post_selection_checkpoint_policy_generation = "p5_target_replay_v2"
+maximum_target_force_rmse_ev_per_angstrom = 0.050
 replay_degradation_warning_mev_per_a = 50.0
 replay_degradation_hard_limit_mev_per_a = 100.0
 ```
 
-The historical one-number field:
+The historical one-number replay field:
 
 ```toml
 allowed_replay_degradation_mev_per_a = 30.0
 ```
 
-is invalid in v3.
+is invalid when the new policy-generation marker is present.
 
-The existing public target field remains:
+### 7.2 Historical TRAIN2 replay migration
 
-```toml
-maximum_target_force_rmse_ev_per_angstrom = ...
-```
+For a TRAIN2 campaign with **no** new checkpoint-policy marker, exactly the historical generated/default replay field `allowed_replay_degradation_mev_per_a = 30.0`, and no new replay fields:
 
-but its omitted/generated default is mode-aware in v3: foundation final production resolves/generates `0.050`; scratch retains its accepted `0.030`; foundation CV retains its separate `0.045` owner.
-
-### 7.2 v2 replay migration
-
-For a v2 TRAIN2 campaign with exactly the historical generated/default replay field `allowed_replay_degradation_mev_per_a = 30.0` and neither new replay field present:
-
-- recognize that value as the superseded v2 generated default;
+- recognize it as the superseded generated baseline;
 - resolve current replay policy to `50.0/100.0 meV/angstrom`;
 - emit a bounded migration/deprecation notice;
 - do not retain `30.0` as a hidden hard gate.
 
-If the v2 one-number replay value is non-default/custom, fail with an actionable migration error rather than guessing whether it maps to warning or hard rejection.
+If the legacy one-number replay value is non-default/custom, fail with an actionable migration error rather than guessing whether it maps to warning or hard rejection.
 
-If legacy and new replay fields coexist, fail closed. Do not silently make one "win" while leaving a second visible authority in the file.
+If new fields appear without the new marker, or legacy and new replay fields coexist, fail closed with an actionable migration instruction. Do not silently make one source win.
 
-### 7.3 v2 foundation-production target migration
+### 7.3 Historical foundation-production target migration
 
-The shipped v2 template explicitly writes `maximum_target_force_rmse_ev_per_angstrom = 0.030`; therefore omission-only default changes are insufficient.
+The shipped current template explicitly writes `maximum_target_force_rmse_ev_per_angstrom = 0.030`; omission-only default changes are insufficient.
 
-For **foundation-adaptation v2** campaigns:
+For **foundation-adaptation TRAIN2 configs without the new marker**:
 
-- an absent target field or exact historical generated value `0.030` resolves to the new foundation-production default `0.050`;
-- a non-`0.030` finite positive v2 value is preserved as an explicit legacy override;
-- the migration affects production target admission only; foundation CV remains `0.045/0.045`.
+- absent target field or exact historical generated value `0.030` resolves to the new foundation-production default `0.050`;
+- a non-`0.030` finite positive legacy value is preserved as an explicit override;
+- foundation CV remains independently governed at `0.045/0.045`.
 
-This deliberately treats an exact v2 `0.030` as the historical generated default because v2 carries no provenance that can distinguish "generated 0.030" from "user retyped the same default". A user who intentionally wants `0.030` after the cutover must migrate the file to v3 and set `0.030` explicitly there.
+This deliberately treats exact legacy `0.030` as generated-default ancestry because the old config carries no provenance capable of distinguishing "generated 0.030" from "user retyped exactly 0.030". A user who intentionally wants production `0.030` after cutover must add the new marker and set `0.030` explicitly.
 
-For **scratch v2** campaigns, `0.030` retains its historical scratch meaning and is not migrated to `0.050`.
+For **scratch** TRAIN2 configs, legacy `0.030` retains its accepted scratch meaning and is not migrated to `0.050`.
 
-Schema-less/v1 historical campaigns retain their own historical policy generation and are not silently converted into this TRAIN2 policy family.
+Schema-less/pre-TRAIN2 policy generations retain their own historical semantics and are not silently converted into this checkpoint-policy generation.
 
-### 7.4 v3 explicit values and validation
+### 7.4 New-generation explicit values and validation
 
-Under v3:
+With `post_selection_checkpoint_policy_generation = "p5_target_replay_v2"`:
 
-- explicit `maximum_target_force_rmse_ev_per_angstrom = 0.030` is a lawful intentional override and must be preserved;
-- explicit replay warning/hard values are used exactly after validation;
+- explicit production target `0.030` is a lawful intentional override and is preserved;
+- replay warning/hard values are used exactly after validation;
 - require finite positive values and `warning < hard`;
 - reject booleans, strings, NaN and infinity at the policy boundary;
-- omission and explicit current defaults must yield identical resolved policy identities;
-- generated template, `init` output, shipped example, CLI specification and user guide must converge on the same v3 contract;
-- the shipped `[evaluation]` comments must no longer claim that refinement reservation, practical-equivalence/bootstrap, secondary metrics or maturity control **P5** representative selection. Generic EVAL2 configuration may remain only for unaffected consumers with its scope stated accurately.
-
+- omission and explicit current defaults yield identical resolved hard/diagnostic policy identities;
+- the retired one-number replay field is rejected;
+- generated template, `init` output, shipped example, CLI specification and user guide remain campaign-schema v2 and converge on this marker/field contract;
+- shipped `[evaluation]` comments no longer claim refinement reservation, practical-equivalence/bootstrap, secondary metrics or maturity control **P5** representative selection. Generic EVAL2 configuration may remain only for unaffected consumers with its scope stated accurately.
 ## 8. Reuse and migration of existing training/evidence
 
 ### 8.1 Governing invariant
@@ -756,6 +754,9 @@ foundation checkpoint/head
 training mode
 target gradient membership
 replay training membership and label mode
+target/replay validation artifacts consumed by the trainer
+common-monitor lineage consumed by preparation/runtime
+composition-transfer required-composition set for governed consumers
 objective/loss
 residual E0 preparation
 exposure semantics
@@ -773,11 +774,12 @@ and the only difference is assessment-policy ancestry that could not alter train
 
 Do not implement this as a broad "ignore method digest" exception. Compare the semantically relevant owners or introduce the minimum accepted split in identity authority so future records no longer require an exception.
 
-For the exact baseline `PostSelectionMethodIdentity` schema-v3 method/run lineage, the migration proof must cover all three old over-bindings:
+For the exact baseline `PostSelectionMethodIdentity` schema-v3 method/run lineage, the migration proof must cover all old over-bindings:
 
-1. old `PostSelectionMethodIdentity` -> new training identity, excluding only `shared_checkpoint_constraints_digest` and `checkpoint_selection_policy_digest` after proving all training-bearing fields equal;
-2. old full-plan-derived run/checkpoint root -> current training-position identity, proving role/fold membership/seed/horizon and all training-bearing parents equal;
-3. old plan-bound evaluation role -> current measurement identity, proving checkpoint SHA/model state, exact evaluation artifact/membership, metric policy/provider semantics and prediction digest equal.
+1. old `PostSelectionMethodIdentity` -> new training identity, excluding only assessment/selection parents after proving all training-bearing fields equal;
+2. old full-plan-derived run/checkpoint root -> current training-position identity, proving role/fold membership/seed/horizon, trainer-consumed validation lineage, preparation/composition-transfer dependencies and every other training-bearing parent equal;
+3. old fitted preparation/materialization/checkpoint/runtime ancestry -> current training position, without rewriting the old records;
+4. old plan-bound evaluation role -> current measurement identity, proving checkpoint SHA/model state, exact evaluation artifact/membership, metric policy/provider semantics and prediction digest equal where reuse is claimed.
 
 Only after those proofs may current assessment reuse the old trajectory/measurement. A mismatch at any layer fails closed.
 
@@ -829,19 +831,24 @@ EVAL2 -> recompute
 representative -> strict minimum target RMSE among current hard-admissible checkpoints
 ```
 
-After section 6.5 is implemented, future successful and negative production results bind the complete candidate set so later policy-only reassessment need not rediscover or re-infer it.
+After section 6.5 is implemented, future successful and negative production assessments bind the complete candidate set so later policy-only reassessment need not rediscover or re-infer it.
 
-### 8.7 Legacy run-root locator during the one-time identity cutover
+A historical final-production trajectory can become current assessment input only after the current CV plan is reclosed and accepted. If current CV rejects, keep the historical final trajectory as retained training evidence but do not publish a current production representative from it.
+
+### 8.7 Legacy trajectory continuation and run-root locator
 
 A new clean training-position identity does not rename or invalidate a sealed legacy run root.
 
-During the one-time v3 identity migration:
+During the one-time identity migration:
 
 - derive the legacy source run identity/root only from authenticated stored historical CV/final plan and run-position evidence;
-- validate the existing completion/topology ownership records before consuming checkpoints;
+- if the historical root is sealed, validate its existing completion/topology ownership records before consuming checkpoints and never mutate it;
+- if TRAIN2 is complete but the old policy failed before terminal run evidence/completion anchor, authenticate the complete runtime summary/checkpoints and seal the root under the new **training-completion** rule before assessment;
+- if TRAIN2 is interrupted, resume only after exact training-equivalence proof and continue using the historical materialization/config/runtime protocol identities that created the checkpoint/optimizer/RNG state; do not rewrite them to the new identity mid-trajectory;
+- after legacy continuation completes, assess under the current policy outside the training root;
 - never locate a legacy run by scanning `runs/`, guessing hashes, newest-mtime choice, or content-store reverse lookup;
 - never rename, copy, rewrite or symlink a sealed legacy root merely to make its pathname match the new identity;
-- if a durable mapping is required, permit at most one immutable per-trajectory reuse binding at the existing currentness owner that records old run identity/root, new training-position identity and the exact equivalence proof. Do not create a registry or shadow run namespace.
+- permit at most one immutable per-trajectory reuse binding at the existing currentness owner that records old run identity/root, new training-position identity and the exact equivalence proof. Do not create a registry or shadow run namespace.
 
 Newly created post-cutover trajectories use the corrected training-position identity directly, so this compatibility edge is one-time historical migration rather than steady-state dual identity.
 
