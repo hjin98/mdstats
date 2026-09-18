@@ -1,7 +1,7 @@
 ---
 kind: semantic-definition-dependency-trace
 protocol_version: 6.4.0
-status: PROPOSED_R6_FINAL_NONAUTHORITATIVE_TRACE
+status: PROPOSED_R7_FINAL_NONAUTHORITATIVE_TRACE
 workplan_id: MLFF-D1-D2-SSDP64-AXIOMATIC-FORMALIZATION-1
 basis_commit: cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824
 scope:
@@ -14,9 +14,10 @@ supersedes_trace_drafts:
   - workplans/active/MLFF_D1_D2_SSDP64_DEFINITION_DEPENDENCY_TRACE_R3_FINAL.md
   - workplans/active/MLFF_D1_D2_SSDP64_DEFINITION_DEPENDENCY_TRACE_R4_FINAL.md
   - workplans/active/MLFF_D1_D2_SSDP64_DEFINITION_DEPENDENCY_TRACE_R5_FINAL.md
+  - workplans/active/MLFF_D1_D2_SSDP64_DEFINITION_DEPENDENCY_TRACE_R6_FINAL.md
 ---
 
-# MLFF D1/D2 Protocol-6.4 R6 definition dependency trace — final candidate
+# MLFF D1/D2 Protocol-6.4 R7 definition dependency trace — final candidate
 
 ## 1. Trace semantics and exact roots
 
@@ -49,7 +50,7 @@ Authority direction is acyclic: D1 objects depend only on D1 objects or exact D1
 | `D1.DEF.008` | `D1.DEF.001`; `D1.DEF.002`; `D1.DEF.003`; `D1.DEF.005`; `D1.DEF.006`; `D1.AX.001`; `D1.AX.002`; `D1.IMP.P3` |
 | `D1.DEF.009` | `D1.IMP.P3` |
 | `D1.AX.004` | `D1.DEF.008`; `D1.DEF.009`; `D1.IMP.P3`; `D1.DEF.010`; `D1.DEF.012`; `D1.DEF.013`; `D1.DEF.017` |
-| `D1.DEF.010` | `D1.DEF.008`; `D1.DEF.009`; `D1.IMP.P3` |
+| `D1.DEF.010` | `D1.DEF.008`; `D1.DEF.009`; `D1.IMP.P3`; `D1.DEF.006` |
 | `D1.DEF.011` | `D1.DEF.002`; `D1.DEF.009`; `D1.DEF.010`; `D1.IMP.P3` |
 | `D1.DEF.012` | `D1.DEF.008`; `D1.IMP.ORDER` |
 | `D1.DEF.013` | `D1.DEF.006`; `D1.DEF.008`; `D1.IMP.ORDER`; `D1.DEF.010` |
@@ -148,124 +149,123 @@ Authority direction is acyclic: D1 objects depend only on D1 objects or exact D1
 | `D2.DEF.060A` | `D2.SRC.GENERAL`; `D2.SRC.ORDER`; `D2.DEF.018`; `D2.DEF.020`; `D2.DEF.021`; `D2.DEF.029`; `D2.DEF.030`; `D2.DEF.033`; `D2.DEF.036`; `D2.DEF.038`; `D2.DEF.058`; `D2.DEF.059` |
 | `D2.DEF.061` | `D2.DEF.060A` |
 | `D2.AX.006` | `D2.DEF.061` |
-| `D2.DEF.062` | `D2.DEF.003`; `D2.DEF.004`; `D2.DEF.005`; `D2.DEF.006`; `D2.DEF.007`; `D2.DEF.009`; `D2.DEF.012`; `D2.DEF.013`; `D2.DEF.014`; `D2.DEF.017`; `D2.DEF.018`; `D2.DEF.019`; `D2.DEF.020`; `D2.DEF.023`; `D2.DEF.025`; `D2.DEF.033`; `D2.DEF.037`; `D2.DEF.038`; `D2.DEF.039`; `D2.DEF.041`; `D2.DEF.042`; `D2.DEF.045`; `D2.DEF.047`; `D2.DEF.049`; `D2.DEF.051`; `D2.DEF.051A`; `D2.DEF.052`; `D2.DEF.053`; `D2.DEF.054`; `D2.DEF.056`; `D2.DEF.057`; `D2.DEF.058`; `D2.DEF.059`; `D2.DEF.060`; `D2.DEF.060A`; `D2.DEF.061`; `D2.IMP.PRODUCTION` |
+| `D2.DEF.062` | `D2.DEF.003`; `D2.DEF.004`; `D2.DEF.005`; `D2.DEF.006`; `D2.DEF.007`; `D2.DEF.009`; `D2.DEF.012`; `D2.DEF.013`; `D2.DEF.014`; `D2.DEF.017`; `D2.DEF.018`; `D2.DEF.019`; `D2.DEF.020`; `D2.DEF.023`; `D2.DEF.025`; `D2.DEF.033`; `D2.DEF.037`; `D2.DEF.038`; `D2.DEF.039`; `D2.DEF.041`; `D2.DEF.042`; `D2.DEF.045`; `D2.DEF.047`; `D2.DEF.049`; `D2.DEF.051`; `D2.DEF.051A`; `D2.DEF.052`; `D2.DEF.053`; `D2.DEF.054`; `D2.DEF.056`; `D2.DEF.057`; `D2.DEF.058`; `D2.DEF.059`; `D2.DEF.060`; `D2.DEF.060A`; `D2.DEF.061`; `D2.IMP.PRODUCTION`; `D2.DEF.015` |
 
 The `D2.DEF.062` row enumerates only definitions that directly contribute one of the typed failure members; it is not a global dependency shortcut.
 
-## 4. R6 local-symbol/domain-owner closure audit
+## 4. R7 focused role-owner and typed-failure closure audit
 
-R5 independent review showed that the R5 semantic pass still missed local formal
-owners when the candidate proposition used a local mathematical symbol or
-semantic domain without spelling the owner's formal ID. R6 therefore repeats
-the complete 106-object pass with three simultaneous tests:
+Independent Review R6 found two residual direct-edge omissions after the broader
+R6 local-symbol pass. R7 therefore repeats all 106 objects with two focused
+falsification sweeps in addition to the existing directness tests:
 
-1. explicit formal-ID prerequisites;
-2. local symbol/domain owner resolution (for example `T_N`, `pi_train`,
-   `M_i`, `M3`, role/permission domains, required-family domains and
-   configured-policy coordinates); and
-3. reverse-impact reachability from each local D1/D2 owner.
+1. every normative evidence-role classification/exclusion is challenged
+   against the local role/permission owner `D1.DEF.006`; and
+2. every explicit fail/failure/infeasible/undefined clause is challenged
+   against the global typed-failure aggregator `D2.DEF.062`.
 
-An edge is stored only when changing the prerequisite itself can directly change
-the subject's denotation, domain, validity or interpretation. Runtime consumer
-relationships and genuinely mediated effects remain transitive.
+The direct-edge rule is unchanged: store `A -> B` only when a material change
+to `B` itself can directly change `A`'s denotation, domain, validity or
+interpretation. Mere vocabulary overlap and already-mediated effects remain
+transitive.
 
-This is author-side repair evidence, not acceptance authority.
+### 4.1 R7 direct-edge additions
 
-### 4.1 R6 direct-edge additions
-
-R6 adds seventeen direct edges across thirteen subjects:
+R7 adds exactly two direct edges:
 
 ```text
-D1.AX.003  -> D1.DEF.012
-
-D1.AX.004  -> D1.DEF.010
-D1.AX.004  -> D1.DEF.012
-D1.AX.004  -> D1.DEF.013
-D1.AX.004  -> D1.DEF.017
-
-D1.DEF.013 -> D1.DEF.010
-
-D1.DEF.020 -> D1.DEF.006
-
-D1.AX.008  -> D1.DEF.009
-D1.AX.008  -> D1.DEF.012
-
-D1.AX.010  -> D1.DEF.008
-
-D2.DEF.012 -> D1.DEF.016
-D2.DEF.021 -> D1.DEF.016
-
-D2.DEF.030 -> D2.DEF.012
-D2.DEF.031 -> D2.DEF.012
-
-D2.DEF.041 -> D1.DEF.006
-
-D2.DEF.050 -> D2.DEF.007
-
-D2.AX.003  -> D1.DEF.012
+D1.DEF.010 -> D1.DEF.006
+D2.DEF.062 -> D2.DEF.015
 ```
 
-The first ten close every direct-owner witness named by Independent Review R5.
-The remaining seven arise from the same full local-owner pass rather than from
-patching only review examples:
+#### Evaluation-ladder role ownership
 
-- `D1.AX.004` also directly holds the local pre-order authority and membership
-  rule fixed, so the local owners `D1.DEF.013` and `D1.DEF.017` are direct;
-- `D1.AX.008` explicitly freezes candidate `N` as well as
-  `T_N/pi_train`, so `D1.DEF.009` is direct;
-- `D2.DEF.012` and `D2.DEF.021` explicitly create/mark hard-obligation
-  semantics, so the D1 hard-obligation owner `D1.DEF.016` is direct;
-- `D2.DEF.050` directly uses the configured maximum `N_max`, whose exact
-  numerical configured-policy domain is `D2.DEF.007`;
-- `D2.AX.003` explicitly forbids restart from changing target membership, so
-  the exact target-membership owner `D1.DEF.012` is direct.
+`D1.DEF.010` does not merely define nested `M_i`; it also states that those
+populations are P3 model-selection evidence and are not post-selection held-out
+or checkpoint-monitor evidence. `D1.DEF.006` is the local formal owner of
+those evidence-role names and permissions. Changing the role system can
+therefore directly change the interpretation/validity of `D1.DEF.010`.
 
-### 4.2 Intentionally transitive or non-dependency cases
+#### Robust-scale typed failure
 
-The local-symbol pass also challenged likely false positives and retained them
-as non-edges where a current direct parent already owns the proposition:
+`D2.DEF.015` explicitly states that non-finite robust-scale input fails
+preparation. `D2.DEF.062` directly aggregates the typed
+“non-finite fitted statistics” failure member. Changing the robust-scale
+non-finite policy can therefore directly change the typed failure set.
 
-- `D2.DEF.056` uses frozen `T_N` and states `M_mon` is external, but its
-  direct scientific parent `D1.DEF.024` already defines that exact fold
-  domain and monitor externality. Direct edges to `D1.DEF.012` or
-  `D1.DEF.023` would duplicate a mediated dependency.
-- `D2.AX.005` mentions `M3`, `M_mon`, current `Q_r` and `tau_prod`,
-  but those production constraints are already directly owned by
-  `D1.AX.010`, `D2.DEF.052` and `D2.DEF.058`; lower source objects remain
-  transitive.
-- `D1.DEF.013` excludes post-selection monitor/CV/replay-monitor evidence as
-  role classes through exact `D1.IMP.ORDER` and `D1.DEF.006`; it does not
-  depend on the later realized monitor/fold/replay memberships merely because
-  those memberships instantiate excluded roles.
-- `D1.DEF.020` obtains the authorization relation for E0 fitting from
-  `D1.DEF.006`; exact CV/production memberships are concretized downstream.
-  The D2 fit object `D2.DEF.041`, by contrast, already directly binds
-  `D1.DEF.024` and `D1.AX.010` because it names those exact fit domains.
-- `D2.DEF.029` continues to mention `D2.DEF.020` only to say that its
-  selector predicate is intentionally distinct from MVQUAL; that remains a
-  deliberate non-dependency.
-- `D2.DEF.060A` remains a relation-selection registry rather than depending
-  directly on every value-producing operand. Exact tolerance/predicate owners
-  that select a comparison relation remain direct; ordinary operands remain
-  transitive.
+### 4.2 Focused role-owner sweep
 
-### 4.3 Closure checks
+The same sweep challenged every other D1 use of evidence-role terminology.
 
-After the R6 additions:
+- `D1.DEF.008`, `D1.DEF.013`, `D1.DEF.020`, `D1.DEF.023` and
+  `D1.DEF.024` already bind `D1.DEF.006` directly where the local role
+  system changes their own meaning.
+- `D1.DEF.025` consumes exact monitor and held-out populations through
+  `D1.DEF.023` and `D1.DEF.024`; role meaning there is mediated by those
+  direct parents rather than independently redefined.
+- `D1.AX.010` consumes the already-defined monitor, selected target and
+  production-policy objects; it does not introduce another local evidence-role
+  vocabulary owner.
+- generic words such as “scientific role” or “model-selection concept” do not
+  create an evidence-role dependency unless the proposition actually
+  classifies a governed evidence population.
+
+No additional direct role-owner edge survives that challenge.
+
+### 4.3 Focused typed-failure sweep
+
+Every explicit failure/infeasibility clause in the D2 kernel was compared to the
+members enumerated by `D2.DEF.062`.
+
+The new `D2.DEF.015` edge is required. Other apparent hits remain correctly
+non-direct:
+
+- `D2.DEF.016`'s “at least two reference elements” is a family-domain
+  precondition whose concrete leave-one-out failure is owned by
+  `D2.DEF.017`; `D2.DEF.062` already depends directly on that zero-
+  denominator/unreachable-mass owner.
+- `D2.DEF.021`'s empty selected extent “fails” means the qualification
+  predicate is false; it is not a separate workflow typed-error member.
+- `D2.AX.002` marks prefix-derived execution state stale after repair and
+  routes reconstruction through the repair/continuation owners; it does not
+  independently add a typed failure category.
+- `D2.AX.004` defines role-evidence currentness/invalidation. Its replay-stale
+  and checkpoint-policy consequences are already represented by the direct
+  replay/checkpoint/currentness owners in the typed-failure row; it is not a
+  second failure classifier.
+- `D2.DEF.030` uses the word “fails” only for the Phase-A family predicate
+  `D2.DEF.029`; it does not define a failure state.
+
+### 4.4 Retained challenged non-edges
+
+R7 retains the prior deliberate non-edges after fresh challenge:
+
+- `D2.DEF.056` receives exact fold-domain/monitor-external semantics through
+  `D1.DEF.024`;
+- `D2.AX.005` receives lower production coordinates through
+  `D1.AX.010`, `D2.DEF.052` and `D2.DEF.058`;
+- `D1.DEF.013` excludes post-selection evidence by role class rather than
+  consuming later realized memberships;
+- `D2.DEF.029 !-> D2.DEF.020` remains intentional because the former mentions
+  the latter only to state that the predicates are distinct;
+- `D2.DEF.060A` remains a comparison-relation registry, not a direct consumer
+  of every value-producing operand.
+
+### 4.5 Closure checks
+
+After the R7 additions:
 
 - all 106 formal D1/D2 subjects occur exactly once;
-- every stored prerequisite resolves to a candidate object or exact basis-pinned
+- every prerequisite resolves to a candidate object or exact basis-pinned
   import;
-- the object-to-object graph is acyclic;
+- the object graph is acyclic;
 - no D1 object depends on a D2 concretization;
 - the explicit formal-ID scan leaves only the deliberate
   `D2.DEF.029 !-> D2.DEF.020` distinction;
-- reverse traversal now reaches the previously disconnected controlled-variable,
-  selector-exclusion, E0-permission and required-family propositions from their
-  local owners.
+- the R6 role/failure witnesses now have direct reverse-impact coverage.
 
-Fresh independent Review must still attempt to falsify both missing and excess
-edges; these author checks do not establish acceptance.
+These are author-side closure checks only. Fresh independent Review must still
+attempt to falsify missing and excess edges.
 
 
 ## 5. High-risk D2 -> D1 concretization edges
@@ -332,4 +332,4 @@ Reverse-impact tests begin at every fixed/configurable/derived currentness param
 
 ## 8. Completion rule
 
-This trace may accompany R6 only if independent review confirms: every material formal object in the two scoped R3 candidate files appears exactly once; every prerequisite resolves to an exact candidate object or basis-pinned import; no material direct edge is missing; no edge inverts D1/D2 ownership; reverse traversal reaches all materially affected descendants; and no completeness claim escapes the declared two-file scope.
+This trace may accompany R7 only if independent review confirms: every material formal object in the two scoped R3 candidate files appears exactly once; every prerequisite resolves to an exact candidate object or basis-pinned import; no material direct edge is missing; no edge inverts D1/D2 ownership; reverse traversal reaches all materially affected descendants; and no completeness claim escapes the declared two-file scope.

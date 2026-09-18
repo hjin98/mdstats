@@ -362,3 +362,30 @@ CPU D4 evidence may remain applicable only if the weighted-quantile owner,
 focused regression and real-owner suite blobs remain unchanged and the
 environment contract is unaffected. GPU qualification remains outside this
 gate.
+
+
+## 17. R7 author repair closure and fresh-review gate
+
+R7 repairs the two residual direct-edge blockers from Independent Review R6 at
+the derived dependency representation owner only. Neither proposed D1/D2 kernel
+nor any executable D4 owner/test is changed.
+
+The focused evidence-role and typed-failure sweeps add exactly:
+
+- `D1.DEF.010 -> D1.DEF.006`;
+- `D2.DEF.062 -> D2.DEF.015`.
+
+The same sweeps explicitly challenge, and retain as mediated/non-typed,
+`D1.DEF.025`, `D1.AX.010`, `D2.DEF.016`, `D2.DEF.021`,
+`D2.AX.002`, `D2.AX.004` and `D2.DEF.030` rather than dense-connecting
+the graph by vocabulary alone.
+
+The repaired graph must be rebound as a new immutable target only after exact
+106-row, endpoint/source, acyclicity, abstraction-direction, formal-ID and D4
+blob-applicability checks. Existing passing CPU runs `35300235175` and
+`35300268107` remain reusable only if the weighted-quantile owner and both
+test blobs are unchanged.
+
+A descendant handoff must request a fresh complete assembled-candidate Review.
+Author closure is not PASS, ratification, promotion or merge. GPU qualification
+remains deferred and outside this gate.
