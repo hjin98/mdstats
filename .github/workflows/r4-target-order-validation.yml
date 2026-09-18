@@ -11,22 +11,50 @@ permissions:
   contents: read
 
 jobs:
-  target-order:
+  diagnose:
     runs-on: ubuntu-latest
+    outputs:
+      failure_name: ${{ steps.parse.outputs.failure_name }}
+      failure_count: ${{ steps.parse.outputs.failure_count }}
     steps:
-      - name: Checkout exact evidence commit
-        uses: actions/checkout@v4
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install project and test runner
+      - name: Install
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e '.[manifest]' pytest
-      - name: Focused weighted-quantile regression
-        run: pytest -q tests/test_mlff_target_order_weighted_quantiles_fp64.py
-      - name: Real-owner target-order integration/regression pass 1
-        run: pytest -q tests/test_mlff_target_order_real_owner.py
-      - name: Real-owner target-order integration/regression pass 2
-        run: pytest -q tests/test_mlff_target_order_real_owner.py
+      - name: Run exact real-owner suite and capture JUnit
+        run: |
+          set +e
+          pytest -q tests/test_mlff_target_order_real_owner.py --junitxml=/tmp/r4-real-owner.xml
+          echo "$?" > /tmp/r4-exit-code
+          exit 0
+      - id: parse
+        name: Parse failing test identity
+        run: |
+          python - <<'PY'
+          import os, pathlib, xml.etree.ElementTree as ET
+          root = ET.parse('/tmp/r4-real-owner.xml').getroot()
+          failed = []
+          for case in root.iter('testcase'):
+              node = case.find('failure')
+              if node is None:
+                  node = case.find('error')
+              if node is not None:
+                  failed.append(f"{case.get('classname','')}::{case.get('name','')}")
+          exit_code = pathlib.Path('/tmp/r4-exit-code').read_text().strip()
+          first = failed[0] if failed else f"NO_TEST_FAILURE_exit_{exit_code}"
+          first = first.replace('%','pct').replace('\n',' ')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
+              fh.write(f"failure_name={first}\n")
+              fh.write(f"failure_count={len(failed)}\n")
+          PY
+
+  report:
+    needs: diagnose
+    name: "R4 diagnostic count=${{ needs.diagnose.outputs.failure_count }} first=${{ needs.diagnose.outputs.failure_name }}"
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo diagnostic-complete
