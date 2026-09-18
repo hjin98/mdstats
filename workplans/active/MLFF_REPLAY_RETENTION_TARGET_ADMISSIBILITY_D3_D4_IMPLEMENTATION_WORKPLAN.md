@@ -4,7 +4,7 @@ protocol_version: 6.4.0
 workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-D3-D4-1
 parent_workplan: workplans/active/MLFF_REPLAY_RETENTION_AND_TARGET_ADMISSIBILITY_REWORK_WORKPLAN.md
 branch: design/mlff-replay-retention-target-admissibility-rework
-status: R1_REPAIRED_CANDIDATE_PENDING_INDEPENDENT_D3_REVIEW
+status: REVIEW_R2_NO_PASS_D4_HANDOFF_REOPENED
 parent_d1_target: d761171f3c86c3c79b87a90cfc02ac324c261b1a
 parent_d1_blob: 612294ec4680db01a18085e13fbfe5dcfa9fb7ed
 parent_d2_target: 32508991d472c1c6e4bd8b818b38d0880401845f
@@ -16,7 +16,7 @@ r1_repair_binding: workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D
 
 # MLFF replay retention / target admissibility D3 -> D4 implementation workplan
 
-## 0. Independent D3 Review R1 disposition
+## 0. Independent D3 Review R1/R2 disposition
 
 Immutable candidate `119c4067b1852be127134d6b0fb1aae6cace4bd6` is **NO-PASS**. Review record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_INDEPENDENT_REVIEW_R1.md`.
 
@@ -27,7 +27,9 @@ Do not hand this plan to the implementer yet. The D3/D4 authority must first be 
 - per-seed final assessment currentness excludes D2.DEF.059B/publication mode, which belongs only to aggregate publication;
 - the prior P5 completion/topology security and cold-storage invariants are preserved losslessly.
 
-The R1 repairs are now frozen in the candidate authority: pre-fit acyclic trajectory identity, one append-only terminal-unsealed legacy sealing path, final-seed hard+059A assessment projection with 059B aggregate-only, and full retained completion/storage safety. Fresh independent D3 Review is still required before Gate E can open.
+The R1 repairs are frozen in candidate `5d7c62f803fc8757a4068b7b115fadb7a5ec4636`: pre-fit acyclic trajectory identity, one append-only terminal-unsealed legacy sealing path, final-seed hard+059A assessment projection with 059B aggregate-only, and full retained completion/storage safety.
+
+Independent R2 Review confirms those D3 repairs but returns **NO-PASS** on the assembled D3->D4 handoff because current `PostSelectionMaterialization` still owns the held-out `outer_evaluation_artifact` inside the run root while the repaired D3 requires a training-only root and D2.DEF.060B classifies that artifact/labels as evaluation-measurement ancestry. This plan is not implementer-authorizing until that coupling is explicitly removed and the repaired candidate passes fresh independent Review.
 
 ## 1. Governing outcome and implementation gate
 
@@ -118,6 +120,23 @@ Acceptance:
 - existing proof is verified/reused after cold movement rather than reconstructed from a depleted tree;
 - tampered/copied/root-mismatched/partial-conflict proof state fails closed;
 - storage report/archive/dedup semantics remain owner-correct.
+
+### I3A - Remove held-out evaluation bytes from the training root
+
+Post-cutover `PostSelectionMaterialization` and the sealed run-root topology SHALL contain only training-bearing/preparation/runtime artifacts. The current `outer_evaluation_artifact` field and `outer_evaluation.extxyz` / sidecar files SHALL NOT remain identity-bearing members of training materialization or the sealed run root.
+
+Materialize/authenticate the held-out outer-evaluation population through the existing EVAL2/assessment evidence path outside the sealed training root. Reuse the existing content-addressed P5 evidence/currentness infrastructure; do not add a second store, filesystem registry, or shadow materialization namespace.
+
+The training/preparation path may retain only the held-out geometry projection actually consumed before TRAIN2: required composition/transfer-consumer identity. Held-out labels, reference values, metric/provider realization, and evaluation transport serialization remain measurement ancestry only.
+
+Historical roots that already contain outer-evaluation materialization remain immutable history. Reuse their held-out bytes only when D2.DEF.060B proves the exact measurement experiment; otherwise regenerate EVAL2 input outside the historical root.
+
+Acceptance:
+- changing only held-out labels/reference values, evaluation transport bytes, metric or evaluator/provider semantics does not move `TrainingTrajectoryIdentity`, fitted preparation, post-cutover training materialization/root identity, or TRAIN2;
+- such a change moves `EvaluationMeasurementIdentity` and only the dependent EVAL2/outer verdict;
+- a post-cutover sealed root topology contains no `outer_evaluation.extxyz`, sidecar, or equivalent held-out evaluation artifact;
+- composition-transfer coverage remains correct through the explicit required-composition projection;
+- historical root bytes are never rewritten during migration/reassessment.
 
 ### I4 - Assessment-independent measurement identity
 

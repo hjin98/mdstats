@@ -1,7 +1,7 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: active-d3-r1-repair-candidate
+status: active-d3-r2-review-reopen
 highest_affected_domain: D1
 branch: design/mlff-replay-retention-target-admissibility-rework
 analysis_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
@@ -1236,7 +1236,7 @@ The final renderer-safe D2 ratification target is `32508991d472c1c6e4bd8b818b38d
 
 On 2026-09-18 the stakeholder explicitly accepted that exact D2 candidate. Ratification record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_R2_RATIFICATION.md`. The D2 blob remains unchanged by ratification. Gate C is closed; Gate D may proceed.
 
-### Gate D - D3 authority/currentness reconciliation - R1 REPAIR CANDIDATE PREPARED / R2 REVIEW REQUIRED
+### Gate D - D3 authority/currentness reconciliation - R2 REVIEW NO-PASS / D4 HANDOFF REOPENED
 
 Before code edits:
 
@@ -1263,7 +1263,21 @@ Required repair before a new immutable D3 candidate may be reviewed:
 3. narrow final-seed assessment currentness so D2.DEF.059B publication-only policy is not a parent of each per-seed assessment position. Bind D2.DEF.059A + final hard policy to the seed-assessment projection; bind publication mode/059B only at the aggregate publication decision;
 4. restore the accepted completion-proof/storage safety invariants weakened by the candidate rewrite: race-safe no-follow opened-descriptor regular-file authentication (or an explicitly equivalent guarantee), topology/anchor owner infrastructure excluded from reclamation, completion independent of terminal assessment-file presence, idempotent reuse of an existing proof rather than reconstruction from a storage-depleted tree, and fail-closed treatment of tampered/copied/self-inconsistent proofs.
 
-R1-D3-1 through R1-D3-4 are incorporated into exact repaired candidate `5d7c62f803fc8757a4068b7b115fadb7a5ec4636`: the identity graph is acyclic, legacy sealing has one explicit append-only exception, final-seed assessment excludes 059B/publication-only ancestry, and the full completion/storage safety contract is restored. Repair binding: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_R1_REPAIR_BINDING.md`. Gate D remains open until a fresh independent R2 Review passes that immutable target.
+R1-D3-1 through R1-D3-4 are incorporated into exact repaired candidate `5d7c62f803fc8757a4068b7b115fadb7a5ec4636`: the identity graph is acyclic, legacy sealing has one explicit append-only exception, final-seed assessment excludes 059B/publication-only ancestry, and the full completion/storage safety contract is restored. Repair binding: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_R1_REPAIR_BINDING.md`.
+
+Fresh independent D3 Review R2 of that exact target returns **NO-PASS with no SERIOUS CHALLENGE to ratified D1/D2 or the repaired D3 architecture**. Review record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_INDEPENDENT_REVIEW_R2.md`.
+
+The R1 D3 blockers are genuinely closed. One blocking D3->D4 handoff omission remains: the accepted repaired D3 defines post-cutover run roots as training-only and D2.DEF.060B makes held-out evaluation artifact/labels measurement ancestry, but the current executable `PostSelectionMaterialization` still binds `outer_evaluation_artifact` and stores `outer_evaluation.extxyz*` under the run root. The candidate D4 specification/workplan does not explicitly remove or relocate that field. Therefore an evaluation-only held-out artifact/label change can still conflict with the immutable materialization/root even when `TrainingTrajectoryIdentity` and TRAIN2 semantics are unchanged.
+
+Required repair before another immutable Gate-D candidate may be reviewed:
+
+1. make post-cutover `PostSelectionMaterialization` and the sealed run-root topology training-only in fact, not only by name: remove held-out `outer_evaluation_artifact` and `outer_evaluation.extxyz*` from the training materialization/root identity and topology;
+2. route held-out outer-evaluation materialization through the existing assessment/evidence owner used by EVAL2, or another already-accepted external P5 evidence surface, so exact population/artifact/labels/provider ancestry is bound by `EvaluationMeasurementIdentity` and the CV assessment path without creating a second store/registry;
+3. preserve only the training-bearing projection of held-out geometry needed by preparation, namely the required composition-set/transfer-consumer identity; held-out labels and measurement serialization remain excluded from training identity/preparation;
+4. keep historical pre-cutover roots immutable even when they contain legacy outer-evaluation materialization; reuse those bytes only through exact D2.DEF.060B measurement-equivalence authentication and never rewrite them into the new topology;
+5. add falsification proving a held-out label/reference/measurement-artifact-only change leaves `TrainingTrajectoryIdentity`, fitted preparation, training materialization, sealed root and TRAIN2 current while moving only `EvaluationMeasurementIdentity`/EVAL2 and dependent outer verdict; also prove post-cutover root certification contains no held-out outer-evaluation artifact.
+
+Gate E remains blocked until this D4 handoff is repaired and a fresh independent Gate-D Review passes the new immutable candidate.
 
 ### Gate E - D4 implementation - BLOCKED ON GATE D ACCEPTANCE
 
