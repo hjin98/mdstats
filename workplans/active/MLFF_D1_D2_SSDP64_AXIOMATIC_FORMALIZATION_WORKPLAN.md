@@ -1,7 +1,7 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: PROPOSED_REVIEW_PASS_AWAITING_STAKEHOLDER_RATIFICATION
+status: RATIFIED_PROMOTED_PENDING_ARCHIVE
 workplan_id: MLFF-D1-D2-SSDP64-AXIOMATIC-FORMALIZATION-1
 basis_commit: cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824
 highest_domain: D1
@@ -418,3 +418,42 @@ No canonical paper is promoted by review alone. Stakeholder ratification must
 bind the exact reviewed R7 target before canonical D1/D2 reconciliation,
 semantic-history closure, or merge. GPU qualification remains deferred to final
 release qualification.
+
+
+## 19. Stakeholder ratification, final renderer repair and canonical promotion
+
+On 2026-09-17 the stakeholder reviewed the full R7 candidate authority, accepted
+its scientific/numerical content, and identified one remaining rendering defect
+in `D2.DEF.027`: the two restricted witness sums used renderer-sensitive
+`\substack{...}` notation.
+
+The renderer repair at immutable target
+`a4824d28775164aa942fd29fa97ee0957eb87e6f` replaces only those two index renderings with equivalent
+single-line restricted-index sums:
+
+```text
+sum_{w in W_m : A_m(w,c)=1, n_m(w;S)=0} omega_m(w)
+sum_{w in W_m : A_m(w,c)=1} omega_m(w)/(n_m(w;S)+1)
+```
+
+The exact selected witness sets, summands, denominators and all downstream
+decision semantics are unchanged. The corrected D2 kernel contains no
+`\substack`, unsupported `\operatorname`, or raw escaped `\#`, and its
+brace depth is balanced. The delta from the R7 review-record descendant changes
+only the D2 candidate kernel.
+
+The stakeholder explicitly directed: fix that renderer defect, promote the
+candidate official, and close the work. That instruction ratifies corrected
+target `a4824d28775164aa942fd29fa97ee0957eb87e6f` for canonical promotion.
+
+Canonical promotion in the following commit replaces the general D1/D2 method
+papers with the ratified Protocol-6.4 authority kernels, exact-importing the
+pre-promotion detailed source papers at `a4824d28775164aa942fd29fa97ee0957eb87e6f`. The scoped
+target-training-order D1/D2 papers remain scoped source owners and receive only
+a provenance note. No D3/D4 locator changes are required because canonical
+method-paper paths remain unchanged. Existing D4 weighted-quantile evidence
+remains current because no executable owner/test/environment contract changes.
+
+After exact promotion verification, archive this workplan and its review/repair
+lineage and record final CLOSED/PASS status. GPU qualification remains deferred
+to final release qualification.

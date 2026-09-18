@@ -1,946 +1,860 @@
 ---
-title: "mdstats MLFF Numerical Algorithmic Method — foundation role-predicate separation revision"
-artifact_level: "D2 numerical algorithm design"
-status: "accepted-current D2 authority. The configurable foundation role-predicate revision on fix/mlff-cv-competence-threshold-separation, constrained by the accepted D1 threshold revision, passed independent D2 re-review and was stakeholder-ratified on 2026-09-15, against the post-selection restoration revision accepted 2026-09-14 and integrated at 8553ebe9ed86b24dfe910c9e43acc6230d3ece90."
-baseline_accepted_date: "2026-09-14"
-baseline_integrated_commit: "8553ebe9ed86b24dfe910c9e43acc6230d3ece90"
-threshold_revision_accepted_date: "2026-09-15"
-threshold_revision_against_commit: "8553ebe9ed86b24dfe910c9e43acc6230d3ece90"
+kind: accepted-D2-authority-kernel
+protocol_version: 6.4.0
+status: ACCEPTED_CURRENT
+accepted_date: 2026-09-17
+accepted_basis: cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824
+independent_review_target: e827aef9bdceb97aae5be6e89de0585a95dcf71c
+independent_review_commit: 2eddd9058beda039e0ff53d4e50a189be469173b
+ratified_candidate_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
+parent_D1_authority: docs/methods/mlff_scientific_method.md
+workplan_id: MLFF-D1-D2-SSDP64-AXIOMATIC-FORMALIZATION-1
 ---
 
-# mdstats MLFF Numerical Algorithmic Method
+# mdstats MLFF D2 formal numerical authority kernel — Protocol 6.4 accepted current
 
-## 1. Purpose, scope, and authority state
+## 1. Authority and exact import registry
 
-This paper specifies the numerical and algorithmic method that concretizes `mlff_scientific_method.md`. It separates numerically meaningful invariants from replaceable software realization so that implementation, dependency adaptation, optimization, or restart logic cannot silently change the scientific experiment.
+This file is the canonical current D2 authority kernel for the mdstats MLFF numerical method. It formalizes, without changing, the accepted numerical meaning reconstructed at basis `cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824` and exact-imports the detailed pre-Protocol-6.4 source papers pinned at stakeholder-ratified target `a4824d28775164aa942fd29fa97ee0957eb87e6f`.
 
-The integrated restoration revision preserves the accepted P1/P2/P3 target-size algorithm and revises only the materially dependent post-selection foundation-adaptation method. Its D2 scope covers:
+Independent assembled-candidate Review passed on immutable target `e827aef9bdceb97aae5be6e89de0585a95dcf71c` at review commit `2eddd9058beda039e0ff53d4e50a189be469173b`. The stakeholder then identified a renderer-only notation defect in D2.DEF.027. Target `a4824d28775164aa942fd29fa97ee0957eb87e6f` replaces the two `\\substack` restricted sums with algebraically identical single-line restricted-index sums, changes no numerical decision or tolerance, and was explicitly ratified for canonical promotion on 2026-09-17.
 
-- the robust foundation-adaptation loss functional and its exact parameterization;
-- post-selection target/replay exposure semantics;
-- selected-head foundation-residual elemental reference-energy fitting;
-- the protected common target checkpoint monitor and its deterministic sampling rule;
-- post-selection fold construction with the monitor external to `T_N`;
-- the default three-fold validation geometry;
-- fresh final production using the same common checkpoint method (selection/admissibility mechanics; role target ceilings are separated by Section 17.1); and
-- numerical failure/falsification rules needed to prevent silent fallback to the superseded method.
+Exact accepted sources are:
 
-P3 target-size screening retains its accepted weighted objective, complete-batch update geometry, optimizer-progress normalization, evaluation order, deterministic exact `M3` membership rule, reducer sufficiency rules, and restart semantics. The `TargetTrainingOrder` / `pi_train` construction (`TargetCoverageReference -> FEAS1/NEIGHBOR1 -> MVIDX -> MVSEL2 -> REPAIR2 -> MVQUAL`) and configured-prefix membership qualification are owned by the scoped D2 paper `mlff_target_training_order_numerical_algorithmic_method.md`; this paper does not restate them. Post-selection training from scratch also retains its accepted weighted energy+forces+stress objective, configuration-weight semantics, and local property masks; it is not changed merely because foundation-model P5 is restored to a different robust objective.
+- `D2.SRC.GENERAL` = `hjin98/mdstats@a4824d28775164aa942fd29fa97ee0957eb87e6f:docs/methods/mlff_numerical_algorithmic_method.md`;
+- `D2.SRC.ORDER` = `hjin98/mdstats@a4824d28775164aa942fd29fa97ee0957eb87e6f:docs/methods/mlff_target_training_order_numerical_algorithmic_method.md`.
 
-The restoration revision was independently reviewed, ratified on 2026-09-14, and integrated at `8553ebe9ed86b24dfe910c9e43acc6230d3ece90`.
+`D2.SRC.ORDER` is sole accepted owner for `TargetCoverageReference -> FEAS1/NEIGHBOR1 -> MVIDX -> MVSEL2 -> REPAIR2 -> MVQUAL`; `D2.SRC.GENERAL` owns unaffected numerical semantics.
 
-**Accepted revision (configurable role predicates).** Section 17.1 and the associated handoff/oracle items concretize the accepted D1 separation of foundation-CV competence from fresh-production checkpoint quality, with `τ_CV`, `θ_CV`, and `τ_prod` as independently configurable policy parameters (stakeholder-ratified 2026-09-15 after independent D2 re-review). This paper is the single D2 owner of those numerical semantics.
+Exact specialized imports are:
 
-## 2. Canonical source numerical conventions
+- `D2.IMP.SOURCE` = `D2.SRC.GENERAL`, Sections 2.1-2.4;
+- `D2.IMP.STAT` = `D2.SRC.GENERAL`, Sections 3.1-3.4;
+- `D2.IMP.P3_PREP` = `D2.SRC.GENERAL`, Sections 4.1-4.2;
+- `D2.IMP.SPLIT_EVAL` = `D2.SRC.GENERAL`, Sections 5-7;
+- `D2.IMP.E0` = `D2.SRC.GENERAL`, Section 8;
+- `D2.IMP.E0_HEADS` = `D2.SRC.GENERAL`, Section 8.3: selected-head binding and the separate replay/pretraining-head foundation E0 mapping;
+- `D2.IMP.OBJECTIVE` = `D2.SRC.GENERAL`, Section 9;
+- `D2.IMP.P3` = `D2.SRC.GENERAL`, Sections 10-13;
+- `D2.IMP.P5_EXPOSURE` = `D2.SRC.GENERAL`, Section 14;
+- `D2.IMP.MONITOR` = `D2.SRC.GENERAL`, Section 15;
+- `D2.IMP.CV` = `D2.SRC.GENERAL`, Sections 16-17.1;
+- `D2.IMP.REPLAY` = `D2.SRC.GENERAL`, Section 18;
+- `D2.IMP.PRODUCTION` = `D2.SRC.GENERAL`, Sections 19-23;
+- `D2.IMP.ORDER` = `D2.SRC.ORDER`, Sections 2-16.
 
-### 2.1 Occurrence and numerical identity
+These exact imports are normative roots for accepted details not restated below. Definitions below formalize high-risk semantics but cannot change imported meaning.
 
-Source occurrence, geometry, label payload, and labeled-configuration identities are constructed separately. Quantized fingerprints use explicit tolerances owned by current source/frame specifications. Geometry fingerprints include ordered species, periodic flags, cell, and wrapped fractional coordinates but exclude target labels, so duplicate geometry remains detectable across source occurrences or label payloads.
+Unless narrowed below: scientific scalar decision arithmetic is IEEE-754 binary64; counts/indices are exact integers of sufficient range; canonical ordering is accepted deterministic identity order; non-finite/undefined/stale/impossible cases fail closed; and optimized execution is admissible only under the accepted equivalence relation. Binding classes are those of the current accepted D1 authority.
 
-A different quantization/tolerance policy changes identity behavior and requires explicit compatibility treatment; floating-point object equality or path identity is not a substitute.
+## 2. Primitive numerical objects and statistical units
 
-### 2.2 Row-vector cells and deformation gradient
+### D2.DEF.001 — Canonical ordered population
 
-For ASE row-vector cells,
-
-$$
-\mathbf r_{\mathrm{row}}=\mathbf s_{\mathrm{row}}\mathbf H.
-$$
-
-With reference cell `H_0` and current cell `H_t`, the current strain reconstruction uses
-
-$$
-\mathbf F=\left(\mathbf H_0^{-1}\mathbf H_t\right)^T.
-$$
-
-A proper polar decomposition
+For finite governed frame population of cardinality `n`,
 
 $$
-\mathbf F=\mathbf R\mathbf U
+P=(u_0,u_1,\ldots,u_{n-1})
 $$
 
-is computed by singular-value decomposition. Reflections, singular cells, or nonpositive stretch singular values are rejected. Derived strain measures include
+is its canonical ordered tuple. Set membership and tuple order are distinct.
+
+### D2.DEF.002 — Prefix operator
+
+For ordered tuple `pi=(v_1,...,v_n)` and integer `0<=N<=n`,
 
 $$
-\boldsymbol\varepsilon_{\mathrm{lin}}=\frac12(\mathbf F+\mathbf F^T)-\mathbf I,
+\mathrm{prefix}(\pi,N)=(v_1,\ldots,v_N).
 $$
 
-$$
-\mathbf E=\frac12(\mathbf F^T\mathbf F-\mathbf I),
-$$
+A membership consumer uses the corresponding set. Cardinality alone never reconstructs prefix identity.
 
-and logarithmic strain
+### D2.DEF.003 — Source numerical convention
 
-$$
-\mathbf L=\log\mathbf U.
-$$
+Occurrence/geometry/label identities, row-cell/deformation convention, proper polar decomposition, stress normalization/sign/Voigt/shear rules, finite/nonsingular eligibility and identity quantization are exact imports from `D2.IMP.SOURCE`. Any changed convention that changes a governed identity/observable is non-equivalent.
 
-The numerical record also derives `det(F)`, rotation angle, principal logarithmic strains, hydrostatic/deviatoric measures, and engineering shear from the declared tensor convention. A different transpose convention, implicit reference cell, or shear-factor convention is not numerically equivalent.
+### D2.DEF.004 — Finite-sequence autocorrelation estimator
 
-### 2.3 Stress normalization
-
-Source stress is normalized to the canonical symmetric Cartesian Cauchy-stress representation and internal unit convention. Conversions preserve sign, Voigt ordering, and tensor-versus-engineering shear semantics. Virial-like quantities remain a distinct channel unless explicitly converted by an accepted owner.
-
-Stress round-trip checks are numerical falsification oracles: a sign reversal, shear-factor error, or Voigt permutation is a D1/D2 correctness failure, not a formatting issue.
-
-### 2.4 Eligibility numerical checks
-
-Eligibility validates finite/nonsingular geometry, atom-count consistency, required label completeness, finite force/energy fields, stress symmetry/finite values when present, and active electronic-convergence/source-quality gates. Unusual but finite values remain data; the numerical eligibility method must not introduce an implicit “typical-value” filter.
-
-## 3. Correlated-sampling primitives and neutral statistical units
-
-### 3.1 Exact autocorrelation estimator
-
-The neutral substrate reuses the shared `mdstats.sampling` autocorrelation method. For a finite scalar sequence it computes unbiased fast-Fourier-transform autocovariance, normalizes to `rho(k)`, and uses Geyer's initial-positive-sequence truncation. Adjacent lag pairs are accumulated while
+For finite scalar sequence `(x_0,...,x_{N-1})` with mean `xbar`,
 
 $$
-\rho(2m-1)+\rho(2m)>0.
+\widehat\gamma(k)=\frac{1}{N-k}\sum_{t=0}^{N-k-1}(x_t-\bar x)(x_{t+k}-\bar x).
 $$
 
-An unpaired final positive lag may be retained. Integrated time has the canonical floor `1/2` stored frame and remains inside the accepted policy range. Constant or insufficient sequences are represented explicitly rather than assigned a fabricated long correlation time.
-
-The effective count is
+For finite positive `gamma_hat(0)`,
 
 $$
-N_{\mathrm{eff}}=\min\!\left(N,\frac{N}{2\tau_{\mathrm{int}}}\right).
+\widehat\rho(k)=\frac{\widehat\gamma(k)}{\widehat\gamma(0)}.
 $$
 
-No autocorrelation is computed across a source gap, continuation reset, or excluded interval.
-
-### 3.2 Complete-frame block length
-
-For every configured observable and contiguous run, estimate `tau`. Let
+Geyer's initial-positive-sequence truncation accepts adjacent lag pairs while
 
 $$
-\tau_{\max}=\max_{j,r}\tau_{j,r},
+\widehat\rho(2m-1)+\widehat\rho(2m)>0.
+$$
+
+An unpaired final positive lag may be retained. With accepted retained-lag set `K_+`,
+
+$$
+\widehat\tau_{\mathrm{int}}=\max\left(\frac12,\frac12+\sum_{k\in K_+}\widehat\rho(k)\right).
+$$
+
+The accepted FFT realization may accelerate the same estimator. No autocorrelation crosses a source gap, continuation reset or excluded interval. Constant/insufficient sequences use the typed outcome imported from `D2.IMP.STAT`, not a fabricated long correlation time.
+
+### D2.DEF.005 — Complete-frame correlation blocks
+
+Let `m_corr>0` be the configured correlation multiplier and `L_min>=1` the configured minimum complete-frame block length of `D2.IMP.STAT`. For every configured observable/run compute D2.DEF.004 and define
+
+$$
+\tau_{\max}=\max_{j,r}\widehat\tau_{j,r},
 $$
 
 $$
-L_{\mathrm{corr}}=\max\!\left(1,\left\lceil m\tau_{\max}\right\rceil\right),
+L_{\mathrm{corr}}=\max\left(1,\left\lceil m_{\mathrm{corr}}\tau_{\max}\right\rceil\right),
 $$
-
-and
 
 $$
 L=\max(L_{\min},L_{\mathrm{corr}})
 $$
 
-unless an explicitly accepted override is in force. A short override is recorded as an adequacy limitation rather than silently treated as decorrelated support. For a contiguous run longer than `L`, the balanced all-frame split retains every eligible frame; no remainder or tail is silently dropped.
+unless an explicitly accepted override is in force. The balanced all-frame split imported from `D2.IMP.STAT` preserves every eligible frame; no tail is discarded. A shorter accepted override is an adequacy limitation, not decorrelation proof.
 
-### 3.3 Protected-event merge and relation closure
+### D2.DEF.006 — Protected-event merge and relation closure
 
-Full-resolution event windows are constructed before ordinary thinning. When a protected event crosses candidate block boundaries, the affected blocks are merged before role allocation so the protected event remains indivisible.
+Protected event windows are constructed at full temporal resolution before ordinary thinning. Candidate blocks intersecting one protected event are merged before role allocation. Correlation-unit, exact-geometry, protected-event, condition-scoped replica and condition-scoped structural-realization relations are projected to the requested frame universe and transitively closed. P2/P5 consume this closure rather than reconstructing a reduced relation taxonomy.
 
-Current split-exclusion evidence contains five relation families:
+## 3. Target-size policy, exact split, evaluation order, and common preparation
 
-1. correlation-unit membership;
-2. exact geometry-duplicate membership;
-3. protected-event membership;
-4. condition-scoped replica lineage across distinct runs; and
-5. condition-scoped structural-realization lineage across distinct runs.
+### D2.DEF.007 — Current P2 structural policy domain
 
-The canonical P1 relation owner projects those relations to a requested frame universe and computes transitive connected components. P2 and P5 consume this authority; neither may reconstruct a reduced relation taxonomy from raw provenance or model evidence.
+A valid automatic target-size policy has:
 
-### 3.4 Neutrality of the target-size substrate
+- `N_cfg`: at least three strictly increasing positive powers of two;
+- `M_cfg`: exactly three strictly increasing positive powers of two;
+- `H_cfg`: exactly three strictly increasing positive fidelity epochs;
+- `S_seed`: ordered unique nonnegative integer optimizer seeds.
 
-The neutral condition key contains reduced formula, temperature condition, strain class, regime, and optional user labels. It has no retired `label_domain_id` partition axis and constructs no pre-target-size cross-validation (CV) plan. Upstream label compatibility still exists; compatibility-domain and preselection-CV fan-out do not.
+Exact numeric values are configuration bindings; these structural restrictions are fixed method constraints.
 
-## 4. Pre-order selection evidence versus P3 common training preparation
+### D2.DEF.008 — Protected-component order for exact M3 allocation
 
-### 4.1 Pre-order evidence
+Project the D1 protected relation onto exact `U_size`, form connected components, and order exactly by:
 
-Selector evidence for `pi_train`, including the sole fitted `TargetCoverageReference` on exact `P_train`, is defined by `mlff_target_training_order_numerical_algorithmic_method.md`. Evaluation-order priority evidence for `pi_eval` (Section 6.1) is either empty, represented by an empty vector per frame, or an exact finite mapping covering every bound frame; missing, foreign, or non-finite priority values are errors. Neither may inspect downstream held-out/calibration/locked labels.
+1. component cardinality group;
+2. larger cardinality before smaller;
+3. within one cardinality, bucket by lexicographically minimum represented `condition_id`;
+4. canonical sort of component-member tuples inside each condition bucket;
+5. round-robin nonempty buckets in sorted condition-ID order.
 
-### 4.2 P3 common candidate-training preparation
+### D2.DEF.009 — Exact first-predecessor M3 allocation
 
-P3 common preparation is built after the exact `P_train/M3` split and canonical P2 orders exist, over exact `P_train`, and is shared by every candidate `N` and optimizer seed. Its accepted numerical state includes, as applicable, the common target atomic-reference fit, mean-one P3 configuration weights, binary property masks, foundation/head identity, target objective, and common model-construction normalization.
-
-Candidate projection selects frozen P3 values for `T_N`. It does not renormalize configuration weights, refit E0, or recompute common model normalization on each prefix.
-
-This P3 owner is not reused wholesale as post-selection method identity after P3/P5 objective semantics diverge. P5 may reuse individual still-applicable component policies, but an inert P3 configuration-weight digest cannot become a foundation-P5 method invariant.
-
-## 5. Exact target-size population and development split
-
-### 5.1 `U_size`
-
-`U_size` is the set of exact neutral `DEVELOPMENT` frames that are currently eligible and have canonical training labels. The population must support both configured largest candidate `N_max` and largest evaluation reserve `M3`.
-
-### 5.2 Constraint components
-
-Project the canonical P1 protected-relation authority onto `U_size` and compute connected components. These are indivisible allocation units.
-
-### 5.3 Deterministic exact `M3` allocation
-
-The P3 split requires exact reserve cardinality. Component ordering is part of deterministic membership because multiple exact subsets may exist.
-
-Current component order:
-
-1. group components by cardinality;
-2. process larger components before smaller components;
-3. within one component size, group by the lexicographically minimum `condition_id` represented by the component;
-4. sort component-member tuples canonically inside each condition bucket; and
-5. round-robin buckets in sorted condition-ID order.
-
-Given this ordered component sequence, solve the 0/1 exact subset-sum problem for target `M3`. The accepted dynamic program iterates components in that order and existing reachable totals in descending order; it stores the **first predecessor** by which each new reachable cardinality is obtained, stops once `M3` first becomes reachable, and reconstructs that predecessor chain. Abstractly, with component weights `w_j`,
+Let D2.DEF.008 yield positive integer component weights `w_1,...,w_C`. Let `m_3=max(M_cfg)`. Define
 
 $$
-R_0=\{0\},\qquad
-R_j=R_{j-1}\cup\{r+w_j:r\in R_{j-1},\ r+w_j\le M_3\}.
-$$
-
-If `M3` is unreachable, construction fails. If reachable, the predecessor chain selected under the rule above defines exact `M3`; the complement in canonical population order defines `P_train`. Exact cardinality alone is insufficient if another subset/tie rule would select different frames. An alternative implementation is equivalent only if it reproduces the same deterministic selected membership under the same policy.
-
-The state bound is pseudo-polynomial, approximately `O(C M3)` reachability work and `O(M3)` predecessor state for `C` components.
-
-## 6. Canonical training and evaluation orders
-
-### 6.1 Condition-balanced evaluation order
-
-`pi_train` is not constructed by this rule; its construction is owned by `mlff_target_training_order_numerical_algorithmic_method.md`. For the evaluation-reserve membership `M3`, `pi_eval` is:
-
-1. group frame UIDs by `condition_id`;
-2. inside each bucket, sort by descending priority-vector coordinates, equivalently ascending negated coordinates, with immutable frame UID as final tie-breaker; and
-3. repeatedly visit condition buckets in sorted condition-ID order, taking one frame from each nonempty bucket.
-
-With no priority evidence, empty vectors tie and frame UID supplies within-condition order.
-
-### 6.2 Nested memberships
-
-The target candidate is
-
-$$
-T_N=\pi_{\mathrm{train}}[:N],
-$$
-
-and evaluation rung
-
-$$
-M_i=\pi_{\mathrm{eval}}[:m_i].
-$$
-
-Membership identity binds parent-order identity, requested cardinality, and ordered frame UIDs. A stored `N` without exact parent order/prefix identity is insufficient authority.
-
-### 6.3 Structural policy domain
-
-The current P2 policy requires at least three strictly increasing positive power-of-two candidate sizes and exactly three strictly increasing positive power-of-two evaluation sizes. It also requires three strictly increasing positive fidelity epochs and one ordered unique nonnegative optimizer-seed population. Exact default values remain specification/configuration authority. These are current algorithm restrictions, not universal theorems.
-
-## 7. Prefix qualification
-
-Configured-prefix membership qualification of `T_N` (independent MVQUAL: prefix existence, training-usable labels, required family coverage and extents, and every canonical hard obligation) is owned by `mlff_target_training_order_numerical_algorithmic_method.md`. It cannot inspect optimizer outcomes, evaluation scores, CV state, or runtime accidents, and it does not reorder, swap, repair, or expand `T_N`.
-
-The current automatic funnel requires at least **three qualified candidates** before numerical screening begins. Fewer qualified candidates yield insufficient automatic comparison rather than an altered ladder or repaired membership.
-
-## 8. Atomic-reference fitting
-
-### 8.1 General least-squares owner
-
-For exact fit membership `D`, construct count matrix `C` whose row contains the number of atoms of each element in one frame, and target total-energy vector `y`.
-
-For from-scratch fitting, the accepted regularized problem is
-
-$$
-\widehat e=\arg\min_e\left[\|Ce-y\|_2^2+\lambda\|e-e_{\mathrm{prior}}\|_2^2\right]
-$$
-
-when the corresponding prior policy is active.
-
-For foundation-model adaptation, let `h_fnd` be the explicitly selected foundation head, `y_fnd` its predicted target-domain total energy on the authorized fit membership, and `e_fnd(h_fnd)` its elemental reference mapping. Define
-
-$$
-r=y-y_{\mathrm{fnd}},
+R_0=\{0\},
 $$
 
 $$
-\widehat{\delta e}=\arg\min_{\delta e}\left[\|C\delta e-r\|_2^2+\lambda\|\delta e-\delta e_{\mathrm{prior}}\|_2^2\right],
+R_j=R_{j-1}\cup\{r+w_j:r\in R_{j-1},\ r+w_j\le m_3\}.
+$$
+
+Iterate components in D2.DEF.008 order and existing reachable totals descending; store only the first predecessor creating each new total; stop when `m_3` first becomes reachable; reconstruct that chain. Unreachable `m_3` is infeasible. Selected component union is exact `M3`; canonical-order complement is exact `P_train`. Tie/predecessor identity is numerical authority.
+
+### D2.DEF.010 — Condition-balanced evaluation order
+
+For exact `M3`, group UIDs by `condition_id`. Inside each bucket sort by descending priority-vector coordinates, equivalently ascending negated coordinates, then immutable UID. Repeatedly visit condition buckets in sorted condition-ID order taking one frame from each nonempty bucket. With no priority evidence, empty vectors tie and UID orders each bucket. This permutation is `pi_eval`.
+
+For configured evaluation size `m_i`,
+
+$$
+M_i=\mathrm{set}(\mathrm{prefix}(\pi_{\mathrm{eval}},m_i)).
+$$
+
+### D2.DEF.011 — P3 common candidate-training preparation
+
+After exact split and canonical orders are bound, fit one P3-common training state on exact `P_train` as imported by `D2.IMP.P3_PREP`, including as applicable target atomic-reference state, mean-one P3 configuration weights, binary masks, exact foundation/head identity, target objective and common model normalization/construction inputs.
+
+Candidate projection selects frozen state for exact `T_N`; it does not refit E0, renormalize P3 weights or recompute common model normalization by candidate size. P3 common preparation is not wholesale P5 authority after method divergence.
+
+## 4. TargetCoverageReference and required-family catalog
+
+### D2.DEF.012 — Required-family catalog and applicability
+
+Universal structural families are exactly:
+
+```text
+pair_distance
+radial_environment
+coordination
+connectivity
+chemical_environment
+local_density
+angular_environment
+orientational_order
+```
+
+`pair_distance`, `coordination`, and `local_density` are extent-bearing.
+
+For each active accepted profile-selection provider, each valid nonconstant scalar selection feature is a required one-dimensional extent-bearing family over provider-valid frames and each represented provider environment class contributes a hard obligation. No active provider means no profile family.
+
+For each applicable accepted pair rule, required extent-bearing raw pair families are `bond_length_distribution` over minimum pair distance, mean nearest-neighbor distance, maximum nearest-neighbor distance; and `coordination_distribution` over coordination mean and maximum.
+
+Target-development response families include extent-bearing `force_distribution` over force-component RMS, mean force norm, maximum force norm and canonical available force-norm quantile channels; plus one scalar family for each defined nonconstant accepted channel among energy/atom, instantaneous temperature, hydrostatic strain, deviatoric strain norm, pressure, and stress deviatoric norm.
+
+Only when target-size protocol itself uses authenticated frozen foundation identity: one required extent-bearing global residual family contains absolute energy error/atom, force-component RMSE, mean force-vector error, maximum force-vector error; and one required extent-bearing family per represented species contains component RMSE, mean vector error, maximum vector error. Foundation identity is selector-evidence identity; scratch does not acquire foundation families merely because a provider exists elsewhere.
+
+### D2.DEF.013 — Family witness weights with one normalization only
+
+For required family `m`, nonempty ordered witness set `W_m`, current correlation-unit identity `g(w)`, represented unit set `G_m`, and witness count `n_{m,g}` in unit `g`, define
+
+$$
+\widetilde\omega_m(w)=\frac{1}{|G_m|\,n_{m,g(w)}}.
+$$
+
+Compute canonical-order binary64 sum
+
+$$
+s_m=\sum_{w\in W_m}\widetilde\omega_m(w)
+$$
+
+and store
+
+$$
+\omega_m(w)=\frac{\widetilde\omega_m(w)}{s_m}.
+$$
+
+This is the single and only family-weight normalization. `|G_m|>0`, every `n_{m,g}>0`, and finite positive `s_m` are required.
+
+### D2.DEF.014 — Stable weighted quantile over stored weights
+
+For finite values `v_i` with D2.DEF.013 stored weights, stable-sort by `(v_i, original_index)`. For governed `q in [0,1)`, `Q(q)` is the first sorted value whose cumulative stored weight is at least `q`; if no such value exists, preparation fails. The stored weights are never normalized again inside this definition. The binary64 comparison threshold is `q` itself: residual post-normalization mass `sum_i omega_i` must not rescale `q`.
+
+### D2.DEF.015 — Robust scale
+
+For coordinate `j`, let
+
+$$
+a_j=Q_j(0.75)-Q_j(0.25),\qquad b_j=Q_j(0.99)-Q_j(0.01).
+$$
+
+With fixed `delta_s=1e-12`,
+
+$$
+s_j=
+\begin{cases}
+a_j,&a_j>\delta_s,\\
+b_j,&a_j\le\delta_s\text{ and }b_j>\delta_s,\\
+\max(\sigma_{\mathrm{pop},j},1),&\text{otherwise},
+\end{cases}
+$$
+
+then `s_j=max(s_j,delta_s)`. Non-finite input fails preparation.
+
+### D2.DEF.016 — Family metric
+
+For dimension `d_m>=1`,
+
+$$
+d_m(a,b)=\sqrt{\frac1{d_m}\sum_{j=1}^{d_m}\left(\frac{x_{a,j}-x_{b,j}}{s_j}\right)^2}.
+$$
+
+Only applicable rows participate. A family requires at least two reference elements. Constant optional scalar families are omitted.
+
+### D2.DEF.017 — Leave-one-out local radius
+
+Let `beta=1/128`. For witness `w`, remove self mass, require `1-omega_m(w)>0`, divide each remaining stored weight by `1-omega_m(w)`, stable-sort other witnesses by `(d_m(w,v), canonical_witness_order)`, and choose smallest distance where cumulative renormalized mass reaches `beta-1e-15`. Failure to reach it is family infeasibility.
+
+### D2.DEF.018 — Exact adjacency
+
+$$
+A_m(w,c)=1\Longleftrightarrow d_m(w,c)\le r_m(w)+10^{-12}\max(1,r_m(w)).
+$$
+
+Every witness must retain at least one exact candidate support edge. Approximate-neighbor substitution is non-equivalent.
+
+### D2.DEF.019 — Multiplicity and covered mass
+
+For selected `S subseteq P_train`,
+
+$$
+n_m(w;S)=\sum_{c\in S}A_m(w,c),
+$$
+
+$$
+C_m(S)=\sum_{w\in W_m}\omega_m(w)\mathbf 1[n_m(w;S)>0].
+$$
+
+### D2.DEF.020 — Independent qualification coverage predicate
+
+Family `m` passes direct coverage/MVQUAL iff
+
+$$
+C_m(S)+10^{-12}\ge0.95.
+$$
+
+This tolerance is not the selector Phase-A tolerance.
+
+### D2.DEF.021 — Extent predicate
+
+For extent coordinate `j`,
+
+$$
+L_j=Q_j(0.01),\qquad U_j=Q_j(0.99).
+$$
+
+For nonempty applicable selected values `V_j(S)`, pass iff
+
+$$
+\min V_j(S)\le L_j+10^{-12}
 $$
 
 and
 
 $$
-e_{\mathrm{target}}(h_{\mathrm{fnd}})=e_{\mathrm{fnd}}(h_{\mathrm{fnd}})+\widehat{\delta e}.
+\max V_j(S)\ge U_j-10^{-12}.
 $$
 
-Element order is keyed by atomic number, never serialized mapping order.
+Empty `V_j(S)` fails. Each side also contributes a hard obligation of minimum one.
 
-### 8.2 Post-selection fit domains
+## 5. Canonical obligations and FEAS1
 
-For foundation-model post-selection CV, `D` is exactly the fold gradient-training target membership. Neither common target checkpoint monitor nor held-out evaluation membership participates in `C`, `y`, `y_fnd`, priors fitted from target labels, or residual evaluation used to fit E0.
+### D2.DEF.022 — Source obligation
 
-Fresh final production fits on exact complete `T_selected` and likewise excludes the common monitor and downstream evidence.
-
-### 8.3 Selected-head binding
-
-`y_fnd` and `e_fnd` must come from the same authenticated selected foundation checkpoint/head that initializes the accepted foundation-adaptation run. A dependency fallback to its first or default checkpoint head is not numerically equivalent unless that head is exactly the selected head.
-
-For multi-head replay, replay/pretraining-head foundation E0s are likewise extracted from the authenticated selected foundation head/lineage required by the method. Target corrected E0s and replay/pretraining-head foundation E0s remain separate head-local mappings.
-
-### 8.4 Composition-level identifiability and transfer feasibility
-
-Individual elemental correction coefficients are not the scientific estimand. The quantity consumed by a target configuration with composition-count row vector `c` is
+A source obligation is
 
 $$
-\Delta E_0(c)=c^T\delta e.
+o=(L_o,A_o,k_o,s_o),
 $$
 
-Let `N_free` be the **unanchored null space** of the authorized foundation-residual fit: directions `v` that leave all authorized training-composition equations unchanged and are not fixed by an explicitly accepted prior/anchor. With no such accepted anchor, `N_free=ker(C)`. When an accepted anchor exists, its identity and effect on the free directions are part of fit/method lineage.
+with D1 semantic locus `L_o`, exact current-`P_train` incidence `A_o`, positive integer minimum `k_o`, and source/provenance namespace `s_o`.
 
-The required composition correction is identifiable if and only if
+Automatic obligations are every applicable represented P2 condition, structural-event type, active profile environment class, extent lower side, extent upper side and current P1 correlation interval/unit, each minimum one. Explicit current hard-support obligations are projected through current P2 authority with declared positive minima.
 
-$$
-c^T v=0\qquad\forall v\in N_{\mathrm{free}}.
-$$
+### D2.DEF.023 — Obligation canonicalization
 
-Equivalently, for an unanchored least-squares fit, `c` must lie in the row space of `C` to the accepted numerical-rank tolerance. Therefore:
+Source obligations group only when accepted D1 locus is equal. Exact incidence inside a purported same-locus group must also agree or construction fails. Incidence equality without locus equality never aliases obligations. Effective minimum is maximum source minimum within one valid locus group. Source-ID reuse for different semantics fails; different loci with identical incidence remain distinct.
 
-- a rank-deficient elemental decomposition may still give a unique correction for a governed composition;
-- an element absent from `C` and present in `c` is a sufficient failure case when no accepted anchor fixes that direction; and
-- a composition using only represented elements can still be infeasible if it has a component along an unanchored null direction.
+### D2.DEF.024 — Obligation count and deficit
 
-For every target composition whose energy participates in gradient training, target checkpoint monitoring, or held-out target evaluation for a run, the criterion above must hold. D2 does not borrow checkpoint-monitor/held-out labels, use another fold's fitted correction, substitute an unrelated foundation head, silently set an unfitted coefficient to zero, or treat an arbitrary minimum-norm/solver-selected decomposition as scientific identification.
-
-The solver records numerical rank, singular values, null-space basis/dimension where applicable, residual root-mean-square error (RMSE), mean absolute error (MAE), maximum error, accepted prior/anchor identity, and the composition-transfer check for each required composition class. Floating-point tolerance cannot create information absent from the authorized fit.
-
-## 9. Objective and loss semantics
-
-### 9.1 P3 and post-selection scratch remain unchanged
-
-P3 target-size screening retains the accepted weighted energy+forces+stress objective, including global coefficients, positive per-configuration weights, and binary local property masks. Those P3 configuration weights are fitted once over exact common `P_train`, normalized to mean one, and never renormalized on candidate prefixes.
-
-Post-selection `scratch` remains on the previously accepted weighted energy+forces+stress family with its accepted configuration-weight and local-mask semantics. This restoration does not change either P3 or P5 scratch merely to make their loss family match foundation-model P5.
-
-### 9.2 Foundation-model P5 robust objective
-
-For foundation-model P5 (`naive_fine_tuning` and `multihead_replay`), define the scalar Huber form
+For canonical obligation `o`,
 
 $$
-H_\delta(x)=
-\begin{cases}
-\frac12 x^2, & |x|\le\delta,\\
-\delta\left(|x|-\frac12\delta\right), & |x|>\delta.
+q_o(S)=|S\cap A_o|,
+$$
+
+$$
+d_o(S)=\max(0,k_o-q_o(S)),
+$$
+
+$$
+D_{\mathrm{hard}}(S)=\sum_o d_o(S).
+$$
+
+Obligation is satisfied iff `q_o(S)>=k_o`.
+
+### D2.DEF.025 — FEAS1 configured horizon
+
+For configured sizes,
+
+$$
+N_{\max}=\max N_{\mathrm{cfg}}.
+$$
+
+FEAS1 verifies exact-domain/self-support consistency, obligation support capacity, and conservative lower-bound evidence under the same family/obligation authority. A lower bound above `N_max` proves configured-ladder infeasibility; FEAS1 never creates rescue sizes or relaxes predicates. Historical support-degree bins, own-correlation exclusion and fragile-zero-mass tolerance remain diagnostics as imported by `D2.IMP.ORDER`.
+
+### D2.AX.001 — Exact sparse representation
+
+NEIGHBOR1/MVIDX may use any exact representation only if witness-candidate adjacency, canonical-obligation incidence, current correlation-unit codes, canonical ordering and identities equal the definitions above.
+
+## 6. MVSEL2
+
+### D2.DEF.026 — Selector state
+
+Authoritative selector state contains ordered selected prefix, family witness multiplicities and covered masses, canonical obligation counts, correlation-unit selected counts, and exact representative state sufficient for current gains. Lazy heaps, caches, native batches, workers and queue completion order are execution state.
+
+### D2.DEF.027 — Candidate gains
+
+For available candidate `c`,
+
+$$
+O_c(S)=\{o:q_o(S)<k_o\text{ and }c\in A_o\},\qquad H(c;S)=|O_c(S)|,
+$$
+
+$$
+G_m(c;S)=\sum_{w\in W_m:\,A_m(w,c)=1,\,n_m(w;S)=0}\omega_m(w),\qquad G(c;S)=\sum_mG_m(c;S),
+$$
+
+$$
+R(c;S)=\sum_m\sum_{w\in W_m:\,A_m(w,c)=1}\frac{\omega_m(w)}{n_m(w;S)+1}.
+$$
+
+A stronger minimum extends one locus's unsatisfied duration; it never multiplies its hard-gain vote.
+
+### D2.DEF.028 — Sparse diversity
+
+Define
+
+$$
+W_m(c)=\{w\in W_m:A_m(w,c)=1\},\qquad M(c)=\{m:|W_m(c)|>0\}.
+$$
+
+If `M(c)` is empty, `D(c;S)=0`; otherwise
+
+$$
+D(c;S)=\frac1{|M(c)|}\sum_{m\in M(c)}\left[\frac1{|W_m(c)|}\sum_{w\in W_m(c)}\frac1{n_m(w;S)+1}\right].
+$$
+
+### D2.DEF.029 — Phase-A family-completion predicate
+
+With fixed selector tolerance `epsilon_sel=1e-14`, family `m` is Phase-A complete iff
+
+$$
+C_m(S)\ge0.95-10^{-14}.
+$$
+
+Equivalently it keeps Phase A active while `C_m(S)<0.95-1e-14`. This is intentionally distinct from D2.DEF.020.
+
+### D2.DEF.030 — Phase-A winner
+
+Phase A is active iff any canonical obligation is unsatisfied or any required family fails D2.DEF.029. Filter available candidates lexicographically:
+
+1. if an obligation is unsatisfied, maximum integer `H`;
+2. first canonical family minimizing `C_m/0.95` among families tied within `1e-14` at the minimum;
+3. maximum bottleneck `G_m` within `1e-14`;
+4. maximum total `G` within `1e-14`;
+5. minimum selected count of candidate's correlation unit;
+6. maximum `R` within `1e-14`;
+7. maximum `D` within `1e-14`;
+8. minimum stable UID.
+
+Winner mutates authoritative state exactly once.
+
+### D2.DEF.031 — Phase-B winner
+
+After all obligations and D2.DEF.029 family predicates pass, choose by maximum `R` within `1e-14`, minimum correlation-unit selected count, maximum `D` within `1e-14`, then minimum stable UID. Continue toward a complete permutation subject only to configured-shell repair.
+
+### D2.DEF.032 — Full-forward oracle
+
+At every rank recompute exact current D2.DEF.027-028 for every available candidate, apply D2.DEF.030 or D2.DEF.031, choose one winner, then mutate state. Optimized execution must reproduce this rank sequence.
+
+### D2.DEF.033 — Certified-lazy Phase-B equivalence
+
+At required rebase compute exact `R_g(c)` for every available candidate and
+
+$$
+B_g(c)=\mathrm{nextafter}(R_g(c),+\infty).
+$$
+
+Stale values are upper bounds only. Refreshed representative gain exceeding earlier exact value by more than `5e-13` fails. Refresh every stale candidate whose bound can enter inclusive contender region. Certification terminates only when
+
+$$
+B_{\max}<R_{\mathrm{best}}-10^{-14}.
+$$
+
+Every candidate with `R(c;S)>=R_best-1e-14` must have exact current score before downstream tie dimensions. If certification cannot be proved, rebuild or use D2.DEF.032.
+
+## 7. REPAIR2
+
+### D2.DEF.034 — Configured shell and removal eligibility
+
+For strictly increasing `N_1<...<N_K`, set `N_0=0`; shell `i` is `[N_{i-1},N_i)`. Only that shell is removable; lower ranks are immutable.
+
+Candidate is removable only if unique covered mass `<=1e-14` and removal increases no canonical obligation deficit. Sort removable candidates by representative loss ascending, removed-candidate correlation-unit selected count descending, then removed UID ascending; keep at most 64.
+
+### D2.DEF.035 — Replacement frontier
+
+For contemplated removal evaluate replacement against immutable pre-swap state by maximum hard gain when obligations remain pending, first canonical bottleneck family, maximum bottleneck new coverage, maximum total new coverage, minimum hypothetical correlation-unit count after removal, maximum representative gain, maximum sparse diversity, then minimum replacement UID. Floating contender comparisons use `1e-14` unless another fixed predicate applies.
+
+### D2.DEF.036 — Global repair objective
+
+For integer `k>=1`,
+
+$$
+H_k=\sum_{j=1}^{k}\frac1j,\qquad H_0=0,
+$$
+
+$$
+U_{\mathrm{rep}}(S)=\sum_m\sum_{w\in W_m}\omega_m(w)H_{n_m(w;S)}.
+$$
+
+Define
+
+$$
+J(S)=\left(D_{\mathrm{hard}}(S),\min_mC_m(S),\sum_mC_m(S),U_{\mathrm{rep}}(S),-\sum_gb_g(S)^2\right).
+$$
+
+Minimize component 1; maximize components 2-4 with `1e-14` tolerance; then maximize exact integer component 5. A swap is admissible only if it strictly improves `J` and every family satisfies
+
+$$
+C_m(S_{\mathrm{after}})+10^{-14}\ge C_m(S_{\mathrm{before}}).
+$$
+
+Objective-equivalent admissible proposals use ascending `(representative_loss, removed_rank, removed_UID, replacement_UID)`.
+
+### D2.DEF.037 — Repair limits, rank inheritance, terminal continuation
+
+Per configured shell: at most 2 passes, 32 accepted swaps, removal shortlist 64. Accepted replacement inherits removed rank; if replacement already occurs at future rank, move removed candidate to that future rank. Master permutation and earlier configured prefixes remain intact.
+
+After final configured shell, continue same exact optimized MVSEL2 until all `P_train` is ordered. There is no extra repair shell or alternate suffix method.
+
+### D2.AX.002 — Post-repair reconstruction
+
+After accepted swap, all prefix-derived lazy/frontier/marginal/cache/checkpoint/journal state from pre-swap prefix is stale. Reconstruct exact forward state from authenticated primitive family/obligation/correlation evidence and repaired prefix; Phase-B continuation performs exact all-candidate rebase. Zero-swap shell may retain authentic state whose prefix identity is unchanged.
+
+## 8. Independent MVQUAL and automatic admission
+
+### D2.DEF.038 — Independent configured-prefix qualification
+
+For configured `N`, independently recompute direct family masses/predicates under D2.DEF.016-020, required extents under D2.DEF.021, canonical obligation counts under D2.DEF.024, and required training-label usability from immutable reference evidence.
+
+MVIDX is only an exact secondary cross-check; direct and MVIDX family mass must agree with `rtol=0`, `atol=5e-12`. Prefix qualifies iff every predicate passes. Under fixed nested prefixes/evidence qualification is `FAIL* -> PASS*`; later `PASS -> FAIL` fails closed. MVQUAL does not rank sizes.
+
+### D2.DEF.039 — Automatic-screen admission
+
+$$
+Q_{\mathrm{cfg}}=\{N\in N_{\mathrm{cfg}}:T_N\text{ passes D2.DEF.038}\}.
+$$
+
+Automatic P3 screening requires `|Q_cfg|>=3`; otherwise `INSUFFICIENT_AUTOMATIC_COMPARISON`. An unqualified configured prefix is excluded from `Q_cfg` and cannot be admitted manually; it does not invalidate other qualified configured prefixes. No membership or ladder is changed.
+
+## 9. Atomic-reference fitting and identifiability
+
+### D2.DEF.040 — Composition matrix
+
+For exact authorized fit membership and atomic-species basis ordered by atomic number, define configuration-by-species count matrix `C` and total-energy vector `y`.
+
+### D2.DEF.041 — Foundation-residual fit
+
+For exact selected foundation identity `Phi`, predicted energy `y_fnd`, head-local reference vector `e_fnd(Phi)`, residual `r=y-y_fnd`, and accepted regularization/anchor tuple `(lambda,delta e_prior)`, solve
+
+$$
+\widehat{\delta e}=\arg\min_{\delta e}\left(\|C\delta e-r\|_2^2+\lambda\|\delta e-\delta e_{\mathrm{prior}}\|_2^2\right),
+$$
+
+and set
+
+$$
+e_{\mathrm{target}}(\Phi)=e_{\mathrm{fnd}}(\Phi)+\widehat{\delta e}.
+$$
+
+CV fit domain is exact fold gradient membership; final production uses exact `T_selected`; monitor and held-out labels are excluded.
+
+### D2.DEF.042 — Free null space and composition transfer
+
+Let `N_free` be directions unconstrained by authorized composition equations and accepted anchors; without accepted anchor, `N_free=ker(C)` under accepted numerical-rank rule. Required composition `c` is transfer-feasible iff
+
+$$
+c^Tv=0\quad\text{for every }v\in N_{\mathrm{free}}.
+$$
+
+Numerical rank tolerance cannot create absent information.
+
+## 10. Foundation-P5 robust objective
+
+### D2.DEF.043 — Scalar Huber function
+
+For `delta>0`,
+
+$$
+h_\delta(x)=\begin{cases}
+\frac12x^2,&|x|\le\delta,\\
+\delta\left(|x|-\frac12\delta\right),&|x|>\delta.
 \end{cases}
 $$
 
-Pinned MACE exposes one numerical `huber_delta` configuration value, currently `0.01`, but it is applied independently inside property channels with different physical units. The authoritative dimensional thresholds are therefore
+### D2.DEF.044 — Dimensional thresholds
 
 $$
 \delta_E=0.01\ \mathrm{eV/atom},\qquad
-\delta_{F,0}=0.01\ \mathrm{eV/\mathring A},\qquad
-\delta_S=0.01\ \mathrm{eV/\mathring A^3}.
+\delta_{F,0}=0.01\ \mathrm{eV/angstrom},\qquad
+\delta_S=0.01\ \mathrm{eV/angstrom^3}.
 $$
 
-The shared numeric value `0.01` does **not** mean that energy, force, and stress residuals share one physical dimension. A unit conversion that changes the canonical numeric residual without converting the corresponding threshold is a different objective.
-
-For configuration `i` with `n_i` atoms, total-energy residual `\Delta E_i`, Cartesian force residuals `\Delta \mathbf F_{ia}`, Cartesian stress-tensor residuals `\Delta\sigma_{i\alpha\beta}`, and binary property masks
+For masked reference-force norm `f` in `eV/angstrom`,
 
 $$
-m_i^E,m_i^F,m_i^S\in\{0,1\},
-$$
-
-the energy term is the arithmetic mean over configurations of
-
-$$
-H_{\delta_E}\!\left(m_i^E\frac{\Delta E_i}{n_i}\right).
-$$
-
-The stress term uses the canonical symmetric `3\times3` Cartesian stress representation but, matching the reference realization, reduces **all nine stored tensor entries** rather than only the six algebraically independent components:
-
-$$
-L_S=\mathrm{mean}_{i,\alpha,\beta\in\{x,y,z\}}
-H_{\delta_S}\!\left(m_i^S\Delta\sigma_{i\alpha\beta}\right).
-$$
-
-Thus off-diagonal entries of a symmetric tensor occur twice in the elementwise mean. Replacing this with a six-component Voigt reduction is a different numerical objective even when the physical tensor is symmetric.
-
-For forces, the binary force mask is applied to reference and predicted force vectors before the robust force transform. For each atom, define the masked reference-force norm
-
-$$
-f_{ia}=\left\|m_i^F\mathbf F^{\mathrm{ref}}_{ia}\right\|_2,
-$$
-
-in `eV/Å`. The per-component force Huber threshold is
-
-$$
-\delta_F(f)=\delta_{F,0}\times
-\begin{cases}
-1.0, & f<100\ \mathrm{eV/\mathring A},\\
-0.7, & 100\le f<200\ \mathrm{eV/\mathring A},\\
-0.4, & 200\le f<300\ \mathrm{eV/\mathring A},\\
-0.1, & f\ge300\ \mathrm{eV/\mathring A}.
+\delta_F(f)=\delta_{F,0}\times\begin{cases}
+1.0,&f<100,\\
+0.7,&100\le f<200,\\
+0.4,&200\le f<300,\\
+0.1,&f\ge300.
 \end{cases}
 $$
 
-The force term is the arithmetic mean over all stored Cartesian force components of `H_{delta_F}` applied to the masked force residual.
+### D2.DEF.045 — Property reductions and total objective
 
-The total foundation-adaptation training objective is
-
-$$
-L_{P5}=1\,L_E+10\,L_F+1\,L_S.
-$$
-
-The `1:10:1` coefficients are method weights joining numerically different property channels; they are not a claim that the channel losses share physical units. The global coefficients are applied once, after the three property reductions. Binary masks express property availability, not copies of the global ratio.
-
-### 9.3 No P5 `config_weight` or training-head scalar
-
-The foundation-adaptation functional contains no independent per-configuration scalar `w_i`. A transport-level `config_weight` field, if required by a fixed-file interface, is numerically neutral and fixed to one for current P5; a nontrivial configuration-weight policy is not a current foundation-P5 method field.
-
-There is likewise no target-versus-replay training-head scalar. The multi-head objective is produced by the authenticated target and replay examples encountered under accepted combined-loader exposure. A nominal “1:1 head weight” field is not retained as an inert knob.
-
-Checkpoint/adaptive-stop target/replay score weights are outside this training loss and remain separately governed.
-
-### 9.4 Reduction semantics
-
-For the currently qualified single-process foundation-P5 path, each property reduction is the arithmetic mean of its elementwise loss tensor before application of the global property coefficient. The stress mean covers nine stored Cartesian entries per configuration and the force mean covers three entries per admitted atom.
-
-A distributed training path is not assumed numerically equivalent merely because it invokes the same loss class. It is admissible only after qualification demonstrates the same global property means, target/replay exposure semantics, no unintended sample duplication/truncation beyond the accepted combined-batch rule, and an optimizer trajectory inside the accepted numerical-equivalence envelope. Until then, the current foundation-P5 exposure method is the qualified single-process loader described in Section 14.
-
-### 9.5 Fixed objective across training
-
-A stage-two/stochastic-weight-averaging phase or dependency option that changes the loss family, Huber threshold, or E/F/S coefficients defines a different numerical method. The current foundation-adaptation method therefore has no unbound phase-dependent loss mutation. Such a phase must be disabled or its exact trajectory-changing objective must be separately accepted and identity-bound before use.
-
-## 10. P3 target-size optimizer-progress normalization
-
-### 10.1 Confound being controlled
-
-With target batch size `B`, candidate `N` exposes
+`L_E` is arithmetic mean over configurations of per-atom masked energy Huber loss; `L_F` is arithmetic mean over all stored Cartesian force components after binary force masking using D2.DEF.044 conditional threshold; `L_S` is arithmetic mean over all nine stored Cartesian stress entries per admitted configuration. Symmetric off-diagonals therefore occur twice; six-component Voigt mean is different.
 
 $$
-U_N=\left\lceil\frac{N}{B}\right\rceil
+L_{P5}=L_E+10L_F+L_S.
 $$
 
-target optimizer updates per nominal epoch when the final partial target batch is retained. Fixed per-update learning rate and exponential-moving-average (EMA) decay would therefore couple larger `N` to larger optimizer progress.
+No nontrivial per-configuration scalar and no target/replay training-head scalar occur. A phase-dependent loss mutation is another method unless separately accepted.
 
-### 10.2 Current normalization
+## 11. P3 normalization, estimator, reducer, and restart
 
-For reference size `N_ref`, reference learning rate `LR_ref`, and reference EMA decay `beta_ref`, define
+### D2.DEF.046 — Updates per epoch and first-order normalization
 
-$$
-U_{\mathrm{ref}}=\left\lceil\frac{N_{\mathrm{ref}}}{B}\right\rceil,\qquad
-s_N=\frac{U_{\mathrm{ref}}}{U_N}.
-$$
-
-P3 uses
+For target size `N>0`, target batch size `B>0`, with final partial target batch retained,
 
 $$
-\mathrm{LR}_N=\mathrm{LR}_{\mathrm{ref}}s_N,
+U_N=\left\lceil\frac NB\right\rceil.
 $$
 
-and, when EMA is enabled,
+For reference `N_ref`, `U_ref=ceil(N_ref/B)`,
+
+$$
+s_N=\frac{U_{\mathrm{ref}}}{U_N},\qquad LR_N=LR_{\mathrm{ref}}s_N.
+$$
+
+When EMA is enabled,
 
 $$
 \beta_N=\beta_{\mathrm{ref}}^{s_N}.
 $$
 
-This preserves the first-order per-epoch products
+This is first-order normalization, not exact trajectory equivalence. Values remain fixed through later fidelity boundaries. `floor(N/B)` updates is another experiment.
+
+### D2.DEF.047 — P3 estimator and complete-seed score
+
+For `K>0` admitted force components,
 
 $$
-\mathrm{LR}_N U_N=\mathrm{LR}_{\mathrm{ref}}U_{\mathrm{ref}},
+E_{N,s}=1000\sqrt{\frac1K\sum_{k=1}^{K}(\widehat F_k-F_k)^2}
 $$
 
-and
+in `meV/angstrom`; non-finite output is typed failure.
+
+A candidate score exists only when every required seed is valid:
 
 $$
-(\beta_N)^{U_N}=\beta_{\mathrm{ref}}^{U_{\mathrm{ref}}}.
+\overline E_N=\frac1{|S_{\mathrm{seed}}|}\sum_{s\in S_{\mathrm{seed}}}E_{N,s}.
 $$
 
-Normalized values are computed once from full candidate geometry and remain unchanged through later fidelity rungs. Survivor count does not rescale them.
+### D2.DEF.048 — Practical-equivalence ranking
 
-### 10.3 Not exact optimizer-path equivalence
-
-This is a **first-order optimizer-progress normalization**, not a theorem that candidate trajectories have identical optimization dynamics. Residual differences include minibatch stochasticity, order-dependent gradients, Adam/AMSGrad moment history, finite discretization of the learning-rate schedule, and candidate-dependent loss landscape/data composition. The intended estimand is the current normalized screening method, not an imaginary optimizer-invariant learning curve.
-
-### 10.4 Complete target batches
-
-P3 ceiling update geometry is valid only when the final partial target batch is retained: `drop_last=false`, every exported target UID is exposed once per epoch, no duplicate padding completes a partial batch, and any distributed sampler must prove exact equivalent coverage/update geometry. A runtime producing `floor(N/B)` updates is a different P3 experiment.
-
-This complete-batch rule is **not** transferred to foundation-model P5 by this restoration.
-
-## 11. P3 continuous fidelity trajectories and restart
-
-For active `(N,s)` with optimizer seed `s`, P3 training is one continuous trajectory through configured fidelity boundaries. The exact predecessor state includes model, optimizer, EMA where enabled, learning-rate state, and accepted Python/NumPy/Torch random-number-generator lineage. A later rung restores its authenticated predecessor rather than restarting from foundation state.
-
-Accepted progress is immutable evidence. Unaccepted first-rung materialization/checkpoint state is attempt-local scratch and may become continuation authority only after the exact accepted D3/D4 authentication boundary is established. Recovery cannot change candidate membership, normalization, common preparation, seed, or boundary identity.
-
-## 12. P3 EVAL2 target-force estimator
-
-At boundary `j`, the exact checkpoint is evaluated on exact `M_j`. If `K` Cartesian force components are admitted,
+For active successful candidate set `A`,
 
 $$
-\mathrm{RMSE}_{F,\mathrm{eV/Å}}=
-\sqrt{\frac1K\sum_{k=1}^K(\widehat F_k-F_k)^2},
+E_{\min}=\min_{N\in A}\overline E_N,
 $$
 
-and stored target-size metric is
-
 $$
-\mathrm{RMSE}_{F,\mathrm{meV/Å}}=1000\,\mathrm{RMSE}_{F,\mathrm{eV/Å}}.
+E_{\mathrm{eq}}=\{N\in A:\overline E_N\le E_{\min}+\epsilon\}.
 $$
 
-Inference batching is execution-only only if membership, model state, prediction semantics, and aggregate metric remain equivalent. Non-finite prediction or target metric is typed numerical failure, not an invented infinite score.
+Choose smallest `N` in `E_eq`, remove it, repeat. Only accepted tiny fixed floating guard may supplement scientific `epsilon`.
 
-## 13. Pure target-size reducer
+### D2.DEF.049 — Structural funnel and success sufficiency
 
-### 13.1 Ordered boundary matrix and complete-seed score
-
-At each boundary, expected outcome order is size-major then seed-minor over active candidates times configured ordered seeds. Every outcome binds exact experiment definition, execution context, boundary, and evaluation-membership identity. Missing, duplicate, reordered, foreign, or lineage-incompatible evidence yields insufficient comparison rather than silent rearrangement.
-
-A candidate gets a finite score only when **all** configured seeds have finite valid target metrics,
+Let `A_j` be active candidate set entering fidelity boundary `j`, and `S_j subseteq A_j` the candidates with valid complete-seed score at that boundary. With `q=|Q_cfg|>=3`, structural survivor counts are
 
 $$
-\bar E_N=\frac1{|S|}\sum_{s\in S}E_{N,s}.
+q\rightarrow\min(q,4)\rightarrow2\rightarrow1.
 $$
 
-The mean is never computed over a successful subset. Current typed target-size failures include non-finite training model state, non-finite optimizer state, non-finite evaluation prediction, and non-finite target metric.
-
-### 13.2 Practical-equivalence order
-
-Given practical-equivalence tolerance `epsilon`, repeatedly find current best score `E_min`, define
+At boundary 1 require
 
 $$
-\mathcal E=\{N:E_N\le E_{\min}+\epsilon\},
+|S_1|\ge\min(|A_1|,4),
 $$
 
-choose the smallest `N` in the equivalent set, remove it, and repeat. The implementation may use only the accepted tiny fixed floating-point comparison guard in addition to scientific `epsilon`; machine epsilon is not the practical-equivalence policy and a backend failure cannot justify widening the guard.
+then rank `S_1` by D2.DEF.048 and retain first `min(q,4)`. At boundary 2 and terminal boundary require at least two successful candidates before comparison; otherwise `INSUFFICIENT_COMPARISON`. Boundary 2 retains first two. Exact epochs and evaluation sizes are the three configured positions of D2.DEF.007.
 
-### 13.3 Funnel and comparison sufficiency
-
-The structural funnel is
-
-$$
-q\rightarrow\min(q,4)\rightarrow2\rightarrow1,
-$$
-
-where `q` is the number of qualified candidates entering the first boundary. At the first boundary, the number of successful candidates must be at least `min(|A_1|,4)`; the second and terminal comparisons require two successful candidates. Otherwise the reducer terminates with insufficient comparison. The exact fidelity epochs and evaluation sizes are policy values attached to these three positions, not encoded in the structural funnel name.
-
-### 13.4 Configured-ceiling rule
+### D2.DEF.050 — Configured-ceiling terminal rule
 
 If configured maximum `N_max` is a successful terminal finalist and
 
 $$
-E_{N_{\max}}+\epsilon<E_N
+\overline E_{N_{\max}}+\epsilon<\overline E_N
 $$
 
-for every other successful terminal finalist, `N_max` is materially superior, is recommended, and carries explicit nonconvergence-at-configured-ceiling evidence. Otherwise the first practical-equivalence-ranked finalist is recommended. The reducer does not extrapolate a learning curve, solve for an asymptotic root, or invent an unconfigured rescue size.
+for every other successful terminal finalist, recommend `N_max` with explicit nonconvergence-at-configured-ceiling evidence. Otherwise recommend first D2.DEF.048-ranked terminal finalist. No extrapolation or rescue size exists.
 
-## 14. Foundation-model P5 sample exposure
+### D2.AX.003 — Continuous trajectory and authenticated restart
 
-### 14.1 Combined dataset and pre-shuffle corpus order
+Each active `(N,seed)` is one continuous trajectory through fidelity boundaries. Model, optimizer, EMA where enabled, learning-rate state and accepted Python/NumPy/Torch RNG lineage restore from authenticated predecessor. Unaccepted scratch is not continuation authority. Restart cannot change membership, common preparation, normalization, seed or boundary identity.
 
-For multi-head replay, let target training dataset contain `N_t` configurations and replay/pretraining-head dataset contain `N_r`. In the pinned current two-head MACE realization, `pt_head` is ordered first and the combined dataset is constructed in head order. With `D_r` denoting the authenticated replay/pretraining-head corpus and `D_t` the authenticated target corpus, current P5 therefore uses
+## 12. Replay label modes and P5 exposure
+
+### D2.DEF.051 — Replay geometry and label mode
+
+Let `D_r^geom` be authenticated prepared replay geometry/source membership and split. Replay label mode is `TRUE_REFERENCE` or `FOUNDATION_PSEUDO`; true reference is canonical default when labels exist, pseudo requires explicit opt-in and exact frozen `Phi`.
+
+$$
+D_r(\ell)=\{(x,y_\ell(x)):x\in D_r^{\mathrm{geom}}\}.
+$$
+
+For true mode use canonical true-reference/DFT label; for pseudo use exact frozen `Phi` and accepted prediction policy. Switching label mode over one prepared source/split must not change `D_r^geom`. Pseudo replay still requires a distinct authenticated true-reference replay monitor.
+
+### D2.DEF.051A — Replay/pretraining-head foundation E0 mapping
+
+For exact authenticated foundation identity `Phi`, let
+
+$$
+e_{\mathrm{replay}}(\Phi)
+$$
+
+denote the replay/pretraining-head foundation elemental-reference mapping imported exactly from `D2.IMP.E0_HEADS`. It must be extracted from the same authenticated selected foundation checkpoint/head/lineage that initializes the accepted replay method. It is distinct from the fitted target correction `e_target(Phi)` of D2.DEF.041. A first/default/other-head fallback is non-equivalent. If the exact replay-head mapping cannot be established for the selected lineage, replay preparation is undefined and fails closed.
+
+### D2.DEF.052 — Replay lineage and qualification currentness
+
+Let `Q_r` be the exact replay qualification-policy/evidence identity and current qualification state required by D1.DEF.022 and the accepted replay/checkpoint owners. It includes the independent true-reference retention qualification applicable to the configured replay method and is separate from training label mode.
+
+Replay lineage binds replay geometry/source membership/split, label mode, true-reference monitor, `Q_r`, foundation/head where applicable, `e_replay(Phi)` where applicable, prediction policy, and realized exposure. Changing any component, including replay qualification policy/evidence/state, invalidates dependent P5 evidence. Changing label mode over the same authenticated prepared source/split does not by itself change replay geometry membership.
+
+### D2.DEF.053 — Combined corpus and update geometry
+
+For current two-head replay,
 
 $$
 D_{\mathrm{train}}=D_r\Vert D_t.
 $$
 
-This pre-shuffle corpus/index layout is numerically material under fixed-seed stochastic training. The loader shuffles integer indices of the combined dataset; swapping the two corpus blocks while keeping the same seed changes the mapping from shuffled indices to examples, and therefore can change minibatch composition, gradient order, and the optimizer trajectory. Replay-first/target-second is not asserted as a universally preferable ordering; it is the current accepted exposure semantics inherited from the pinned native realization. D3/D4 must not add a target-first reorder wrapper merely to reproduce superseded prose.
-
-There is no target/replay balancing sampler and no intentional duplication. The authenticated training seed governs stochastic shuffle/order over this ordered combined index space.
-
-The dependency's ratio-driven target-duplication behavior is disabled. Any realized duplication factor other than one is method nonconformance.
-
-### 14.2 Batch geometry
-
-For the current qualified single-process, non-LBFGS foundation-adaptation path, the combined loader uses `drop_last=true`. With batch size `B`, each nominal epoch executes
+Seeded loader shuffles integer indices of this replay-first/target-second tuple. There is no balancing sampler or intentional target duplication. For current qualified single-process non-LBFGS path with batch size `B`, `drop_last=true` and
 
 $$
-U=\left\lfloor\frac{N_t+N_r}{B}\right\rfloor
+U=\left\lfloor\frac{|D_r|+|D_t|}{B}\right\rfloor.
 $$
 
-optimizer updates and consumes exactly `UB` examples from that epoch's shuffled permutation. If `(N_t+N_r)\bmod B\ne0`, the final remainder of the shuffled permutation is omitted for that epoch.
+Exactly `UB` examples are consumed per nominal epoch. Distributed path is not presumed equivalent without qualification.
 
-Authenticated membership therefore does not imply that every P5 configuration is observed in every epoch. Runtime evidence must distinguish corpus membership from realized exposure and record target/replay counts, combined count, the ordered pre-shuffle head/corpus layout, batch size, `drop_last`, seed/shuffle/sampler policy, and batches per epoch.
+## 13. Common monitor and folds
 
-For `naive_fine_tuning`, `N_r=0`: the same robust objective and target-only shuffled loader semantics apply, with
+### D2.DEF.054 — Monitor quota
 
-$$
-U=\left\lfloor\frac{N_t}{B}\right\rfloor.
-$$
+For usable protected `OUTER_MONITOR` parent `P_mon`, required cardinality is 256; smaller parent is infeasible. Frame stratum is `<condition_id>:<run_id>` and within-stratum order `(source_frame_index,frame_uid)`.
 
-For current P5, a distributed sampler is not silently substituted for this exposure rule; distributed execution requires the separate equivalence qualification stated in Section 9.4.
+With fixed seed `q=161803`, stratum `s` marker is lowercase SHA-256 hex of UTF-8 `<q>\0quota\0<s>`, with decimal `q`. Sort `(marker,s)`, initialize zero quotas, repeatedly sweep increasing any stratum below capacity until exactly 256 slots are allocated.
 
-### 14.3 Optimizer mutation is forbidden
+### D2.DEF.055 — Monitor systematic positions
 
-The accepted post-selection learning-rate/EMA semantics are resolved by mdstats and must not be silently overwritten by dependency multi-head defaults. The current qualified dependency control that preserves those values is an implementation mechanism; D2's invariant is that the authenticated optimizer schedule and EMA parameters remain the executed values.
-
-## 15. Common target checkpoint monitor construction
-
-### 15.1 Parent and exact size
-
-Let `P_mon` be the exact protected neutral `OUTER_MONITOR` target frame population after canonical label usability is applied. Current foundation-model P5 requires one exact common target monitor `M_mon` of size
+For stratum capacity `n`, quota `k`, `1<=k<=n`, namespace `target:<s>`, hash UTF-8 `<q>\0<namespace>`, take first eight digest bytes unsigned big-endian integer `I`, define
 
 $$
-|M_{\mathrm{mon}}|=256.
+u=\frac{I+0.5}{2^{64}},
 $$
 
-If fewer than 256 usable protected parent frames exist, current P5 is infeasible. There is no smaller-monitor fallback in the current method.
-
-The canonical P1 split-exclusion authority must show that no selected monitor frame shares a protected relation component with any frame in every configured `T_N` relevant to the frozen experiment. Exact frame disjointness alone is insufficient.
-
-### 15.2 Condition/run strata and exact quota order
-
-Each parent frame is assigned to the string key
-
-```text
-<condition_id>:<run_id>
-```
-
-and frames inside a stratum are ordered by `(source_frame_index, frame_uid)`.
-
-Let the current monitor seed be
-
 $$
-q=161803.
+p_j=\min\left(n-1,\left\lfloor\frac{(j+u)n}{k}\right\rfloor\right),\quad j=0,\ldots,k-1.
 $$
 
-For each nonempty stratum key `s`, define its quota-order marker as the lowercase hexadecimal SHA-256 digest of the UTF-8 byte string
+Positions must be distinct. Parent/policy/seed/stratum identities plus exact membership define monitor identity.
 
-```text
-<q>\0quota\0<s>
-```
+### D2.DEF.056 — Fold order and purge
 
-where `\0` denotes one NUL byte and `<q>` is the base-10 seed text. Sort strata by `(marker, s)`. Initialize every quota to zero and repeatedly sweep this fixed order, incrementing a stratum by one whenever its quota remains below its available frame count, until exactly 256 total slots have been assigned. This is equal allocation subject to capacity with deterministic remainder resolution; it is not empirical-frequency weighting.
+For frozen `T_N`, sorted protected-component identities `C_comp`, fold count `K>=2`, partition seed `s_cv`, algorithm identity `a`, membership digest `d_T`: if `|C_comp|<K`, CV is infeasible. Marker for component `c` is SHA-256 hex of UTF-8 `<a>|<d_T>|<s_cv>|<c>`; sort `(marker,c)` and assign position `j` to held-out fold `j mod K`.
 
-### 15.3 Deterministic time-systematic sample
-
-For a stratum key `s` with capacity `n` and quota `k`, `1<=k<=n`, define namespace
-
-```text
-target:<s>
-```
-
-and compute
-
-```text
-raw = SHA256( UTF8( <q> "\0" <namespace> ) )
-I   = unsigned big-endian integer represented by raw[0:8]
-u   = (I + 0.5) / 2^64
-```
-
-where `raw[0:8]` means the first eight digest bytes. If `k=n`, select all positions. Otherwise select
+For fold `i`, let held-out set `O_i` and lexicographically sorted remaining `R_i`. With configured nonnegative `p_cfg`,
 
 $$
-p_j=\min\!\left(n-1,\left\lfloor\frac{(j+u)n}{k}\right\rfloor\right),
-\qquad j=0,\ldots,k-1.
+p_i=\min\left(p_{\mathrm{cfg}},\max(0,|R_i|-2)\right).
 $$
 
-The resulting positions must be distinct; duplicate positions are construction failure. Selected monitor records may be persisted in canonical `(run_id, source_frame_index, frame_uid)` order after membership has been fixed.
+If zero purge is empty; if one choose middle; if greater than one use ties-to-even systematic indices of spacing `h=(|R_i|-1)/(p_i-1)`, deduplicate, fill lowest unused indices to cardinality, then sort. Gradient set is complement of held-out and purge. `M_mon` is external.
 
-The numerical identity binds current neutral parent identity, exact selected membership, requested/realized size, seed, strategy, and per-stratum available/selected counts. A different deterministic sampler producing another 256-frame set is a different monitor identity even if it appears similarly balanced.
+## 14. Checkpoint predicates, CV, and production
 
-### 15.4 Parent adequacy is not created by sampling
+### D2.DEF.057 — Shared checkpoint constraint
 
-The sampler cannot manufacture missing conditions, runs, independence, or time coverage. Qualification must therefore report actual parent support, represented condition/run strata, available-to-selected counts, temporal spread, and upstream independence/effective-support evidence. D2 introduces no arbitrary new generic minimum-run or minimum-unit constant.
+For checkpoint `c`, `S(c)` is exact shared mandatory constraint conjunction imported from `D2.IMP.CV`: finite required metrics, replay degradation within accepted budget using authenticated true-reference replay monitor when replay active, plus required physical/integrity gates. Pseudo labels cannot satisfy true-reference retention. Replay-active evidence must belong to the current `Q_r` lineage of D2.DEF.052.
 
-## 16. Post-selection fold construction and fitting
+### D2.DEF.058 — Role-effective checkpoint predicate
 
-### 16.1 Preserved deterministic outer-fold geometry
-
-After operator selection is frozen, each admitted `T_N` is validated separately. Current P5 fold construction remains downstream of target-size selection and is not a revived DATA5 preselection-CV authority.
-
-Project the canonical P1 relation authority onto exact frozen `T_N` and use the canonical digest of each connected component as its component identity. Let `C_comp` be the sorted set of component identities, `K` the fold count, `s_cv` the nonnegative partition seed, `a` the fold-construction algorithm identity, and `d_T` the selected-membership digest. If `|C_comp|<K`, CV is infeasible.
-
-For each component identity `c`, define
-
-```text
-salt   = <a> "|" <d_T>
-marker = SHA256_HEX( UTF8( <salt> "|" <s_cv> "|" <c> ) )
-```
-
-with `<s_cv>` written in base 10. Sort components by `(marker,c)`. Assign ordered position `j` to held-out fold `j mod K`. This preserves the existing deterministic held-out membership algorithm; every protected component is held out in exactly one outer fold.
-
-The current default is `K=3`; an explicit policy may choose any `K>=2`. Fold count, partition seed, algorithm identity, CV horizon, required optimizer seeds, acceptance rule, and purge policy remain CV-policy identity.
-
-### 16.2 Preserved purge selection, retired selected-only monitor
-
-For fold `i`, let `O_i` be its held-out component set and let `R_i` be the lexicographically sorted components in `C_comp\setminus O_i`. The accepted purge-count rule is preserved from the prior generation so monitor restoration does not cause unrelated purge drift:
+Let `r_mon(c)` be target force-component RMSE on exact `M_mon` in `eV/angstrom`. For role `rho`,
 
 $$
-p_i=\min\left(p_{\mathrm{cfg}},\max(0,|R_i|-2)\right),
+A_\rho(c)=S(c)\wedge r_{\mathrm{mon}}(c)\le\tau_\rho.
 $$
 
-where `p_cfg` is the configured nonnegative purge-component count.
+CV uses `tau_CV`, production `tau_prod`. Inclusive binary64 boundary: equality passes, next representable double above resolved ceiling fails.
 
-When `p_i=0`, purge is empty. When `p_i=1`, select the middle entry `R_i[floor(|R_i|/2)]`. When `p_i>1`, define
+### D2.DEF.059 — CV outer predicate and all-position acceptance
 
-$$
-h=\frac{|R_i|-1}{p_i-1}
-$$
+Frozen fold representative passes outer criterion iff exact configured held-out metric is finite and `<=theta_CV`. Alternative outer metrics retain own units/threshold and never supply `tau_CV`.
 
-and candidate indices `round_even(jh)` for `j=0,...,p_i-1`, where `round_even` is nearest-integer rounding with exact half ties to the even integer. Sort and deduplicate those indices; if fewer than `p_i` remain, append the lowest unselected integer indices until `p_i` distinct positions exist, then sort again. The purge set `P_i` contains the corresponding components.
+CV accepts iff every required `(fold,seed)` position completes frozen method/horizon, has nonempty admissible checkpoint set under D2.DEF.058, freezes a representative under imported accepted target-side ranking, and that representative passes outer predicate. No mean/majority/best-seed/dispersion rescue exists.
 
-The prior selected-only checkpoint-monitor reservation is **not performed**. Current gradient-training components are simply
+### D2.AX.004 — Role currentness
 
-$$
-G_i=C_{\mathrm{comp}}\setminus(O_i\cup P_i).
-$$
+Changing `tau_CV` or `theta_CV` stales dependent CV evidence and production authorization derived from it while leaving `tau_prod` and shared method unchanged. Changing `tau_prod` stales production role evidence only. Changing shared `S` can stale both. A replay-qualification change stales replay-dependent P5 evidence through D2.DEF.052 without changing replay geometry membership solely because label mode changed. Re-thresholding stored classifications does not create current evidence.
 
-Thus the restoration preserves the previous outer-evaluation and purge sets and returns what would formerly have been reserved as fold-local checkpoint-monitor components to gradient training. The retired `checkpoint_monitor_components_per_fold` quantity is not a current CV-policy field.
+### D2.AX.005 — Fresh production
 
-Every selected frame is accounted for by exactly one of gradient training, held-out evaluation, or purge within each fold. No external common-monitor frame is a member of this partition.
+Fresh production starts new model/optimizer lineage on exact complete `T_selected`, fits training-dependent state there only, uses same `M_mon` and shared checkpoint mechanics as CV, and applies `tau_prod`. P3 `M3` has no production checkpoint role. Replay-enabled production retains D2.DEF.051-053, current `Q_r`, exact `e_replay(Phi)` where applicable, plus true-reference retention.
 
-### 16.3 Fold fitting and execution
+## 15. Continuation, equivalence, and fail-closed semantics
 
-For each fold:
+### D2.DEF.060 — Authenticated continuation
 
-1. verify exact common `M_mon` remains externally bound and relation-disjoint from the target ladder;
-2. build the selected-head foundation-residual E0 fit from `G_i` only and verify `c^T v=0` for every required target composition `c` and every unanchored null direction `v`;
-3. fit all other fold-local training state from `G_i` only;
-4. initialize a fresh model/optimizer lineage under the frozen method;
-5. train for the frozen CV horizon (fixed budget; crossing any ceiling does not stop training) and choose an admissible checkpoint using the common target monitor under the CV role-effective admissibility predicate of Section 17.1 plus authorized replay/integrity evidence; and
-6. only after representative freeze, evaluate once on held-out `O_i` and apply the CV outer acceptance predicate of Section 17.1.
+Continuation is admissible only when all identities needed to prove exact run boundary match: population/membership, method/policy parameters, foundation/head, objective/exposure, selector/reference where applicable, optimizer/EMA/RNG state and accepted predecessor boundary. Uncommitted scratch is not continuation authority.
 
-Every configured fold and seed is required. Missing fold, failed required seed, no-admissible-checkpoint outcome, composition-transfer E0 infeasibility, or method-identity mismatch is not ignored to obtain favorable acceptance.
+### D2.DEF.060A — Numerical-equivalence relation registry
 
-Historical fold schemas that partitioned `T_N` into training + selected-only checkpoint monitor + held-out + purge remain historical and cannot authorize current common-monitor runs.
+For authoritative outputs, the comparison relation is source-closed as follows:
 
-## 17. Checkpoint selection as constrained optimization
+1. canonical memberships, UIDs, component/order/rank sequences, discrete decisions, integer counts, lineage identities and repair traces compare by exact identity/equality under their defining objects;
+2. local numerical predicates with explicit fixed tolerances/guards use exactly D2.DEF.018, D2.DEF.020-021, D2.DEF.029-030, D2.DEF.033, D2.DEF.036, D2.DEF.038 and D2.DEF.058-059 as applicable;
+3. accepted source-owned metric/equality relations not restated locally are imported only from exact `D2.SRC.GENERAL` or `D2.SRC.ORDER`;
+4. every other governed binary64 scientific output whose owner supplies no nonzero tolerance compares by exact canonical binary64 value/reference arithmetic.
 
-The post-selection checkpoint owner first filters candidates through mandatory constraints, including target-monitor admissibility, integrity, and replay-retention requirements where enabled. If the admissible set is empty, the run has no admissible checkpoint; the algorithm cannot fall back to best target error among inadmissible checkpoints.
+No backend-observed discrepancy, performance result, generic “close enough” rule, or unlisted tolerance can create a new equivalence relation.
 
-Only after admissibility is established does deterministic target-side ranking/tie policy choose a representative. Held-out fold data are unavailable to this decision.
+### D2.DEF.061 — Numerical equivalence
 
-The same exact `M_mon` membership and checkpoint method are used for every selected size, CV fold, CV seed, and fresh final-production run. Optional lightweight target evaluation used only for stopping must be a deterministic subset of `M_mon`, never a separately sampled fold/final parent. With current 256-light/256-full budget it may equal the complete common monitor.
-
-Replay checkpoint/retention evidence remains a distinct true-reference lineage. Existing target/replay score weights and the accepted replay-degradation budget remain separate from training-head weighting and are unchanged by this revision.
-
-### 17.1 Role-effective predicates
-
-Let `r_mon(c)` be the target force-component RMSE of checkpoint `c` on `M_mon` and `r_out` the target force-component RMSE of a frozen fold representative on held-out `O_i`, both in `eV/Å` as defined by the accepted EVAL2 target-force estimator. Let `S(c)` be the conjunction of the **shared** mandatory constraints: finite metrics; replay degradation `<=` the accepted budget with authenticated true-reference evidence where replay is enabled; and required physical/integrity gates. `S` is part of the shared method and is identical for every role.
-
-A run of role `ρ` uses exactly one effective admissibility predicate
+For optimized realization `A`, accepted reference `R`, and authoritative output set `O`,
 
 $$
-A_\rho(c) \;=\; S(c) \;\wedge\; r_{\mathrm{mon}}(c) \le \tau_\rho ,
+A\equiv_O R
 $$
 
-with inclusive boundaries, compared in IEEE-754 double precision against the double nearest the resolved decimal ceiling. For foundation adaptation (`naive_fine_tuning`, `multihead_replay`), the role thresholds are independently resolved finite positive policy parameters; no numerical rule requires an explicitly configured value to equal its generated default:
+iff throughout the declared validity domain every output/decision in `O` satisfies the exact relation selected by D2.DEF.060A. Performance does not establish equivalence.
 
-| Role | Predicate | Resolved ceiling / default |
-|---|---|---|
-| CV checkpoint competence | `r_mon(c) <= τ_CV` | `τ_CV`, default `0.045 eV/Å` |
-| CV outer acceptance, default metric `target_force_rmse_ev_per_angstrom` | `r_out <= θ_CV` | `θ_CV`, default `0.045 eV/Å` |
-| Production checkpoint quality | `r_mon(c) <= τ_prod` | `τ_prod`, default `0.030 eV/Å` |
+### D2.AX.006 — Execution noninterference
 
-Required properties:
+Worker count, queue completion order, chunk/block size, mmap layout, cache residence, native backend, device batching and restart route are execution-only iff D2.DEF.061 holds for all governed outputs.
 
-1. **Boundary.** `r = τ` passes; the next representable double above `τ` fails.
-2. **Dimensional separation.** `τ_CV` is always a target-force RMSE ceiling in `eV/Å`. An explicitly configured alternative outer metric (energy, quantile, species or stratum metric) carries its own units and `θ`, and never supplies `τ_CV`. `τ_CV` is reconstructable without reference to the outer metric.
-3. **Population separation.** `τ_CV` is evaluated on `M_mon` and `θ_CV` on `O_i`. Equal numeric values do not make the estimators interchangeable.
-4. **Aggregation.** CV accepts only if every required `(fold, seed)` position has a non-empty admissible set under `A_CV` and its representative satisfies the outer predicate. No mean/majority/best-seed aggregate exists; dispersion statistics are recorded but never enter the decision.
-5. **No reinterpretation.** A candidate classification computed under one `A_ρ` is evidence only for that predicate. Re-thresholding stored metrics under a different `τ` does not produce current evidence; the run is re-evaluated under the current role authority.
-6. **Fixed budget.** No predicate alters the training horizon or terminates training.
-7. **Scratch.** Post-selection scratch keeps its pre-separation criteria: checkpoint target ceiling from the accepted target acceptance value (currently `0.030 eV/Å`) for both roles and default outer ceiling `0.030 eV/Å`.
-8. **Selective invalidation.** A threshold change moves only its role lineage. A `τ_CV` or `θ_CV` change moves the CV role policy, plan/run positions and CV acceptance, stales production authorization derived from that acceptance, and leaves the shared method and `τ_prod` unchanged. A `τ_prod` change moves only the production role policy and plan/run positions; applicable accepted CV evidence and the shared method remain current. A change to `S` (replay budget, physical/integrity gates) is a shared-method change and can invalidate both roles.
-9. **Resolution equivalence.** Explicitly configuring a threshold at its default is equivalent to omitting it when every other policy input is equal; identity binds the resolved value.
+### D2.DEF.062 — Typed failure set
 
-Pre-separation records, in which one `τ` was represented as part of the shared method, remain historical and do not authorize work under Section 17.1.
+Fail closed for non-finite fitted statistics; invalid/empty required family mass; unreachable exact `M3`; malformed structural policy; unsupported provider/family; zero leave-one-out denominator; unreachable local mass; missing witness support; impossible hard obligation; configured-ladder infeasibility; stale lazy certification; repair invariant failure; direct/MVIDX mismatch; non-identifiable E0 transfer; pseudo replay without exact `Phi` or true monitor; missing/mismatched replay-head E0; invalid or stale replay qualification/lineage; impossible 256-monitor; insufficient fold components; missing required fold/seed; no admissible checkpoint; non-finite P3 outcome; insufficient reducer comparison; stale/mismatched continuation; materially different objective/exposure/method. Tolerance widening, support relaxation, role substitution, pseudo fallback, or rescue-size invention are not error handlers.
 
-## 18. Replay semantics
+## 16. Parameter binding ledger
 
-### 18.1 Separation from P3
+| Coordinate | Binding class | Current value/domain |
+| --- | --- | --- |
+| family hard coverage | `FIXED_METHOD_COORDINATE` | `0.95` |
+| extent quantiles | `FIXED_METHOD_COORDINATE` | `0.01,0.99` |
+| family-weight normalization count | `FIXED_METHOD_COORDINATE` | exactly once |
+| robust-scale floor/branch | `FIXED_METHOD_COORDINATE` | `1e-12` |
+| local-radius mass/guard | `FIXED_METHOD_COORDINATE` | `1/128`, `1e-15` |
+| adjacency tolerance | `FIXED_METHOD_COORDINATE` | `1e-12*max(1,r)` |
+| MVQUAL coverage tolerance | `FIXED_METHOD_COORDINATE` | `1e-12` |
+| MVSEL2 tolerance | `FIXED_METHOD_COORDINATE` | `1e-14` |
+| lazy monotonicity guard | `FIXED_METHOD_COORDINATE` | `5e-13` |
+| REPAIR2 tolerance/limits | `FIXED_METHOD_COORDINATE` | `1e-14`, 2 passes, 32 swaps, shortlist 64 |
+| direct-vs-MVIDX mass | `FIXED_METHOD_COORDINATE` | `rtol=0`, `atol=5e-12` |
+| candidate/evaluation/fidelity/seed values | `CONFIGURABLE_FAMILY` | D2.DEF.007 |
+| practical `epsilon` | `CONFIGURABLE_FAMILY` | finite positive response-unit value |
+| Huber thresholds/factors | `FIXED_METHOD_COORDINATE` | D2.DEF.044 |
+| P5 coefficients | `FIXED_METHOD_COORDINATE` | `1:10:1` |
+| replay label mode | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | true-reference default; pseudo explicit opt-in |
+| replay qualification identity/state | `DERIVED` | configured replay policy/evidence/current qualification |
+| replay-head E0 | `DERIVED` | exact selected foundation checkpoint/head mapping |
+| P5 corpus order/drop policy | `FIXED_METHOD_COORDINATE` | replay then target; `drop_last=true` |
+| monitor cardinality/seed | `FIXED_METHOD_COORDINATE` | `256`, `161803` |
+| CV fold count | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | integer `K>=2`, default `3` |
+| `tau_CV`,`theta_CV`,`tau_prod` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | current defaults `45/45/30 meV/angstrom` for default force metric |
 
-P3 target-size execution has zero replay training samples. P5 replay cannot alter P2/P3 evidence or frozen target membership.
+## 17. Current falsification and reopen oracles
 
-### 18.2 Replay label modes
+Qualification and any future reopen review must attempt at least: one-normalization governed-quantile adversaries; selector-vs-MVQUAL tolerance interval adversary; exact component-order/first-predecessor `M3`; condition-balanced `pi_eval`; structural-policy rejection; candidate-common-preparation perturbation; minimum-three-qualified admission including an unqualified configured prefix with at least three remaining qualified candidates; exact funnel/sufficiency/ceiling cases; autocorrelation/block/event fixtures; required-family applicability fixtures; exact adjacency boundaries; full-forward/lazy rank equality; Phase-A tie behavior; REPAIR2 frontier/trace/limits/rank inheritance/no-extra-shell; direct/MVIDX mass and MVQUAL monotonicity; E0 null-space transfer; replay-head E0 selected-head binding and target/replay E0 separation; robust P5 dimensional/nine-stress/mask/no-head-scalar; true-vs-pseudo replay geometry invariance and true retention; replay qualification-lineage invalidation; replay-first seeded exposure/drop-last; monitor/fold reconstruction; role-threshold boundaries/selective invalidation; equivalence-registry source closure; and worker/backend/restart invariance.
 
-Current post-selection architecture supports true-reference/density-functional-theory (DFT) replay as canonical default when labels are available and foundation pseudo-label replay only under explicit opt-in bound to frozen foundation checkpoint/head. Pseudo-label replay still requires a separate true-reference replay-monitor lineage.
+The weighted-quantile oracle must exercise actual governed quantiles and one-time stored binary64 weights, and it must reproduce the exact prior D4 rescaling quantity `t = cumulative[-1]` with `cumulative = np.cumsum(stored_weights, dtype=np.float64)`. Required discriminating cases generated by the accepted correlation-balanced weight constructor are: counts `(50,1)` at `q=0.01` (direct index 0, residual-terminal-mass-rescaled index 1); `(2,6)` at `q=0.25` (direct index 0, rescaled index 1); `(1,6)` at `q=0.75` (direct index 4, rescaled index 3); and `(1,150)` at `q=0.99` (direct index 148, rescaled index 147). Each case must verify `t != 1.0` and compare cumulative stored mass directly with `q`. `np.sum(stored_weights)` is not a substitute for `t`, because the prior D4 implementation used terminal cumulative mass and binary64 reduction order can make the two residual sums differ.
 
-Replay source membership, geometry split, label mode, true-monitor membership, head identity, foundation identity, and realized exposure belong to P5 lineage. Switching true versus pseudo training labels over one prepared source/split must not change replay geometry membership.
+## 18. D2 -> D3 handoff, acceptance and reopen condition
 
-### 18.3 No head scalar and no hidden duplication
+D3 owns persistence, concurrency, resource admission, software decomposition, dependency adaptation, build topology, and durable restart representation. It may simplify execution but may not create a second numerical owner or weaken/change the method above.
 
-No target/replay training-head scalar participates in current robust P5 loss. No dependency ratio heuristic may duplicate target examples. Any future intentional resampling/balancing is a different D2 method and requires explicit reopening.
+This kernel is accepted-current under Protocol 6.4 after independent Review PASS of `e827aef9bdceb97aae5be6e89de0585a95dcf71c`, the renderer-only D2.DEF.027 correction bound at `a4824d28775164aa942fd29fa97ee0957eb87e6f`, and stakeholder ratification on 2026-09-17. The correction preserves the exact candidate-gain sets and sums and therefore changes no numerical result, decision, tolerance, failure classification, family/applicability set, stochastic exposure, or replay lineage.
 
-## 19. Fresh final production and publication selection
-
-Fresh final production starts a new lineage on complete exact `T_selected`; P3 and CV checkpoints are never warm-start parents.
-
-Final foundation-residual target E0 corrections are fitted on complete exact `T_selected` against the authenticated selected foundation checkpoint/head. Every target composition whose energy is consumed by final training or target monitor control must satisfy the same composition-level null-space identifiability test. The same common target checkpoint monitor `M_mon` and same replay-retention/checkpoint-selection method used by CV control final checkpoint selection, under the production role ceiling `τ_prod` of Section 17.1 rather than `τ_CV`. P3 `M3` has no final checkpoint role.
-
-For each required final seed, the representative is frozen under the accepted checkpoint/admissibility owner. Product membership is then decided before downstream qualification. Current publication may publish every required admissible final seed or one deterministic best already-frozen admissible representative under accepted target-side final ordering. Qualification/physical/locked evidence never enters cross-seed publication ranking.
-
-## 20. Dependency realization boundary
-
-The current qualified execution dependency is `mace-torch==0.3.16`. Dependency names and source markers are D3/D4 conformance mechanisms, but the following observed upstream semantics define the reference realization against which this D2 revision is written:
-
-- multi-head fine-tuning sets the dependency loss to `universal`;
-- native `UniversalLoss` uses per-atom energy Huber, conditional force Huber, full `3x3` stress Huber, configured global E/F/S coefficients, and local property masks, and does not consume the general configuration scalar `ref.weight`;
-- the single numeric `huber_delta` is applied separately to energy, force, and stress numeric residuals in their canonical property units;
-- multi-head fine-tuning can overwrite requested learning-rate/EMA semantics unless the qualified control preserves them;
-- a target/replay ratio heuristic can duplicate target data unless its threshold is disabled;
-- current two-head multi-head fine-tuning orders `pt_head` first and concatenates datasets in that head order, so the replay/pretraining corpus precedes the target corpus in the combined index space before seeded shuffle; and
-- ordinary combined single-process training uses a shuffled concatenated dataset and drops the last partial batch for non-LBFGS optimization.
-
-Under this restoration the native forced `UniversalLoss` is **desired** for `multihead_replay`, not something mdstats should rewrite to weighted stress. `naive_fine_tuning`, which does not activate native multi-head routing, must nevertheless execute the same D2 robust functional explicitly. P3 and post-selection scratch retain their separately accepted weighted objectives.
-
-A future dependency version may replace MACE 0.3.16 only by proving the same accepted numerical semantics or after explicit D2 revision. A source signature or Python class name is evidence of realization, not the timeless authority itself.
-
-## 21. Numerical failure, conditioning, precision, and uncertainty
-
-### 21.1 Typed failure
-
-Non-finite model/optimizer state, non-finite prediction/metric, invalid monitor relation overlap, impossible exact monitor size, non-identifiable required composition correction, stale/mismatched method identity, missing required fold/seed, or no admissible checkpoint are typed failure/infeasibility states. They are not silently converted to arbitrary scores or repaired by changing the method.
-
-### 21.2 Atomic-reference conditioning
-
-Rank/null-space evidence describes identifiability, not merely solver accuracy. A null direction in element-count space persists at infinite arithmetic precision unless new independent compositional information or an accepted prior/anchor changes the mathematical problem. Rank deficiency alone is not a transfer failure: the relevant failure occurs when a required composition vector is not orthogonal to the unanchored null space.
-
-### 21.3 Stochasticity
-
-Optimizer seeds are explicit replicates. P5 shuffle order under a fixed seed is part of realized stochastic exposure, including the mapping from combined-dataset indices to replay/target examples before the permutation is drawn. P3 pairing controls one source of comparative variation but does not remove minibatch, finite-horizon, or model-training uncertainty. Reproducibility requires preservation of accepted seed/method lineage and numerical compatibility, not unsupported bitwise identity across arbitrary hardware/library regimes.
-
-### 21.4 Precision and backend
-
-Learned-model dtype, critical-precision policy, acceleration/backend behavior, reduction semantics, numerical-rank tolerance, and other trajectory- or identifiability-changing settings belong to method/execution identity. Worker count, queue order, cache path, and exact-evaluation device-batch width are execution-only only when they preserve accepted numerical output.
-
-## 22. Complexity and scaling
-
-Ignoring neural-network training cost, principal control-plane operations scale approximately as:
-
-- autocorrelation estimation: fast-Fourier-transform dominated per observable/run plus linear block construction;
-- relation closure: near-linear in frame/relation edges with union-find-style closure;
-- exact `M3` allocation: pseudo-polynomial `O(C M3)` reachability work with `O(M3)` predecessor state;
-- condition-balanced `pi_eval` order: at most `O(M3 log M3)` due to sorting;
-- `pi_train` construction and membership qualification: see `mlff_target_training_order_numerical_algorithmic_method.md`;
-- composition-level E0 transfer checks: dominated by the fit's singular-value/null-space factorization plus matrix products over required composition classes;
-- common-monitor construction: sorting plus linear quota/systematic selection over protected parent frames;
-- CV component ordering/allocation: `O(C log C)` for ordering plus linear fold assignment, excluding relation closure;
-- EVAL2 and target-monitor RMSE: linear in admitted components with bounded device memory through chunking; and
-- reducer: `O(boundaries * candidates * seeds)` with tiny control state relative to training.
-
-Training dominates total cost. Performance changes are admissible only when they preserve authoritative memberships, fits, trajectories, loss reductions, monitor membership, exposure semantics, and decisions.
-
-## 23. Verification and falsification oracles
-
-D2 review and verification should attempt at least the following counterexamples/oracles.
-
-### 23.1 Preserved P1/P2/P3
-
-- verify strain/stress round trips under declared conventions and derived strain quantities;
-- verify autocorrelation parity, complete-frame block coverage without dropped tails, and block merging when protected events cross candidate boundaries;
-- re-derive protected relation closure and reject stale split descendants;
-- prove neutral target-size condition key has no compatibility-domain/CV fan-out;
-- independently verify exact `M3` subset feasibility and reproduce the accepted first-predecessor/descending-reachable-state selected membership when multiple exact subsets exist;
-- prove `pi_train`/`pi_eval` are exact permutations and every `T_N`/`M_i` exact prefixes;
-- verify fewer than three qualified candidates cannot enter automatic screening;
-- prove P3 candidate projection does not refit/renormalize common E0/weights/model normalization;
-- verify P3 target batches equal `ceil(N/B)` with no duplicate padding;
-- verify LR/EMA normalization preserves the stated first-order products without claiming exact optimizer-path equivalence;
-- verify first/second/terminal reducer sufficiency rules, the tiny comparison guard, configured-ceiling rule, and incomplete/reordered matrix failure; and
-- replay reducer history and require identical decision.
-
-### 23.2 Robust loss and dimensions
-
-- hand-evaluate energy, force, and stress toy residuals on both sides of each property-specific Huber threshold and compare to the reference realization;
-- verify `delta_E=0.01 eV/atom`, base `delta_F=0.01 eV/Å`, and `delta_S=0.01 eV/Å^3` while all derive from the same configured numeric value;
-- verify a unit conversion without corresponding threshold conversion is rejected as non-equivalent;
-- verify stress reduction uses all nine stored `3x3` entries rather than six independent tensor components;
-- verify force threshold factors `1.0/0.7/0.4/0.1` and `100/200/300 eV/Å` regime boundaries exactly;
-- verify global `1:10:1` coefficients are applied once outside property reductions;
-- verify binary masks remove unavailable properties without introducing non-binary weighting;
-- vary transport `config_weight` while holding true method fields fixed and require unchanged foundation-P5 robust loss/trajectory or reject non-neutral values before execution;
-- reject any live target/replay training-head scalar;
-- prove no stage-two phase silently changes the loss; and
-- reject a distributed P5 route until global reduction and exposure equivalence are independently qualified.
-
-### 23.3 Foundation residuals and identifiability
-
-- verify `y_fnd` and `e_fnd` come from exact selected checkpoint/head;
-- construct a multi-head checkpoint whose first head differs from selected head and prove wrong-head fallback is rejected;
-- verify CV E0 fit membership equals gradient-training target membership and excludes common monitor/held-out labels;
-- for a rank-deficient fit with composition rows proportional to `[1,1]`, verify another `[1,1]` target composition is admissible even though individual elemental coefficients are not unique;
-- under that same fit, verify a `[2,1]` target composition is rejected because its correction varies along the null direction;
-- construct a required composition containing an element absent from the fit and verify fail-closed behavior absent an accepted anchor;
-- verify an accepted prior/anchor changes identifiability only when its identity and constrained direction are explicitly method-bound; and
-- verify final fit uses complete `T_selected` only.
-
-### 23.4 Common monitor
-
-- independently reconstruct the 256-frame monitor from protected parent, exact SHA-256 quota order, seed, strata, and systematic positions;
-- prove exact membership is identical across selected sizes, folds, seeds, and final production;
-- prove exact and protected-component disjointness from every configured `T_N`;
-- reject parent support below 256 or unusable target labels rather than shrink/fallback;
-- verify available-to-selected condition/run counts and time spread are recorded; and
-- reject any fold-local/final-local/M3 target checkpoint parent.
-
-### 23.5 CV geometry
-
-- reconstruct seeded component order independently from `(algorithm identity, selected-membership digest, partition seed, component identity)`;
-- prove every component is held out exactly once across `K` outer folds;
-- prove purge components exactly match the preserved spaced-selection rule;
-- prove removal of selected-only monitor reservation changes neither outer nor purge membership and returns all non-outer/non-purge components to gradient training; and
-- prove current CV policy has no live `checkpoint_monitor_components_per_fold` field.
-
-### 23.6 Exposure/currentness
-
-- verify multi-head training concatenates the exact authenticated replay/pretraining corpus **first** and target corpus **second** in the pre-shuffle combined index space, matching native `pt_head`-first head order;
-- with the same fixed seed and memberships, demonstrate that swapping those corpus blocks changes the example mapping of the shuffled index permutation and is therefore non-equivalent unless separately qualified;
-- verify there is no balancing scalar and realized duplication factor is one;
-- verify single-process combined `drop_last=true` batch/update geometry and distinguish membership from realized per-epoch exposure;
-- verify authenticated learning-rate/EMA values survive dependency routing;
-- verify true-versus-pseudo replay label changes leave replay geometry split unchanged; and
-- prove old weighted-stress/fold-local-monitor/target-first-order continuation state cannot authenticate as the restored method.
-
-### 23.7 Role predicates
-
-Default-policy oracles (generated defaults `τ_CV=θ_CV=0.045 eV/Å`, `τ_prod=0.030 eV/Å`; they test the defaults, not a fixed-threshold invariant):
-
-- foundation CV: `r_mon=0.042` admissible and `r_out=0.042` accepted; `r=0.045` passes and `nextafter(0.045, +inf)` fails;
-- foundation production: `r_mon=0.042` inadmissible; `r=0.030` passes and `nextafter(0.030, +inf)` fails;
-- default scratch: `r_mon=0.042` remains inadmissible in both roles;
-- a non-target-force outer metric with a large `θ` leaves `τ_CV` at its resolved value (default `0.045 eV/Å`);
-
-Configured-policy oracles (any finite positive resolved value):
-
-- for each resolved target-force ceiling `τ`, `r=τ` passes and `nextafter(τ, +inf)` fails;
-- an explicit non-default `τ_CV` changes only the CV role-policy lineage and is honored by CV checkpoint assessment; the shared method and `τ_prod` are unchanged, and CV acceptance under the prior `τ_CV` no longer authorizes production;
-- an explicit non-default `θ_CV` changes only the CV outer-policy lineage and is honored in held-out acceptance without changing checkpoint target-force units;
-- an explicit non-default `τ_prod` changes only the production role-policy lineage and is honored by production checkpoint assessment;
-- an explicit default is equivalent to omission;
-- one failing required position rejects CV even when the mean outer metric is below `θ_CV`;
-- a shared-constraint change (e.g. replay budget) changes shared method identity; a role-ceiling change changes only that role's policy; and
-- stored candidate classifications under one `τ` are not reused under another.
-
-A failure of these oracles is D2 or lower-layer nonconformance. If repair requires changing the scientific objective, monitor role, estimator, normalization, exposure, composition-level E0 identifiability rule, or validation interpretation, reopen D1/D2 rather than compensating in D3/D4.
-
-## 24. D2 to D3 handoff
-
-D3 must preserve at least:
-
-1. the unchanged P1/P2/P3 numerical method, including event/block closure, exact deterministic `M3` membership, minimum qualified-candidate admission, first-order optimizer-normalization interpretation, reducer comparison sufficiency, and target-size restart semantics;
-2. separate P3/post-selection-scratch versus foundation-P5 objective/exposure owners;
-3. exact foundation-P5 robust-loss identity: property-specific dimensional thresholds corresponding to configured numeric `huber_delta=0.01`, global `1:10:1`, nine-entry stress reduction, binary masks, and no P5 configuration/head scalar;
-4. selected-head foundation-residual E0 fitting plus composition-level null-space transfer validation for every governed target composition, with accepted anchors identity-bound and no monitor/held-out leakage;
-5. exact target/replay corpus lineage, native two-head replay/`pt_head`-first then target-second pre-shuffle index layout, no implicit target duplication, authenticated optimizer/EMA semantics, and current single-process exposure unless a distributed-equivalence qualification is accepted;
-6. one current target-monitor owner over neutral protected `OUTER_MONITOR`, exact deterministic 256 membership, exact SHA-256 sampling semantics, and no current DATA5/label-domain monitor parent;
-7. P5 CV schema whose fold membership excludes checkpoint monitor, preserves the deterministic outer/purge allocation above, and defaults to three folds with `K>=2` override;
-8. one common target checkpoint membership shared by CV and final production, with P3 `M3` excluded from checkpoint control;
-9. independent true-reference replay-monitor/retention evidence and preserved score/admissibility semantics, with the shared constraints `S` owned by the shared method and the independently configurable role thresholds `τ_CV`, `θ_CV`, `τ_prod` of Section 17.1 owned by the role policies (each identity-bearing only for its own role, never for the shared method, with exactly one configuration source each and no synchronized alias or second checkpoint-policy engine), one role-effective predicate bound per run before its checkpoints are evaluated;
-10. method/currentness generations that make superseded weighted-stress/fold-local/head-scalar/target-first artifacts stale while preserving independent P1/P2/P3 and frozen membership evidence; and
-11. runtime evidence sufficient to reconstruct actual loss, dimensional thresholds, E0 fit/null-space transfer result, monitor, ordered combined-corpus layout, realized exposure, seed, precision/backend, and fold/final lineage.
-
-D3 remains free to choose the simplest architecture that satisfies these constraints. Existing machinery should be rewired, reduced, or retired rather than wrapped by a second competing method owner.
-
-## 25. Reproducibility contract
-
-A numerical reproduction binds, as applicable, exact source/frame conventions; correlated-sampling/block/event-merge and protected-relation authority; pre-order evidence; `U_size`, deterministic `P_train/M3` split including predecessor/tie semantics, split/order/prefix identities; P3 common preparation/objective/optimizer-normalization and its first-order interpretation; P3 candidate admission, seed/fidelity/evaluation/reducer sufficiency/history; frozen selected memberships and horizons; selected foundation checkpoint/head; foundation-P5 robust-loss parameters and dimensional thresholds; target/replay memberships, ordered pre-shuffle combined-corpus/head index layout, and realized exposure semantics; foundation-residual E0 fit, accepted anchors, rank/null-space evidence, required composition set, and composition-transfer identifiability result; common target-monitor neutral parent, SHA-256 quota/systematic policy, seed, strata, and exact 256 membership; CV component-order, outer-fold, purge, seed, and exact memberships; replay training/true-monitor lineage; and fresh final-production/publication identity.
-
-Runtime caches and scratch state need not be preserved when exactly reconstructible and non-authoritative.
-
-## 26. Revision provenance and realization evidence
-
-The 2026-09-13 accepted D2 baseline remains the source of all unaffected P1/P2/P3 semantics. The first independent review found that the initial rewrite had accidentally compressed out several still-current baseline invariants and had conflated elemental-coefficient identifiability with composition-energy identifiability. That review repair restored the baseline invariants explicitly, narrowed the new E0 feasibility rule to the scientifically consumed composition-weighted corrections, and made the shared numeric Huber parameter dimensionally explicit per property channel. A subsequent re-review found one remaining D2 reproducibility defect: the candidate had written the combined multi-head corpus as target-first/replay-second even though pinned MACE orders `pt_head` first and shuffles the resulting replay-first/target-second combined index space. That ordering was corrected and bound to exposure identity/oracles. Final independent re-review then passed the repaired D1/D2 pair, and the stakeholder ratified the branch authority on 2026-09-14 by directing D3/D4 closure to proceed. It was integrated at `8553ebe9ed86b24dfe910c9e43acc6230d3ece90`.
-
-The role-predicate parameterization (Sections 17.1, 23.7, handoff item 9) was accepted after independent D2 re-review and the stakeholder's 2026-09-15 ratification that all three foundation post-selection thresholds are configurable policy parameters. It establishes foundation defaults `τ_CV=θ_CV=0.045 eV/Å` and `τ_prod=0.030 eV/Å` from a stakeholder-authorized calibration premise (D1 §10.3) and leaves scratch unchanged. The cycle is recorded in `workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_PARAMETERIZATION_ALIGNMENT.md` and `workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_D1_D2_REREVIEW.md`.
-
-Reference realization evidence:
-
-1. I. Batatia, D. P. Kovacs, G. N. C. Simm, C. Ortner, and G. Csanyi, “MACE: Higher Order Equivariant Message Passing Neural Networks for Fast and Accurate Force Fields,” *Advances in Neural Information Processing Systems* **35**, 11423–11436 (2022), arXiv:2206.07697.
-2. H. Flyvbjerg and H. G. Petersen, “Error Estimates on Averages of Correlated Data,” *Journal of Chemical Physics* **91**, 461–466 (1989). DOI: 10.1063/1.457480.
-3. C. J. Geyer, “Practical Markov Chain Monte Carlo,” *Statistical Science* **7**, 473–483 (1992). DOI: 10.1214/ss/1177011137.
-4. J. Racine, “Consistent Cross-Validatory Model-Selection for Dependent Data: hv-Block Cross-Validation,” *Journal of Econometrics* **99**, 39–61 (2000). DOI: 10.1016/S0304-4076(00)00030-0.
-5. D. R. Roberts, V. Bahn, S. Ciuti, et al., “Cross-Validation Strategies for Data with Temporal, Spatial, Hierarchical, or Phylogenetic Structure,” *Ecography* **40**, 913–929 (2017). DOI: 10.1111/ecog.02881.
-6. J. D. Morrow, J. L. A. Gardner, and V. L. Deringer, “How to Validate Machine-Learned Interatomic Potentials,” *Journal of Chemical Physics* **158**, 121501 (2023). DOI: 10.1063/5.0139611.
-7. ACEsuit `mace-torch==0.3.16`, `mace.modules.loss.UniversalLoss` and `conditional_huber_forces`, used as current reference realization evidence for the robust functional.
-8. ACEsuit `mace-torch==0.3.16`, `mace.cli.run_train`, used as current reference realization evidence for multi-head loss routing, target-duplication heuristic, selected dataset/head ordering, loader geometry, and head-local atomic-energy behavior.
-
-Exact current schema names, source-probe markers, package paths, persistence formats, and wrapper patch mechanics remain D3/D4 concerns except where changing them changes the numerical method above.
+Any future change to one of those governed semantics requires D2 adjudication. Pure renderer/editorial repairs remain representation work only when algebraic and decision equivalence are explicitly verified.

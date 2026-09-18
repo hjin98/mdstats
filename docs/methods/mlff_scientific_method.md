@@ -1,582 +1,443 @@
 ---
-title: "mdstats MLFF Scientific Method — foundation CV competence / production quality separation revision"
-artifact_level: "D1 scientific formulation"
-status: "accepted-current D1 authority. The configurable foundation CV competence / production quality threshold revision on fix/mlff-cv-competence-threshold-separation passed independent D1 re-review and was stakeholder-ratified on 2026-09-15, against the post-selection restoration revision accepted 2026-09-14 and integrated at 8553ebe9ed86b24dfe910c9e43acc6230d3ece90."
-baseline_accepted_date: "2026-09-14"
-baseline_integrated_commit: "8553ebe9ed86b24dfe910c9e43acc6230d3ece90"
-threshold_revision_accepted_date: "2026-09-15"
-threshold_revision_against_commit: "8553ebe9ed86b24dfe910c9e43acc6230d3ece90"
+kind: accepted-D1-authority-kernel
+protocol_version: 6.4.0
+status: ACCEPTED_CURRENT
+accepted_date: 2026-09-17
+accepted_basis: cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824
+independent_review_target: e827aef9bdceb97aae5be6e89de0585a95dcf71c
+independent_review_commit: 2eddd9058beda039e0ff53d4e50a189be469173b
+ratified_candidate_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
+workplan_id: MLFF-D1-D2-SSDP64-AXIOMATIC-FORMALIZATION-1
 ---
 
-# mdstats MLFF Scientific Method
+# mdstats MLFF D1 axiomatic authority kernel — Protocol 6.4 accepted current
 
-## 1. Purpose, scope, and authority state
+## 1. Authority and exact import registry
 
-This paper states the scientific formulation of the machine-learned force-field (MLFF) branch of mdstats: the scientific questions, evidence roles, physical conventions, target-size experiment, foundation-model adaptation, replay semantics, cross-validation, fresh final production, validity limits, and falsification conditions that downstream numerical and software layers must preserve.
+This file is the canonical current D1 authority kernel for the mdstats MLFF method. It formalizes, without changing, the accepted scientific meaning reconstructed at basis `cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824` and exact-imports the detailed pre-Protocol-6.4 source papers pinned at stakeholder-ratified target `a4824d28775164aa942fd29fa97ee0957eb87e6f`.
 
-The integrated 2026-09-14 post-selection restoration changed only the scientific semantics materially implicated by that restoration. It preserved the accepted target-size population, order, evaluation ladder, reducer, replay geometry lineage, target/replay acceptance thresholds, downstream qualification separation, and all other unaffected P1/P2/P3 scientific semantics. In particular, it does **not** change the P2/P3 target-size method or silently broaden the restoration to post-selection training from scratch.
+Independent assembled-candidate Review passed on immutable target `e827aef9bdceb97aae5be6e89de0585a95dcf71c` at review commit `2eddd9058beda039e0ff53d4e50a189be469173b`. The stakeholder then identified one renderer-only D2.DEF.027 notation defect; target `a4824d28775164aa942fd29fa97ee0957eb87e6f` changes only those two restricted-sum renderings, preserves the reviewed mathematics exactly, and was explicitly ratified for canonical promotion on 2026-09-17.
 
-The revision changes the scientific method for **foundation-model post-selection adaptation**—`naive_fine_tuning` and `multihead_replay`—in four coupled respects:
+Exact accepted imports are:
 
-1. foundation adaptation uses a robust energy/force/stress training objective whose exact numerical definition is delegated to D2, rather than the previously universal weighted-quadratic requirement;
-2. nontrivial per-configuration loss weighting and target-versus-replay training-head scalar weighting are not part of this foundation-adaptation method;
-3. checkpoint control uses one protected campaign-common target monitor outside every target-size training prefix, shared across post-selection cross-validation and fresh final production; and
-4. the default post-selection cross-validation design uses three folds while preserving explicit override, all-required-fold acceptance, and the existing held-out evidence semantics.
+- `D1.SRC.GENERAL` = `hjin98/mdstats@a4824d28775164aa942fd29fa97ee0957eb87e6f:docs/methods/mlff_scientific_method.md`;
+- `D1.SRC.ORDER` = `hjin98/mdstats@a4824d28775164aa942fd29fa97ee0957eb87e6f:docs/methods/mlff_target_training_order_scientific_method.md`.
 
-Foundation-residual elemental reference-energy fitting remains mandatory and is strengthened here to require the exact selected foundation checkpoint **and foundation head**. The scientifically required identifiability condition is imposed on the composition-weighted reference-energy correction actually used by each governed target configuration; individual elemental correction coefficients need not be uniquely identifiable when their relevant composition-weighted sums are unique. Checkpoint-monitor or held-out labels may not be used to resolve an otherwise unidentifiable correction.
+`D1.SRC.ORDER` is the sole accepted owner for target-training-order membership design and supersedes conflicting general-paper prose on that bounded surface. `D1.SRC.GENERAL` remains owner for every unaffected D1 claim.
 
-The numerical method is delegated to `mlff_numerical_algorithmic_method.md`. The `TargetTrainingOrder` / `pi_train` membership-design surface—pre-order selector evidence, training-population coverage, hard membership support, configured-shell repair, complete-order continuation, and configured-prefix membership qualification—is owned by the scoped D1 paper `mlff_target_training_order_scientific_method.md`; this paper does not restate it. D3 architecture and D4 specifications/implementation own software decomposition, persisted schemas, runtime control, dependency adaptation, caches, and interfaces. They may not redefine the scientific semantics below.
+The following exact specialized imports are treated as already-defined roots rather than copied into a second owner:
 
-The restoration revision above was independently reviewed, ratified by the stakeholder on 2026-09-14, and integrated at `8553ebe9ed86b24dfe910c9e43acc6230d3ece90`.
+- `D1.IMP.PHYSICAL` = `D1.SRC.GENERAL`, Sections 2.1 and 3.1-3.7: potential-energy-surface observables, source occurrence/geometry/label identities, label compatibility, row-cell/deformation/strain, stress, eligibility;
+- `D1.IMP.STAT` = `D1.SRC.GENERAL`, Section 2.2: stationary autocorrelation estimand, integrated autocorrelation time, effective-count diagnostic and scientific interpretation;
+- `D1.IMP.ROLES` = `D1.SRC.GENERAL`, Sections 4.1-4.6: independence grades, protected relations, event-before-thinning, evidence roles, feasibility/deferral, feature blinding;
+- `D1.IMP.P3` = `D1.SRC.GENERAL`, Sections 2.3, 5, 6, 14.1 and 15: target-size controlled experiment, common preparation, target-size evidence/limitations and falsification;
+- `D1.IMP.ORDER` = `D1.SRC.ORDER`, Sections 2-8: exact `P_train`, authorized pre-order evidence, one master order, family roles, correlation-balanced coverage, canonical hard support, ranking intent, repair meaning and qualification;
+- `D1.IMP.P5` = `D1.SRC.GENERAL`, Sections 7-11: foundation objective/E0, checkpoint semantics, replay, common monitor, CV and fresh production;
+- `D1.IMP.DOWNSTREAM` = `D1.SRC.GENERAL`, Sections 12-16: downstream qualification, applicability, uncertainty, reproducibility and reopen conditions.
 
-**Accepted revision (configurable threshold separation).** A subsequent revision on `fix/mlff-cv-competence-threshold-separation` separates, for foundation adaptation only, three claims that the integrated text had joined under “the same shared checkpoint method”: the **shared foundation-adaptation method**, the **foundation-CV competence policy** (§10.3), and the **fresh-production checkpoint-quality policy** (§11). The shared method, the common monitor, checkpoint-selection mechanics, replay retention, held-out semantics, scratch semantics, and downstream qualification are unchanged. It passed independent D1 re-review, and on 2026-09-15 the stakeholder ratified that all three foundation post-selection thresholds (`tau_cv`, `theta_cv`, `tau_prod`) are configurable policy parameters by design, with generated/current defaults `45 / 45 / 30 meV/angstrom`. The scientific invariant is role separation and evidence interpretation, not immutability of those defaults; the default values carry the stakeholder-authorized calibration premise stated in §10.3 rather than new repository evidence. This paper is the single D1 owner of those claims.
+A definition below may refine the representation of one imported object, but cannot change its accepted meaning. Definitions stipulate meaning; axioms are already-accepted project premises, not empirical proofs.
 
-## 2. Scientific background
+Parameter binding classes are:
 
-### 2.1 Potential-energy-surface learning
+- `FIXED_METHOD_COORDINATE`: changing the value changes the method;
+- `CONFIGURABLE_FAMILY`: an admissible instance is explicitly configured;
+- `CONFIGURABLE_WITH_GENERATED_DEFAULT`: configurable family plus separately owned current default;
+- `DERIVED`: determined by other governed objects.
 
-For atomic numbers `Z`, Cartesian positions `R`, and periodic cell `H`, an energy-conserving interatomic model represents a scalar potential-energy surface
+## 2. Foundational objects
 
-$$
-E_\theta(Z,R,H).
-$$
+### D1.DEF.001 — Atomic configuration
 
-Forces are energy derivatives,
-
-$$
-\mathbf F_i=-\frac{\partial E_\theta}{\partial \mathbf R_i},
-$$
-
-and, when stress is part of the accepted label contract, the Cauchy stress is the corresponding cell/strain derivative under the declared source convention,
-
-$$
-\boldsymbol\sigma=-\frac{1}{V}\frac{\partial E_\theta}{\partial \boldsymbol\varepsilon}.
-$$
-
-The sign, tensor, shear, unit, and strain conventions are part of label identity. Energy, force, and stress values produced under incompatible derivative or reference conventions are not interchangeable observations.
-
-The current mdstats workflow adapts an accepted MACE foundation model for foundation-based post-selection modes rather than proposing a new neural-network ansatz. MACE supplies the equivariant model family; mdstats owns the scientific evidence design, target-size experiment, adaptation objective, replay semantics, validation boundaries, and provenance needed to interpret the fitted result. Training-from-scratch remains a supported but separately governed mode and is not altered by this restoration merely because it shares infrastructure.
-
-### 2.2 Why trajectory frames are not independent samples
-
-Molecular-dynamics (MD) trajectories contain serial correlation. Adjacent structures may be nearly identical, event windows may contain many frames generated by one physical transition, and a slowly evolving site, defect, phase, or structural coordinate may remain correlated for much of a run. A random frame split can therefore place near-replicates on both sides of an evaluation boundary and underestimate generalization error.
-
-For a stationary scalar observable `x_t`, the normalized autocorrelation is
+An atomic configuration is
 
 $$
-\rho(k)=\frac{\mathrm{Cov}(x_t,x_{t+k})}{\mathrm{Var}(x_t)},
+x=(\mathbf Z,\mathbf R,\mathbf H,\mathbf p),
 $$
 
-and the integrated autocorrelation time is represented in stored-frame units as
+where ordered atomic numbers `Z`, Cartesian positions `R`, row-vector periodic cell `H`, periodic flags and source-occurrence metadata `p` have the exact meanings of `D1.IMP.PHYSICAL`. Occurrence identity and geometry identity are distinct. Invalid required geometry makes the frame ineligible under the imported source policy.
+
+### D1.DEF.002 — Canonical target label statement
+
+For eligible `x`,
 
 $$
-\tau_{\mathrm{int}}=\frac12+\sum_{k=1}^{k^\star}\rho(k).
+y(x)=\big(E(x),\mathbf F(x),\boldsymbol\sigma(x);\lambda(x)\big),
 $$
 
-The associated diagnostic effective sample count is
+where `lambda` binds all compatibility-significant theory, energy-reference, derivative/stress, unit, numerical-quality and provenance coordinates defined by `D1.IMP.PHYSICAL`. Missing optional properties are absent, not zero.
+
+### D1.DEF.003 — Label compatibility
 
 $$
-N_{\mathrm{eff}}=\min\!\left(N,\frac{N}{2\tau_{\mathrm{int}}}\right).
+y_a\sim_{\mathrm{label}}y_b
 $$
 
-This quantity measures serial redundancy under the chosen observable and truncation rule. It is not proof that every slow variable has decorrelated or that distinct temporal blocks are independent metastable-state realizations. mdstats therefore carries categorical independence evidence and limitation codes in addition to numerical autocorrelation evidence.
+iff `y_a` and `y_b` are compatible under `D1.SRC.GENERAL`, Section 3.2. Incompatible theory, energy-reference or derivative conventions cannot be merged by provenance similarity.
 
-### 2.3 Why target size is an experiment
+### D1.AX.001 — Compatible target-domain axiom
 
-Target-training cardinality `N` is a scientific independent variable, not a storage knob. If changing `N` also changes the sampling rule, fitted preprocessing, optimizer progress, evaluation population, training objective, or hidden loader exposure, the observed difference cannot be interpreted cleanly as a target-data-size effect.
+Every target training/evaluation population consumed as one scientific target domain belongs to one `~_label` compatibility class. Replay, when enabled, is separately identified.
 
-The target-size method therefore uses one deterministic training order, exact nested prefixes, one target-size evaluation ladder, common candidate-independent training preparation, paired optimizer seeds, and an explicit short-horizon comparison policy. The automatic screen is diagnostic evidence that can recommend a size. The operator owns the provisional downstream design, and post-selection cross-validation evaluates that frozen design rather than feeding backward into it.
+### D1.DEF.004 — Energy-conserving model
 
-The post-selection restoration in this paper does not retroactively change that target-size experiment. P3 remains target-only and retains its separately accepted objective, optimizer-progress normalization, reducer, and complete-batch exposure semantics.
-
-## 3. Source evidence, label compatibility, and physical conventions
-
-### 3.1 Source occurrence, geometry, and label identity
-
-mdstats distinguishes several identities that answer different scientific questions:
-
-- **source-content identity** — whether source bytes/control content are the same;
-- **source-occurrence identity** — whether a record represents the same declared run occurrence;
-- **frame occurrence identity** — a particular source-frame occurrence;
-- **geometry identity** — the atom-ordered structure, cell, periodicity, and coordinates independent of labels;
-- **label identity** — the energy/force/stress payload together with its units and scientific conventions; and
-- **labeled-configuration identity** — the combined geometry-plus-label statement.
-
-A copied file may have identical content but represent a distinct declared occurrence. Conversely, distinct occurrences may contain the same geometry and must not automatically be treated as independent evidence. Geometry identity deliberately excludes labels and provenance fields so duplicate geometry remains visible rather than hidden inside a combined record key.
-
-### 3.2 Label-domain compatibility remains current science
-
-Compatibility of target labels remains scientific authority. Current source authority distinguishes at least theory/electronic-structure identity, energy-reference identity, derivative and stress convention, numerical-quality profile, and software/provenance evidence.
-
-A compatibility policy may recognize non-semantic provenance differences, but it must not silently merge incompatible theory levels, energy references, or derivative conventions. A target training bundle contains one compatible target label domain plus a separately identified replay lineage when replay is enabled.
-
-What remains retired is using `label_domain_id` as a pre-target-size partition axis that creates separate target-size selectors, separate target-size cross-validation authorities, or per-domain target-size maps. Source-label compatibility is resolved upstream; target-size construction then operates on accepted canonical evidence without reintroducing another target-size authority.
-
-### 3.3 Energy channel
-
-The target energy is an explicit named channel. Its units, completeness, electronic/reference convention, and relationship to derivative labels are preserved. An energy value selected from one convention cannot be silently paired with forces or stress from another convention.
-
-### 3.4 Ensemble and temperature evidence
-
-Nominal thermodynamic control and realized observations are distinct. A source may specify a target temperature, a ramp, or no target temperature, while also carrying instantaneous-temperature observations. Realized temperature statistics do not overwrite source-control semantics.
-
-Temperature, composition, strain, regime, phase, defect state, surface/interface state, preparation history, and user-declared scientific axes may all matter to applicability. These axes are hierarchical and material-dependent rather than an automatically complete Cartesian product.
-
-### 3.5 Cell, deformation, and strain
-
-ASE-style source geometry uses row-vector cells,
+The accepted model represents
 
 $$
-\mathbf r_{\mathrm{row}}=\mathbf s_{\mathrm{row}}\mathbf H.
+E_\theta(\mathbf Z,\mathbf R,\mathbf H),
 $$
 
-For reference cell `H_0` and current cell `H_t`, the Cartesian column-vector deformation gradient is
+with
 
 $$
-\mathbf F=\left(\mathbf H_0^{-1}\mathbf H_t\right)^T.
+\mathbf F_i=-\frac{\partial E_\theta}{\partial\mathbf R_i},
+\qquad
+\boldsymbol\sigma=-\frac1V\frac{\partial E_\theta}{\partial\boldsymbol\varepsilon},
 $$
 
-The scientific strain context includes a proper polar decomposition
+under `D1.IMP.PHYSICAL`. Cell, strain, sign, tensor/shear and unit conventions are part of this scientific object.
+
+## 3. Protected dependence and evidence permissions
+
+### D1.DEF.005 — Protected relation
+
+For finite eligible frame universe `U`, let `R_prot` be the union of the five accepted primitive inseparability relations in `D1.IMP.ROLES`: correlation-unit co-membership, exact-geometry duplication, protected-event co-membership, condition-scoped replica lineage, and condition-scoped structural-realization lineage where available.
+
+Let `TC` be reflexive-symmetric-transitive closure on binary relations over `U`. Define
 
 $$
-\mathbf F=\mathbf R\mathbf U,
+\sim_{\mathrm{prot}}=\mathrm{TC}(R_{\mathrm{prot}}).
 $$
 
-and may report linearized, Green-Lagrange, and logarithmic strain measures, volume ratio, rotation, principal logarithmic strains, hydrostatic/deviatoric measures, and engineering shear. Reference-cell selection is explicit; an ambiguous or physically unsuitable reference cell is not silently inferred.
+### D1.DEF.006 — Evidence-role permission system
 
-### 3.6 Stress convention
+Let `R_role` be the role vocabulary and `A_op` the operation vocabulary supplied by `D1.IMP.ROLES`. They include, as applicable, development/gradient, P3 model selection, checkpoint monitor, held-out CV, calibration, locked/challenge, purge/excluded, replay roles and the operations membership construction, fitting, fitted-transform construction, E0 fitting, checkpoint choice, held-out evaluation, calibration, locked evaluation, final-publication choice and downstream qualification.
 
-The canonical target stress is a symmetric Cartesian Cauchy stress in the accepted ASE/MACE sign convention and canonical internal units. Tensor shear components and engineering shear are not interchangeable. Virial-like quantities remain distinct from stress unless a current owner explicitly defines a valid conversion.
-
-Unit, sign, Voigt-order, and shear-factor round trips are scientific correctness conditions, not display formatting.
-
-### 3.7 Eligibility is not typicality
-
-Eligibility answers whether a labeled frame may enter the scientific evidence base. Hard failures include missing or non-finite required labels, malformed geometry/cell state, incompatible atom counts, unrecoverable incomplete source records, disallowed electronic-convergence failures, or other conditions that make the reference observation unusable under the active policy.
-
-High but finite forces, unusual strain, rare coordination, event frames, and difficult model residuals are not rejected merely for being unusual. Such evidence can be scientifically valuable precisely because it probes difficult regions. Quality, rarity, difficulty, and applicability evidence remain separate from eligibility.
-
-## 4. Evidence roles, leakage, and statistical independence
-
-### 4.1 Strongest-supported independence, not invented independence
-
-mdstats prefers the strongest evidence available, in descending order when the data support it:
-
-1. independent replica or independently prepared realization;
-2. independent structural or chemical ordering;
-3. independent thermodynamic run; and
-4. purged temporal blocks within a run.
-
-Temporal distance alone does not establish an independent slow-state realization. When only weaker independence is supportable, the evidence must say so.
-
-### 4.2 Correlation units and protected relations
-
-Before incompatible roles are allocated, the workflow constructs correlation-aware complete-frame units and preserves relations that make frames scientifically unsafe to separate. Current protected relations include:
-
-- membership in the same correlation unit;
-- exact geometry duplicates;
-- membership in the same protected event window;
-- condition-scoped replica lineage across distinct runs; and
-- condition-scoped structural-realization lineage across distinct runs.
-
-The transitive closure is material. If `a` is inseparable from `b` and `b` from `c`, then `a,b,c` form one indivisible relation component for incompatible-role allocation even if no direct `a-c` relation was stored.
-
-### 4.3 Event detection precedes thinning
-
-Rare events are identified at full temporal resolution before ordinary-frame thinning that could erase event shape or split one event into apparently independent samples. Protected event windows remain indivisible across incompatible evidence roles.
-
-### 4.4 Evidence roles
-
-The MLFF evidence model distinguishes:
-
-- development evidence that may supply gradients or development/model-selection evidence according to a narrower role;
-- checkpoint/model-control monitor evidence that supplies no gradients;
-- post-selection held-out cross-validation evidence;
-- uncertainty-calibration evidence where applicable;
-- locked interpolation-test evidence activated only after the required freeze boundary; and
-- purged or excluded evidence.
-
-A frame that supplied a gradient is not independent validation evidence for that model. A held-out fold cannot choose the checkpoint at which it is evaluated. Calibration cannot tune the protocol it is supposed to calibrate. Locked evidence cannot affect membership, target size, fitting, stopping, checkpoint choice, calibration-policy design, acquisition, or final-product membership.
-
-The target-size `M1/M2/M3` populations are development/model-selection evidence specific to P3. They are not post-selection held-out CV, not locked final tests, and—under this revision—not the P5 checkpoint-monitor parent.
-
-### 4.5 Feasibility and deferral
-
-Requested evidence roles may be scientifically infeasible. The method preserves explicit outcomes such as temporal-block-only support, calibration deferral, insufficient locked-test support, insufficient requested roles, or an infeasible requested monitor/fold design. A percentage target, desired fold count, or desired monitor budget does not justify fabricating independent evidence from short or correlated trajectories, splitting a protected relation, using a held-out label for fitting, or falling back to a semantically incompatible role.
-
-### 4.6 Feature blinding and fitted evidence
-
-Raw structural and event facts may be computed before final role assignment when their provider is genuinely partition-independent. Label-derived or dataset-fitted quantities obey a stricter rule: scaling, whitening/principal-component analysis (PCA), fitted metrics, foundation residuals/difficulty, atomic-reference corrections, and related quantities may be fitted only on the authorized domain for the operation that consumes them.
-
-Checkpoint-monitor, held-out, calibration, and locked labels may be observed only for their authorized evidence role. They cannot leak backward into target membership, fitted transforms, checkpoint selection, target-size decisions, or a training-domain fit.
-
-## 5. Two distinct candidate-independent fitted stages
-
-The accepted method distinguishes two semantically different stages that older architecture prose sometimes called “common preparation”; they must remain separate.
-
-### 5.1 Pre-order selection evidence
-
-The candidate-independent evidence from which the one canonical target-training order is built, and its fitting domain, are defined by `mlff_target_training_order_scientific_method.md`. Scientifically, that evidence is fitted before candidate training on exact `P_train`, cannot inspect downstream candidate, held-out, calibration, or locked outcomes, and feeds one ordering owner rather than a second selector.
-
-### 5.2 Target-size common training preparation
-
-After the current target-size split and canonical orders exist, one target-size common training preparation is fitted over exact `P_train` under the frozen P3 candidate-training method. It is shared unchanged by all target-size candidates and optimizer seeds. It includes the training-side fitted state required by P3, including the target atomic-reference fit, P3 configuration/property weights, foundation/head identity where applicable, and common MACE normalization/model-construction inputs.
-
-This later common training preparation is not an input used to decide `pi_train`. Candidate projection selects exact `T_N` rows from already fitted state; it does not refit or renormalize them by candidate size. The distinction prevents a circular dependency and keeps `N` as the intended experimental variable.
-
-P5 foundation adaptation has a different fitted-preparation scope after target selection: cross-validation fits training-dependent quantities independently inside each fold training domain, while fresh final production fits them on exact `T_selected`. This distinction is required by held-out-label exclusion and does not reopen P3.
-
-## 6. Target-size scientific experiment
-
-### 6.1 Population and development split
-
-The target-size population `U_size` contains currently eligible, canonically labeled frames from the neutral **development** role. Physical-only frames without the required canonical training labels do not enter the target-size experiment.
-
-`U_size` is split exactly once into `P_train`, the pool from which candidate target-training memberships are drawn, and `M3`, the largest development/model-selection reserve for the target-size diagnostic. The split preserves all inherited protected relations. Failure to construct the exact requested reserve while retaining sufficient training support is a scientific infeasibility result, not permission to split a protected relation or silently alter the reserve.
-
-### 6.2 One canonical training order
-
-One deterministic order
+Define
 
 $$
-\pi_{\mathrm{train}}=(x_1,x_2,\ldots,x_{|P_{\mathrm{train}}|})
+r:U\rightarrow R_{\mathrm{role}},
+\qquad
+\mathrm{Perm}:R_{\mathrm{role}}\rightarrow 2^{A_{\mathrm{op}}},
 $$
 
-is constructed before candidate training. Candidate membership is
+where `Perm` is exactly the authorization relation of `D1.IMP.ROLES` rather than a name-based default.
+
+### D1.AX.002 — Protected-role separation
+
+One `~_prot` class cannot be split across roles required by the governing method to be independent or mutually exclusive.
+
+### D1.AX.003 — Evidence noninterference
+
+For `x in U` and `a in A_op`, if
 
 $$
-T_N=\pi_{\mathrm{train}}[:N].
+a\notin\mathrm{Perm}(r(x)),
 $$
 
-For `N_a<N_b`, the smaller candidate is therefore a prefix of the larger candidate. Increasing `N` only adds frames; it does not swap to a different selection solution.
+information from `x` cannot influence `a` directly or through fitted descendants. In particular held-out labels cannot choose checkpoints, monitor labels cannot fit training state, locked evidence cannot choose target/final membership, calibration cannot tune its own protocol, and P3 outcomes cannot feed backward into `pi_train`.
 
-How `pi_train` is constructed and which configured prefixes qualify as candidate memberships—including required training-population coverage, extents, and hard membership obligations—is owned by `mlff_target_training_order_scientific_method.md`. Membership qualification is decided before candidate training and is not a model-accuracy gate; it does not rank already-qualified sizes.
+### D1.DEF.007 — Correlation diagnostic estimand
 
-### 6.3 Evaluation ladder
-
-One deterministic evaluation order over `M3` defines nested direct populations
+For stationary scalar `X_t` with finite variance,
 
 $$
-M_1\subset M_2\subset M_3.
+\rho(k)=\frac{\mathrm{Cov}(X_t,X_{t+k})}{\mathrm{Var}(X_t)},
+\qquad
+\tau_{\mathrm{int}}=\frac12+\sum_{k=1}^{k^\star}\rho(k),
 $$
 
-Each rung is evaluated on exactly the frames it names; the rungs are not complements of one another. The ladder is P3 target-size model-selection evidence only.
-
-### 6.4 Controlled stochastic replicate dimension
-
-The optimizer-seed set is explicit and common to all candidate sizes. A candidate score is formed only from a complete comparable seed population. A numerical failure is not silently discarded to make a candidate mean look better. Paired seeds reduce avoidable comparison noise but do not make the seed mean a confidence interval or represent every scientific uncertainty.
-
-### 6.5 Successive short-horizon fidelity
-
-Candidates proceed through exact ordered training boundaries and exact `M1/M2/M3` evaluation populations. A surviving `(N,seed)` trajectory continues through later boundaries with the same model/optimizer/random-number-generator lineage rather than restarting as an unrelated rung-local experiment.
-
-The automatic stage measures one configured short-horizon screening protocol. It is not a universal learning curve and cannot establish long-horizon or deployment behavior by itself.
-
-### 6.6 Primary response and practical equivalence
-
-The primary automatic-screen response is target-force root-mean-square error (RMSE) on the exact target-side model-selection population,
-
 $$
-\mathrm{RMSE}_F=\sqrt{\frac{1}{K}\sum_{k=1}^{K}\left(F_k^{\mathrm{pred}}-F_k^{\mathrm{ref}}\right)^2},
+N_{\mathrm{eff}}=\min\left(N,\frac{N}{2\tau_{\mathrm{int}}}\right).
 $$
 
-where `k` indexes admitted Cartesian force components of the exact evaluation membership. The current screen stores the result in meV/Å. Energy and stress may remain part of training/checkpoint semantics but do not silently replace this frozen ranking response.
+These scientific quantities and their interpretation are exact imports from `D1.IMP.STAT`. D2 owns the finite-sequence estimator/truncation and complete-frame block construction. `N_eff` is a redundancy diagnostic, not proof that every slow state is independent.
 
-Candidate means use the complete configured seed population. A declared practical-equivalence threshold `epsilon` expresses the smallest force-error difference treated as material for the reducer; it is not machine epsilon.
+## 4. Target-size experiment
 
-Within an equivalence set, smaller `N` is preferred. At the terminal comparison, a configured maximum candidate that is materially superior to all other successful finalists remains the best tested permitted size and may be recommended while explicitly recording that a plateau was not demonstrated inside the configured ladder. The configured ceiling is a practical budget boundary, not an asymptotic-convergence claim.
+### D1.DEF.008 — Target-size population and split
 
-If too few complete comparable candidates remain, the automatic result is no recommendation. This is a statement about the diagnostic, not a claim that the campaign has no usable target size; it does not erase an existing qualified operator proposal.
-
-### 6.7 Recommendation versus operator decision
-
-The reducer produces evidence. The operator owns the provisional downstream design and may accept, ignore, or override the recommendation within the qualified configured candidate set, including selecting more than one size for comparative downstream work. Each provisional entry owns its CV and production horizons.
-
-`cross-validate` admission is the freeze boundary. It binds every selected `N` to exact `T_N` and its role-specific horizons. Post-selection evidence cannot retrospectively choose another target membership.
-
-## 7. Training objectives, atomic references, and checkpoint control
-
-### 7.1 Objective semantics are method-specific
-
-Three concepts must remain distinguishable wherever they are active:
-
-1. **global energy/force/stress coefficients**, expressing relative property emphasis;
-2. **per-configuration weighting**, expressing configuration-level emphasis when the accepted method actually uses it; and
-3. **local property-availability masks**, normally `1` when a canonical property is available and `0` when absent.
-
-A missing property contributes zero through its local mask rather than redefining the global objective. Per-configuration weighting likewise does not redefine the relative energy/force/stress coefficients.
-
-P3 target-size screening retains the accepted P3 weighted energy+forces+stress objective, including its configuration-weight policy. Post-selection training from scratch retains its separately accepted weighted objective. This restoration changes neither method merely to make its loss family match foundation-model P5.
-
-For **foundation-model P5 adaptation** (`naive_fine_tuning` and `multihead_replay`), the scientific objective is instead the robust D2-defined energy/force/stress objective with global coefficients
-
-```text
-energy : forces : stress = 1 : 10 : 1
-```
-
-and binary local property-availability masks. Nontrivial per-configuration weighting is not part of the current P5 foundation-adaptation objective. A transport field required by a file format may be numerically neutral, but it has no independent scientific weighting meaning in this method.
-
-There is also **no target-versus-replay training-head scalar weight** in current multi-head foundation adaptation. Relative aggregate exposure arises from authenticated target and replay memberships plus the accepted stochastic loader semantics. A larger replay corpus may therefore contribute more training examples than the target corpus; the method does not claim equal target/replay loss mass or a hidden 1:1 balance.
-
-Checkpoint/adaptive-stop `target_score_weight` and `replay_score_weight`, when used by the checkpoint-control policy, are a separate model-selection concept. Retiring training-head scalar weighting does not retire those score weights or the replay-degradation admissibility constraint.
-
-### 7.2 Foundation-residual elemental reference energies
-
-Elemental reference energies (`E0`) are fitted numerical quantities, not universal elemental constants. For foundation-model adaptation, target-head elemental references are fitted as **corrections** to the exact selected foundation checkpoint and foundation head from the authorized target gradient-training domain. The fitted target-head references are the foundation-head references plus the fitted corrections.
-
-In post-selection CV, the correction fit uses only that fold's target gradient-training membership. The campaign-common checkpoint monitor and held-out fold do not contribute labels to the fit. Fresh final production fits the corresponding corrections on complete exact `T_selected`.
-
-The scientific identity of the fit includes the selected foundation head. A multi-head foundation checkpoint may not silently substitute its first, default, or another available head merely because dependency code permits such a fallback.
-
-The scientifically required quantity for a target configuration with composition-count vector `c` is the total elemental correction `c^T delta_e`, not necessarily every elemental component of `delta_e` separately. Let `N_free` denote the unanchored null space of the authorized composition fit after accounting for any explicitly accepted prior/anchor. The correction needed for composition `c` is scientifically identifiable exactly when
+`U_size` is exact eligible neutral `DEVELOPMENT` evidence with canonical training labels. It is partitioned once without splitting `~_prot` components:
 
 $$
-c^T v=0\qquad\text{for every }v\in N_{\mathrm{free}}.
+U_{\mathrm{size}}=P_{\mathrm{train}}\mathbin{\dot\cup}M_3.
 $$
 
-Thus a rank-deficient elemental decomposition may still support a unique total correction for some compositions, while another composition using only represented elements can remain unidentifiable. An element absent from the fitting domain but required by a governed composition is a sufficient failure case when no accepted anchor fixes that direction, but absence is not the only possible identifiability failure.
+`P_train` is the target-order domain; `M3` is the largest P3 evaluation reserve.
 
-The current restoration introduces no new absent-element correction prior. If the required composition-weighted correction for target training, checkpoint monitoring, or held-out evaluation is not identifiable from the authorized fit plus already-accepted anchors, the run/fold is scientifically infeasible. Checkpoint-monitor or held-out labels may not be used to fill the gap, an arbitrary minimum-norm or solver-chosen decomposition does not create scientific identification, and an unfitted zero correction is not silently assumed.
+### D1.DEF.009 — Target-size policy family
 
-Rank, singular values/null-space evidence, residuals, and any accepted prior/anchor dependence remain part of the scientific interpretation.
+A target-size policy instance binds candidate-size tuple `N_cfg`, evaluation-size tuple `M_cfg`, fidelity tuple `H_cfg`, ordered optimizer-seed population `S_seed`, practical-equivalence parameter `epsilon`, the accepted optimizer-normalization family and reducer/funnel family. Its scientific role is the controlled comparative experiment of `D1.IMP.P3`; D2 owns the exact structural/numerical admissibility of those tuples.
 
-Replay/pretraining-head reference energies remain head-local. When multi-head replay starts from a multi-head foundation checkpoint, the replay/pretraining-head foundation reference mapping must correspond to the same explicitly selected foundation head/lineage required by the accepted replay method; an arbitrary first-head fallback is not equivalent.
+### D1.AX.004 — Controlled-variable axiom
 
-### 7.3 Checkpoint admissibility is constrained model selection
+Within one target-size experiment, changing candidate cardinality `N` changes only exact target prefix `T_N` and consequences of adding those frames. Pre-order authority, membership rule, P3-common fitted preparation, seeds, fidelity schedule, evaluation ladder, objective and reducer remain candidate-independent unless an accepted method coordinate states otherwise.
 
-Checkpoint choice is not “lowest one scalar at any cost.” The active policy may combine a primary target-monitor metric with mandatory target, focus/species/condition/property, replay-retention, and integrity constraints. A checkpoint violating a mandatory constraint is inadmissible even if its target metric is lower.
+### D1.DEF.010 — Evaluation ladder
 
-Held-out CV evidence does not participate in checkpoint choice. A required run with no admissible checkpoint is a methodological failure, not a reason to evaluate whichever checkpoint happens to exist.
+D2 constructs one deterministic `pi_eval` over `M3`. For configured `m_i`,
 
-Mandatory constraints have two different owners. Replay retention, true-reference replay evidence, finite-metric, physical, and integrity constraints are part of the shared adaptation method and apply identically wherever that method runs. The **target-force ceiling** a checkpoint must meet is a role-specific evidence-policy claim: it states what quality the run's role must demonstrate, not how the model is trained. For foundation adaptation, CV and fresh production therefore apply the same admissibility mechanics with different role ceilings (§10.3, §11). Every run is judged under exactly one role-effective admissibility policy, resolved and bound before its checkpoints are evaluated.
+$$
+M_i=\pi_{\mathrm{eval}}[:m_i].
+$$
 
-## 8. Foundation-model adaptation and replay
+`m_i<m_j` implies exact nested membership. `M_i` are P3 model-selection populations, not post-selection held-out or checkpoint-monitor evidence.
 
-### 8.1 Target-size screen is target-only
+### D1.DEF.011 — Primary P3 response and practical equivalence
 
-The target-size screen measures the target method without replay exposure. Replay evidence cannot rank, reject, or tie-break a target size. A replay-only lineage or method change does not retroactively change P2/P3 target-size evidence or frozen target membership.
+For `K>0` admitted Cartesian force components,
 
-### 8.2 Post-selection replay lineage
+$$
+\mathrm{RMSE}_F=\sqrt{\frac1K\sum_{k=1}^{K}(F_k^{\mathrm{pred}}-F_k^{\mathrm{ref}})^2}.
+$$
 
-Post-selection multi-head adaptation may include a separately identified replay source and replay head. The canonical default label mode is true reference/density-functional-theory (DFT) replay when the source provides those labels. Foundation pseudo-label replay is explicit opt-in, not a fallback for missing true labels.
+The stored response is in `meV/angstrom`. Practical-equivalence parameter `epsilon>0` is a `CONFIGURABLE_FAMILY` value in those response units; it is not machine epsilon.
 
-When pseudo-label replay is used, pseudo targets are bound to the frozen foundation checkpoint/head, while a separate mandatory true-reference replay monitor remains independent evidence about physical retention. Changing replay mode, source content, split, prediction policy, foundation identity, or qualification changes replay lineage and invalidates affected post-selection evidence.
+## 5. Target-training order and qualification
 
-Replay remains scientifically distinct from the target dataset:
+### D1.DEF.012 — Canonical target-training order
 
-- replay configurations are not counted in target-size independent variable `N`;
-- replay evidence is not a target-size ranking population;
-- target and replay checkpoint/retention evidence remain distinct;
-- replay retention is an admissibility constraint, not positive target-size ranking credit;
-- there is no current target/replay training-head scalar; and
-- hidden dependency-driven duplication of target frames is not allowed to redefine effective target exposure.
+For finite exact `P_train={x_1,...,x_n}`, the method constructs one deterministic complete permutation
 
-## 9. Campaign-common target checkpoint monitor
+$$
+\pi_{\mathrm{train}}=(x_{(1)},\ldots,x_{(n)}),
+$$
 
-### 9.1 Role and parent population
+and
 
-Current foundation-model P5 uses one target checkpoint/model-control monitor, denoted `M_mon`, selected once from the protected neutral `OUTER_MONITOR` evidence role. It supplies no gradients. It is development/model-control evidence, not a P3 target-size evaluation rung and not a held-out CV fold.
+$$
+T_N=\{x_{(1)},\ldots,x_{(N)}\},\qquad 1\le N\le n.
+$$
 
-The requested and current required monitor cardinality is **256 configurations**. The fact that `256` can also appear as a power-of-two target-size candidate has no semantic meaning. `M_mon` is not a target-size prefix, complement, evaluation rung, or folded-off portion of `T_selected`.
+Hence `N_a<N_b` implies `T_{N_a} subset T_{N_b}`. Independent per-`N` selectors are not the method.
 
-The target-size ladder is constructed exclusively from neutral `DEVELOPMENT` evidence. `M_mon` is constructed exclusively from protected `OUTER_MONITOR` evidence. For every configured target prefix `T_N`, the monitor must be separated not only by exact frame identity but by the complete P1 protected-relation authority. If a monitor frame and a target frame lie in the same correlation/duplicate/event/replica/structural-realization closure component, the allocation is invalid even when the frame UIDs differ.
+### D1.DEF.013 — Authorized selector information
 
-The monitor must carry the canonical target labels required by the accepted checkpoint metrics. Protected membership without usable target labels is insufficient.
+`I_sel` is exactly the pre-candidate information class in `D1.IMP.ORDER`: exact-`P_train` or authenticated partition-independent ancestors providing universal structure/environment, pair geometry/coordination, target-development response, applicable profile-selection, applicable frozen-foundation weakness and hard-support evidence. `M3/M1/M2`, candidate outcomes/reducer, post-selection monitor/CV/replay-monitor, calibration/locked/challenge and downstream evidence are excluded.
 
-If the protected parent cannot realize 256 usable configurations with scientifically adequate condition/run/time coverage and the required separation, current P5 is infeasible. The method does not silently shrink the monitor, fall back to `DEVELOPMENT`, or split a protected relation merely to continue.
+### D1.AX.005 — Selector measurability
 
-### 9.2 Coverage interpretation
+`pi_train` and selector-fitted quantities are functions only of `I_sel` plus accepted policy parameters. Perturbing excluded evidence while holding those inputs fixed cannot change `pi_train`.
 
-The monitor is deliberately **coverage-oriented model-control evidence**, not an empirical-frequency estimator of the target distribution. Its accepted construction balances available condition/run strata and spreads observations through source time. The resulting checkpoint criterion therefore answers whether the fitted model remains acceptably accurate across the represented protected monitor coverage; it must not be interpreted as a frequency-weighted population risk estimate unless another accepted owner establishes that interpretation.
+### D1.DEF.014 — Required family role and reference measure
 
-No generic minimum number of runs or units is invented here. Parent adequacy is assessed from the actual material/profile evidence, represented conditions/runs, independence grades, effective support, and temporal spread. The sampling algorithm cannot manufacture diversity absent from its protected parent.
+The required scientific family roles are exactly `D1.SRC.ORDER`, Sections 4.2-4.3: universal local structure/environment; pair geometry/coordination; target-development response; profile selection only under an active accepted provider; foundation weakness/residual only when target-size training itself uses an authenticated frozen foundation model.
 
-### 9.3 One monitor across CV and final production
+For family `m`, finite witness set `W_m` carries normalized measure `mu_m` assigning equal total mass to every represented P1 correlation unit and equal mass to witnesses within that unit. D2 owns exact family names, coordinates, applicability rows, metric/neighborhood and extent flags.
 
-Exact `M_mon` membership is shared across every selected size, required CV fold, CV seed, and fresh final-production seed/run using this foundation-adaptation method. A fold-specific, selected-size-specific, final-specific, or M3-specific target checkpoint parent would define a different checkpoint method. “Same checkpoint method” here means the same monitor, metric, admissibility mechanics and selection rule; it does not mean an identical role target ceiling (§7.3).
+### D1.DEF.015 — Covered mass and fixed target-order coordinates
 
-Sharing one monitor makes checkpoint/model-control decisions across folds statistically correlated. This is an explicit limitation, not independent replicate evidence. Post-selection held-out folds remain the evidence used for cross-validation acceptance after each fold representative is frozen.
+For selected `S subseteq P_train` and authorized neighborhood `N_m(w)`,
 
-## 10. Post-selection cross-validation
+$$
+C_m(S)=\mu_m\big(\{w\in W_m:N_m(w)\cap S\ne\varnothing\}\big).
+$$
 
-### 10.1 Question being answered
+The hard family coordinate is fixed:
 
-Post-selection cross-validation (CV) asks whether the **complete frozen shared foundation-adaptation method** associated with an admitted target membership **consistently reaches a clearly competent regime** on held-out development evidence whose independence strength and limitations are explicit. It is judged under the CV competence policy of §10.3, not under the fresh-production checkpoint-quality criterion of §11: a disposable fold model is not required to traverse the late slow-convergence regime that production quality demands.
+$$
+\gamma_{\mathrm{cov}}=0.95.
+$$
 
-“Held out” does not guarantee the strongest possible physical independence. A fold may rely on purged temporal evidence when stronger replicas/runs are unavailable; the associated limitation remains part of the claim.
+Extent-bearing coordinates use fixed weighted quantiles
 
-### 10.2 Fold semantics
+$$
+q_{\mathrm{lo}}=0.01,
+\qquad q_{\mathrm{hi}}=0.99.
+$$
 
-For every required selected size, fold, and seed:
+All three are `FIXED_METHOD_COORDINATE`; D2 owns their distinct floating comparison tolerances. No named-family coverage override is active.
 
-- the CV universe is exact frozen `T_N`;
-- inherited protected relations and purge constraints are preserved;
-- `T_N` is allocated among gradient-training, held-out outer-evaluation, and accepted purge/exclusion roles; the external `M_mon` is not counted as a fold member;
-- a fresh model/optimizer lineage is trained on the fold-authorized gradient domain;
-- all fold-local fitted quantities, including foundation-residual target-head E0 corrections, are fitted without checkpoint-monitor or held-out labels;
-- every target composition whose energy is consumed by training, monitor control, or held-out evaluation must have an identifiable composition-weighted E0 correction under the fold-authorized fit and accepted anchors;
-- the same campaign-common `M_mon` supplies target checkpoint/model-control evidence;
-- checkpoint choice is frozen before the held-out fold is evaluated; and
-- every required fold/seed must satisfy the acceptance rule.
+### D1.DEF.016 — Canonical hard-support obligation
 
-The current default design is **three folds**. Explicit policy may choose another `K>=2`; a fold-count change is a change in validation geometry and must be recorded. No missing/failed required fold or seed is discarded merely to obtain a favorable aggregate.
+A source obligation is
 
-CV can accept or reject the frozen method. It cannot change `N`, `T_N`, the target-size order, or earlier P3 evidence.
+$$
+o=(L(o),A(o),k(o)),
+$$
 
-### 10.3 Foundation-CV competence and consistency
+with semantic locus `L`, exact current-`P_train` incidence `A`, and positive minimum `k`. Automatic loci cover represented P2 conditions, P1 correlation units, recognized structural events, active profile environment classes and both sides of required extent channels where applicable. Explicit policy may strengthen a locus.
 
-For foundation adaptation (`naive_fine_tuning`, `multihead_replay`) the three post-selection thresholds are independently configurable policy parameters, with current generated defaults:
+Only same accepted locus/applicability/provider semantics plus identical incidence may canonicalize. Effective minimum is
 
-- **checkpoint competence (`tau_cv`):** a fold checkpoint is target-admissible only if its target-force root-mean-square error (RMSE) on `M_mon` is at most `tau_cv` (default **45 meV/angstrom** / `0.045 eV/angstrom`), in addition to every shared mandatory constraint of §7.3;
-- **held-out acceptance (`theta_cv`):** the frozen fold representative passes when its held-out target-force RMSE is at most `theta_cv` (default **45 meV/angstrom** under the default target-force metric). An explicitly configured alternative outer metric carries its own units and threshold and never supplies the checkpoint target-force ceiling;
-- **consistency:** every required fold of every required seed must independently satisfy both predicates. A mean, majority or best-seed aggregate cannot rescue a failing position, and missing or failed required positions are not discarded. Cross-fold/cross-seed dispersion is recorded as a diagnostic and is not a gate.
+$$
+k_\ast(L)=\max\{k(o):L(o)=L\}.
+$$
 
-Checkpoint competence and held-out acceptance share a numeric value by default but are different evaluations on different evidence: `M_mon` controls checkpoint choice; the held-out fold judges the frozen representative. Equal ceilings never permit substituting one population for the other or letting held-out labels influence model control.
+Disagreement at purported same locus fails closed; incidence equality alone never aliases distinct loci.
 
-Training remains fixed-budget; reaching the configured `tau_cv` does not stop a run. A deliberately shorter CV horizon remains a separately recorded frozen-design choice and is only adequate if every required position reaches the competence predicate.
+### D1.DEF.017 — Membership admissibility
 
-**Role-policy changes.** Changing any one of `tau_cv`, `theta_cv`, or `tau_prod` changes that role's policy, not the shared foundation-adaptation method. A different configured value defines a different policy instantiation and invalidates only evidence that depends on that role: a `tau_cv` or `theta_cv` change stales CV evidence and the production authorization derived from it; a `tau_prod` change stales production evidence only. Stored checkpoint or held-out classifications are never re-read as current under a newly configured value. An operator may deliberately configure a non-default value; that is explicit policy, not silent relaxation.
+For configured `N`, `Q_mem(N)` is true iff exact `T_N` exists, its required labels are training-usable, every required family passes hard coverage, every required extent passes, and every canonical hard obligation reaches effective minimum.
 
-**Calibration provenance.** The default 45 meV/angstrom CV values are a stakeholder-authorized calibration from recalled historical foundation-adaptation learning curves: rapid initial target-force error reduction, then markedly slower convergence through roughly 40–20 meV/angstrom, with the default 30 meV/angstrom production criterion deliberately inside that slow regime. The default intent is asymmetric: CV establishes competence without forcing disposable fold models through the late slow-convergence regime, while default production keeps the stricter criterion. This is not a recovered repository study and has no stated confidence interval. Applicable evidence that healthy foundation folds routinely plateau above the default 45 meV/angstrom, that no relevant knee exists, or that the recalled behavior applies only to different training semantics reopens the default calibration; it does not authorize hidden threshold changes.
+Under fixed evidence/neighborhood/obligations, nested positive-support predicates imply qualification pattern `FAIL* -> PASS*`; `PASS -> FAIL` is an invariant failure.
 
-This policy does not apply to post-selection training from scratch, whose checkpoint and held-out target criteria remain separately governed and unchanged.
+### D1.AX.006 — Qualification/ranking separation
 
-## 11. Fresh final production and product membership
+`Q_mem` gates membership before training. It has no ranking/tie authority among qualified candidates; P3 target-force reducer owns automatic size comparison.
 
-Acceptance does not promote a target-size or CV checkpoint into production. Final production starts a fresh model/optimizer lineage from the accepted foundation checkpoint/head and trains complete exact `T_selected` under the frozen production horizon and same shared foundation-adaptation/checkpoint method validated by CV.
+### D1.AX.007 — Repair continuity
 
-Final production therefore uses the same campaign-common `M_mon` for target checkpoint control and the same independent true-reference replay-retention semantics where replay is enabled. Its **checkpoint-quality policy** differs from CV competence: for foundation adaptation a production checkpoint is target-admissible only if its `M_mon` target-force RMSE is at most `tau_prod` (default **30 meV/angstrom** / `0.030 eV/angstrom`). This is checkpoint/model-control evidence on the protected common monitor; it is not external adequacy, a locked test, or release qualification (§12). A production run with no admissible checkpoint under that criterion fails; CV acceptance under `tau_cv`/`theta_cv` never substitutes for or overrides the configured `tau_prod`. P3 `M3` remains target-size model-selection evidence and is **not** repurposed as the final-production checkpoint monitor.
+Configured-shell repair may modify only the newly added shell, preserves every completed lower configured prefix, preserves hard support, does not regress required-family coverage beyond D2 tolerance and strictly improves the D2 repair objective. After the final configured shell, the same multi-view method completes all `P_train`; there is no unconfigured repair shell or alternate suffix selector.
 
-All final-training fitted quantities use the complete authorized final target-training membership only. Monitor, held-out, calibration, locked, and downstream qualification labels cannot enter those fits. Every governed target composition whose energy is consumed by final training or monitor control must satisfy the same composition-level E0 identifiability rule.
+### D1.DEF.018 — Automatic-screen admitted set and sufficiency
 
-When multiple final seeds are available, the final-production owner decides the published member set before downstream qualification. Current policies may publish all already-qualified final seeds or one deterministic best already-frozen admissible representative under the accepted target-side production metric. Downstream physical, calibration, or locked evidence cannot add, remove, reorder, or choose committee members after the fact.
+For one configured policy instance define
 
-## 12. Downstream qualification is a separate scientific layer
+$$
+Q_{\mathrm{cfg}}=\{N\in N_{\mathrm{cfg}}:Q_{\mathrm{mem}}(N)\}.
+$$
 
-Interpolation-style CV is necessary but insufficient evidence for an interatomic potential intended for molecular simulation. Downstream qualification may evaluate deployment/runtime parity, local potential-energy-surface response against matched references, relaxation topology and geometry fidelity, finite-temperature stability and protected structural behavior, uncertainty calibration where applicable, and an explicitly activated locked interpolation test.
+An unqualified configured prefix is excluded from `Q_cfg`; its presence in the configured ladder does not by itself invalidate the experiment. An unqualified prefix cannot be manually/operator-admitted to target training or post-selection CV. Automatic P3 screening is defined only when the D2 current sufficiency predicate holds on `Q_cfg`; in the accepted current method that requires at least three qualified configured candidates. Fewer qualified candidates yield insufficient automatic comparison rather than changed membership, whole-method failure, or an invented size.
 
-These downstream analyses consume a frozen final publication. They do not feed backward into target size, training method, checkpoint choice, or final-product membership.
+### D1.AX.008 — Recommendation/decision separation
 
-The numerical definitions of structural, dynamical, topological, and transport observables are owned by the corresponding `mdstats.analysis` method/architecture families. The MLFF branch invokes them; it does not redefine those analysis algorithms.
+The P3 reducer produces diagnostic evidence/recommendation. The operator owns the provisional downstream design within qualified configured memberships. Post-selection CV may accept/reject that frozen design but cannot retroactively alter `N`, `T_N`, `pi_train` or P3 evidence.
 
-Current post-production qualification/release is defined for a single-size frozen experiment. A multi-size frozen design remains a comparative completed experiment but is not silently promoted into a release-qualified product family.
+## 6. Foundation adaptation, atomic references and replay
 
-## 13. Material/profile applicability
+### D1.DEF.019 — Property availability and foundation objective
 
-The generic MLFF method permits material/profile contracts to define scientifically meaningful condition axes, required focus groups, environment classes, and applicability rules. These extensions may affect evidence interpretation and separately accepted weighting methods but cannot create a second target-size selector or silently rewrite the global target order.
+For `p in {E,F,S}`, `m_p(x) in {0,1}` denotes property availability. P3 and post-selection scratch retain their imported accepted weighted objectives. Foundation P5 (`naive_fine_tuning`, `multihead_replay`) uses the D2 robust E/F/S objective with fixed global coefficients `1:10:1`, binary property masks, no nontrivial per-configuration loss weight and no target/replay **training-head** scalar.
 
-For the historical Li/Na/K-LTA motivating application, important limitations include framework atoms numerically dominating global metrics even when mobile-ion behavior is scientifically important; hierarchical rather than complete Cartesian support over composition, temperature, strain, and regime; limited independence when only one trajectory exists per condition; fixed framework stoichiometry producing poorly identifiable elemental reference directions; and short trajectories or rare migration/site transitions creating explicit coverage limitations rather than synthetic evidence.
+Checkpoint-control `target_score_weight`/`replay_score_weight`, where enabled by `D1.IMP.P5`, are a separate model-selection concept and are not training-head loss weights.
 
-These application facts motivate focus-group, condition, correlation, composition-level E0 identifiability, and monitor-coverage evidence. They are not universal defaults for every material.
+### D1.DEF.020 — Foundation identity and composition correction
 
-## 14. Validity domain and uncertainty
+Foundation identity is
 
-### 14.1 Target-size diagnostic
+$$
+\Phi=(\text{checkpoint identity},\text{head identity},\text{model/version identity}).
+$$
 
-Within the exact configured candidate ladder, canonical target population, pre-order evidence, common P3 preparation, objective/weights, target-size optimizer-normalization policy, seed population, fidelity schedule, evaluation ladder, and practical-equivalence threshold, the diagnostic supports a comparative short-horizon statement about target-force error for the tested target memberships.
+Foundation residuals, head-local references and pseudo labels are undefined without exact `Phi`.
 
-It supports an operator decision among qualified configured memberships. It does not prove monotonic behavior for an untested size or transferability to a different scientific method.
+For composition row `c` and elemental correction `delta e`,
 
-### 14.2 Post-selection CV
+$$
+\Delta E_0(c)=c^T\delta e.
+$$
 
-Post-selection CV supports a separate statement about the frozen foundation-adaptation method over the specific held-out folds and recorded independence regime: that every required fold/seed reached the CV competence regime of §10.3. It does not claim that fold models reached production checkpoint quality, and neither the CV nor the production monitor criterion is downstream release qualification. The checkpoint monitor is not part of the held-out estimand. Because the same `M_mon` is reused across folds, checkpoint decisions are correlated; fold evaluation remains the required held-out evidence after representative freeze.
+If `N_free` is the unanchored null space of the authorized residual fit after accepted anchors, the correction is identifiable iff
 
-### 14.3 What the method does not establish by itself
+$$
+c^Tv=0\quad\text{for every }v\in N_{\mathrm{free}}.
+$$
 
-The core workflow does not by itself establish asymptotic training-size convergence, complete independence or exploration of all slow states, transfer to unsupported physical regimes, correct phase-transition temperatures or rare-event kinetics, long-time MD stability, calibrated predictive uncertainty, equivalence between interpolation CV and external challenge tests, universal atomic-reference identifiability, or a universal target size transferable to another foundation model, objective, optimizer protocol, replay method, or data-generation process.
+Individual coefficients need not be unique. Target residual corrections are fitted only from the authorized target-gradient domain; monitor/held-out labels cannot resolve null directions.
 
-The robust foundation-adaptation objective also does not imply equal target and replay influence. Aggregate influence depends on corpus membership, accepted stochastic exposure, residual magnitudes, and the nonlinear robust loss. No hidden target/replay scalar is inferred from a nominal “head ratio.”
+### D1.DEF.021 — Replay label-mode family
 
-### 14.4 Principal uncertainty and sensitivity sources
+For post-selection `multihead_replay`,
 
-Material sources include density-functional-theory (DFT)/electronic-structure systematic error; energy/reference/derivative convention mismatch; temporal correlation and unresolved slow states; finite condition/rare-event/outer-monitor support; imperfect independence of held-out cohorts; shared-monitor model-selection correlation; candidate-ladder discretization; optimizer-seed and minibatch-order variation; short-horizon screening bias; practical-equivalence threshold; foundation checkpoint/head dependence; robust-objective/Huber-regime dependence; corpus-size-dependent target/replay exposure; atomic-reference conditioning, null spaces, prior/anchor dependence, and composition-level transfer; target/replay applicability mismatch; and numerical/runtime failure to realize the authenticated method.
+$$
+\ell_{\mathrm{replay}}\in\{\mathrm{TRUE\_REFERENCE},\mathrm{FOUNDATION\_PSEUDO}\}.
+$$
 
-These remain structured limitations/evidence rather than being compressed into one unsupported scalar uncertainty estimate.
+`TRUE_REFERENCE` is the canonical default when canonical true-reference/DFT replay labels exist. `FOUNDATION_PSEUDO` requires explicit opt-in and every pseudo target is bound to exact frozen `Phi`; it is not a missing-label fallback.
 
-## 15. Scientific falsification and reopen conditions
+### D1.DEF.022 — Replay lineage and geometry invariance
 
-Evidence that forces reconsideration of the scientific formulation or its applicability includes:
+Let `Q_r` denote the exact replay qualification-policy/evidence identity and current qualification state required by `D1.IMP.P5`, including the independent true-reference retention qualification applicable to the configured replay method. Replay lineage is
 
-- incompatible target labels treated as one training domain;
-- incorrect stress/strain/sign/unit semantics;
-- systematic exclusion of rare but valid configurations merely for atypicality;
-- protected-relation leakage across incompatible evidence roles;
-- candidate memberships that are not exact prefixes of the canonical order;
-- candidate-dependent refitting of state that is supposed to be P3-common;
-- checkpoint-monitor, held-out, calibration, or locked labels influencing training-domain fitting;
-- a P5 target monitor drawn from `DEVELOPMENT`, `T_N`, `T_selected`, or P3 `M3` rather than protected `OUTER_MONITOR` evidence;
-- monitor membership that overlaps any configured `T_N` exactly or through the canonical protected-relation closure;
-- an under-supported monitor silently shrinking below the required 256 or silently changing role;
-- fold/final-specific target checkpoint parents replacing the one common monitor;
-- a foundation-model P5 objective carrying nontrivial `config_weight` or target/replay training-head scalar weighting;
-- hidden replay/loader behavior duplicating target samples or overwriting authenticated optimizer semantics;
-- foundation-residual E0 fitting that uses the wrong foundation head, uses monitor/held-out labels, silently assumes an unsupported correction, or yields a required composition-weighted correction that varies along an unanchored fit null direction;
-- an executed mathematical loss/optimizer/exposure method materially different from the authenticated method;
-- too few comparable target-size outcomes for the declared diagnostic;
-- strong ceiling improvement showing that the target-size ladder did not demonstrate a plateau;
-- post-selection CV failure under the frozen method; or
-- downstream physical/deployment qualification contradicting intended use.
+$$
+\Lambda_{\mathrm{replay}}=(D_r^{\mathrm{geom}},\ell_{\mathrm{replay}},M_r^{\mathrm{true}},\Phi,Q_r,\Pi_r),
+$$
 
-Scientific evidence is not repaired by relabeling old records. A material method change creates a new applicable method identity and requires bounded reconsideration of dependent evidence; independent P1/P2/P3 and frozen membership evidence remains reusable where its semantics did not change.
+where `D_r^geom` is authenticated replay geometry/source membership and split, `M_r^true` is mandatory independent true-reference replay-monitor lineage, `Phi` is material when pseudo labels or head-local foundation references are used, `Q_r` binds replay qualification policy/evidence/current state, and `Pi_r` is governed realized exposure identity.
 
-## 16. Reproducibility and provenance
+Switching label mode over the same authenticated prepared source/split must not change `D_r^geom`. Pseudo replay still requires `M_r^true`. Replay configurations are not target-size `N`, replay does not rank target sizes, replay retention is an admissibility constraint, and hidden target duplication is outside the method. Changing source/split, label mode, prediction policy, foundation/head, true monitor, replay qualification, or governed exposure changes replay lineage and invalidates dependent evidence. A label-mode change alone does not authorize a replay-geometry membership change.
 
-A reproducible claim binds, as applicable:
+## 7. Common monitor, CV and production
 
-- source occurrence/content and canonical label identity;
-- energy/derivative/stress/reference conventions;
-- physical conditions, reference-cell/strain context, quality and eligibility decisions;
-- raw/event evidence and protected statistical relations;
-- outer evidence roles and independence limitations;
-- pre-order fitted selection evidence;
-- exact `P_train/M3`, `pi_train`, `pi_eval`, `T_N`, and `M_i` identities;
-- P3 common training preparation and screening/reducer policy;
-- frozen selected memberships and role horizons;
-- foundation checkpoint and exact selected foundation head;
-- P5 robust objective family and global E:F:S coefficients;
-- absence of P5 configuration/head-scalar weighting;
-- authenticated target/replay memberships and exposure semantics;
-- foundation-residual target-head E0 fit identity, accepted anchors if any, null-space evidence, and composition-level identifiability evidence;
-- protected common target-monitor parent, policy, exact 256-frame membership, condition/run/time coverage evidence, and protected-relation separation;
-- replay training/true-monitor lineage;
-- the role-effective checkpoint-admissibility policy (shared constraints plus role target ceiling) of each CV and production run;
-- CV fold/seed evidence; and
-- fresh final-publication identity for downstream claims.
+### D1.DEF.023 — Common target monitor
 
-Content digests bind exact content and ancestry. They are identity/provenance mechanisms, not substitutes for scientific adequacy.
+For protected neutral `OUTER_MONITOR` parent `P_mon`, foundation P5 requires deterministic
 
-### 16.1 Revision provenance
+$$
+M_{\mathrm{mon}}\subseteq P_{\mathrm{mon}},
+\qquad |M_{\mathrm{mon}}|=256.
+$$
 
-The 2026-09-13 baseline was reconstructed against repository commit `9fd82b0ed40990d56716a393aa3f7db0a2ff44d0`. This 2026-09-14 revision was prepared on `fix/mlff-post-selection-method-restoration` after reconstruction showed that historically successful foundation multi-head adaptation used native MACE `UniversalLoss`, while current P5 forced a different loss family and had replaced the earlier common protected monitor with fold/final-local monitor constructions. The branch workplan records the triggering replay-forgetting evidence, historical applicability set, and dependent D2-D4 impact closure.
+The cardinality `256` is `FIXED_METHOD_COORDINATE`. `M_mon` supplies no gradients, is protected-relation-disjoint from every configured target prefix and is shared across selected sizes, CV folds/seeds and fresh production. No smaller-monitor or role fallback exists.
 
-The first independent review found two authority defects: composition-level E0 identifiability had been overstated as individual elemental identifiability, and compression of unchanged baseline prose had hidden several still-current P1/P2/P3 constraints. Those defects were repaired without changing the intended P5 restoration. A subsequent independent re-review passed the repaired D1/D2 pair, and the stakeholder ratified the branch authority on 2026-09-14 by directing downstream D3/D4 closure to proceed. That restoration was integrated at `8553ebe9ed86b24dfe910c9e43acc6230d3ece90`.
+### D1.DEF.024 — Post-selection folds
 
-The restoration preserved target/replay thresholds because threshold revision was outside its scope; that is not evidence that CV and production ceilings must be identical. Later review found that one target ceiling was represented as part of the shared method, coupling foundation CV to production late convergence. The threshold-separation revision (§1, §7.3, §10.3, §11) separates those role claims for foundation adaptation and keeps scratch unchanged. Its first candidate fixed the CV competence ceiling at 45 meV/angstrom and described production 30 meV/angstrom as an unconditional constant; independent D1 review rejected that over-rigid representation, and after the stakeholder ratified on 2026-09-15 that all three thresholds are configurable with defaults `45 / 45 / 30 meV/angstrom`, independent re-review passed the parameterized revision. The cycle is recorded in `workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_WORKPLAN.md`, `workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_PARAMETERIZATION_ALIGNMENT.md`, and `workplans/archive/MLFF_CV_COMPETENCE_THRESHOLD_SEPARATION_D1_D2_REREVIEW.md`; non-normative history is in `docs/history/mlff/cv_competence_threshold_parameterization.md`. Pre-separation pass/fail outcomes are not reinterpreted by threshold monotonicity.
+For frozen `T_N`, fold `i` partitions
 
-## 17. D1 to D2 handoff
+$$
+T_N=G_i\mathbin{\dot\cup}O_i\mathbin{\dot\cup}P_i
+$$
 
-D2 concretizes, without silently strengthening or weakening, at least these revised invariants:
+by protected components into gradient, held-out and purge/exclusion roles; `M_mon` is external. Fold count `K` is `CONFIGURABLE_WITH_GENERATED_DEFAULT`, domain integer `K>=2`, current default `3`.
 
-1. P1/P2/P3 target-size and broader evidence-role semantics remain unchanged by this restoration, including explicit infeasibility/deferral outcomes and all existing protected-relation requirements.
-2. Foundation-model P5 uses the robust energy/force/stress objective with global coefficients `1:10:1`, binary property masks, no nontrivial configuration-weight layer, and no target/replay training-head scalar.
-3. D2 defines the robust loss mathematically, including property-specific units of every Huber threshold, residual normalization, nonlinear regimes, reduction, and stochastic exposure needed to distinguish a materially different objective.
-4. Foundation-model P5 atomic references are selected-head foundation-residual fits over the authorized target gradient domain only. For every governed target composition vector `c`, D2 requires invariance of `c^T delta_e` over the unanchored fit null space or an explicitly accepted anchor for the relevant direction; failure is run/fold infeasibility. Individual elemental coefficients need not be unique when all required composition-weighted corrections are unique.
-5. Replay geometry/source/label lineage remains separate from target membership; true-reference replay is the default, pseudo-label replay remains opt-in, and replay retention remains an admissibility constraint.
-6. One deterministic coverage-oriented 256-frame target checkpoint monitor is drawn only from protected neutral `OUTER_MONITOR` evidence, is separated from every configured `T_N` by the full P1 relation authority, is common across CV/final runs, and has no gradient/fitting role.
-7. Post-selection CV folds partition only frozen `T_N` among gradient, held-out evaluation, and accepted purge/exclusion roles. The current default is three folds, with explicit `K>=2` override permitted.
-8. Fresh final production uses complete `T_selected`, the same common target monitor and checkpoint-selection/admissibility mechanics, and fresh fitted/training state; P3 `M3` is not its checkpoint monitor.
-9. Failure to realize required monitor support, composition-level E0 identifiability, protected separation, or the authenticated objective/exposure is a method infeasibility/nonconformance result, not permission for a silent fallback.
-10. For foundation adaptation, CV and production share the adaptation method and shared mandatory constraints but consume independently configured role thresholds: CV checkpoint competence `r_mon <= tau_cv` on `M_mon`, CV held-out acceptance `<= theta_cv` in the units of the configured outer metric, and production checkpoint quality `r_mon <= tau_prod` on `M_mon`, with generated/current defaults `tau_cv = theta_cv = 45 meV/angstrom` (default target-force outer metric) and `tau_prod = 30 meV/angstrom`. D2 represents them as independently resolved policy parameters, defines exact comparison/boundary semantics, and makes each change currentness-significant for its own role without promoting any value into shared-method identity. Consistency is all required folds/seeds passing; dispersion is diagnostic-only; training is fixed-budget; alternate outer metrics keep their own units and never supply `tau_cv`; scratch is unchanged; none of these criteria is downstream qualification.
+### D1.DEF.025 — Foundation role-threshold family
 
-## 18. References
+$$
+\Theta_{\mathrm{role}}=(\tau_{\mathrm{CV}},\theta_{\mathrm{CV}},\tau_{\mathrm{prod}})
+$$
 
-1. I. Batatia, D. P. Kovacs, G. N. C. Simm, C. Ortner, and G. Csanyi, “MACE: Higher Order Equivariant Message Passing Neural Networks for Fast and Accurate Force Fields,” *Advances in Neural Information Processing Systems* **35**, 11423–11436 (2022), arXiv:2206.07697.
-2. I. Batatia, P. Benner, Y. Chiang, et al., “A Foundation Model for Atomistic Materials Chemistry,” *Journal of Chemical Physics* **163**, 184110 (2025). DOI: 10.1063/5.0297006.
-3. M. Kulichenko, B. Nebgen, N. Lubbers, J. S. Smith, et al., “Data Generation for Machine Learning Interatomic Potentials and Beyond,” *Chemical Reviews* **124**, 13681–13714 (2024). DOI: 10.1021/acs.chemrev.4c00572.
-4. H. Flyvbjerg and H. G. Petersen, “Error Estimates on Averages of Correlated Data,” *Journal of Chemical Physics* **91**, 461–466 (1989). DOI: 10.1063/1.457480.
-5. C. J. Geyer, “Practical Markov Chain Monte Carlo,” *Statistical Science* **7**, 473–483 (1992). DOI: 10.1214/ss/1177011137.
-6. J. Racine, “Consistent Cross-Validatory Model-Selection for Dependent Data: hv-Block Cross-Validation,” *Journal of Econometrics* **99**, 39–61 (2000). DOI: 10.1016/S0304-4076(00)00030-0.
-7. D. R. Roberts, V. Bahn, S. Ciuti, et al., “Cross-Validation Strategies for Data with Temporal, Spatial, Hierarchical, or Phylogenetic Structure,” *Ecography* **40**, 913–929 (2017). DOI: 10.1111/ecog.02881.
-8. J. D. Morrow, J. L. A. Gardner, and V. L. Deringer, “How to Validate Machine-Learned Interatomic Potentials,” *Journal of Chemical Physics* **158**, 121501 (2023). DOI: 10.1063/5.0139611.
-9. C. Schran, K. Brezina, and O. Marsalek, “Committee Neural Network Potentials Control Generalization Errors and Enable Active Learning,” *Journal of Chemical Physics* **153**, 104105 (2020). DOI: 10.1063/5.0016004.
-10. A. R. Tan, S. Urata, S. Goldman, J. C. B. Dietschreit, and R. Gomez-Bombarelli, “Single-Model Uncertainty Quantification in Neural Network Potentials Does Not Consistently Outperform Model Ensembles,” *npj Computational Materials* **9**, 225 (2023). DOI: 10.1038/s41524-023-01180-8.
+are independent finite positive `CONFIGURABLE_WITH_GENERATED_DEFAULT` coordinates. `tau_CV` is target-force checkpoint competence on `M_mon`; `theta_CV` is held-out acceptance on `O_i` in configured outer-metric units; `tau_prod` is production target-force checkpoint quality on `M_mon`. Current defaults for the default force outer metric are
+
+$$
+45,45,30\ \mathrm{meV/angstrom},
+$$
+
+respectively. Equal default values do not merge estimands or populations.
+
+### D1.AX.009 — Fixed-budget all-position CV
+
+Every required `(fold,seed)` trains to frozen horizon; threshold crossing does not stop training. CV accepts only if every required position has an admissible frozen representative and every representative passes its outer predicate. Mean, majority, best-seed and dispersion cannot rescue a failing position.
+
+### D1.AX.010 — Fresh production
+
+Fresh production starts a new model/optimizer lineage from accepted `Phi`, trains complete exact `T_selected`, fits training-dependent state only on that authorized target membership, uses the same `M_mon` and shared checkpoint mechanics as CV, and applies `tau_prod` rather than `tau_CV`. Where replay is enabled, `Lambda_replay`, its qualification identity/state, and true-reference retention remain binding. P3 `M3` has no production checkpoint role.
+
+### D1.AX.011 — Downstream no-feedback
+
+Downstream physical/deployment/calibration/locked/release evidence consumes frozen final publication and cannot alter target size/membership, training method, checkpoint choice or final-publication membership after the applicable freeze boundary.
+
+## 8. Parameter binding ledger
+
+| Coordinate | Binding class | Admissible family/domain | Current value/default | Owner |
+| --- | --- | --- | --- | --- |
+| `gamma_cov` | `FIXED_METHOD_COORDINATE` | current target-order method | `0.95` | scoped D1/D2 |
+| extent quantiles | `FIXED_METHOD_COORDINATE` | lower/upper pair | `0.01,0.99` | scoped D1/D2 |
+| candidate ladder | `CONFIGURABLE_FAMILY` | D2 structural domain | configuration-bound | P2/P3 |
+| evaluation ladder | `CONFIGURABLE_FAMILY` | D2 structural domain | configuration-bound | P2/P3 |
+| fidelity boundaries | `CONFIGURABLE_FAMILY` | D2 structural domain | configuration-bound | P2/P3 |
+| optimizer seeds | `CONFIGURABLE_FAMILY` | D2 structural domain | configuration-bound | P2/P3 |
+| practical `epsilon` | `CONFIGURABLE_FAMILY` | finite positive response-unit value | configuration-bound | P3 reducer |
+| replay label mode | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | true or pseudo under validity conditions | true-reference default when labels exist | P5 replay |
+| replay qualification identity/state | `DERIVED` | configured replay policy/evidence/current qualification | lineage-bound | P5 replay |
+| CV `K` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | integer `K>=2` | `3` | CV policy |
+| `n_mon` | `FIXED_METHOD_COORDINATE` | current foundation-P5 method | `256` | P5 method |
+| `tau_CV` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | finite positive force ceiling | `45 meV/angstrom` | CV role |
+| `theta_CV` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | finite positive outer-metric threshold | `45 meV/angstrom` for default force metric | CV role |
+| `tau_prod` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | finite positive force ceiling | `30 meV/angstrom` | production role |
+| P5 E:F:S coefficients | `FIXED_METHOD_COORDINATE` | current foundation-P5 method | `1:10:1` | P5 method |
+| `T_N`, `M_i`, `Q_mem`, `Q_cfg` | `DERIVED` | governing definitions above | computed | D1/D2 |
+
+## 9. Validity, uncertainty and D1 -> D2 handoff
+
+The method fails/defers rather than redefining itself when required compatible labels cannot be formed; protected allocation is impossible; exact reserve/monitor cannot be realized; complete `P_train` cannot satisfy support; fewer than the required qualified candidates exist for automatic comparison; governed E0 transfer is non-identifiable; pseudo replay lacks exact foundation or true-reference monitor; replay qualification is invalid/stale; required CV position fails/missing/no admissible checkpoint; or runtime realizes a materially different objective/exposure/method. An individual configured prefix with `Q_mem(N)=false` is excluded from `Q_cfg` and cannot be manually admitted, but is not by itself whole-method failure when the remaining qualified set satisfies automatic-comparison sufficiency. No threshold widening, support relaxation, rescue-size invention, role substitution, pseudo-label fallback or fabricated evidence is authorized.
+
+Uncertainty/limitations and downstream adequacy remain exact imports from `D1.IMP.DOWNSTREAM`; this kernel does not convert them into a scalar uncertainty claim.
+
+D2 must concretize, without changing meaning:
+
+1. physical/source/eligibility conventions and protected statistical units, including finite autocorrelation truncation, block/event rules;
+2. exact `U_size -> P_train + M3`, component ordering, `pi_eval`, policy structural domain and automatic-screen sufficiency;
+3. exact target-order family catalog/applicability, one-time correlation-balanced weights, metrics/radii/adjacency, distinct selector/qualification coverage predicates, extents, obligations, FEAS1, MVSEL2, REPAIR2 and MVQUAL;
+4. P3 common preparation, optimizer normalization, evaluator, complete-seed score, practical-equivalence ranking, exact funnel/success-sufficiency/configured-ceiling rule and authenticated continuation;
+5. selected-head foundation-residual E0 fit, replay/pretraining-head foundation E0 binding, and composition transfer;
+6. replay label-mode/lineage concretization, geometry invariance, qualification currentness, true-reference retention, robust P5 objective and exposure;
+7. deterministic monitor/folds/purge, shared checkpoint constraints, role predicates/currentness and fresh production;
+8. typed numerical failure, precision/equivalence and falsification oracles.
+
+Any needed change to a scientific estimand, role, support predicate, replay interpretation, parameter-family meaning or validity regime is an upward D1 Challenge.
+
+## 10. Acceptance, provenance and reopen condition
+
+This kernel is accepted-current under Protocol 6.4 after independent Review PASS of `e827aef9bdceb97aae5be6e89de0585a95dcf71c`, the renderer-only D2.DEF.027 correction bound at `a4824d28775164aa942fd29fa97ee0957eb87e6f`, and stakeholder ratification on 2026-09-17. The correction changed no D1 meaning.
+
+Reopen D1 only when material evidence indicates a scientific estimand, evidence role, support predicate, replay interpretation, parameter-family meaning, validity regime, or source import may need semantic change. Editorial/rendering repairs that preserve the governed mathematics do not reopen scientific authority.

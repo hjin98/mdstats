@@ -17,6 +17,8 @@ This paper is the sole current D2 owner for the numerical realization of the MLF
 
 It was reconstructed from the mature pre-P6 multi-view selector lineage, independently reviewed under Protocol 6.3, and stakeholder-ratified on 2026-09-15 against reviewed candidate `815823494c88969944eee8f58a6cf107d97bcc09`.
 
+Protocol 6.4 canonical D2 kernel now exact-imports the ratified snapshot of this scoped paper at `a4824d28775164aa942fd29fa97ee0957eb87e6f`. This paper remains the scoped target-order source owner; later editorial changes do not alter the imported Protocol 6.4 authority unless the top-level kernel is explicitly revised.
+
 For this scoped surface, this paper supersedes conflicting target-order construction/qualification text in `mlff_numerical_algorithmic_method.md`. The general numerical method remains current for every unaffected P1/P2/P3, `pi_eval`, training, reducer, CV, replay, production, and threshold-separation contract.
 
 The current method chain is
