@@ -794,7 +794,7 @@ be finite canonical binary64 force-component RMSE values in `eV/angstrom` comput
 Define the canonical signed degradation by one IEEE-754 binary64 round-to-nearest, ties-to-even subtraction,
 
 $$
-\Delta_R(c)=\operatorname{RN}_{64}(R_c-R_0).
+\Delta_R(c)=\mathrm{RN}_{64}(R_c-R_0).
 $$
 
 No absolute value, ratio, percentage, normalization, clipping, epsilon, or rounding-before-comparison is introduced.
@@ -802,7 +802,7 @@ No absolute value, ratio, percentage, normalization, clipping, epsilon, or round
 The replay decision-policy family is `(delta_warn,delta_hard)` in internal `eV/angstrom`. Public values expressed in `meV/angstrom` are first represented as finite binary64 `v_meV` by the accepted configuration parser and converted once using the exactly representable scale denominator `1000`,
 
 $$
-\delta=\operatorname{RN}_{64}\left(\frac{v_{\mathrm{meV}}}{1000}\right).
+\delta=\mathrm{RN}_{64}\left(\frac{v_{\mathrm{meV}}}{1000}\right).
 $$
 
 The resolved internal values must be finite and positive and must satisfy
@@ -869,10 +869,10 @@ If `H_rho` is empty, there is no representative. Otherwise define the determinis
 
 $$
 K_{\mathrm{run}}(c)=
-\bigl(r_{\mathrm{mon}}(c),\operatorname{epoch}(c),\operatorname{sha256}(c)\bigr),
+\bigl(r_{\mathrm{mon}}(c),e(c),h(c)\bigr),
 $$
 
-ordered lexicographically ascending, where `r_mon` is the exact canonical binary64 value, `epoch` is the exact checkpoint epoch integer, and `sha256` is the canonical lowercase hexadecimal checkpoint digest.
+ordered lexicographically ascending, where `r_mon` is the exact canonical binary64 value, $e(c)$ is the exact checkpoint epoch integer, and $h(c)$ is the canonical lowercase hexadecimal SHA-256 checkpoint digest.
 
 The representative is
 
@@ -890,11 +890,11 @@ Each required production seed first freezes its representative under D2.DEF.059A
 
 For `all_qualified_final_seeds`, no cross-seed numerical ranking is performed.
 
-For `single_best_final_seed`, for every already-frozen admissible seed representative `c_s`, define
+For `single_best_final_seed`, let $s$ be the exact optimizer-seed integer for every already-frozen admissible seed representative $c_s$, and define
 
 $$
 K_{\mathrm{seed}}(s)=
-\bigl(r_{\mathrm{mon}}(c_s),\operatorname{optimizer\_seed}(s),\operatorname{sha256}(c_s)\bigr).
+\bigl(r_{\mathrm{mon}}(c_s),s,h(c_s)\bigr).
 $$
 
 The published member is the lexicographic minimum. No new target evaluation is performed. Replay values/warnings, secondary metrics, maturity/refinement, practical-equivalence and bootstrap quantities cannot affect the ordering. Seed and digest are consulted only after exact equality of canonical binary64 target RMSE.
