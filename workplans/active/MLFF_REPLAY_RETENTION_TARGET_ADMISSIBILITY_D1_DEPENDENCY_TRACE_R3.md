@@ -6,7 +6,7 @@ workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-REWORK-1
 accepted_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 prior_r2_reviewed_candidate: 2549dee709fb8bb383341ee3aebca7c71973a903
 prior_r2_review_commit: 8bf25f37e74667ff897e938a9b17830ea9fee225
-d1_candidate_blob: 479ff368917baf576d12f553caad571da856ae28
+d1_candidate_blob: 612294ec4680db01a18085e13fbfe5dcfa9fb7ed
 scope:
   - docs/methods/mlff_scientific_method.md
 ---
@@ -19,7 +19,7 @@ This trace is a Protocol-6.4 review aid, not D1 authority. It preserves the R2 d
 
 | Subject | Direct prerequisites | R3 relevance |
 | --- | --- | --- |
-| `D1.DEF.019` | `D1.IMP.P5` | Clarifies that `1:10:1` is the global E/F/S property-loss coefficient tuple of the accepted foundation-P5 robust objective, not target/replay balance or per-frame weighting. No coefficient changed. |
+| `D1.DEF.019` | `D1.IMP.P5` | Clarifies that `1:10:1` is the global E/F/S property-loss coefficient tuple of the accepted foundation-P5 robust objective, not target/replay balance or per-frame weighting. The native `UniversalLoss` class remains a D2/D4 realization rather than the D1 coordinate. No coefficient changed. |
 | `D1.DEF.022` | `D1.DEF.020`; `D1.DEF.021`; `D1.IMP.P5` | Unchanged R2 replay-lineage semantics. |
 | `D1.DEF.022A` | `D1.DEF.020`; `D1.DEF.022`; `D1.IMP.P5` | Unchanged R2 replay-degradation semantics. |
 | `D1.DEF.025` | `D1.DEF.023`; `D1.DEF.024`; `D1.IMP.P5` | Material R3 amendment: generated/default role thresholds become `75/75/50 meV/angstrom`. |

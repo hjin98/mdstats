@@ -315,7 +315,7 @@ The P3 reducer produces diagnostic evidence/recommendation. The operator owns th
 
 ### D1.DEF.019 — Property availability and foundation objective
 
-For `p in {E,F,S}`, `m_p(x) in {0,1}` denotes property availability. P3 and post-selection scratch retain their imported accepted weighted objectives. Foundation P5 (`naive_fine_tuning`, `multihead_replay`) uses the D2 robust UniversalLoss E/F/S objective with fixed **global property-loss coefficients** `1:10:1`. These coefficients multiply the separately reduced energy, force and stress loss components; they are not target/replay data-balance weights, not per-configuration weights, and not per-frame property-availability masks. Binary property masks, no nontrivial per-configuration loss weight and no target/replay **training-head** scalar remain part of the method.
+For `p in {E,F,S}`, `m_p(x) in {0,1}` denotes property availability. P3 and post-selection scratch retain their imported accepted weighted objectives. Foundation P5 (`naive_fine_tuning`, `multihead_replay`) uses the imported robust E/F/S objective with fixed **global property-loss coefficients** `1:10:1`. These coefficients multiply the separately reduced energy, force and stress loss components; they are not target/replay data-balance weights, not per-configuration weights, and not per-frame property-availability masks. Binary property masks, no nontrivial per-configuration loss weight and no target/replay **training-head** scalar remain part of the method. D2 owns the mathematical robust-loss/reduction semantics and D3/D4 may realize them through the qualified native MACE `UniversalLoss`; the dependency class name is not itself a D1 scientific invariant.
 
 Historical checkpoint-control `target_score_weight`/`replay_score_weight` remain provenance for consumers that still legitimately own them, but they have no authority in current foundation-P5 checkpoint representative or final single-best-seed ordering under `D1.DEF.026-027`. They remain distinct from training-head loss weights.
 
@@ -534,7 +534,7 @@ Downstream physical/deployment/calibration/locked/release evidence consumes froz
 | `tau_prod` | `CONFIGURABLE_WITH_GENERATED_DEFAULT` | finite positive force ceiling | `50 meV/angstrom` | production role |
 | P5 checkpoint representative ordering | `FIXED_METHOD_COORDINATE` | minimum authoritative target force RMSE over hard-admissible checkpoints; non-quality exact-tie rule only | target-only | P5 checkpoint selection |
 | `single_best_final_seed` ordering | `FIXED_METHOD_COORDINATE` | minimum authoritative target force RMSE over frozen admissible seed representatives; non-quality exact-tie rule only | target-only | final publication |
-| P5 UniversalLoss global E:F:S property-loss coefficients | `FIXED_METHOD_COORDINATE` | multipliers on the separately reduced D2 energy/force/stress loss components; not target/replay balance, per-configuration weighting or property-availability masks | `1:10:1` | P5 method |
+| P5 global E:F:S property-loss coefficients | `FIXED_METHOD_COORDINATE` | multipliers on the separately reduced energy/force/stress loss components; not target/replay balance, per-configuration weighting or property-availability masks | `1:10:1` | P5 method |
 | `T_N`, `M_i`, `Q_mem`, `Q_cfg` | `DERIVED` | governing definitions above | computed | D1/D2 |
 
 ## 9. Validity, uncertainty and D1 -> D2 handoff

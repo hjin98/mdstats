@@ -63,7 +63,7 @@ L_P5 = L_E + 10 L_F + L_S
 
 for foundation P5, with the property reductions and robust Huber semantics owned by D2.
 
-R3 therefore clarifies—but does not change—that `1:10:1` is the **global energy/force/stress property-loss coefficient tuple**. It is not:
+R3 therefore clarifies—but does not change—that `1:10:1` is the **global energy/force/stress property-loss coefficient tuple**. The final reconciled D1 keeps the scientific coordinate implementation-independent; native MACE `UniversalLoss` is the currently qualified D2/D4 realization, not the D1 object itself. It is not:
 
 - target/replay training-head balancing;
 - replay-vs-target sampling/exposure balance;

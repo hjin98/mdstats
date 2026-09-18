@@ -246,7 +246,7 @@ At minimum reconcile these accepted definitions/axioms:
 - `D1.DEF.025` foundation role-threshold family: set generated/default `tau_CV = theta_CV = 75 meV/angstrom` and `tau_prod = 50 meV/angstrom`, making CV intentionally more permissive than final production while preserving distinct roles.
 - `D1.AX.009` / `D1.AX.010`: preserve fixed-budget CV and fresh production, but define hard replay retention as the catastrophic limit and replay-warning evidence as non-vetoing diagnostic evidence.
 - D1 parameter ledger: add/clarify configurable replay warning/hard coordinates and update `tau_prod` default.
-- D1 objective wording/ledger: clarify that `1:10:1` is the accepted foundation-P5 UniversalLoss global E/F/S property-loss coefficient tuple, not a target/replay balance, per-configuration weight, or property-availability mask; do not change the coefficients in this cycle.
+- D1 objective wording/ledger: clarify that `1:10:1` is the accepted foundation-P5 global E/F/S property-loss coefficient tuple, not a target/replay balance, per-configuration weight, or property-availability mask; D2/D4 may identify the current qualified realization as native MACE `UniversalLoss`, but D1 must not make that dependency class name the scientific coordinate; do not change the coefficients in this cycle.
 - checkpoint/final-publication ordering semantics: replace any imported uncertainty/secondary/maturity authority for P5 checkpoint choice with strict minimum authoritative target RMSE over the hard-admissible set; apply the same rule to `single_best_final_seed`.
 
 The D1 revision must state at least:
@@ -362,7 +362,7 @@ Do not mutate accepted-current D2/D3/D4 authority before Gate B closes. Once exa
 
 - **D2:** `D2.DEF.058` retains its inclusive `<=` role-checkpoint predicate but resolves `tau_CV=0.075` and `tau_prod=0.050 eV/angstrom`; `D2.DEF.059` resolves default-force `theta_CV=0.075 eV/angstrom`; `D2.AX.004` must distinguish `tau_CV` checkpoint/reselection currentness from `theta_CV` outer-verdict-only currentness; the D2 parameter ledger becomes `75/75/50`; UniversalLoss `L_P5=L_E+10L_F+L_S` remains unchanged.
 - **D3:** preserve the existing three role-policy owners and configuration sources, but make threshold-only changes assessment/currentness descendants rather than training-trajectory identity; `theta_CV` must not move checkpoint representative identity.
-- **D4 P5 specification:** section 12.1 resolution table becomes foundation `0.075/0.075/0.050`, scratch remains `0.030`; generated/shipped config and public docs must agree; historical generated `0.045/0.045` receives the migration treatment in section 7.
+- **D4 P5 specification:** section 12.1 resolution table becomes foundation `0.075/0.075/0.050` for the default target-force outer metric, scratch remains `0.030`; alternative outer metrics retain their accepted units/default resolution and do not inherit the force-RMSE `0.075`; generated/shipped config and public docs must agree; historical generated default-force `0.045/0.045` receives the migration treatment in section 7.
 - **D4 counterexamples/documentation:** retire the old assertion that a foundation checkpoint at `42 meV/angstrom` should fail production. Under the new defaults, `42` is below the `50` production ceiling. Use a discriminating example such as `60 meV/angstrom`: it may satisfy the default `75` CV checkpoint ceiling but must fail the default `50` production checkpoint ceiling. Held-out `theta_CV` remains a separate population/role.
 - **Currentness:** a historical CV pass under `45/45` is not simply carried forward as current, despite the new thresholds being looser; publish a new current assessment under `75/75` from reusable exact measurements or recomputed EVAL2 evidence as required.
 
@@ -772,7 +772,7 @@ For **foundation-adaptation TRAIN2 configs without the new marker**:
 - absent `checkpoint_maximum_target_force_rmse_ev_per_angstrom` or exact historical generated value `0.045` resolves current `tau_CV` to `0.075`;
 - a non-`0.045` finite positive checkpoint value is preserved as an explicit override;
 - when `acceptance_metric` resolves the default `target_force_rmse_ev_per_angstrom`, absent `acceptance_maximum` or exact historical generated value `0.045` resolves current `theta_CV` to `0.075`;
-- for a non-default outer metric, never reinterpret an explicit `acceptance_maximum` through the force-RMSE migration rule; its units and currentness remain owned by that metric's accepted policy;
+- for a non-default outer metric, do not apply the force-RMSE `0.045 -> 0.075` migration at all: preserve its existing accepted resolution/units and every explicit `acceptance_maximum` exactly; the new `0.075` default is specific to `target_force_rmse_ev_per_angstrom`;
 - exact legacy `0.045` under the default force metric is treated as generated-default ancestry because the historical config has no provenance capable of distinguishing generated `0.045` from a user who retyped exactly `0.045`.
 
 A user who intentionally wants current foundation CV `0.045/0.045` after cutover must use the new marker and set those values explicitly. Scratch retains its accepted threshold resolution and is not migrated to the foundation defaults.
@@ -991,7 +991,7 @@ Also review the post-selection restoration recurrence record that required D1/D2
 25. zero, negative, boolean, string, NaN and infinity fail.
 26. With `post_selection_checkpoint_policy_generation = "p5_target_replay_v2"`, omission and explicit current defaults yield identical resolved policy identities; explicit CV `0.045/0.045` and explicit production `0.030` remain exactly those intentional values.
 27. A historical foundation-adaptation config with no marker migrates generated CV `0.045/0.045 -> 0.075/0.075` under the default force metric and generated production `0.030 -> 0.050`; scratch legacy `0.030` remains `0.030`.
-28. A non-default legacy CV threshold is preserved as an explicit override; a non-default outer metric is never force-unit migrated merely because its numeric value is `0.045`.
+28. A non-default legacy CV checkpoint threshold is preserved as an explicit override; for a non-default outer metric, `acceptance_maximum` retains its accepted pre-amendment resolution/units and is never migrated to `0.075` merely because it is omitted or numerically equals `0.045`.
 29. A historical TRAIN2 config with no marker and one-number replay `30.0` migrates to `50/100`; a custom one-number value fails actionable migration.
 30. New replay fields without the marker, or mixed retired/new replay authorities, fail closed.
 31. Generated template, `init` output, shipped example, CLI spec and guide remain campaign schema v2 and agree on `75/75/50`, the marker/new replay fields, and the continued separation of scratch defaults; P5 comments no longer claim bootstrap/refinement/secondary ordering authority.
