@@ -925,8 +925,6 @@ Current accepted CV authorization is required before a current final-production 
 
 ## 15. Continuation, equivalence, and fail-closed semantics
 
-## 15. Continuation, equivalence, and fail-closed semantics
-
 ### D2.DEF.060 — Authenticated continuation and training-semantic equivalence
 
 Assessment-only policy is not a training-continuation coordinate.

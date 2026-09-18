@@ -7,7 +7,7 @@ parent_D1_ratified_target: d761171f3c86c3c79b87a90cfc02ac324c261b1a
 accepted_D2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 repaired_from_D2_R1_candidate: e2b39917ab8c16556eb218d6a41e9682331bbca0
 repair_basis_D2_R1_review_commit: 786dd6fd40f15a048eb53dcb3c75b39087ed2ce4
-d2_candidate_blob: 3a2745cab24c7010eae39b9e780a3658fad3e696
+d2_candidate_blob: 3e7fb744fc733f23bbd93a8347246cfa306ebe89
 scope:
   - docs/methods/mlff_numerical_algorithmic_method.md
 ---
