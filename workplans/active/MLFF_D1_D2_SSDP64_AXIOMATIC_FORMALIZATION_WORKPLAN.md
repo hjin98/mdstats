@@ -277,3 +277,26 @@ The R5 trace replaces the R4 trace after a complete semantic directness/reverse-
 The D1 kernel, D2 kernel, weighted-quantile D4 owner, focused FP64 regression and full real-owner test suite are unchanged from R4. Therefore passing CPU evidence runs `35300235175` and `35300268107` remain applicable provided blob identity is rechecked at the new immutable target. No functional rerun is required for this documentation-only trace repair unless an executable blob or environment contract changes.
 
 R5 must cut a new immutable target containing the R5 trace, this workplan state and an R5 repair-closure record. A descendant handoff must request a fresh full assembled-candidate Review; author-side closure is not PASS, ratification or promotion. GPU qualification remains deferred and outside this gate.
+
+
+## 14. Independent Review R5 — NO-PASS and R6 repair gate
+
+Independent review of immutable R5 target `058b856df249bd28212ba70e459babd1f29a6c42` is recorded in
+`MLFF_D1_D2_SSDP64_INDEPENDENT_REVIEW_R5.md` and returned **NO-PASS** without a Serious Challenge to accepted D1/D2.
+
+R5 preserves the substantive D1/D2 kernels, renderer repair and current D4 executable acceptance. The remaining blocker is dependency-trace semantic completeness.
+
+Definitive missed direct-owner edges include:
+
+- `D1.AX.004 -> D1.DEF.012` for exact `T_N` controlled-variable meaning;
+- `D1.AX.004 -> D1.DEF.010` for the evaluation ladder held candidate-independent;
+- `D1.DEF.013 -> D1.DEF.010` for excluded `M1/M2` selector evidence;
+- `D1.DEF.020 -> D1.DEF.006` for authorized E0 fit-role permissions.
+
+The same-class audit also requires challenging/repairing direct local-owner edges for `D1.AX.003`, `D1.AX.008`, `D1.AX.010`, `D2.DEF.030`, `D2.DEF.031` and `D2.DEF.041` as specified in the R5 review record.
+
+### R6 gate
+
+Repair the derived trace only unless the new semantic audit independently finds a kernel defect. Re-run all 106 objects with explicit local-symbol/local-domain owner resolution plus reverse impact; structural row/endpoint/acyclicity checks remain necessary but are not sufficient.
+
+Cut a new immutable target after the repaired trace. Existing passing CPU D4 evidence may remain applicable only if the weighted-quantile owner, focused regression and real-owner suite blobs remain unchanged and no environment contract changes. GPU qualification remains outside this gate.
