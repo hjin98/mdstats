@@ -4,7 +4,7 @@ protocol_version: 6.4.0
 workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-D3-D4-1
 parent_workplan: workplans/active/MLFF_REPLAY_RETENTION_AND_TARGET_ADMISSIBILITY_REWORK_WORKPLAN.md
 branch: design/mlff-replay-retention-target-admissibility-rework
-status: READY_FOR_INDEPENDENT_D4_REVIEW
+status: D4_REVIEW_NO_PASS_REPAIR_ACTIVE
 parent_d1_target: d761171f3c86c3c79b87a90cfc02ac324c261b1a
 parent_d1_blob: 612294ec4680db01a18085e13fbfe5dcfa9fb7ed
 parent_d2_target: 32508991d472c1c6e4bd8b818b38d0880401845f
@@ -21,9 +21,17 @@ gate_d_r3_review_record: workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBI
 gate_d_r3_disposition: PASS
 implementation_base: afe6cb50dc6840799e86e1183c071761dab4e246e
 semantic_authority_target: de360579686bd6f06eae8a6a5e26b232d7db847e
-implementation_candidate_state: dirty-worktree candidate prepared; no historical authoritative bytes rewritten; no commit created
-implementation_candidate_tracked_diff_sha256_excluding_this_workplan: 80f0d07231b4c30a0f34f9a47a14cdd1be317f9f2b3afd2c1e7889d208b5330c
-implementation_candidate_untracked_test_content_sha256: 9649c44b016e0cc7a4124a70f5ae5ffa51b32bb9084ab7e2cfba0a2d5095509f
+reviewed_implementation_target: b657460c088957bde28fb2a3800ba4e6699900a5
+reviewed_branch_tip: dfe9a53cbf3fc45046b73270063841e83391cd61
+reviewed_branch_tip_delta: generated documentation PDFs only
+independent_d4_review_disposition: NO-PASS
+independent_d4_review_date: 2026-09-18
+independent_d4_review_highest_affected_domain: D4 implementation/evidence/lifecycle closure
+independent_d4_review_serious_challenge: none
+repair_base: dfe9a53cbf3fc45046b73270063841e83391cd61
+repair_candidate_target: pending
+initial_implementation_candidate_tracked_diff_sha256_excluding_this_workplan: 80f0d07231b4c30a0f34f9a47a14cdd1be317f9f2b3afd2c1e7889d208b5330c
+initial_implementation_candidate_untracked_test_content_sha256: 9649c44b016e0cc7a4124a70f5ae5ffa51b32bb9084ab7e2cfba0a2d5095509f
 ---
 
 # MLFF replay retention / target admissibility D3 -> D4 implementation workplan
@@ -257,26 +265,28 @@ Capability-transfer map:
 
 No historical mechanism is mandatory merely because PEM records it; the table binds only capabilities independently required by current D2/D3.
 
-## 5A. Implementation and evidence state (2026-09-18)
+## 5A. Independent D4 implementation Review state (2026-09-18)
 
-The implementation candidate is the current dirty worktree on `design/mlff-replay-retention-target-admissibility`, based on Gate-D PASS descendant `afe6cb50dc6840799e86e1183c071761dab4e246` and preserving semantic authority target `de360579686bd6f06eae8a6a5e26b232d7db847e`. No historical authoritative bytes were rewritten and no commit was created; the worktree remains available for independent D4 Review.
+Independent Review examined executable candidate `b657460c088957bde28fb2a3800ba4e6699900a5`. Branch tip `dfe9a53cbf3fc45046b73270063841e83391cd61` is a generated-documentation descendant only and does not change executable behavior. The disposition is **NO-PASS / D4 REPAIR ACTIVE**, with **no SERIOUS CHALLENGE** to ratified D1, ratified D2, or Gate-D-PASS D3 target `de360579686bd6f06eae8a6a5e26b232d7db847e`.
 
-| Obligation | Implementation state | Evidence/owner reconciliation |
+The implementation is directionally conforming and the following accepted structure SHALL be preserved during repair: acyclic training-only `TrainingTrajectoryIdentity`; training-only post-cutover run roots; assessment-independent measurement identity; 50/100 meV/angstrom replay warning/hard split; 75/75/50 meV/angstrom foundation CV/outer/production target defaults; complete checkpoint assessment; D2.DEF.059A/059B strict target-RMSE ordering; external assessment-position currentness; authenticated historical TRAIN2 reuse; one CampaignStore pointer plane; one post-selection evidence store; and the retained completion/topology/storage safety contract.
+
+| Obligation | Review state | Required disposition |
 |---|---|---|
-| I1 | complete | Training-only method and pre-fit `TrainingTrajectoryIdentity`; fitted preparation/result descendants are separately authenticated. Policy-only versus training-bearing identity counterfactuals pass. |
-| I2 | complete | TRAIN2 preparation and replay resolution consume training-bearing authority; hard admissibility and outer assessment occur only after terminal TRAIN2. |
-| I3 | complete | Current roots publish the existing topology manifest plus `train2_terminal` completion anchor before EVAL2; current roots contain no assessment files; legacy sealed roots remain read-only and terminal-unsealed roots have only the authenticated append-only completion path. |
-| I3A | complete | Current materialization is v3 and has no held-out artifact; held-out transport is attempt-local scratch outside the root and is reclaimed after durable measurement publication. Historical v2 transport remains immutable compatibility history. |
-| I4 | complete | `EvaluationMeasurementIdentity` is assessment-independent and excludes full run-plan/threshold/publication ancestry; artifact projection retains numerical bytes, membership, label/reference content, sidecar, metric/reduction, provider/model, and precision-bearing coordinates while excluding scratch locators. |
-| I5 | complete | Replay hard admissibility is 100 meV/angstrom with strict exceedance; 50 meV/angstrom warning is diagnostic-only; missing/nonfinite TRUE_DFT evidence remains hard failure. |
-| I6 | complete | Existing configuration owner resolves marker `p5_target_replay_v2` and the specified foundation/replay migration defaults, with ambiguous legacy replay configurations rejected. |
-| I7 | complete | Every durable TRAIN2 checkpoint enters the candidate set; representative and cross-seed ordering use only the ratified target-RMSE tie keys. No-admissible outcomes retain complete typed candidate evidence. |
-| I8 | complete | CV/final assessments are external immutable evidence-store records behind the existing position locator; final-seed currentness is hard policy + 059A only, CV authorization is rechecked before publication, and 059B remains aggregate-publication-only. Current reads authenticate every referenced candidate/measurement record. |
-| I9 | complete | Historical reuse follows authenticated exact-equivalence recovery without scan/rename/copy or historical-byte mutation; current CV is reauthorized before historical final-production reuse. |
-| I10 | complete | Existing run-activity lease covers root reads and storage/publication ordering remains lease first, publication barrier second. |
-| I11 | complete | Candidate diagnostics expose target/replay values, thresholds, margins, reasons, checkpoint identity, and selected/warning state without giving warning evidence decision authority. |
+| I1 | provisionally conforming | Preserve; re-run identity counterfactuals after repair. |
+| I2 | provisionally conforming | Preserve; no repair may move hard assessment before authenticated terminal TRAIN2. |
+| I3 | provisionally conforming | Preserve training-only seal and legacy append-only exception. |
+| I3A | **BLOCKED (R1)** | Fresh held-out scratch is reclaimed before its newly computed measurement is durable; repair exact publication/cleanup order below. |
+| I4 | provisionally conforming | Preserve assessment-independent measurement ancestry and exact D2.DEF.060B inputs. |
+| I5 | P5 semantics conforming; acceptance open | Preserve current P5 50/100 behavior; reconcile the shared exported TRAIN2 policy API without globalizing P5 defaults. |
+| I6 | P5 config/migration path conforming; acceptance open | Preserve marker/migration semantics; close shared-policy regression break under R2. |
+| I7 | provisionally conforming | Preserve complete candidate universe and exact 059A/059B keys. |
+| I8 | provisionally conforming | Preserve external assessment records/currentness projections and one pointer plane. |
+| I9 | provisionally conforming | Preserve authenticated historical reuse and no historical-byte rewrite. |
+| I10 | provisionally conforming | Preserve run-activity exclusion and lease -> publication-barrier order where both are required. |
+| I11 | provisionally conforming | Preserve diagnostic-only warning authority. |
 
-Executed evidence, all with at most 16 concurrent test workers:
+Evidence recorded for the reviewed candidate remains evidence **for `b657460c...` only**:
 
 - package/test `compileall`: pass;
 - replay policy/identity/migration tests: 55 passed;
@@ -284,9 +294,95 @@ Executed evidence, all with at most 16 concurrent test workers:
 - no-admissible/typed-outcome/recovery tests: 37 passed;
 - complete P5 production/restart module: 27 passed;
 - complete storage-core module: 291 passed;
-- directly affected storage-integration subset covering P5/P7 publication, stale/foreign roots, cleanup protection, fresh-process reauthentication, historical completion fixtures, dedup lease ordering, partial reclaim, and concurrent storage reauthentication: 15 passed.
+- directly affected storage-integration subset: 15 passed.
 
-The unfiltered 167-test storage-integration invocation was attempted independently after the core module passed, but the test runner stopped returning output with no live pytest process and no result; it is recorded as inconclusive rather than green. Production-scale GPU qualification remains intentionally deferred to the final complete release package. Independent D4 Review is the remaining approval gate; this workplan stays active and is not archived or self-closed.
+The unfiltered 167-test storage-integration invocation was inconclusive and is not green evidence. None of these counts may be inherited as final evidence after executable repair without applicability review; every directly affected check and the final assembled regression below must execute against the final repair candidate.
+
+## 5B. D4 Review reopen — exact repair instructions
+
+### R1 — held-out EVAL2 transport lifetime ends before durable measurement publication
+
+**Finding.** In `campaign_post_selection_runtime.py`, `_evaluate_held_out_representative()` owns the attempt-local `TemporaryDirectory`. A freshly computed held-out measurement is returned only after that context exits, so `outer_evaluation.extxyz*` has already been reclaimed. The corresponding `EvaluationMeasurementIdentity` and metric record are not written to `PostSelectionEvidenceStore` until the later caller invokes `publish_post_selection_run_measurements()`. This violates I3A / D4 spec section 15.1, whose required order is evaluate -> durably publish measurement -> reclaim scratch.
+
+**Repair the existing EVAL2/evidence-store owner; do not add a registry, durable held-out artifact namespace, pointer family, or shadow store.**
+
+Required behavior:
+
+1. Keep representative freeze before any held-out transport creation.
+2. Keep held-out transport outside every training root and keep its pathname absent from identity/currentness.
+3. For a **newly computed** held-out measurement, keep the attempt scratch alive until both the immutable `EvaluationMeasurementIdentity` and its metric record have successfully committed through the existing `PostSelectionEvidenceStore`.
+4. Only after that durable commit may the attempt scratch be reclaimed.
+5. A reusable held-out metric whose exact measurement identity already resolves from durable evidence may be returned without a new durable write; its temporary regenerated transport may then be reclaimed because durability predates the attempt.
+6. Preserve `post_selection_run_activity_lease()` through every checkpoint/materialization/model read from the training root. Do **not** move CampaignStore assessment/currentness pointer publication under that lease. If an immutable evidence-store write is performed while the lease is held, it must use the existing owner and must not introduce reverse lock order; if the implementation instead releases the lease before the immutable measurement write, the scratch lifetime must span that release without exposing a persistent owner.
+7. On evidence-store publication failure, no assessment/current pointer may be published. Attempt scratch may be cleaned by exception unwinding; retry must regenerate it from authoritative upstream evidence.
+8. Remove or reduce redundant later outer-measurement publication if practical. An idempotent verification write is acceptable only if it remains the same content-addressed owner; do not add a second “published” marker.
+
+Required falsification:
+
+- fresh held-out evaluation: instrument the existing evidence-store write and prove the scratch directory/artifact still exists when the outer `EvaluationMeasurementIdentity` and metric record are committed;
+- after successful commit: prove the scratch is absent and the durable measurement remains reusable with zero TRAIN2 and zero numerical EVAL2 forward;
+- inject failure on the outer measurement store write: prove no fold assessment/current pointer is published and retry recomputes/reuses correctly without retraining;
+- prove the scratch never appears beneath `runs/<training_trajectory_identity>`;
+- preserve the held-out-label-only invalidation test: only measurement/verdict descendants move; training identity/root/TRAIN2 do not.
+
+### R2 — shared exported TRAIN2 policy API was changed beyond the authorized P5 surface
+
+**Finding.** The reviewed implementation changes the shared exported `CheckpointAdmissibilityPolicy` constructor/property surface from `replay_degradation_budget_ev_per_angstrom` to `replay_degradation_hard_limit_ev_per_angstrom`, changes its no-argument replay default from 0.030 to 0.100, and removes the old exported default constant. Existing generic TRAIN2/EVAL2/target-size regressions still consume the prior public surface and fail before reaching their protected semantics. The renewed 100 meV/angstrom default is a **foundation-P5 resolved policy default**, not authority to silently change unrelated generic TRAIN2/P3/P5-scratch behavior.
+
+**Repair in the existing `train2_policy.py` / export owners. Do not create a compatibility service, wrapper policy class, or parallel evaluator.**
+
+Required behavior:
+
+1. Current foundation-P5 effective policy remains schema v2 and receives the resolved replay hard limit **explicitly** from the P5 configuration/method-policy owner. Generated P5 default remains 0.100 eV/angstrom; warning remains separately 0.050.
+2. Do not rely on the generic no-argument `CheckpointAdmissibilityPolicy()` constructor to inject the P5 default. Preserve the pre-existing generic/default 0.030 hard-constraint behavior for unaffected TRAIN2 consumers unless a separately accepted public-contract authority explicitly changes it.
+3. Preserve source compatibility for the already exported legacy spelling `replay_degradation_budget_ev_per_angstrom` inside the same class/owner as a compatibility alias to the hard-limit value. It must not become a second stored authority. If both old and new constructor spellings are supplied with incompatible values, fail closed as ambiguous.
+4. Preserve a read-only compatibility property for `replay_degradation_budget_ev_per_angstrom` and the exported `TRAIN2_DEFAULT_REPLAY_DEGRADATION_EV_PER_ANGSTROM = 0.030` alias so existing public consumers do not fail by attribute/import absence. Marking these as compatibility/deprecated is D4-local; do not let them re-enter current P5 identity.
+5. Preserve exact historical schema-v1 deserialization/reserialization and its historical `replay_retention_ceiling_exceeded` reason. Tests that specifically assert the v1 reason must construct/read a v1 policy explicitly rather than accidentally using current P5 v2.
+6. Current schema-v2 P5 hard failure remains `replay_catastrophic_forgetting_limit_exceeded`; exact 0.100 passes and `nextafter(0.100,+inf)` fails. No old alias may change this current P5 behavior.
+7. `replay_enabled=False` must remain valid through both legacy-compatible and current call surfaces with no replay limit.
+8. P5 scratch remains at its accepted 0.030 target semantics and no replay topology. P3/target-size and generic EVAL2 ordering semantics remain unchanged.
+9. Update tests by semantic ownership, not by blind search/replace. A historical-v1 oracle stays historical; a current-P5 oracle moves to the v2 field/reason; an unaffected generic TRAIN2 oracle retains its prior behavior.
+
+At minimum reconcile and execute:
+
+- `tests/test_mlff_train2a_policy.py`;
+- `tests/test_mlff_train2a_specification.py`;
+- `tests/test_mlff_eval2.py`;
+- `tests/test_mlff_audit_eval_perf1.py`;
+- `tests/test_mlff_target_size_p5d_cv_acceptance.py`;
+- `tests/test_mlff_target_size_p5_r6_guards.py`;
+- `tests/test_mlff_target_size_p5_r7_guards.py`;
+- all new replay/target policy and migration tests introduced by this rework.
+
+Add explicit discrimination proving in one suite that generic/default compatibility remains 0.030 while the resolved current foundation-P5 effective hard limit is 0.100; this prevents the compatibility repair from accidentally reverting the ratified P5 method.
+
+### R3 — immutable candidate binding, evidence closure, and lifecycle representation are stale
+
+The reviewed executable candidate is now committed, but this workplan previously described a dirty worktree, and `workplans/active/README.md` still says runtime implementation has not begun. The reviewed candidate also lacks a complete final affected-regression result: `tests/test_mlff_storage_reset_integration.py` was only partially evidenced and its full 167-test invocation was inconclusive.
+
+Required closeout sequence:
+
+1. Implement R1/R2 without changing D1/D2/D3 semantics and commit the **last executable/test mutation** as one immutable repair candidate.
+2. Run final affected regression against that exact executable SHA. Required minimum:
+   - `python -m compileall` over package and affected tests;
+   - all R2 modules listed above;
+   - `tests/test_mlff_p5_replay_target_policy_identity.py`;
+   - `tests/test_mlff_p5_replay_target_real_owner.py`;
+   - `tests/test_mlff_p5_cv_no_admissible_outcome.py`;
+   - `tests/test_mlff_target_size_p5e_production_and_restart.py`;
+   - `tests/test_mlff_storage_reset_core.py`;
+   - the **complete collected set** of `tests/test_mlff_storage_reset_integration.py`;
+   - any additional repository-required package/lint/type tests that cover files changed by R1/R2.
+3. The storage-integration suite may be split into bounded invocations only if the recorded node-id collection proves every collected test executed exactly once. A runner disappearance/no-result state is inconclusive and blocks closure; it cannot be called pass.
+4. Record exact command, executable candidate SHA, collected/pass/fail/skip counts, and any environment limitation. Production-scale GPU qualification remains deferred under project policy; do not use that deferral to skip CPU/available-device semantic regression.
+5. After executable evidence exists, create a **documentation/evidence-only descendant** that updates this front matter with the executable `repair_candidate_target`, replaces the provisional obligation states with evidence-backed states, and records the final commands/results. This avoids self-SHA recursion.
+6. In that same lifecycle closeout, update `workplans/active/README.md` and the parent workplan’s lifecycle prose so they no longer claim implementation has not begun or is blocked before Gate D. Do not alter their scientific/numerical authority.
+7. Perform the required PEM closeout learning assessment against the existing HAS. Add or modify PEM only if the admission threshold is met or an existing entry materially changes; ordinary repair chronology belongs here/Git, not as a manufactured new family.
+8. Submit the executable repair SHA plus its evidence-only binding descendant for fresh independent D4 Review. Do not archive or mark this plan complete before that Review passes.
+
+### Explicit non-repair
+
+The D4 Review did **not** establish that mixed admissible/no-admissible final-production seeds require partial aggregate publication. Do not change final-production aggregate success/failure semantics in this repair. Any such change requires an explicit upstream authority decision; R1-R3 do not authorize it.
 
 ## 5. Evidence and dependency plan
 
@@ -343,4 +439,4 @@ Raise SERIOUS CHALLENGE rather than patch around any contradiction among ratifie
 
 ## 9. Final handoff criteria
 
-The implementer SHALL use exact reviewed authority target `de360579686bd6f06eae8a6a5e26b232d7db847e` plus this review descendant as the handoff basis. Implementation closeout requires every I1-I11 obligation resolved, final affected-surface regression complete, real-owner integration complete, required evidence/dependency/documentation impact closed, and the assembled candidate ready for independent Protocol 6.4 Review.
+The implementer SHALL use exact reviewed authority target `de360579686bd6f06eae8a6a5e26b232d7db847e`, reviewed implementation target `b657460c088957bde28fb2a3800ba4e6699900a5`, and the R1-R3 repair contract in section 5B as the handoff basis. Closeout requires R1 and R2 repaired without upstream semantic drift, R3 immutable evidence/lifecycle binding complete, every I1-I11 obligation revalidated on the final executable candidate, the complete affected regression resolved rather than inconclusive, real-owner integration complete, and a fresh independent Protocol 6.4 D4 Review PASS.
