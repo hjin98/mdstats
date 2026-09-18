@@ -389,18 +389,36 @@ Authoritative selector state contains ordered selected prefix, family witness mu
 
 ### D2.DEF.027 — Candidate gains
 
-For available candidate `c`,
+For available candidate `c`, define `O_c(S)` by the membership relation
 
 $$
-O_c(S)=\{o:q_o(S)<k_o\text{ and }c\in A_o\},\qquad H(c;S)=|O_c(S)|,
+o\in O_c(S)\iff q_o(S)<k_o\text{ and }c\in A_o,
+$$
+
+and let
+
+$$
+H(c;S)=|O_c(S)|.
+$$
+
+For each family `m`, define the restricted witness sets `W_m^0(c;S)` and `W_m^1(c)` by
+
+$$
+w\in W_m^0(c;S)\iff w\in W_m,\ A_m(w,c)=1,\ n_m(w;S)=0,
 $$
 
 $$
-G_m(c;S)=\sum_{w\in W_m:\,A_m(w,c)=1,\,n_m(w;S)=0}\omega_m(w),\qquad G(c;S)=\sum_mG_m(c;S),
+w\in W_m^1(c)\iff w\in W_m,\ A_m(w,c)=1.
+$$
+
+Then
+
+$$
+G_m(c;S)=\sum_{w\in W_m^0(c;S)}\omega_m(w),\qquad G(c;S)=\sum_mG_m(c;S),
 $$
 
 $$
-R(c;S)=\sum_m\sum_{w\in W_m:\,A_m(w,c)=1}\frac{\omega_m(w)}{n_m(w;S)+1}.
+R(c;S)=\sum_m\sum_{w\in W_m^1(c)}\frac{\omega_m(w)}{n_m(w;S)+1}.
 $$
 
 A stronger minimum extends one locus's unsatisfied duration; it never multiplies its hard-gain vote.

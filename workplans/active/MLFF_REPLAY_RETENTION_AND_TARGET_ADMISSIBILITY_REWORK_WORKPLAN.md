@@ -1217,7 +1217,9 @@ Independent D2 Review R1 of `e2b39917ab8c16556eb218d6a41e9682331bbca0` returned 
 
 A renderer-only descendant then removed disallowed `\\operatorname` constructs and replaced the tie-key function names by explicitly defined renderer-safe symbols, with no numerical or decision-semantic change. Representation-repair record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_R2_RENDER_REPAIR.md`.
 
-The exact renderer-safe D2 target for stakeholder ratification is `1505a22b0940eb44f4c8a1820e3e26e2263c8a79`, whose D2 blob is `e6f0cdea54964a3bc2962a4ecacf44a7625f33fa`. Gate C remains open only for ratification of this representation-safe target; D3 stays blocked until ratification.
+A second renderer-only repair was required because D2.DEF.027 still used escaped set braces and compound restricted-sum subscripts that triggered the renderer's “Extra open brace or missing close brace” failure. The exact sets and sums are now expressed through named restricted witness sets and simple sums. Repair record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_R2_RENDER_REPAIR_2.md`.
+
+The resulting renderer-safe D2 blob is `30e6e6336cf41a05879650a3a2d7d583c4ef713a`; its semantic basis remains the independently reviewed D2 R2 target `4f161b1c4820de10abe638287b13152147d12fd9`. Gate C remains open only for ratification of the final representation-safe descendant; D3 stays blocked until ratification.
 
 ### Gate D - D3 authority/currentness reconciliation
 
