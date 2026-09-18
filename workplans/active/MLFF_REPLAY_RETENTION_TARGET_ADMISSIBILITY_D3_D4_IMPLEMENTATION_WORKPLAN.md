@@ -4,7 +4,7 @@ protocol_version: 6.4.0
 workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-D3-D4-1
 parent_workplan: workplans/active/MLFF_REPLAY_RETENTION_AND_TARGET_ADMISSIBILITY_REWORK_WORKPLAN.md
 branch: design/mlff-replay-retention-target-admissibility-rework
-status: R2_HANDOFF_REPAIR_CANDIDATE_PENDING_INDEPENDENT_REVIEW
+status: READY_FOR_D4_IMPLEMENTATION_AFTER_GATE_D_R3_PASS
 parent_d1_target: d761171f3c86c3c79b87a90cfc02ac324c261b1a
 parent_d1_blob: 612294ec4680db01a18085e13fbfe5dcfa9fb7ed
 parent_d2_target: 32508991d472c1c6e4bd8b818b38d0880401845f
@@ -16,11 +16,14 @@ r2_review_target: 5d7c62f803fc8757a4068b7b115fadb7a5ec4636
 r2_review_record: workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_INDEPENDENT_REVIEW_R2.md
 r2_repaired_candidate_target: de360579686bd6f06eae8a6a5e26b232d7db847e
 r2_repair_binding: workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_R2_REPAIR_BINDING.md
+gate_d_r3_review_target: de360579686bd6f06eae8a6a5e26b232d7db847e
+gate_d_r3_review_record: workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_INDEPENDENT_REVIEW_R3.md
+gate_d_r3_disposition: PASS
 ---
 
 # MLFF replay retention / target admissibility D3 -> D4 implementation workplan
 
-## 0. Independent D3 Review R1/R2 disposition
+## 0. Independent D3 Review R1/R2/R3 disposition
 
 Immutable candidate `119c4067b1852be127134d6b0fb1aae6cace4bd6` is **NO-PASS**. Review record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_INDEPENDENT_REVIEW_R1.md`.
 
@@ -33,13 +36,15 @@ Do not hand this plan to the implementer yet. The D3/D4 authority must first be 
 
 The R1 repairs are frozen in candidate `5d7c62f803fc8757a4068b7b115fadb7a5ec4636`: pre-fit acyclic trajectory identity, one append-only terminal-unsealed legacy sealing path, final-seed hard+059A assessment projection with 059B aggregate-only, and full retained completion/storage safety.
 
-Independent R2 Review confirms those D3 repairs but returns **NO-PASS** on the assembled D3->D4 handoff because current `PostSelectionMaterialization` still owns the held-out `outer_evaluation_artifact` inside the run root while the repaired D3 requires a training-only root and D2.DEF.060B classifies that artifact/labels as evaluation-measurement ancestry. The R2 handoff repair is now specified below: current training materialization excludes held-out evaluation transport, EVAL2 realizes it only as attempt-local scratch outside the root, and the durable metric record in the existing P5 evidence store owns measurement identity. Fresh independent Review is still required before implementation.
+Independent R2 Review confirmed those D3 repairs but returned **NO-PASS** on the assembled D3->D4 handoff because current `PostSelectionMaterialization` still owned held-out `outer_evaluation_artifact` inside the run root. Exact repair target `de360579686bd6f06eae8a6a5e26b232d7db847e` removes that coupling: current training materialization excludes held-out evaluation transport, EVAL2 realizes it only as attempt-local scratch outside the root, and the durable metric record in the existing P5 evidence store owns measurement identity.
+
+Fresh independent Gate-D Review R3 of `de360579686bd6f06eae8a6a5e26b232d7db847e` returns **PASS with no SERIOUS CHALLENGE**. This workplan is now implementation-authorizing. The implementer must preserve the reviewed target semantics exactly; any material D3/D4 contract mutation reopens Gate D.
 
 ## 1. Governing outcome and implementation gate
 
 Implement the ratified D1/D2 replay-retention, foundation target-admissibility, strict P5 representative-selection, reassessment, and training/measurement-equivalence semantics through the canonical MLFF P5 owners.
 
-This plan is implementation-ready but **not implementation-authorizing yet**. A fresh independent D3 Review must PASS the immutable architecture candidate before code edits begin. The implementer must treat that reviewed D3 as the architectural parent; this workplan coordinates the concretization and does not replace D1-D4 authority.
+This plan is **implementation-authorizing** after Gate-D R3 PASS of exact immutable target `de360579686bd6f06eae8a6a5e26b232d7db847e`. The implementer must treat that reviewed D3/D4 candidate as the architectural/specification parent; this workplan coordinates concretization and does not replace D1-D4 authority.
 
 The required end state is smaller than the current over-bound system:
 
@@ -302,4 +307,4 @@ Raise SERIOUS CHALLENGE rather than patch around any contradiction among ratifie
 
 ## 9. Final handoff criteria
 
-The implementer receives this plan only after independent D3 Review PASS identifies the exact reviewed architecture target. Implementation closeout then requires every I1-I11 obligation resolved, final affected-surface regression complete, real-owner integration complete, required evidence/dependency/documentation impact closed, and the assembled candidate ready for independent Protocol 6.4 Review.
+The implementer SHALL use exact reviewed authority target `de360579686bd6f06eae8a6a5e26b232d7db847e` plus this review descendant as the handoff basis. Implementation closeout requires every I1-I11 obligation resolved, final affected-surface regression complete, real-owner integration complete, required evidence/dependency/documentation impact closed, and the assembled candidate ready for independent Protocol 6.4 Review.

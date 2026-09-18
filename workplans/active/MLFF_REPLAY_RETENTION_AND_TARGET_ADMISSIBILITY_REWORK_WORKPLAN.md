@@ -1,14 +1,14 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: active-d3-r2-handoff-repair-candidate
+status: active-d4-implementation-ready
 highest_affected_domain: D1
 branch: design/mlff-replay-retention-target-admissibility-rework
 analysis_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 implementation_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 protocol_6_4_authority_merge: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 stakeholder_direction_date: 2026-09-18
-review_state: d3-r2-handoff-repair-candidate-awaiting-fresh-review
+review_state: gate-d-r3-pass-d4-implementation-authorized
 ---
 
 # MLFF Replay Retention and Target Admissibility Rework Workplan
@@ -1236,7 +1236,7 @@ The final renderer-safe D2 ratification target is `32508991d472c1c6e4bd8b818b38d
 
 On 2026-09-18 the stakeholder explicitly accepted that exact D2 candidate. Ratification record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_R2_RATIFICATION.md`. The D2 blob remains unchanged by ratification. Gate C is closed; Gate D may proceed.
 
-### Gate D - D3 authority/currentness reconciliation - R2 HANDOFF REPAIR CANDIDATE PREPARED / FRESH REVIEW REQUIRED
+### Gate D - D3 authority/currentness reconciliation - R3 REVIEW PASS / CLOSED
 
 Before code edits:
 
@@ -1277,9 +1277,11 @@ Required repair before another immutable Gate-D candidate may be reviewed:
 4. keep historical pre-cutover roots immutable even when they contain legacy outer-evaluation materialization; reuse those bytes only through exact D2.DEF.060B measurement-equivalence authentication and never rewrite them into the new topology;
 5. add falsification proving a held-out label/reference/measurement-artifact-only change leaves `TrainingTrajectoryIdentity`, fitted preparation, training materialization, sealed root and TRAIN2 current while moving only `EvaluationMeasurementIdentity`/EVAL2 and dependent outer verdict; also prove post-cutover root certification contains no held-out outer-evaluation artifact.
 
-The R2 handoff defect is repaired in exact immutable candidate `de360579686bd6f06eae8a6a5e26b232d7db847e`: post-cutover training materialization is explicitly free of held-out evaluation transport; EVAL2 owns attempt-local outer materialization outside the sealed root; durable measurement identity remains in the existing P5 evidence store; historical v2 roots remain immutable. Repair binding: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_R2_REPAIR_BINDING.md`. Gate E remains blocked until fresh independent Gate-D Review passes that exact target.
+The R2 handoff defect is repaired in exact immutable candidate `de360579686bd6f06eae8a6a5e26b232d7db847e`: post-cutover training materialization is explicitly free of held-out evaluation transport; EVAL2 owns attempt-local outer materialization outside the sealed root; durable measurement identity remains in the existing P5 evidence store; historical v2 roots remain immutable. Repair binding: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_R2_REPAIR_BINDING.md`.
 
-### Gate E - D4 implementation - BLOCKED ON GATE D ACCEPTANCE
+Fresh independent Gate-D Review R3 of that exact target returns **PASS with no SERIOUS CHALLENGE**. Review record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_INDEPENDENT_REVIEW_R3.md`. Gate D is closed. The reviewed D3/D4 authority/workplan is implementation-authorizing for Gate E; any later semantic mutation reopens the affected review scope.
+
+### Gate E - D4 implementation - READY / IMPLEMENTER HANDOFF AUTHORIZED
 
 Implement by reduction/rewiring at current owners:
 
