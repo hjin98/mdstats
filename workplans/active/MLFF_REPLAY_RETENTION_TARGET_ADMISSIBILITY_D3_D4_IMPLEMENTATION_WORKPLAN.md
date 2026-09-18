@@ -9,6 +9,9 @@ parent_d1_target: d761171f3c86c3c79b87a90cfc02ac324c261b1a
 parent_d1_blob: 612294ec4680db01a18085e13fbfe5dcfa9fb7ed
 parent_d2_target: 32508991d472c1c6e4bd8b818b38d0880401845f
 parent_d2_blob: 30e6e6336cf41a05879650a3a2d7d583c4ef713a
+r1_review_target: 119c4067b1852be127134d6b0fb1aae6cace4bd6
+r1_repaired_candidate_target: 5d7c62f803fc8757a4068b7b115fadb7a5ec4636
+r1_repair_binding: workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_R1_REPAIR_BINDING.md
 ---
 
 # MLFF replay retention / target admissibility D3 -> D4 implementation workplan
