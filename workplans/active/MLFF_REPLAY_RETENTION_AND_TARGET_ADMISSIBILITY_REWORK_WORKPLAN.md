@@ -1030,7 +1030,10 @@ EVAL2/selection/runtime/recovery
   mdstats/training_data/post_selection_cv_plan.py
   mdstats/training_data/post_selection_production.py
   mdstats/training_data/post_selection_publication.py
-  mdstats/training_data/train2_runtime.py (only where training-protocol/run identity authentication must be narrowed)
+  mdstats/training_data/post_selection_store.py
+  mdstats/training_data/campaign_control.py
+  mdstats/training_data/train2_runtime.py
+  mdstats/training_data/storage/owners.py (only where sealed-run certification/currentness consumes the evolved completion proof)
 
 Public exports
   mdstats/training_data/__init__.py
@@ -1046,6 +1049,11 @@ Focused tests
   tests/test_mlff_target_size_p5_r6_guards.py
   tests/test_mlff_target_size_p5_r7_guards.py
   tests/test_mlff_target_size_p5_r8_guards.py
+  tests/test_mlff_target_size_p5e_production_and_restart.py
+  tests/test_mlff_downstream_integration_closure.py
+  tests/test_mlff_storage_reset_core.py
+  tests/test_mlff_storage_reset_integration.py
+  tests/test_mlff_campaign_observation_coherence.py
   affected scheduler/recovery/integration suites identified transitively
 ```
 
@@ -1099,6 +1107,11 @@ Confirmed:
 - successful production evidence does not bind the full candidate set;
 - positive as well as negative historical CV outcomes require reselection under the new rule;
 - legacy sealed run roots require authenticated locator migration;
+- pre-training recovery currently depends on current checkpoint-admissibility merely to decide replay execution;
+- fitted preparation, materialization, checkpoint catalogs and TRAIN2 runtime ancestry still bind full policy-bearing run/method digests;
+- run-root completion is currently coupled to assessment files, so policy reassessment cannot share one sealed root without splitting training and assessment lifecycles;
+- global campaign-schema versioning is unnecessary for this local migration; a narrow acceptance-policy generation marker suffices;
+- historical final-production reuse requires explicit current-CV reauthorization semantics;
 - published PEM at current main remains reconciled only through `4eabe2ae...`, so HAS uses those evidence-backed entries without pretending PEM itself was refreshed by the Protocol 6.4 documentation merge.
 
 Branch opened from exact baseline: `design/mlff-replay-retention-target-admissibility-rework`.
@@ -1135,14 +1148,16 @@ Before code edits:
 
 - remove replay hard/diagnostic thresholds **and P5 checkpoint-selection policy** from training identity at the accepted owner;
 - freeze the dependency graph distinguishing training trajectory, numeric measurement, hard checkpoint decision, and warning-only diagnostic policy;
-- repair run/checkpoint ownership so policy-only role-plan edits resolve to the same training trajectory without weakening foreign-run rejection;
-- define the one-time authenticated legacy run-root locator/reuse binding without rename/copy/scan machinery;
+- freeze one training-position identity as the run/checkpoint/restart owner and rebind preparation, materialization, checkpoint catalog, MACE/runtime plan and continuation ancestry to it;
+- remove pre-training dependence on current checkpoint-admissibility policy; replay execution comes from training method/replay lineage and hard assessment begins only in EVAL2;
+- evolve the existing run completion/topology owner so authenticated terminal TRAIN2 can seal the training root under the run-activity lease before EVAL2;
+- move current CV/final policy assessment and deterministic position locators outside the sealed training root into the existing evidence/currentness infrastructure;
+- define the one-time authenticated legacy run-root locator/reuse binding without rename/copy/scan machinery, including exact historical continuation semantics;
 - repair measurement ancestry so future policy-only edits can reuse exact measurements, while historical records fall back to EVAL2 recomputation when proof is incomplete;
-- bind the complete final-production candidate set in terminal run assessment evidence;
-- prove currentness/recovery can preserve old TRAIN2 without a shadow compatibility subsystem;
-- freeze current evidence/schema evolution boundaries;
-- reconcile v2->v3 target/replay configuration migration without collateral scratch/CV change;
-- preserve v2 as a distinct prior-modern parser contract across every schema discriminator; do not let a v3 token bump route v2 through historical v1 normalization.
+- bind the complete final-production candidate set in outcome-discriminated assessment evidence;
+- freeze current-CV reauthorization semantics for historical final-production reuse;
+- prove currentness/recovery can preserve old TRAIN2 without a shadow compatibility subsystem or second evidence store;
+- reconcile the narrow `post_selection_checkpoint_policy_generation` migration without changing global campaign schema v2 or collateral scratch/CV semantics.
 
 Independent D3 review required if durable architecture changes.
 
@@ -1151,11 +1166,14 @@ Independent D3 review required if durable architecture changes.
 Implement by reduction/rewiring at current owners:
 
 - hard replay-limit policy plus diagnostic-only warning threshold;
-- foundation-production target default and v2->v3 migration, including explicit v2 parser compatibility;
+- foundation-production target default plus local checkpoint-policy generation migration under campaign schema v2;
 - strict target-minimum representative selection with frozen exact ties;
+- training-position identity cutover across preparation/materialization/checkpoint/runtime owners;
+- terminal TRAIN2 sealing through the existing completion/topology owner and run-activity lease;
+- external policy assessment/currentness locators with no assessment writes into sealed training roots;
 - assessment-independent future measurement identity;
-- complete production candidate-set binding and negative-production evidence persistence;
-- one-time legacy trajectory/run-root reuse;
+- complete outcome-discriminated production candidate-set evidence;
+- one-time legacy completed/interrupted trajectory reuse and current-CV reauthorization;
 - currentness/recovery narrowing;
 - diagnostics and docs.
 
@@ -1191,7 +1209,12 @@ Independent review reconstructs D1-D4 and attempts to falsify:
 - historical evidence mutation;
 - scratch/CV collateral changes;
 - duplicate policy/currentness machinery;
-- missing negative-production EVAL2 persistence.
+- missing negative-production EVAL2 persistence;
+- assessment files or policy diagnostics written into a post-cutover sealed training root;
+- warning/hard/target/selection policy consulted before TRAIN2 recovery;
+- training-position identity omitting preparation/validation/composition-transfer inputs that can change materialization;
+- current final publication derived from reusable historical production bytes after current CV rejection;
+- global campaign-schema bump or second evidence store introduced solely for this local change.
 
 Close only after affected documentation/history/dependency and PEM learning assessment are reconciled.
 
@@ -1216,13 +1239,20 @@ The cycle may close only when all of the following are true:
 13. Historical EVAL2 measurements are reused only when exact measurement equivalence is provable; otherwise EVAL2 is recomputed without TRAIN2 retraining. Historical verdicts are never relabeled current in place.
 14. Every affected historical CV fold is reselected under current policy; changed representatives purchase only required outer evaluation, and any newly current CV verdict is freshly published.
 15. Historical successful or failed final-production trajectories reuse completed TRAIN2; lack of a durably bound old candidate set causes EVAL2 recomputation, never content-store scanning or retraining.
-16. Future final-production terminal evidence binds the complete candidate set for selected and no-admissible outcomes before publication/failure.
-17. Campaign schema v3 carries the new replay fields and mode-aware target default; v2 remains a distinct readable prior-modern schema (including its `fidelity_epochs` contract), v2 generated replay `30.0` and foundation target `0.030` migrate by the explicit rules, custom/ambiguous legacy replay values fail closed, and v3 explicit target `0.030` remains configurable.
+16. Future final-production assessment evidence is outcome-discriminated and binds the complete candidate set for selected and no-admissible outcomes before publication/failure.
+17. Global campaign schema remains v2; the generated `post_selection_checkpoint_policy_generation = "p5_target_replay_v2"` marker owns the narrow migration. Historical generated replay `30.0` and foundation target `0.030` migrate by the explicit rules, custom/ambiguous legacy replay values fail closed, and explicit target `0.030` under the new marker remains configurable.
 18. Warning diagnostics are not hard-decision ancestors; changing only the warning threshold cannot move representative/CV/publication membership.
-19. Current method/policy/evidence lineage remains singular and acyclic; no generic P5 protocol graph, compatibility wrapper, shadow registry or duplicated threshold state is added.
-20. Focused, affected, real-owner and bounded scientific qualification evidence passes on the exact candidate.
-21. Independent assembled Protocol 6.4 review passes.
-22. Production-scale GPU qualification remains deferred to the final complete release package.
+19. New post-cutover run roots are training-only, are sealed under the run-activity lease at authenticated terminal TRAIN2 before EVAL2, and current assessments never mutate their topology.
+20. Training-position identity is the singular restart/root owner across fitted preparation, materialization, checkpoint catalog, MACE/runtime plan and continuation; assessment-only edits reproduce it and every tested training-bearing edit changes it.
+21. Replay execution/recovery is resolved without current checkpoint-admissibility policy; hard assessment begins only after authenticated TRAIN2 at EVAL2.
+22. Current CV/final assessments are deterministically locatable through the existing post-selection evidence/currentness infrastructure outside the root; no content-store scan or second evidence store is introduced.
+23. Historical interrupted trajectories continue only under exact historical runtime/protocol ancestry after explicit training-equivalence proof; completed historical trajectories are reused without rewriting bytes or hashes.
+24. Historical final-production training may be reassessed only after current CV reclosure accepts; current CV rejection blocks current final publication regardless of retained final checkpoint quality.
+25. Existing completion/topology/cold-storage ownership remains create-once, closed-subtree certifiable and lease-safe after TRAIN2 becomes a recognized terminal proof.
+26. Current method/policy/evidence lineage remains singular and acyclic; no compatibility wrapper, shadow registry, duplicated threshold authority, second checkpoint selector, or second evidence store is added.
+27. Focused, affected, real-owner and bounded scientific qualification evidence passes on the exact candidate.
+28. Independent assembled Protocol 6.4 review passes.
+29. Production-scale GPU qualification remains deferred to the final complete release package.
 
 ## 15. Reopen conditions
 
@@ -1244,6 +1274,8 @@ Reopen D3 before adding machinery if:
 
 - training identity cannot be narrowed without duplicated owners;
 - currentness requires a persistent compatibility translator/shadow registry;
+- training-root sealing before EVAL2 cannot be represented by the existing completion/topology owner without a second competing storage authority;
+- current assessments cannot be located outside the sealed training root through the existing post-selection pointer/currentness infrastructure without a second store;
 - old trajectory reuse cannot be proven from current ancestry without weakening genuine method-currentness checks;
 - production target default cannot be isolated from scratch/CV through existing role-policy ownership.
 
