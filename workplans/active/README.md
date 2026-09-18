@@ -4,19 +4,6 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 ## Current active MLFF work
 
-### Replay retention and target-admissibility rework
-
-Branch: `design/mlff-replay-retention-target-admissibility-rework`
-
-Canonical workplan:
-
-- `workplans/active/MLFF_REPLAY_RETENTION_AND_TARGET_ADMISSIBILITY_REWORK_WORKPLAN.md`
-
-This cycle reopens accepted Protocol 6.4 D1/D2 for a post-selection policy revision: TRUE_DFT replay degradation uses configurable 50 meV/angstrom warning and 100 meV/angstrom catastrophic hard defaults; foundation CV defaults are 75/75 meV/angstrom, intentionally more permissive than the 50 meV/angstrom production target ceiling; and P5 checkpoint/final single-best selection is strict minimum authoritative target RMSE among hard-admissible checkpoints. The workplan also requires assessment-policy/currentness ownership to be separated from TRAIN2 trajectory and reusable EVAL2 measurement identity so policy-only edits do not force retraining or discard valid measurements.
-
-Gate D is closed and the D3->D4 implementation workplan is authorized for Gate E; the R1-R3 repair is now implemented and the final affected CPU regression is complete on executable candidate `042b84b74d0b109dd576b725eafe6359629a55ea`. Exact commands/results and the evidence-only lifecycle binding are recorded in `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_D4_IMPLEMENTATION_WORKPLAN.md` section 5C. This plan remains active pending a fresh independent Protocol 6.4 D4 Review; production-scale GPU qualification remains deferred under the standing release-package policy.
-
-
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
 Branch: `design/mlff-pi-train-fps-diversity-restoration`
@@ -42,6 +29,13 @@ The proposed method restores the final mature multi-view semantics under current
 **No D1/D2 promotion has occurred.** Independent D1/D2 falsification and stakeholder human ratification remain mandatory before accepted-current method-paper promotion and before R2 begins. The current UID-capable product method therefore remains under **SERIOUS CHALLENGE**.
 
 ## Recently closed MLFF work
+
+The replay-retention / target-admissibility rework on branch `design/mlff-replay-retention-target-admissibility-rework` closed **PASS** under Protocol 6.4. Final D4 Review accepted executable candidate `042b84b74d0b109dd576b725eafe6359629a55ea` with evidence-only binding descendant `51db5d33723fad862b803b2487ea448cb876ec06`, with no Serious Challenge to accepted D1/D2/D3 authority. Final affected CPU evidence records 656 passing tests, including all 167 storage-integration tests. Production-scale GPU qualification remains deferred to the final complete-release package.
+
+Final closure record:
+
+- `workplans/archive/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_FINAL_D4_REVIEW_CLOSURE.md`.
+
 
 The CV competence threshold separation/parameterization cycle on branch `fix/mlff-cv-competence-threshold-separation` closed **PASS**. Its accepted design separates foundation CV checkpoint competence `tau_cv`, held-out CV threshold `theta_cv`, and production checkpoint quality `tau_prod`, with role-specific invalidation and no duplicate threshold/translation machinery.
 
