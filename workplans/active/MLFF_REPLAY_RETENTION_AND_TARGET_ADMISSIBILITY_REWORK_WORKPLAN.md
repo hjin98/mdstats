@@ -1,14 +1,14 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: active-d1-renewal-repair-required
+status: active-d1-r2-repaired-awaiting-independent-review
 highest_affected_domain: D1
 branch: design/mlff-replay-retention-target-admissibility-rework
 analysis_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 implementation_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 protocol_6_4_authority_merge: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 stakeholder_direction_date: 2026-09-18
-review_state: d1-r1-independent-review-no-pass-repair-required
+review_state: d1-r2-repair-candidate-authored-awaiting-fresh-independent-review
 ---
 
 # MLFF Replay Retention and Target Admissibility Rework Workplan
@@ -1134,30 +1134,37 @@ Confirmed:
 
 Branch opened from exact baseline: `design/mlff-replay-retention-target-admissibility-rework`.
 
-### Gate B - D1 renewal for replay role and production target quality - OPEN / R1 NO-PASS
+### Gate B - D1 renewal for replay role and production target quality - OPEN / R2 REPAIRED CANDIDATE
 
-Immutable D1 candidate `06f1255ed39f41d178daf73985829a2190a2bee8` was independently reviewed under Protocol 6.4.
+R1 independent Review of immutable candidate `06f1255ed39f41d178daf73985829a2190a2bee8` returned **D1 NO-PASS with no SERIOUS CHALLENGE**. The six blocking authority/representation findings have been repaired in a new immutable candidate:
 
-Review record:
+`2549dee709fb8bb383341ee3aebca7c71973a903`
 
-- `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D1_INDEPENDENT_REVIEW_R1.md`
+with canonical D1 blob:
 
-Disposition:
+`8667ee1abdb568a58ac945c87c9e2d7386dcf49b`.
 
-**D1 NO-PASS; no SERIOUS CHALLENGE to the intended scientific policy.**
+The bounded non-authoritative dependency trace is:
 
-The review accepts the policy direction as scientifically coherent in principle but identifies six blocking authority/representation defects:
+- `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D1_DEPENDENCY_TRACE_R2.md`
+- trace blob `dc8038b81f2f168cd258ba0098e9b9edcc1b6c55`.
 
-1. `D1.DEF.026` minimizes over an unspecified "fully evaluated checkpoint set" and therefore does not guarantee the stakeholder rule over every governed durable TRAIN2 checkpoint.
-2. `D1.DEF.022A` requires foundation baseline `R_replay(Phi)`, but `D1.DEF.022` does not make exact `Phi` material for true-reference replay retention.
-3. `D1.AX.010A` does not explicitly give warning-threshold edits diagnostic-only currentness, leaving a path to stale hard verdict/publication state.
-4. `D1.DEF.022A` defines strict replay classes but simultaneously delegates boundary comparison semantics/units to D2, creating an authority ambiguity.
-5. "TRUE_DFT" wording is not reconciled with accepted `TRUE_REFERENCE` replay-role terminology.
-6. New display equations use single-dollar display fences instead of the accepted renderer-safe block form.
+R2 closes R1 as follows:
 
-Bounded repair must also refresh a non-authoritative direct-dependency trace for the changed/new D1 objects. Do not start D2/D3/D4.
+1. `D1.DEF.026` now defines governed checkpoint universe `C_rho` as every checkpoint position required by accepted cadence and durably committed by the realized fixed-budget TRAIN2 trajectory; all members require assessment and quality-dependent shortlist substitution is forbidden.
+2. Exact frozen `Phi` is a mandatory replay-retention lineage parent for foundation adaptation regardless of replay training-label mode.
+3. `D1.AX.010A` now gives `delta_warn` diagnostic-only currentness and explicitly forbids warning-only changes from moving hard admissibility, representative, outer-evaluation membership, CV result, production authorization or publication membership.
+4. D1 retains the force-error dimension and strict-exceedance/equality boundary semantics; D2 owns only numerical realization and cannot change the scientific relation.
+5. Canonical scientific terminology is restored to `TRUE_REFERENCE`; DFT / `true_dft` is identified only as the current project realization.
+6. All introduced display math uses the accepted renderer-safe `$$ ... $$` form.
 
-Candidate `06f1255e...` is not ratifiable. Freeze a new immutable D1 repair candidate and request fresh independent re-review.
+Author-side closure checks found no remaining standalone single-dollar display fence, no `TRUE_DFT` formal terminology, and direct trace coverage for all changed/new formal D1 objects. These checks are not acceptance evidence.
+
+Fresh independent re-review is bound by:
+
+- `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D1_INDEPENDENT_REVIEW_R2_HANDOFF.md`.
+
+Gate B remains **OPEN**. Candidate `2549dee7...` requires fresh Protocol-6.4 D1 Review PASS plus explicit stakeholder ratification of that exact reviewed target before Gate C may begin.
 
 ### Gate C - D2 numerical renewal
 

@@ -14,7 +14,7 @@ Canonical workplan:
 
 This cycle reopens accepted Protocol 6.4 D1/D2 for a narrow post-selection policy revision: TRUE_DFT replay degradation becomes a configurable 50 meV/angstrom diagnostic-warning threshold plus configurable 100 meV/angstrom catastrophic hard limit; foundation-production target checkpoint admissibility defaults to 50 meV/angstrom; and P5 checkpoint/final single-best selection becomes strict minimum authoritative target RMSE among hard-admissible checkpoints. The workplan also requires assessment-policy/currentness ownership to be separated from TRAIN2 trajectory and reusable EVAL2 measurement identity so policy-only edits do not force retraining or discard valid measurements.
 
-Implementation is blocked until the new D1 then D2 authority amendments pass Protocol 6.4 review/ratification. Independent D1 Review R1 of frozen candidate `06f1255ed39f41d178daf73985829a2190a2bee8` returned **NO-PASS** with bounded D1 repairs required; no SERIOUS CHALLENGE was raised against the intended policy direction. D2 Gate C remains blocked.
+Implementation is blocked until the new D1 then D2 authority amendments pass Protocol 6.4 review/ratification. R1 returned D1 NO-PASS without a SERIOUS CHALLENGE; the bounded repairs are now frozen at `2549dee709fb8bb383341ee3aebca7c71973a903` and await fresh independent D1 re-review. D2 Gate C remains blocked.
 
 
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
