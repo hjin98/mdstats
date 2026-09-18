@@ -85,6 +85,23 @@ def test_train2_replay_requires_true_dft_and_target_threshold() -> None:
     assert policy.replay_absolute_ceiling_ev_per_angstrom(0.075) == pytest.approx(0.105)
 
 
+def test_replay_limit_compatibility_spelling_has_one_canonical_value() -> None:
+    legacy = mdstats.CheckpointAdmissibilityPolicy(
+        replay_degradation_budget_ev_per_angstrom=0.030
+    )
+    current = mdstats.CheckpointAdmissibilityPolicy(
+        replay_degradation_hard_limit_ev_per_angstrom=0.030
+    )
+    assert legacy == current
+    assert legacy.replay_degradation_budget_ev_per_angstrom == pytest.approx(0.030)
+    assert mdstats.TRAIN2_DEFAULT_REPLAY_DEGRADATION_EV_PER_ANGSTROM == pytest.approx(0.030)
+    with pytest.raises(mdstats.TrainingDataInputError, match="spellings disagree"):
+        mdstats.CheckpointAdmissibilityPolicy(
+            replay_degradation_hard_limit_ev_per_angstrom=0.100,
+            replay_degradation_budget_ev_per_angstrom=0.030,
+        )
+
+
 def _train2_protocol(*, adaptive: mdstats.AdaptiveTrainingStopPolicy | None = None):
     optimizer = mdstats.MaceOptimizerPolicy(
         learning_rate=1.0e-4,
@@ -179,14 +196,15 @@ def test_generated_config_uses_train2_and_omits_historical_controls() -> None:
         replay_monitor="monitor.xyz",
     )
     assert 'policy_generation = "train2"' in text
-    assert "allowed_replay_degradation_mev_per_a = 30.0" in text
+    assert "replay_degradation_warning_mev_per_a = 50.0" in text
+    assert "replay_degradation_hard_limit_mev_per_a = 100.0" in text
+    assert "allowed_replay_degradation_mev_per_a = 30.0" not in text
     assert 'checkpoint_strategy = "train2_target_first"' in text
     assert "target_stop_fraction =" not in text
     assert "replay_stop_multiplier =" not in text
     assert "target_score_weight =" not in text
     assert "replay_score_weight =" not in text
     assert "maximum_replay_degradation_fraction =" not in text
-
 
 
 

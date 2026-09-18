@@ -43,16 +43,22 @@ from .post_selection_identity import (
 )
 from .post_selection_run_identity import (
     PostSelectionRunRole,
-    post_selection_run_identity,
+    TrainingTrajectoryIdentity,
 )
 
 SELECTED_RELATION_PROJECTION_SCHEMA = "mdstats.post-selection-relation-projection.v1"
 # v2 folds contain gradient training, held-out outer evaluation, and purge only;
 # v2 plans bind the exact common target-monitor record and its separation.
 POST_SELECTION_CV_FOLD_SCHEMA = "mdstats.post-selection-cv-fold.v2"
-POST_SELECTION_CV_PLAN_SCHEMA = "mdstats.post-selection-cv-plan.v2"
+# v3 binds the label-blind transfer-consumer composition identity of each fold
+# (common monitor + held-out geometry), the only held-out-derived coordinate a
+# training trajectory may consume.
+POST_SELECTION_CV_PLAN_SCHEMA = "mdstats.post-selection-cv-plan.v3"
+POST_SELECTION_CV_PLAN_SCHEMA_V2 = "mdstats.post-selection-cv-plan.v2"
 COMMON_MONITOR_SEPARATION_SCHEMA = "mdstats.post-selection-common-monitor-separation.v1"
-POST_SELECTION_CV_FOLD_RUN_PLAN_SCHEMA = "mdstats.post-selection-cv-fold-run-plan.v1"
+# v2 run plans carry their pre-fit training trajectory; the run identity is that
+# trajectory, not the policy-bearing plan digest.
+POST_SELECTION_CV_FOLD_RUN_PLAN_SCHEMA = "mdstats.post-selection-cv-fold-run-plan.v2"
 
 
 class PostSelectionCvInfeasibleError(PostSelectionError):
@@ -487,8 +493,23 @@ class PostSelectionCvPlan:
     common_monitor_record_digest: str
     monitor_separation_digest: str
     replay_lineage_digest: str | None = None
+    #: Per fold (by index): label-blind composition identity of the governed
+    #: transfer consumers, or ``None`` for a method without composition transfer.
+    fold_transfer_consumer_composition_digests: tuple[str | None, ...] = ()
+    #: The one-time cutover locator: the authenticated historical (v2) CV plan
+    #: whose full-plan-derived run roots may be proven training-equivalent.  It
+    #: is assessment/recovery ancestry only, never a training identity.
+    legacy_source_plan_digest: str | None = None
 
     def __post_init__(self) -> None:
+        if self.legacy_source_plan_digest is not None:
+            object.__setattr__(
+                self,
+                "legacy_source_plan_digest",
+                validate_digest(
+                    self.legacy_source_plan_digest, name="legacy_source_plan_digest"
+                ),
+            )
         if not isinstance(self.binding, PostSelectionBinding):
             raise TrainingDataInputError(
                 "A CV plan requires the authenticated selected binding."
@@ -530,6 +551,17 @@ class PostSelectionCvPlan:
             )
         object.__setattr__(self, "folds", folds)
         object.__setattr__(self, "fold_count", count)
+        consumers = tuple(
+            None if value is None else validate_digest(
+                str(value), name="fold_transfer_consumer_composition_digest"
+            )
+            for value in self.fold_transfer_consumer_composition_digests
+        )
+        if len(consumers) != count:
+            raise TrainingDataInputError(
+                "A CV plan binds one transfer-consumer composition identity per fold."
+            )
+        object.__setattr__(self, "fold_transfer_consumer_composition_digests", consumers)
         seeds = tuple(sorted(int(v) for v in self.required_cv_seeds))
         if not seeds or len(set(seeds)) != len(seeds):
             raise TrainingDataInputError(
@@ -574,6 +606,10 @@ class PostSelectionCvPlan:
             "required_cv_seeds": list(self.required_cv_seeds),
             "common_monitor_record_digest": self.common_monitor_record_digest,
             "monitor_separation_digest": self.monitor_separation_digest,
+            "fold_transfer_consumer_composition_digests": list(
+                self.fold_transfer_consumer_composition_digests
+            ),
+            "legacy_source_plan_digest": self.legacy_source_plan_digest,
         }
         if self.replay_lineage_digest is not None:
             payload["replay_lineage_digest"] = self.replay_lineage_digest
@@ -610,6 +646,15 @@ class PostSelectionCvPlan:
                 if payload.get("replay_lineage_digest") is None
                 else str(payload["replay_lineage_digest"])
             ),
+            fold_transfer_consumer_composition_digests=tuple(
+                None if value is None else str(value)
+                for value in payload["fold_transfer_consumer_composition_digests"]
+            ),
+            legacy_source_plan_digest=(
+                None
+                if payload.get("legacy_source_plan_digest") is None
+                else str(payload["legacy_source_plan_digest"])
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -622,9 +667,11 @@ class PostSelectionCvPlan:
 class PostSelectionCvFoldRunPlan:
     """One exact ``(CV plan, seed, fold)`` execution position.
 
-    The run identity carries the CV role, so a screening or final-production job
-    with the same numeric seed cannot share this run's checkpoint root, restart
-    ownership, or publication identity.
+    The plan digest is an assessment/authorization parent.  The run's root,
+    restart owner and every training record are keyed by its pre-fit
+    :class:`TrainingTrajectoryIdentity`, which a policy-only CV edit reproduces
+    and which carries the CV role, so no screening or production job can share
+    this run's checkpoint root or restart ownership.
     """
 
     cv_plan_digest: str
@@ -634,7 +681,7 @@ class PostSelectionCvFoldRunPlan:
     fold_index: int
     optimizer_seed: int
     planned_epochs: int
-    run_identity: str
+    training_trajectory: TrainingTrajectoryIdentity
     run_role: str = PostSelectionRunRole.POST_SELECTION_CV.value
 
     def __post_init__(self) -> None:
@@ -643,7 +690,6 @@ class PostSelectionCvFoldRunPlan:
             "method_identity_digest",
             "cv_policy_identity_digest",
             "selected_binding_digest",
-            "run_identity",
         ):
             object.__setattr__(
                 self, name, validate_digest(getattr(self, name), name=name)
@@ -658,16 +704,28 @@ class PostSelectionCvFoldRunPlan:
         if planned <= 0:
             raise TrainingDataInputError("planned_epochs must be positive.")
         object.__setattr__(self, "planned_epochs", planned)
-        expected = post_selection_run_identity(
-            role=PostSelectionRunRole.POST_SELECTION_CV,
-            plan_digest=self.cv_plan_digest,
-            optimizer_seed=self.optimizer_seed,
-            fold_index=self.fold_index,
-        )
-        if expected != self.run_identity:
+        trajectory = self.training_trajectory
+        if not isinstance(trajectory, TrainingTrajectoryIdentity) or (
+            trajectory.run_role != PostSelectionRunRole.POST_SELECTION_CV.value
+            or trajectory.optimizer_seed != self.optimizer_seed
+            or trajectory.planned_epochs != self.planned_epochs
+            or trajectory.method_identity_digest != self.method_identity_digest
+            or trajectory.selected_binding_digest != self.selected_binding_digest
+        ):
             raise TrainingDataInputError(
-                "CV fold run identity does not match its (plan, seed, fold) position."
+                "CV fold run plan does not bind its own (role, method, binding, seed, "
+                "horizon) training trajectory."
             )
+
+    @property
+    def training_trajectory_identity(self) -> str:
+        return self.training_trajectory.content_digest
+
+    @property
+    def run_identity(self) -> str:
+        """The run root/restart identity: the pre-fit training trajectory."""
+
+        return self.training_trajectory.content_digest
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -680,7 +738,7 @@ class PostSelectionCvFoldRunPlan:
             "optimizer_seed": self.optimizer_seed,
             "planned_epochs": self.planned_epochs,
             "run_role": PostSelectionRunRole(self.run_role).value,
-            "run_identity": self.run_identity,
+            "training_trajectory": self.training_trajectory.to_dict(),
         }
 
     @property
@@ -705,7 +763,9 @@ class PostSelectionCvFoldRunPlan:
             optimizer_seed=int(payload["optimizer_seed"]),
             planned_epochs=int(payload["planned_epochs"]),
             run_role=str(payload["run_role"]),
-            run_identity=str(payload["run_identity"]),
+            training_trajectory=TrainingTrajectoryIdentity.from_dict(
+                payload["training_trajectory"]
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -767,6 +827,7 @@ def build_post_selection_cv_plan(
     monitor_separation: CommonMonitorSeparationEvidence,
     projection: SelectedRelationProjection | None = None,
     replay_lineage_digest: str | None = None,
+    legacy_source_plan_digest: str | None = None,
 ) -> PostSelectionCvPlan:
     """Build the complete selected-only K-fold plan, or fail before training.
 
@@ -854,6 +915,19 @@ def build_post_selection_cv_plan(
             )
         )
 
+    from .post_selection_execution import transfer_consumer_composition_digest
+
+    fold_consumers = tuple(
+        transfer_consumer_composition_digest(
+            context,
+            training_mode=method.training_mode,
+            consumer_frame_uids=(
+                tuple(common_monitor.selected_identities)
+                + tuple(fold.outer_evaluation_frame_uids)
+            ),
+        )
+        for fold in folds
+    )
     plan = PostSelectionCvPlan(
         binding=context.binding,
         method_identity_digest=method.content_digest,
@@ -866,6 +940,8 @@ def build_post_selection_cv_plan(
         common_monitor_record_digest=common_monitor.content_digest,
         monitor_separation_digest=monitor_separation.content_digest,
         replay_lineage_digest=replay_lineage_digest,
+        fold_transfer_consumer_composition_digests=fold_consumers,
+        legacy_source_plan_digest=legacy_source_plan_digest,
     )
     validate_post_selection_cv_plan(
         plan,
@@ -992,7 +1068,14 @@ def build_cv_fold_run_plan(
     optimizer_seed: int,
     planned_epochs: int,
 ) -> PostSelectionCvFoldRunPlan:
-    """Bind one exact CV execution position below its plan."""
+    """Bind one exact CV execution position and its pre-fit training trajectory.
+
+    The trajectory is derived from the plan's training-bearing coordinates
+    only: exact fold gradient membership, seed, horizon, the training method,
+    replay training lineage, the common monitor, and the fold's label-blind
+    transfer-consumer composition identity.  Held-out labels, the CV verdict
+    policy and every checkpoint-decision threshold are not inputs.
+    """
 
     if int(optimizer_seed) not in plan.required_cv_seeds:
         raise PostSelectionError(
@@ -1000,21 +1083,30 @@ def build_cv_fold_run_plan(
             f"{list(plan.required_cv_seeds)}."
         )
     fold = plan.fold(fold_index)
-    plan_digest = plan.content_digest
+    trajectory = TrainingTrajectoryIdentity(
+        run_role=PostSelectionRunRole.POST_SELECTION_CV.value,
+        selected_binding_digest=plan.binding.content_digest,
+        method_identity_digest=plan.method_identity_digest,
+        training_membership_digest=digest(
+            {"frame_uids": list(fold.training_frame_uids)}
+        ),
+        optimizer_seed=int(optimizer_seed),
+        planned_epochs=int(planned_epochs),
+        replay_lineage_digest=plan.replay_lineage_digest,
+        common_monitor_record_digest=plan.common_monitor_record_digest,
+        transfer_consumer_composition_digest=(
+            plan.fold_transfer_consumer_composition_digests[fold.fold_index]
+        ),
+    )
     return PostSelectionCvFoldRunPlan(
-        cv_plan_digest=plan_digest,
+        cv_plan_digest=plan.content_digest,
         method_identity_digest=plan.method_identity_digest,
         cv_policy_identity_digest=plan.cv_policy_identity_digest,
         selected_binding_digest=plan.binding.content_digest,
         fold_index=fold.fold_index,
         optimizer_seed=int(optimizer_seed),
         planned_epochs=int(planned_epochs),
-        run_identity=post_selection_run_identity(
-            role=PostSelectionRunRole.POST_SELECTION_CV,
-            plan_digest=plan_digest,
-            optimizer_seed=int(optimizer_seed),
-            fold_index=fold.fold_index,
-        ),
+        training_trajectory=trajectory,
     )
 
 
@@ -1027,6 +1119,7 @@ __all__ = [
     "POST_SELECTION_CV_FOLD_RUN_PLAN_SCHEMA",
     "POST_SELECTION_CV_FOLD_SCHEMA",
     "POST_SELECTION_CV_PLAN_SCHEMA",
+    "POST_SELECTION_CV_PLAN_SCHEMA_V2",
     "SELECTED_RELATION_PROJECTION_SCHEMA",
     "PostSelectionCvFold",
     "PostSelectionCvFoldRunPlan",

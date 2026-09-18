@@ -16,10 +16,10 @@ from typing import Any, Iterator, Sequence
 import numpy as np
 
 from ..campaign_post_selection_runtime import (
+    authenticated_training_materialization,
     resolve_post_selection_evaluation_model_state,
 )
 from ..post_selection_execution import (
-    PostSelectionMaterialization,
     PostSelectionRunEvidence,
     authenticate_post_selection_provider,
 )
@@ -46,10 +46,14 @@ def member_provider(context: Any, member: PublishedProductionMember) -> Iterator
         raise QualificationLineageError(
             "Published member evidence does not bind its own representative checkpoint."
         )
-    materialization = context.evidence_store.get(
-        evidence.materialization_digest, PostSelectionMaterialization.from_dict
-    )
+    if evidence.training_root_identity != member.run_identity:
+        raise QualificationLineageError(
+            "Published member does not name the training root its assessment binds."
+        )
     run_root = context.run_root(member.run_identity)
+    materialization = authenticated_training_materialization(
+        run_root, expected_digest=evidence.materialization_digest
+    )
     checkpoint_directory = run_root / "checkpoints"
     summary = load_train2_runtime_summary(checkpoint_directory)
     evaluation_model_state = resolve_post_selection_evaluation_model_state(

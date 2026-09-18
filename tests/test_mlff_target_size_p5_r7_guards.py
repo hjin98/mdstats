@@ -31,7 +31,6 @@ from __future__ import annotations
 from dataclasses import replace
 import hashlib
 import json
-import os
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -43,7 +42,6 @@ from mdstats.training_data._common import (
     sha256_file_cached,
 )
 from mdstats.training_data.campaign_post_selection import (
-    CurrentSelectedTrainingContext,
     PostSelectionError,
 )
 from mdstats.training_data.campaign_post_selection_runtime import (
@@ -59,7 +57,6 @@ from mdstats.training_data.foundation import (
     FoundationPotentialIdentity,
 )
 from mdstats.training_data.post_selection_cv_plan import (
-    PostSelectionCvPlan,
     build_post_selection_cv_plan,
     validate_post_selection_cv_plan,
 )
@@ -76,16 +73,13 @@ from mdstats.training_data.post_selection_execution import (
 from mdstats.training_data.post_selection_identity import (
     PostSelectionMethodIdentity,
     compute_replay_lineage_digest,
-    resolve_post_selection_foundation_identity,
     resolve_post_selection_method_identity,
     resolve_post_selection_method_policies,
     resolve_shared_optimizer_settings,
 )
 from mdstats.training_data.replay import ReplayLabelMode
 from mdstats.training_data.post_selection_production import (
-    FinalProductionPlan,
     build_final_production_plan,
-    validate_final_production_plan,
 )
 from mdstats.training_data.train2_policy import (
     CheckpointAdmissibilityPolicy,
@@ -101,7 +95,6 @@ from tests._mlff_post_selection_fixture import (
     context_monitor_kwargs,
     PostSelectionHarness,
     build_selected_campaign,
-    fixture_config_text,
     load_context,
     run_cross_validate,
 )
@@ -136,8 +129,6 @@ def _make_dummy_method_identity(training_mode: str = "multihead_replay") -> Post
             else "mdstats.p5-foundation-exposure.single-process-shuffled-drop-last-replay-first.v1"
         ),
         learning_rate_schedule_policy_digest="22" * 32,
-        shared_checkpoint_constraints_digest="33" * 32,
-        checkpoint_selection_policy_digest="44" * 32,
         shared_optimizer_settings_digest="55" * 32,
         replay_exposure_policy_digest="66" * 32,
         extxyz_policy_digest="77" * 32,
@@ -154,7 +145,6 @@ def _make_dummy_materialization(
     cfg_file: Path,
     cfg_bytes: bytes,
     internal_config: dict[str, Any],
-    run_plan_digest: str = "99" * 32,
     run_identity: str = "77" * 32,
     train_file: Path | None = None,
     valid_file: Path | None = None,
@@ -168,8 +158,7 @@ def _make_dummy_materialization(
     t_train_sha = sha256_file_cached(t_train)
     t_valid_sha = sha256_file_cached(t_valid)
     return PostSelectionMaterialization(
-        run_plan_digest=run_plan_digest,
-        run_identity=run_identity,
+        training_trajectory_identity=run_identity,
         preparation_digest="aa" * 32,
         target_train_artifact=SimpleNamespace(
             relative_path=t_train.name,
@@ -185,7 +174,6 @@ def _make_dummy_materialization(
             content_digest="tv" * 32,
             to_dict=lambda: {"schema": "artifact"},
         ),
-        outer_evaluation_artifact=None,
         mace_config_relative_path=cfg_file.name,
         mace_config_sha256=hashlib.sha256(cfg_bytes).hexdigest(),
         mace_config_digest=digest(internal_config),
@@ -1004,7 +992,7 @@ def test_guard_p5_r7_22_cv_acceptance_fails_closed_on_replay_admissibility_viola
     admissibility = CheckpointAdmissibilityPolicy(
         maximum_target_force_rmse_ev_per_angstrom=0.10,
         replay_enabled=True,
-        replay_degradation_budget_ev_per_angstrom=0.005,
+        replay_degradation_hard_limit_ev_per_angstrom=0.005,
         replay_label_requirement="true_dft",
     )
     p = point(1, 0.05)
@@ -1021,7 +1009,7 @@ def test_guard_p5_r7_22_cv_acceptance_fails_closed_on_replay_admissibility_viola
         replay_label_mode="true_dft",
     )
     assert not record.admissible
-    assert "replay_retention_ceiling_exceeded" in record.rejection_reasons
+    assert "replay_catastrophic_forgetting_limit_exceeded" in record.rejection_reasons
 
 
 # ---------------------------------------------------------------------------

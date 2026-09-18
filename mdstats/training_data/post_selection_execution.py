@@ -62,14 +62,23 @@ from .progress_timing import (
 
 # v3 preparations are tagged and mode-disjoint; v3 MACE configurations carry
 # the authenticated training mode and its mode-specific native loss.
-POST_SELECTION_PREPARATION_SCHEMA = "mdstats.post-selection-fitted-preparation.v3"
+# v4 binds the pre-fit training trajectory instead of the policy-bearing run
+# plan; v3 records remain immutable history.
+POST_SELECTION_PREPARATION_SCHEMA = "mdstats.post-selection-fitted-preparation.v4"
+POST_SELECTION_PREPARATION_SCHEMA_V3 = "mdstats.post-selection-fitted-preparation.v3"
+POST_SELECTION_TRANSFER_CONSUMER_SCHEMA = (
+    "mdstats.post-selection-transfer-consumer-compositions.v1"
+)
 POST_SELECTION_COMPOSITION_TRANSFER_SCHEMA = "mdstats.post-selection-composition-transfer.v1"
 POST_SELECTION_COMPOSITION_SET_SCHEMA = "mdstats.post-selection-composition-set.v1"
 POST_SELECTION_FOUNDATION_RESIDUAL_INPUTS_SCHEMA = (
     "mdstats.post-selection-foundation-residual-inputs.v1"
 )
 POST_SELECTION_FOUNDATION_RESIDUAL_INPUTS_FILENAME = "foundation_residual_inputs.json"
-POST_SELECTION_MATERIALIZATION_SCHEMA = "mdstats.post-selection-materialization.v2"
+# v3 is training-only: no held-out outer-evaluation transport and no
+# policy-bearing run plan.  v2 records/roots remain immutable history.
+POST_SELECTION_MATERIALIZATION_SCHEMA = "mdstats.post-selection-materialization.v3"
+POST_SELECTION_MATERIALIZATION_SCHEMA_V2 = "mdstats.post-selection-materialization.v2"
 POST_SELECTION_MACE_CONFIG_SCHEMA = "mdstats.post-selection-mace-config.v3"
 POST_SELECTION_REPLAY_FORCE_MH_FT_LR = MACE_REPLAY_FORCE_MH_FT_LR
 POST_SELECTION_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD = (
@@ -79,8 +88,12 @@ POST_SELECTION_REPLAY_REAL_PT_DATA_RATIO_THRESHOLD = (
 # namespace when no explicit ``heads`` mapping is supplied. Replay paths use
 # the canonical target_head mapping below.
 POST_SELECTION_SINGLE_HEAD_NAME = "Default"
-POST_SELECTION_EVAL_ROLE_SCHEMA = "mdstats.post-selection-eval2-role.v1"
-POST_SELECTION_RUN_EVIDENCE_SCHEMA = "mdstats.post-selection-run-evidence.v1"
+# v2 is the assessment-independent EvaluationMeasurementIdentity: it binds the
+# exact numerical experiment and nothing from any run or assessment plan.
+POST_SELECTION_EVAL_ROLE_SCHEMA = "mdstats.post-selection-eval2-measurement.v2"
+POST_SELECTION_EVAL_PREDICTIONS_SCHEMA = "mdstats.post-selection-eval2-predictions.v2"
+POST_SELECTION_RUN_EVIDENCE_SCHEMA = "mdstats.post-selection-run-evidence.v2"
+POST_SELECTION_RUN_EVIDENCE_SCHEMA_V1 = "mdstats.post-selection-run-evidence.v1"
 
 #: Dataset roles a post-selection run materializes.  ``target_train`` receives
 #: gradients; ``checkpoint_monitor`` may control checkpoint choice;
@@ -143,6 +156,40 @@ def _composition_counts_by_frame(
             )
         result[str(uid)] = by_run[run_id]
     return result
+
+
+def transfer_consumer_composition_digest(
+    selected: CurrentSelectedTrainingContext,
+    *,
+    training_mode: str,
+    consumer_frame_uids: Sequence[str],
+) -> str | None:
+    """Label-blind composition identity of a trajectory's governed transfer consumers.
+
+    This is the only held-out-derived coordinate that may descend into a
+    training trajectory: the element-count composition classes of the common
+    monitor and held-out frames whose E0 correction foundation preparation must
+    transfer to.  It is computed from geometry alone - no label, reference
+    value, or serialized evaluation artifact is read - so held-out label or
+    transport changes cannot move it, while a changed composition does.  Scratch
+    preparation has no composition transfer and binds none.
+    """
+
+    if str(training_mode) not in FOUNDATION_ADAPTATION_TRAINING_MODES:
+        return None
+    classes = sorted(
+        set(_composition_counts_by_frame(selected, tuple(consumer_frame_uids)).values())
+    )
+    if not classes:
+        raise PostSelectionExecutionError(
+            "Foundation-P5 composition transfer requires governed consumer frames."
+        )
+    return digest(
+        {
+            "schema": POST_SELECTION_TRANSFER_CONSUMER_SCHEMA,
+            "compositions": [[list(pair) for pair in item] for item in classes],
+        }
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -596,9 +643,10 @@ class PostSelectionFittedPreparation:
 
     The membership is an authorization boundary, not a convenience: a CV fold
     fits only from its gradient-training frames, and final production fits from
-    the full ``T_selected``.  The record binds the run plan that authorized the
-    fit so a fitted product can always be traced to the exact evidence it was
-    allowed to see.
+    the full ``T_selected``.  The record binds the pre-fit training trajectory
+    that owns it - never the policy-bearing assessment plan - so a fitted
+    product is traceable to the exact position it was allowed to see while a
+    policy-only edit cannot orphan it.
 
     The representation is tagged and mode-disjoint.  ``scratch`` carries its
     accepted from-scratch E0 and fitted configuration-weight table.  Foundation
@@ -608,7 +656,7 @@ class PostSelectionFittedPreparation:
     configuration-weight policy, and no weight table.
     """
 
-    owner_plan_digest: str
+    training_trajectory_identity: str
     dataset_role: str
     training_mode: str
     preparation_policy_digest: str
@@ -627,7 +675,7 @@ class PostSelectionFittedPreparation:
 
     def __post_init__(self) -> None:
         for name in (
-            "owner_plan_digest",
+            "training_trajectory_identity",
             "preparation_policy_digest",
             "membership_digest",
             "fitted_atomic_reference_digest",
@@ -737,7 +785,7 @@ class PostSelectionFittedPreparation:
     def _payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "schema": POST_SELECTION_PREPARATION_SCHEMA,
-            "owner_plan_digest": self.owner_plan_digest,
+            "training_trajectory_identity": self.training_trajectory_identity,
             "dataset_role": self.dataset_role,
             "training_mode": self.training_mode,
             "preparation_policy_digest": self.preparation_policy_digest,
@@ -782,8 +830,8 @@ class PostSelectionFittedPreparation:
         from .objectives import FrameTrainingWeight
         from .target_size_execution import CommonAtomicReferenceFit
 
-        # Pre-restoration preparations (v2) bound the whole P3 common policy
-        # and fitted weights for every mode; they are history, never current.
+        # v3 preparations bound the policy-bearing run plan and v2 the whole P3
+        # common policy; both are history, never current.
         if payload.get("schema") != POST_SELECTION_PREPARATION_SCHEMA:
             raise TrainingDataSerializationError(
                 "Unsupported post-selection fitted-preparation schema."
@@ -803,7 +851,7 @@ class PostSelectionFittedPreparation:
         common = {
             "schema",
             "content_digest",
-            "owner_plan_digest",
+            "training_trajectory_identity",
             "dataset_role",
             "training_mode",
             "preparation_policy_digest",
@@ -820,7 +868,7 @@ class PostSelectionFittedPreparation:
         transfer = payload.get("composition_transfer")
         weights = payload.get("fitted_frame_weights")
         result = cls(
-            owner_plan_digest=str(payload["owner_plan_digest"]),
+            training_trajectory_identity=str(payload["training_trajectory_identity"]),
             dataset_role=str(payload["dataset_role"]),
             training_mode=str(payload["training_mode"]),
             preparation_policy_digest=str(payload["preparation_policy_digest"]),
@@ -860,7 +908,7 @@ def fit_post_selection_preparation(
     context: CurrentSelectedTrainingContext,
     *,
     membership: Sequence[str],
-    owner_plan_digest: str,
+    training_trajectory_identity: str,
     preparation_policy: Any,
     dataset_role: str = DATASET_ROLE_TARGET_TRAIN,
     foundation_residual_inputs: FoundationResidualInputs | None = None,
@@ -873,7 +921,7 @@ def fit_post_selection_preparation(
     so a caller cannot widen the fit domain past the selected data even by
     mistake.  ``consumer_frame_uids`` are the governed common-monitor and
     held-out frames whose composition classes a foundation fit must serve; only
-    their geometry is inspected.
+    their geometry is inspected - no held-out label or evaluation artifact.
     """
 
     from .target_size_execution import (
@@ -918,7 +966,7 @@ def fit_post_selection_preparation(
             },
         )
         return PostSelectionFittedPreparation(
-            owner_plan_digest=str(owner_plan_digest),
+            training_trajectory_identity=str(training_trajectory_identity),
             dataset_role=dataset_role,
             training_mode=policy.training_mode,
             preparation_policy_digest=policy.policy_digest,
@@ -987,7 +1035,7 @@ def fit_post_selection_preparation(
             "is accepted, so this P5 run is infeasible."
         )
     return PostSelectionFittedPreparation(
-        owner_plan_digest=str(owner_plan_digest),
+        training_trajectory_identity=str(training_trajectory_identity),
         dataset_role=dataset_role,
         training_mode=policy.training_mode,
         preparation_policy_digest=policy.policy_digest,
@@ -1011,14 +1059,20 @@ def fit_post_selection_preparation(
 
 @dataclass(frozen=True, slots=True)
 class PostSelectionMaterialization:
-    """The exact DATA8 workload one post-selection run executes."""
+    """The exact training-only DATA8 workload one post-selection run executes.
 
-    run_plan_digest: str
-    run_identity: str
+    It binds the pre-fit training trajectory and the exact fitted preparation,
+    the trainer's target-training and checkpoint-monitor (``valid_file``)
+    transports, and the generated MACE configuration.  It deliberately carries
+    no held-out outer-evaluation transport: held-out labels, their serialized
+    artifact and every EVAL2 provider are measurement ancestry realized only
+    after the representative is frozen, outside the training root.
+    """
+
+    training_trajectory_identity: str
     preparation_digest: str
     target_train_artifact: Any
     checkpoint_monitor_artifact: Any
-    outer_evaluation_artifact: Any
     mace_config_relative_path: str
     mace_config_sha256: str
     mace_config_digest: str
@@ -1026,8 +1080,7 @@ class PostSelectionMaterialization:
 
     def __post_init__(self) -> None:
         for name in (
-            "run_plan_digest",
-            "run_identity",
+            "training_trajectory_identity",
             "preparation_digest",
             "mace_config_sha256",
             "mace_config_digest",
@@ -1039,19 +1092,17 @@ class PostSelectionMaterialization:
             if not str(getattr(self, name)).strip():
                 raise TrainingDataInputError(f"{name} cannot be empty.")
 
+    @property
+    def run_identity(self) -> str:
+        return self.training_trajectory_identity
+
     def _payload(self) -> dict[str, Any]:
         return {
             "schema": POST_SELECTION_MATERIALIZATION_SCHEMA,
-            "run_plan_digest": self.run_plan_digest,
-            "run_identity": self.run_identity,
+            "training_trajectory_identity": self.training_trajectory_identity,
             "preparation_digest": self.preparation_digest,
             "target_train_artifact": self.target_train_artifact.to_dict(),
             "checkpoint_monitor_artifact": self.checkpoint_monitor_artifact.to_dict(),
-            "outer_evaluation_artifact": (
-                None
-                if self.outer_evaluation_artifact is None
-                else self.outer_evaluation_artifact.to_dict()
-            ),
             "mace_config_relative_path": self.mace_config_relative_path,
             "mace_config_sha256": self.mace_config_sha256,
             "mace_config_digest": self.mace_config_digest,
@@ -1069,26 +1120,40 @@ class PostSelectionMaterialization:
     def from_dict(cls, payload: Mapping[str, Any]) -> "PostSelectionMaterialization":
         from .target_size_execution import TargetSizeExtxyzArtifact
 
+        # Historical v2 (with held-out outer-evaluation transport and a
+        # policy-bearing run plan) is readable only through the one-time
+        # historical recovery derivation, never as current training state.
         if payload.get("schema") != POST_SELECTION_MATERIALIZATION_SCHEMA:
             raise TrainingDataSerializationError(
                 "Unsupported post-selection materialization schema."
             )
+        foreign = sorted(
+            set(payload)
+            - {
+                "schema",
+                "content_digest",
+                "training_trajectory_identity",
+                "preparation_digest",
+                "target_train_artifact",
+                "checkpoint_monitor_artifact",
+                "mace_config_relative_path",
+                "mace_config_sha256",
+                "mace_config_digest",
+                "output_directory",
+            }
+        )
+        if foreign:
+            raise TrainingDataSerializationError(
+                f"Post-selection training materialization carries foreign fields {foreign}."
+            )
         result = cls(
-            run_plan_digest=str(payload["run_plan_digest"]),
-            run_identity=str(payload["run_identity"]),
+            training_trajectory_identity=str(payload["training_trajectory_identity"]),
             preparation_digest=str(payload["preparation_digest"]),
             target_train_artifact=TargetSizeExtxyzArtifact.from_dict(
                 payload["target_train_artifact"]
             ),
             checkpoint_monitor_artifact=TargetSizeExtxyzArtifact.from_dict(
                 payload["checkpoint_monitor_artifact"]
-            ),
-            outer_evaluation_artifact=(
-                None
-                if payload.get("outer_evaluation_artifact") is None
-                else TargetSizeExtxyzArtifact.from_dict(
-                    payload["outer_evaluation_artifact"]
-                )
             ),
             mace_config_relative_path=str(payload["mace_config_relative_path"]),
             mace_config_sha256=str(payload["mace_config_sha256"]),
@@ -1332,7 +1397,7 @@ def materialize_post_selection_run(
     method: PostSelectionMethodIdentity,
     training_frame_uids: Sequence[str],
     monitor_frame_uids: Sequence[str],
-    outer_evaluation_frame_uids: Sequence[str] | None = None,
+    transfer_consumer_frame_uids: Sequence[str] = (),
     optimizer_policy: Any,
     extxyz_policy: Any = None,
     output_directory: str | os.PathLike[str],
@@ -1344,11 +1409,13 @@ def materialize_post_selection_run(
     replay_train: Any = None,
     replay_monitor: Any = None,
 ) -> tuple[PostSelectionFittedPreparation, PostSelectionMaterialization]:
-    """Export and configure one post-selection run from its fitted preparation.
+    """Export and configure one training-only post-selection run.
 
-    Role separation is enforced before any bytes are written: the three
-    memberships must be pairwise disjoint.  The checkpoint monitor is the
-    campaign-common target monitor, outside ``T_selected`` by construction.
+    Only the trainer's inputs are serialized: gradient-training frames and the
+    campaign-common checkpoint monitor it validates on.  Held-out frames enter
+    only through ``transfer_consumer_frame_uids``, whose *geometry* re-checks
+    that the fitted composition transfer serves the trajectory's label-blind
+    consumer projection; no held-out label or EXTXYZ is written here.
     """
 
     from .mace_export import MaceExtxyzPolicy
@@ -1362,27 +1429,31 @@ def materialize_post_selection_run(
     root.mkdir(parents=True, exist_ok=True)
     training = tuple(str(v) for v in training_frame_uids)
     monitor_frames = tuple(str(v) for v in monitor_frame_uids)
-    outer = (
-        ()
-        if outer_evaluation_frame_uids is None
-        else tuple(str(v) for v in outer_evaluation_frame_uids)
-    )
-    groups = (set(training), set(monitor_frames), set(outer))
-    for position, left in enumerate(groups):
-        for right in groups[position + 1 :]:
-            if left & right:
-                raise PostSelectionExecutionError(
-                    "Post-selection training, checkpoint-monitor, and outer "
-                    "evaluation memberships must be disjoint."
-                )
-    fitted = preparation
-    if fitted.owner_plan_digest != run_plan.content_digest:
+    consumers = tuple(str(v) for v in transfer_consumer_frame_uids)
+    if set(training) & set(monitor_frames) or set(training) & set(consumers):
         raise PostSelectionExecutionError(
-            "The supplied fitted preparation belongs to a different run plan."
+            "Post-selection training membership must be disjoint from the "
+            "checkpoint monitor and every held-out transfer consumer."
+        )
+    trajectory = run_plan.training_trajectory
+    fitted = preparation
+    if fitted.training_trajectory_identity != trajectory.content_digest:
+        raise PostSelectionExecutionError(
+            "The supplied fitted preparation belongs to a different training trajectory."
+        )
+    expected_consumers = transfer_consumer_composition_digest(
+        context,
+        training_mode=method.training_mode,
+        consumer_frame_uids=monitor_frames + consumers,
+    )
+    if expected_consumers != trajectory.transfer_consumer_composition_digest:
+        raise PostSelectionExecutionError(
+            "The run's transfer-consumer geometry does not reproduce the "
+            "composition identity its training trajectory binds."
         )
     if fitted.is_foundation:
         consumed = set(
-            _composition_counts_by_frame(context, monitor_frames + outer).values()
+            _composition_counts_by_frame(context, monitor_frames + consumers).values()
         )
         if not consumed <= set(fitted.composition_transfer.required_compositions):
             raise PostSelectionExecutionError(
@@ -1410,20 +1481,8 @@ def materialize_post_selection_run(
         extxyz_policy=policy,
         preparation=None,
     )
-    evaluation = (
-        None
-        if not outer
-        else _write_role_artifact(
-            context,
-            output_directory=root,
-            role=DATASET_ROLE_OUTER_EVALUATION,
-            frame_uids=outer,
-            extxyz_policy=policy,
-            preparation=None,
-        )
-    )
     config = _post_selection_mace_config(
-        run_identity=run_plan.run_identity,
+        run_identity=trajectory.content_digest,
         optimizer_seed=run_plan.optimizer_seed,
         planned_epochs=run_plan.planned_epochs,
         preparation=fitted,
@@ -1446,12 +1505,10 @@ def materialize_post_selection_run(
         config_path, config_bytes, expected_sha256=config_sha256
     )
     record = PostSelectionMaterialization(
-        run_plan_digest=run_plan.content_digest,
-        run_identity=run_plan.run_identity,
+        training_trajectory_identity=trajectory.content_digest,
         preparation_digest=fitted.content_digest,
         target_train_artifact=target_train,
         checkpoint_monitor_artifact=monitor,
-        outer_evaluation_artifact=evaluation,
         mace_config_relative_path=config_path.name,
         mace_config_sha256=config_sha256,
         mace_config_digest=digest(config),
@@ -1463,6 +1520,31 @@ def materialize_post_selection_run(
         deserializer=PostSelectionMaterialization.from_dict,
     )
     return fitted, record
+
+
+def write_outer_evaluation_transport(
+    context: CurrentSelectedTrainingContext,
+    *,
+    scratch_directory: str | os.PathLike[str],
+    frame_uids: Sequence[str],
+    extxyz_policy: Any,
+) -> Any:
+    """Realize the held-out outer-evaluation EXTXYZ as attempt-local scratch.
+
+    The EVAL2 owner calls this only after the run representative is frozen,
+    in a bounded scratch directory outside every training root.  The returned
+    artifact record authenticates exact membership and the serialized
+    label/reference bytes; its locator carries no identity or currentness.
+    """
+
+    return _write_role_artifact(
+        context,
+        output_directory=Path(scratch_directory),
+        role=DATASET_ROLE_OUTER_EVALUATION,
+        frame_uids=tuple(str(v) for v in frame_uids),
+        extxyz_policy=extxyz_policy,
+        preparation=None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -2908,32 +2990,146 @@ def post_selection_runtime_plan(
 # ---------------------------------------------------------------------------
 
 
-def post_selection_eval_role_digest(
-    *, run_plan: Any, dataset_role: str, artifact: Any
-) -> str:
-    """Identity of one exact (run, dataset role, evaluation membership) position."""
+#: Artifact coordinates that carry the exact numerical population: serialized
+#: bytes (hence labels/reference values), membership, transport policy and the
+#: canonical frame/label authority.  Locators (paths, sidecar paths) are never
+#: identity: scratch may be removed and regenerated.
+_MEASUREMENT_ARTIFACT_FIELDS = (
+    "role",
+    "sha256",
+    "configuration_count",
+    "frame_uids",
+    "atomic_numbers",
+    "membership_digest",
+    "geometry_set_digest",
+    "logical_digest",
+    "extxyz_policy_digest",
+    "policy_digest",
+    "canonical_frame_authority_digest",
+    "common_preparation_digest",
+    "sidecar_sha256",
+    "sidecar_digest",
+    "label_mode",
+)
 
-    frame_uids = (
-        list(artifact.frame_uids)
-        if hasattr(artifact, "frame_uids")
-        else [f"replay_frame_{i}" for i in range(getattr(artifact, "configuration_count", 0))]
-    )
-    membership_digest = (
-        getattr(artifact, "membership_digest", None)
-        or getattr(artifact, "geometry_set_digest", None)
-        or digest({"frame_uids": frame_uids})
-    )
-    return digest(
-        {
+
+def _measurement_artifact_projection(artifact: Any) -> dict[str, Any]:
+    projection: dict[str, Any] = {}
+    for name in _MEASUREMENT_ARTIFACT_FIELDS:
+        value = getattr(artifact, name, None)
+        if value is None:
+            continue
+        value = getattr(value, "value", value)
+        projection[name] = list(value) if isinstance(value, (tuple, list)) else value
+    if "sha256" not in projection:
+        raise PostSelectionExecutionError(
+            "A measurement artifact must authenticate its serialized bytes."
+        )
+    return projection
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationMeasurementIdentity:
+    """Assessment-independent identity of one numerical EVAL2 measurement.
+
+    It binds exactly the D2.DEF.060B coordinates that can change the number:
+    the evaluation population/artifact (membership, serialized label/reference
+    bytes, transport policy), the checkpoint/model state, the metric/reduction
+    policy, the prediction head, the provider realization and numerically
+    material precision/backend.  No run plan, assessment threshold, warning
+    policy, selection policy or publication policy is an input, and neither is
+    the artifact's scratch locator.
+    """
+
+    dataset_role: str
+    artifact: Mapping[str, Any]
+    model_state: Mapping[str, Any]
+    metric_policy_digest: str
+    reduction_block_digest: str
+    prediction_head: str | None
+    provider_realization: Mapping[str, Any]
+
+    def __post_init__(self) -> None:
+        role = str(self.dataset_role).strip()
+        if not role:
+            raise TrainingDataInputError("A measurement requires its dataset role.")
+        object.__setattr__(self, "dataset_role", role)
+        for name in ("metric_policy_digest", "reduction_block_digest"):
+            object.__setattr__(
+                self, name, validate_digest(getattr(self, name), name=name)
+            )
+        object.__setattr__(self, "artifact", dict(self.artifact))
+        object.__setattr__(self, "model_state", dict(self.model_state))
+        object.__setattr__(self, "provider_realization", dict(self.provider_realization))
+
+    def _payload(self) -> dict[str, Any]:
+        return {
             "schema": POST_SELECTION_EVAL_ROLE_SCHEMA,
-            "run_plan_digest": run_plan.content_digest,
-            "run_identity": run_plan.run_identity,
-            "run_role": run_plan.run_role,
-            "dataset_role": str(dataset_role),
-            "evaluation_membership_digest": membership_digest,
-            "evaluation_frame_uids": frame_uids,
-            "artifact_sha256": artifact.sha256,
+            "dataset_role": self.dataset_role,
+            "artifact": dict(self.artifact),
+            "model_state": dict(self.model_state),
+            "metric_policy_digest": self.metric_policy_digest,
+            "reduction_block_digest": self.reduction_block_digest,
+            "prediction_head": self.prediction_head,
+            "provider_realization": dict(self.provider_realization),
         }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "EvaluationMeasurementIdentity":
+        if payload.get("schema") != POST_SELECTION_EVAL_ROLE_SCHEMA:
+            raise TrainingDataSerializationError(
+                "Unsupported post-selection measurement-identity schema."
+            )
+        result = cls(
+            dataset_role=str(payload["dataset_role"]),
+            artifact=dict(payload["artifact"]),
+            model_state=dict(payload["model_state"]),
+            metric_policy_digest=str(payload["metric_policy_digest"]),
+            reduction_block_digest=str(payload["reduction_block_digest"]),
+            prediction_head=payload.get("prediction_head"),
+            provider_realization=dict(payload["provider_realization"]),
+        )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError(
+                "Post-selection measurement-identity digest mismatch."
+            )
+        return result
+
+
+def post_selection_eval_role_digest(
+    *,
+    dataset_role: str,
+    artifact: Any,
+    model_state: Mapping[str, Any],
+    provider_realization: Mapping[str, Any],
+    prediction_head: str | None,
+    metric_policy_digest: str,
+    block_ids: Sequence[str],
+) -> EvaluationMeasurementIdentity:
+    """The assessment-independent measurement identity of one evaluation.
+
+    Historically this hashed the full run-plan digest and run identity, which
+    made a policy-only plan edit look like a different measurement.  It now
+    binds only coordinates that independently change the numerical experiment.
+    """
+
+    return EvaluationMeasurementIdentity(
+        dataset_role=str(dataset_role),
+        artifact=_measurement_artifact_projection(artifact),
+        model_state=dict(model_state),
+        metric_policy_digest=str(metric_policy_digest),
+        reduction_block_digest=digest(
+            {"schema": "mdstats.eval2-reduction-blocks.v1", "block_ids": [str(v) for v in block_ids]}
+        ),
+        prediction_head=None if prediction_head is None else str(prediction_head),
+        provider_realization=dict(provider_realization),
     )
 
 
@@ -2959,7 +3155,7 @@ def _authenticated_atoms(artifact: Any, root_directory: Path) -> list[Any]:
 
 def evaluate_post_selection_dataset(
     *,
-    run_plan: Any,
+    measurement: EvaluationMeasurementIdentity,
     artifact: Any,
     dataset_role: str,
     root_directory: str | os.PathLike[str],
@@ -3030,12 +3226,21 @@ def evaluate_post_selection_dataset(
         raise PostSelectionExecutionError(
             "Post-selection inference returned the wrong number of predictions."
         )
-    role_digest = post_selection_eval_role_digest(
-        run_plan=run_plan, dataset_role=dataset_role, artifact=artifact
-    )
+    if (
+        measurement.dataset_role != str(dataset_role)
+        or measurement.artifact != _measurement_artifact_projection(artifact)
+        or measurement.reduction_block_digest
+        != digest(
+            {"schema": "mdstats.eval2-reduction-blocks.v1", "block_ids": [str(v) for v in block_ids]}
+        )
+    ):
+        raise PostSelectionExecutionError(
+            "The measurement identity does not describe the evaluated artifact."
+        )
+    role_digest = measurement.content_digest
     prediction_digest = digest(
         {
-            "schema": "mdstats.post-selection-eval2-predictions.v1",
+            "schema": POST_SELECTION_EVAL_PREDICTIONS_SCHEMA,
             "role_digest": role_digest,
             "predictions": [
                 {
@@ -3058,37 +3263,44 @@ def evaluate_post_selection_dataset(
 
 
 def post_selection_checkpoint_catalog(
-    *, run_plan: Any, checkpoint_directory: str | os.PathLike[str]
+    *, run_identity: str, checkpoint_directory: str | os.PathLike[str]
 ) -> Any:
     """Inventory the durable checkpoint bytes this run actually produced.
 
-    The glob matches only epoch-stamped checkpoints, which is what the TRAIN2
-    naming convention writes; the continuation companion and any other sibling
-    ``.pt`` state in the same directory is deliberately not a candidate.
+    ``run_identity`` names the training root (the pre-fit trajectory for a
+    current run).  The glob matches only epoch-stamped checkpoints, which is
+    what the TRAIN2 naming convention writes; the continuation companion and
+    any other sibling ``.pt`` state is deliberately not a candidate.
     """
 
     from .campaign_control import inventory_checkpoint_files
 
+    identity = validate_digest(str(run_identity), name="run_identity")
     return inventory_checkpoint_files(
         checkpoint_directory,
-        run_plan_digest=run_plan.content_digest,
-        run_id=run_plan.run_identity,
+        run_plan_digest=identity,
+        run_id=identity,
         pattern="*epoch*.pt",
     )
 
 
 def post_selection_checkpoint_candidates(
     *,
-    run_plan: Any,
+    run_identity: str,
     checkpoint_directory: str | os.PathLike[str],
     runtime_plan: Any,
 ) -> tuple[Any, ...]:
-    """Authenticate this run's TRAIN2 history into EVAL2 trajectory points."""
+    """Authenticate this run's complete TRAIN2 history into EVAL2 points.
+
+    Every governed durable checkpoint must become a candidate: a catalogued
+    checkpoint the TRAIN2 history cannot turn into a trajectory point is an
+    integrity failure, never a silently thinned candidate universe.
+    """
 
     from .eval2 import read_train2_trajectory_points
 
     catalog = post_selection_checkpoint_catalog(
-        run_plan=run_plan, checkpoint_directory=checkpoint_directory
+        run_identity=run_identity, checkpoint_directory=checkpoint_directory
     )
     try:
         canonical_post_selection_head_names(
@@ -3100,11 +3312,20 @@ def post_selection_checkpoint_candidates(
             "Post-selection checkpoint trajectory uses a noncanonical "
             "fine-tuning head namespace."
         ) from exc
-    return read_train2_trajectory_points(
+    points = read_train2_trajectory_points(
         checkpoint_directory,
         checkpoint_catalog=catalog,
         target_head_name=runtime_plan.target_head_name,
     )
+    if {item.checkpoint_sha256 for item in points} != {
+        item.sha256 for item in catalog.checkpoints
+    }:
+        raise PostSelectionExecutionError(
+            "The TRAIN2 history does not cover every durable P5 checkpoint; the "
+            "complete checkpoint universe must be assessed, so no checkpoint is "
+            "silently omitted."
+        )
+    return points
 
 
 def authenticate_post_selection_provider(
@@ -3233,67 +3454,260 @@ def _companion_sha256(companion: Path) -> str:
     return hashlib.sha256(companion.read_bytes()).hexdigest()
 
 
+RUN_OUTCOME_REPRESENTATIVE_SELECTED = "representative_selected"
+RUN_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE = "no_admissible_representative"
+POST_SELECTION_CHECKPOINT_DIAGNOSTICS_SCHEMA = (
+    "mdstats.post-selection-checkpoint-diagnostics.v1"
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PostSelectionCheckpointDiagnostics:
+    """Reconstructable per-checkpoint target/replay diagnostics of one run.
+
+    This is *diagnostic* evidence: it records, for every assessed checkpoint,
+    target RMSE with its role ceiling and margin, candidate/foundation replay
+    RMSE, signed degradation, the warning threshold/margin and hard limit/margin,
+    warning codes, hard rejection reasons, and whether the checkpoint is the
+    frozen representative.  Nothing references its digest: the warning policy
+    has no edge into admissibility, selection, verdicts or publication.
+    """
+
+    training_trajectory_identity: str
+    run_role: str
+    hard_policy: Mapping[str, Any]
+    warning_policy: Mapping[str, Any] | None
+    rows: tuple[Mapping[str, Any], ...]
+    representative_candidate_identity: str | None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "training_trajectory_identity",
+            validate_digest(
+                self.training_trajectory_identity, name="training_trajectory_identity"
+            ),
+        )
+        object.__setattr__(self, "hard_policy", dict(self.hard_policy))
+        if self.warning_policy is not None:
+            object.__setattr__(self, "warning_policy", dict(self.warning_policy))
+        object.__setattr__(self, "rows", tuple(dict(row) for row in self.rows))
+
+    @property
+    def representative_warning_codes(self) -> tuple[str, ...]:
+        for row in self.rows:
+            if row["selected"]:
+                return tuple(row["warning_codes"])
+        return ()
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": POST_SELECTION_CHECKPOINT_DIAGNOSTICS_SCHEMA,
+            "training_trajectory_identity": self.training_trajectory_identity,
+            "run_role": str(self.run_role),
+            "hard_policy": dict(self.hard_policy),
+            "warning_policy": (
+                None if self.warning_policy is None else dict(self.warning_policy)
+            ),
+            "rows": [dict(row) for row in self.rows],
+            "representative_candidate_identity": self.representative_candidate_identity,
+            "decision_authority": "diagnostic_only",
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+
+def post_selection_checkpoint_diagnostic_rows(
+    candidates: Sequence[Any],
+    *,
+    hard_policy: Any,
+    warning_policy: Any | None,
+    representative: Any | None,
+) -> tuple[dict[str, Any], ...]:
+    """One bounded diagnostic row per assessed checkpoint (epoch order)."""
+
+    rows = []
+    selected_identity = (
+        None if representative is None else representative.stable_candidate_identity
+    )
+    ceiling = float(hard_policy.maximum_target_force_rmse_ev_per_angstrom)
+    hard_limit = hard_policy.replay_degradation_hard_limit_ev_per_angstrom
+    warning = (
+        None if warning_policy is None else warning_policy.warning_threshold_ev_per_angstrom
+    )
+    for item in sorted(candidates, key=lambda value: value.trajectory_point.epoch):
+        target = float(item.target_metrics.force_component_rmse_ev_per_angstrom)
+        degradation = item.replay_degradation_ev_per_angstrom
+        rows.append(
+            {
+                "epoch": int(item.trajectory_point.epoch),
+                "checkpoint_sha256": item.trajectory_point.checkpoint_sha256,
+                "candidate_identity": item.stable_candidate_identity,
+                "target_force_rmse_ev_per_angstrom": target,
+                "target_ceiling_ev_per_angstrom": ceiling,
+                "target_margin_ev_per_angstrom": ceiling - target,
+                "replay_candidate_force_rmse_ev_per_angstrom": (
+                    item.replay_candidate_force_rmse_ev_per_angstrom
+                ),
+                "replay_foundation_force_rmse_ev_per_angstrom": (
+                    item.replay_foundation_force_rmse_ev_per_angstrom
+                ),
+                "replay_degradation_ev_per_angstrom": degradation,
+                "replay_warning_ev_per_angstrom": warning,
+                "replay_warning_margin_ev_per_angstrom": (
+                    None
+                    if warning is None or degradation is None
+                    else float(warning) - float(degradation)
+                ),
+                "replay_hard_limit_ev_per_angstrom": hard_limit,
+                "replay_hard_margin_ev_per_angstrom": (
+                    None
+                    if hard_limit is None or degradation is None
+                    else float(hard_limit) - float(degradation)
+                ),
+                "warning_codes": list(
+                    ()
+                    if warning_policy is None
+                    else warning_policy.diagnostic_warnings(degradation)
+                ),
+                "hard_rejection_reasons": list(item.rejection_reasons),
+                "admissible": bool(item.admissible),
+                "selected": item.stable_candidate_identity == selected_identity,
+            }
+        )
+    return tuple(rows)
+
+
 @dataclass(frozen=True, slots=True)
 class PostSelectionRunEvidence:
-    """Realized evidence of one post-selection run, bound to its plan."""
+    """The current outcome-discriminated assessment of one final-production seed.
 
-    run_plan_digest: str
-    run_identity: str
-    run_role: str
+    It binds its assessment position - selected binding, final-seed assessment
+    policy (final hard policy + D2.DEF.059A only), training trajectory and the
+    root that holds its bytes, seed - the realized training ancestry it
+    assessed, and the complete ordered candidate-record set.  Exactly one of two
+    outcomes is representable: ``representative_selected`` names one member of
+    that set plus its common-monitor metric; ``no_admissible_representative``
+    names none.  Current-CV authorization, publication mode and D2.DEF.059B are
+    deliberately not parents: they belong to authorization and aggregate
+    publication.  It lives in the evidence store behind the position locator,
+    never inside a sealed training root.
+    """
+
+    selected_binding_digest: str
+    assessment_position_policy_digest: str
+    training_trajectory_identity: str
+    training_root_identity: str
+    optimizer_seed: int
     materialization_digest: str
-    preparation_digest: str
     runtime_summary_digest: str
-    representative_candidate_identity: str
-    representative_checkpoint_sha256: str
-    representative_record_digest: str
-    monitor_metric_record_digest: str
-    outer_metric_record_digest: str | None
+    outcome: str
+    candidate_record_digests: tuple[str, ...]
+    checkpoint_rejection_reasons: tuple[str, ...]
+    representative_candidate_identity: str | None = None
+    representative_checkpoint_sha256: str | None = None
+    representative_record_digest: str | None = None
+    monitor_metric_record_digest: str | None = None
+    run_role: str = "final_production"
 
     def __post_init__(self) -> None:
         for name in (
-            "run_plan_digest",
-            "run_identity",
+            "selected_binding_digest",
+            "assessment_position_policy_digest",
+            "training_trajectory_identity",
+            "training_root_identity",
             "materialization_digest",
-            "preparation_digest",
             "runtime_summary_digest",
-            "representative_checkpoint_sha256",
-            "representative_record_digest",
-            "monitor_metric_record_digest",
         ):
             object.__setattr__(
                 self, name, validate_digest(getattr(self, name), name=name)
             )
-        if self.outer_metric_record_digest is not None:
-            object.__setattr__(
-                self,
-                "outer_metric_record_digest",
-                validate_digest(
-                    self.outer_metric_record_digest,
-                    name="outer_metric_record_digest",
-                ),
-            )
-        identity = str(self.representative_candidate_identity).strip()
-        if not identity:
+        if str(self.run_role) != "final_production":
             raise TrainingDataInputError(
-                "Run evidence requires its frozen representative identity."
+                "A final-seed assessment carries the final-production role."
             )
-        object.__setattr__(self, "representative_candidate_identity", identity)
-        object.__setattr__(self, "run_role", str(self.run_role))
+        object.__setattr__(self, "optimizer_seed", int(self.optimizer_seed))
+        candidates = tuple(
+            validate_digest(str(v), name="candidate_record_digest")
+            for v in self.candidate_record_digests
+        )
+        if not candidates or len(set(candidates)) != len(candidates):
+            raise TrainingDataInputError(
+                "A final-seed assessment binds a non-empty unique ordered candidate set."
+            )
+        object.__setattr__(self, "candidate_record_digests", candidates)
+        object.__setattr__(
+            self,
+            "checkpoint_rejection_reasons",
+            tuple(sorted({str(v) for v in self.checkpoint_rejection_reasons})),
+        )
+        representative_fields = (
+            "representative_candidate_identity",
+            "representative_checkpoint_sha256",
+            "representative_record_digest",
+            "monitor_metric_record_digest",
+        )
+        if self.outcome == RUN_OUTCOME_REPRESENTATIVE_SELECTED:
+            identity = str(self.representative_candidate_identity or "").strip()
+            if not identity:
+                raise TrainingDataInputError(
+                    "A selected final-seed assessment requires its representative identity."
+                )
+            object.__setattr__(self, "representative_candidate_identity", identity)
+            for name in representative_fields[1:]:
+                object.__setattr__(
+                    self, name, validate_digest(str(getattr(self, name)), name=name)
+                )
+            if self.representative_record_digest not in candidates:
+                raise TrainingDataInputError(
+                    "A selected representative must be a member of the bound candidate set."
+                )
+        elif self.outcome == RUN_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE:
+            if any(getattr(self, name) is not None for name in representative_fields):
+                raise TrainingDataInputError(
+                    "A no-admissible final-seed assessment carries no representative."
+                )
+            if not self.checkpoint_rejection_reasons:
+                raise TrainingDataInputError(
+                    "A no-admissible final-seed assessment names the hard reasons its "
+                    "candidates failed."
+                )
+        else:
+            raise TrainingDataInputError(
+                f"Unsupported final-seed assessment outcome {self.outcome!r}."
+            )
+
+    @property
+    def run_identity(self) -> str:
+        return self.training_trajectory_identity
+
+    @property
+    def selected(self) -> bool:
+        return self.outcome == RUN_OUTCOME_REPRESENTATIVE_SELECTED
 
     def _payload(self) -> dict[str, Any]:
         return {
             "schema": POST_SELECTION_RUN_EVIDENCE_SCHEMA,
-            "run_plan_digest": self.run_plan_digest,
-            "run_identity": self.run_identity,
+            "selected_binding_digest": self.selected_binding_digest,
+            "assessment_position_policy_digest": self.assessment_position_policy_digest,
+            "training_trajectory_identity": self.training_trajectory_identity,
+            "training_root_identity": self.training_root_identity,
+            "optimizer_seed": self.optimizer_seed,
             "run_role": self.run_role,
             "materialization_digest": self.materialization_digest,
-            "preparation_digest": self.preparation_digest,
             "runtime_summary_digest": self.runtime_summary_digest,
+            "outcome": self.outcome,
+            "candidate_record_digests": list(self.candidate_record_digests),
+            "checkpoint_rejection_reasons": list(self.checkpoint_rejection_reasons),
             "representative_candidate_identity": self.representative_candidate_identity,
             "representative_checkpoint_sha256": self.representative_checkpoint_sha256,
             "representative_record_digest": self.representative_record_digest,
             "monitor_metric_record_digest": self.monitor_metric_record_digest,
-            "outer_metric_record_digest": self.outer_metric_record_digest,
         }
 
     @property
@@ -3305,30 +3719,41 @@ class PostSelectionRunEvidence:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "PostSelectionRunEvidence":
+        # v1 run evidence (selected representative only, no candidate set, bound
+        # to the policy-bearing run plan) is historical root-local provenance.
         if payload.get("schema") != POST_SELECTION_RUN_EVIDENCE_SCHEMA:
             raise TrainingDataSerializationError(
                 "Unsupported post-selection run-evidence schema."
             )
+
+        def optional(name: str) -> str | None:
+            value = payload.get(name)
+            return None if value is None else str(value)
+
         result = cls(
-            run_plan_digest=str(payload["run_plan_digest"]),
-            run_identity=str(payload["run_identity"]),
+            selected_binding_digest=str(payload["selected_binding_digest"]),
+            assessment_position_policy_digest=str(
+                payload["assessment_position_policy_digest"]
+            ),
+            training_trajectory_identity=str(payload["training_trajectory_identity"]),
+            training_root_identity=str(payload["training_root_identity"]),
+            optimizer_seed=int(payload["optimizer_seed"]),
             run_role=str(payload["run_role"]),
             materialization_digest=str(payload["materialization_digest"]),
-            preparation_digest=str(payload["preparation_digest"]),
             runtime_summary_digest=str(payload["runtime_summary_digest"]),
-            representative_candidate_identity=str(
-                payload["representative_candidate_identity"]
+            outcome=str(payload["outcome"]),
+            candidate_record_digests=tuple(
+                str(v) for v in payload["candidate_record_digests"]
             ),
-            representative_checkpoint_sha256=str(
-                payload["representative_checkpoint_sha256"]
+            checkpoint_rejection_reasons=tuple(
+                str(v) for v in payload["checkpoint_rejection_reasons"]
             ),
-            representative_record_digest=str(payload["representative_record_digest"]),
-            monitor_metric_record_digest=str(payload["monitor_metric_record_digest"]),
-            outer_metric_record_digest=(
-                None
-                if payload.get("outer_metric_record_digest") is None
-                else str(payload["outer_metric_record_digest"])
+            representative_candidate_identity=optional(
+                "representative_candidate_identity"
             ),
+            representative_checkpoint_sha256=optional("representative_checkpoint_sha256"),
+            representative_record_digest=optional("representative_record_digest"),
+            monitor_metric_record_digest=optional("monitor_metric_record_digest"),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -3338,6 +3763,18 @@ class PostSelectionRunEvidence:
 
 
 __all__ = [
+    "EvaluationMeasurementIdentity",
+    "POST_SELECTION_CHECKPOINT_DIAGNOSTICS_SCHEMA",
+    "PostSelectionCheckpointDiagnostics",
+    "post_selection_checkpoint_diagnostic_rows",
+    "POST_SELECTION_EVAL_PREDICTIONS_SCHEMA",
+    "POST_SELECTION_MATERIALIZATION_SCHEMA_V2",
+    "POST_SELECTION_PREPARATION_SCHEMA_V3",
+    "POST_SELECTION_RUN_EVIDENCE_SCHEMA_V1",
+    "RUN_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE",
+    "RUN_OUTCOME_REPRESENTATIVE_SELECTED",
+    "transfer_consumer_composition_digest",
+    "write_outer_evaluation_transport",
     "DATASET_ROLE_CHECKPOINT_MONITOR",
     "DATASET_ROLE_OUTER_EVALUATION",
     "DATASET_ROLE_TARGET_TRAIN",

@@ -30,6 +30,13 @@ The proposed method restores the final mature multi-view semantics under current
 
 ## Recently closed MLFF work
 
+The replay-retention / target-admissibility rework on branch `design/mlff-replay-retention-target-admissibility-rework` closed **PASS** under Protocol 6.4. Final D4 Review accepted executable candidate `042b84b74d0b109dd576b725eafe6359629a55ea` with evidence-only binding descendant `51db5d33723fad862b803b2487ea448cb876ec06`, with no Serious Challenge to accepted D1/D2/D3 authority. Final affected CPU evidence records 656 passing tests, including all 167 storage-integration tests. Production-scale GPU qualification remains deferred to the final complete-release package.
+
+Final closure record:
+
+- `workplans/archive/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_FINAL_D4_REVIEW_CLOSURE.md`.
+
+
 The CV competence threshold separation/parameterization cycle on branch `fix/mlff-cv-competence-threshold-separation` closed **PASS**. Its accepted design separates foundation CV checkpoint competence `tau_cv`, held-out CV threshold `theta_cv`, and production checkpoint quality `tau_prod`, with role-specific invalidation and no duplicate threshold/translation machinery.
 
 Final review and closeout records are archived under:

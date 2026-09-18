@@ -97,9 +97,9 @@ partition_seed = 104729
 seeds = [0]
 max_num_epochs = 30
 purge_components_between_roles = 0
-checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.045
+checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.075
 acceptance_metric = "target_force_rmse_ev_per_angstrom"
-acceptance_maximum = 0.045
+acceptance_maximum = 0.075
 
 [post_selection.production]
 seeds = [1]
@@ -437,29 +437,46 @@ rather than shrinking or resampling the monitor. A fold fits its training-only
 state from its own training partition, freezes its representative on that
 common monitor, and evaluates the held-out partition only afterwards. Held-out
 fold results cannot change `N_selected`, membership, checkpoint policy, or the
-method definition. Replay remains a separate admissibility/retention concern and
-supplies no ranking credit.
+method definition. Replay supplies no ranking credit: signed TRUE_DFT replay
+degradation above `[acceptance].replay_degradation_warning_mev_per_a` (50 by
+default) is reported as a diagnostic warning only, and a checkpoint is rejected
+only above `[acceptance].replay_degradation_hard_limit_mev_per_a` (100 by
+default, catastrophic forgetting). Among hard-admissible checkpoints the
+representative is simply the lowest common-monitor target force RMSE (exact
+ties by epoch, then checkpoint SHA-256); `single_best_final_seed` uses the same
+target-only order across seeds (ties by seed, then SHA-256). A selected
+representative with a replay warning is published with a visible warning, not
+as a failure.
 
 Cross-validation and final production use different target-force checkpoint
-ceilings for foundation fine-tuning. All three foundation post-selection
-thresholds are configurable policy parameters, with generated defaults
-0.045 / 0.045 / 0.030 eV/Angstrom. CV asks whether every required fold and
-seed reaches a clearly competent regime: a fold checkpoint must reach at most
+ceilings for foundation fine-tuning. All foundation post-selection thresholds
+are configurable assessment parameters, with defaults 0.075 / 0.075 / 0.050
+eV/Angstrom. CV asks whether every required fold and seed reaches a competent
+regime: a fold checkpoint must reach at most
 `[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom`
-(0.045 eV/Angstrom by default) on the common monitor, and by default its
-held-out target-force RMSE must also be at most 0.045
+(0.075 eV/Angstrom by default) on the common monitor, and by default its
+held-out target-force RMSE must also be at most 0.075
 (`[post_selection.cv].acceptance_maximum`). Fresh production keeps the stricter
 checkpoint criterion `[acceptance].maximum_target_force_rmse_ev_per_angstrom`
-(0.030 by default), so under the defaults a model that passed CV at
-42 meV/Angstrom is still refused as a production checkpoint. This lets a shorter fixed CV horizon
-(`[post_selection.cv].max_num_epochs`) avoid the slow late-convergence region
-that production must reach; training is never stopped early by either ceiling.
-Neither ceiling is release qualification. Scratch campaigns keep 0.030 for both
-roles. An explicit value for any of the three thresholds must be a finite positive
-number (a boolean or quoted string such as `"0.040"` is rejected), stays as written, and
-changing a role ceiling invalidates only that role's evidence. Campaigns
-cross-validated before this separation must rerun `cross-validate` and
-`train-production` once.
+(0.050 by default), so under the defaults a checkpoint at 60 meV/Angstrom can
+pass CV competence but is refused as a production checkpoint. Training is never
+stopped early by any of these ceilings, and none of them is release
+qualification. Scratch campaigns keep 0.030 for both roles. Every explicit
+threshold must be a finite positive number (a boolean or quoted string such as
+`"0.040"` is rejected).
+
+These thresholds are assessment coordinates, not training identity. Editing
+only a warning/hard replay threshold, a role ceiling, or the committee policy
+re-assesses the already-sealed training roots from their preserved
+checkpoints - reusing every measurement whose exact evaluation identity is
+unchanged - and never relaunches TRAIN2. Generated configs carry
+`[acceptance].post_selection_checkpoint_policy_generation = "p5_target_replay_v2"`;
+an older generated config without it is migrated (`0.045/0.045/0.030` and
+replay `30.0` become the current defaults, with a notice), while a custom
+historical one-number replay budget must be migrated by hand. Training roots
+from before this change are reused in place (never renamed or rewritten) when
+their training semantics are provably identical; `cross-validate` and
+`train-production` then publish new current assessments over them.
 
 For foundation fine-tuning (`naive_fine_tuning` and `multihead_replay`) the
 training objective is fixed: pinned MACE's native `UniversalLoss` with

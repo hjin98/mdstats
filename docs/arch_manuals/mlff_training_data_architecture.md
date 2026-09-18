@@ -1,21 +1,22 @@
 ---
 title: "mdstats MLFF Training-Data Architecture"
 artifact_level: "D3 software architecture and integration"
-status: "current normative D3 architecture"
-accepted_date: "2026-09-15"
+status: "proposed D3 renewal candidate pending independent review"
+accepted_current_baseline_date: "2026-09-15"
+candidate_date: "2026-09-18"
 ---
 
 # mdstats MLFF Training-Data Architecture (D3)
 
 ## 1. Purpose and authority
 
-This manual is the current D3 software-architecture authority for the machine-learned force-field (MLFF) branch of mdstats. It replaces the former pre-SSDP architecture manual that mixed scientific formulation, numerical algorithms, software architecture, and source-specific implementation detail in one document family.
+This branch carries a proposed D3 renewal of the MLFF software architecture. Until the renewed candidate passes the required independent D3 Review and is accepted-current, the accepted baseline remains the pre-renewal canonical architecture. The candidate preserves that baseline except for the explicitly reviewed replay-retention/target-admissibility ownership/currentness cutover described here. It continues the post-SSDP separation from the former mixed scientific/numerical/architecture manual.
 
-The current authority chain is directional:
+The layered authority chain is directional; for D3 this branch carries the proposed replacement while the pre-renewal revision remains accepted-current until Gate D closes:
 
 1. **D1 - scientific/mathematical authority:** `docs/methods/mlff_scientific_method.md`, with `docs/methods/mlff_target_training_order_scientific_method.md` as the accepted scoped owner for `TargetTrainingOrder` / `pi_train` scientific meaning.
 2. **D2 - numerical/algorithmic authority:** `docs/methods/mlff_numerical_algorithmic_method.md`, with `docs/methods/mlff_target_training_order_numerical_algorithmic_method.md` as the accepted scoped owner for target-training-order numerics.
-3. **D3 - software architecture/integration authority:** this manual and the detailed chapter set under `docs/arch_manuals/mlff_training_data/`, including `45_target_training_order.md` as the canonical detailed D3 owner for the restored target-order subsystem.
+3. **D3 - software architecture/integration authority:** the accepted-current pre-renewal revision of this manual/chapter set; this branch revision is the proposed replacement candidate. `45_target_training_order.md` remains the unchanged canonical detailed D3 owner for the restored target-order subsystem.
 4. **D4 - exact specification/concretization authority:** `docs/specs/training_data/` and the implementation owners it indexes.
 
 D3 owns subsystem decomposition, dependency and control flow, lifecycle boundaries, interfaces, durable state and currentness, persistence/recovery, concurrency/resource topology, deployment seams, and architectural compatibility. D3 may restate a D1/D2 consequence where local comprehension requires it, but such restatement is not independently tunable authority.
@@ -138,45 +139,33 @@ Monitor construction and protected-relation qualification are distinct ordered o
 
 Replay monitoring remains a separate replay-domain product.
 
+
 ## 9. Training, replay, CV, and production integration
 
-Target and replay remain distinct evidence domains. Replay construction is owned by preparation; post-selection consumers authenticate prepared replay authority rather than silently rebuilding its scientific split or label policy. Canonical replay omission resolves TRUE_DFT; explicit pseudo replay remains opt-in and requires independent TRUE_DFT replay monitoring.
+Target and replay remain distinct evidence domains. Replay construction is owned by preparation; post-selection consumers authenticate prepared replay authority rather than rebuilding its scientific split or label policy. Canonical replay omission resolves TRUE_DFT; explicit pseudo replay remains opt-in and requires independent TRUE_DFT replay monitoring.
 
-The MACE adapter is the one dependency-facing execution seam and resolves method realization by authenticated mode. P3 screening keeps its accepted weighted complete-batch path; P5 scratch keeps its separately accepted weighted method; naive and multihead foundation P5 realize the accepted native UniversalLoss method and foundation exposure geometry. No global loss switch may change an unaffected method family.
+The P5 training path separates four dependency classes: a training-only method plus pre-fit `TrainingTrajectoryIdentity` derived from already-available training-bearing inputs; descendant fitted preparation/materialization/fixed-budget TRAIN2 whose exact realized preparation/runtime state is authenticated separately for continuation; assessment-independent `EvaluationMeasurementIdentity` records for target/replay numerical measurements; role hard-decision plus D2.DEF.059A policy for per-run checkpoint assessment/representative, with D2.DEF.059B reserved for aggregate final publication; and a replay-warning diagnostic policy whose descendants are reports only.
 
-Foundation P5 remains on the qualified single-process path. Its deterministic two-head exposure binds replay/`pt_head` first then target before shuffle, no implicit target duplication, and accepted `drop_last=true` geometry. A distributed foundation path requires separate D2-equivalence acceptance.
+Assessment-only edits cannot change a TRAIN2 trajectory. Every governed durable checkpoint is assessed before P5 representative selection. Foundation-P5 within-run selection is the strict D2 lexicographic minimum `(target RMSE, epoch, checkpoint SHA-256)` over hard-admissible checkpoints. For `single_best_final_seed`, frozen seed representatives are ordered by `(target RMSE, optimizer seed, checkpoint SHA-256)`. `all_qualified_final_seeds` remains unranked.
 
-Checkpoint selection, CV, and final production are separate owners. Held-out CV evidence cannot select its own checkpoint. Final production is a fresh lineage and cannot warm-start from a screen or CV checkpoint.
+Foundation generated/default target thresholds are `75/75/50 meV/angstrom` for CV checkpoint, default-force CV outer acceptance, and production checkpoint quality respectively. Replay warning/hard generated defaults are `50/100 meV/angstrom`. The warning has no hard-decision edge. Alternative CV outer metrics keep their own accepted units/default resolution.
 
-Per-size descendants bind a role-neutral target binding. Role-specific horizons/policies then descend independently, preventing unrelated production-budget changes from contaminating already accepted CV identity.
+Final production uses the same common target monitor as accepted CV. Current CV authorization is required for current final assessment/publication. A historically fresh final TRAIN2 trajectory may be reused only after current CV reclosure accepts and exact training-semantic equivalence is proven. M3 remains outside P5 checkpoint/ranking/currentness/publication ancestry.
 
-Final production uses the same common target monitor as accepted CV. M3 is not P5 checkpoint, ranking, plan, currentness, or publication ancestry. M3 remains P3 evidence and may support a separately authorized downstream probe through the P3 owner.
+See `40_training_evaluation.md` for the detailed ownership graph. D1/D2 remain authoritative for the numerical predicates, exact ordering/ties, equivalence relations and failure semantics.
 
-For `single_best_final_seed`, publication consumes only already-frozen admissible representatives and their already-authenticated common-monitor target metric records, reusing the accepted target-only representative-ordering semantics. It performs no second target or M3 evaluation. Publication membership is frozen before downstream qualification.
-
-See `40_training_evaluation.md` for full training/replay/currentness integration. Loss mathematics, replay numerical semantics, fold algorithms, monitor sampling, E0 transfer, checkpoint admissibility, and final-product numerical ordering remain D1/D2 authority; exact dependency arguments, schemas, and source probes remain D4.
 
 ## 10. Execution, restart, storage, and resources
 
-The detailed execution architecture in `60_execution_performance.md` remains D3 authority because process topology, scheduler admission, provider lifetime, persistence/recovery, storage ownership, archival/deduplication, and GPU/VRAM concurrency are software-architecture concerns. Target-order-specific execution/restart/resource ownership is detailed in `45_target_training_order.md` and integrated into that general resource plane.
+The detailed execution architecture in `60_execution_performance.md` remains D3 authority. Parallel/resource adaptation preserves D2 equivalence and cannot alter scientific membership, numerical method, precision policy, label semantics, or accepted foundation-P5 exposure.
 
-The governing invariants are:
+Post-cutover P5 run roots are keyed by the pre-fit training trajectory rather than a full assessment plan. Fitted/materialized training state, generated configuration, checkpoints and runtime history live there as descendants whose exact digests are separately authenticated. Authenticated terminal TRAIN2 seals the existing topology/completion proof before EVAL2. The proof retains opened-descriptor `O_NOFOLLOW`/`fstat` authentication, non-reclaimable manifest/anchor infrastructure, completion independent of assessment-file presence, idempotent proof reuse after cold movement, and fail-closed tamper/root-mismatch behavior. Current CV/final assessments are immutable descendants outside that sealed root and are located through the existing CampaignStore pointer/currentness plane.
 
-- sequential execution is the semantic reference unless D2 explicitly defines otherwise;
-- parallel/distributed execution may change scheduling and resource use only while preserving D1/D2 identities/results within the accepted equivalence contract;
-- accepted progress is immutable evidence while attempt-local scratch remains reclaimable under its execution owner;
-- target-order pre-adoption continuation is authenticated reconstructible prepare-owned build state, not completed-generation currentness;
-- the normal target-order prepared path performs one shared exact NEIGHBOR1 geometry build for FEAS1 and MVIDX;
-- target-order OOC sparse storage preserves bounded anonymous memory, O(1)-in-family-count mapped descriptors, transactional publication, and protected-reference-safe cleanup;
-- providers/processes have explicit lifetime owners and are retired at their ownership boundaries;
-- storage consumes owner-declared views and cannot infer currentness from paths;
-- retention is the transitive closure of current/restartable owner references;
-- ambiguous ownership or unavailable trustworthy resource state fails closed rather than guessing; and
-- resource adaptation may alter concurrency but cannot change scientific membership, numerical method, precision policy, label semantics, or accepted foundation-P5 single-process exposure to fit the machine.
+A policy-only change reuses a training-equivalent root and assessment-independent measurements where D2 equivalence is provable; otherwise only the required EVAL2 measurement is recomputed. Already sealed historical roots are never renamed, copied, symlinked or rewritten. A terminal-but-unsealed historical root has exactly one append-only completion-proof exception under the existing P5 run-activity owner after exact authentication, with no pre-existing byte rewrite. Interrupted legacy training continues only through exact authenticated historical runtime/protocol/preparation ancestry after training-equivalence proof. Legacy roots are never located by store scanning.
 
-Current P5 generations reject materially incompatible old stress/fold-local/M3-P5/from-scratch-E0/target-first/missing-transfer state before restart or publication reuse. Target-order cutover similarly rejects old `candidate_independent_priority.v1` order products as stale/reconstructible rather than migrating their ranks. Generation advancement is narrow: P5-only changes do not blanket-stale unchanged P1/P2/P3 evidence.
+Storage continues to consume owner-declared views. Retention is the transitive closure of current/restartable references. Any EVAL2/reassessment reading a sealed training root holds the existing P5 run-activity exclusion for the full numerical-read interval so archive/dedup/reclamation cannot race it. No second storage plane or reader-lock protocol is introduced.
 
-Exact locks, manifests, schemas, process signals, paths, and source probes are D4 details unless their semantics are explicitly elevated by the D3 contract.
+Production-scale GPU qualification remains deferred to the final complete release package for the user's machine.
 
 ## 11. Downstream qualification boundary
 
@@ -198,31 +187,31 @@ Physical-observable algorithms remain owned by their analysis/method families. Q
 
 See `80_ownership_and_decisions.md` for qualification/storage handoff and extension routing.
 
+
 ## 12. D3 structural invariants
 
 The current architecture must preserve:
 
-1. one current semantic owner for each decision/product;
-2. dependency direction `D1 -> D2 -> D3 -> D4 -> runtime/generated evidence`;
-3. immutable authenticated ancestry for consequential descendants;
-4. one canonical evidence plane between source adapters and MLFF consumers;
-5. one current `P_train` and one complete `TargetTrainingOrder`, with configured `T_N` memberships exact prefixes;
-6. sole `TargetCoverageReference` fitted selector ownership;
-7. one canonical target-order obligation authority, one normal-path exact NEIGHBOR1 construction, MVIDX as sparse representation, and independent MVQUAL;
-8. target-order pre-adoption restart state subordinate to `prepare`/prepared-storage rather than CampaignStore currentness;
-9. distinct target-size screening, post-selection CV, fresh production, and qualification lifecycles;
-10. one current P5 method authority and no competing DATA8 protocol graph;
-11. one external campaign-common target checkpoint monitor shared by current CV and final production;
-12. selected-fold membership limited to train/eval/purge roles;
-13. foundation-P5 fitted preparation bound to selected-head residual and composition-transfer evidence without inert P3 weighting ancestry;
-14. no downstream feedback path that silently changes a frozen upstream decision;
-15. P5 final publication free of M3 selection/currentness ancestry;
-16. final publication membership decided before qualification;
-17. currentness re-established from authoritative parents instead of stale caller state;
-18. execution/storage/resource mechanisms preserving D1/D2 semantics rather than modifying the experiment to fit a machine;
-19. source-specific knowledge localized at adapter/D4 boundaries;
-20. unsupported historical generations remaining historical unless an explicitly accepted migration design exists; and
-21. generated reports/publications remaining descendants rather than becoming independent authority.
+1. one current semantic owner for each decision/product and acyclic D1 -> D2 -> D3 -> D4 dependency direction;
+2. immutable authenticated ancestry for consequential descendants;
+3. one current `P_train` / complete `TargetTrainingOrder` and exact configured prefixes;
+4. one canonical target-order obligation authority, one normal-path exact NEIGHBOR1 build, MVIDX as representation, and independent MVQUAL;
+5. distinct target-size screening, post-selection CV, fresh production, and qualification lifecycles;
+6. one current P5 training-method authority and one acyclic pre-fit training-trajectory/root identity excluding fitted-result descendants and assessment-only policy;
+7. one external campaign-common target checkpoint monitor shared by CV and production;
+8. selected-fold membership limited to train/eval/purge;
+9. assessment-independent numerical measurement identity;
+10. warning-only replay policy isolated from hard decisions;
+11. complete checkpoint assessment plus exact D2.DEF.059A within-run ordering and D2.DEF.059B aggregate publication ordering;
+12. distinct currentness scopes for `tau_CV`, `theta_CV`, `tau_prod`, replay hard/warning policy, 059A per-run selection and 059B publication-only policy; final-seed assessment currentness excludes current-CV authorization and 059B/publication mode;
+13. sealed training-only P5 roots before EVAL2, with assessments external to the root, accepted topology/anchor race-safety and cold-storage invariants preserved, already sealed historical roots read-only, and only the narrow append-only seal exception for terminal-but-unsealed legacy roots;
+14. no in-place historical verdict reclassification and no scalar-only measurement reuse;
+15. current CV reauthorization before reuse of historical final production for current assessment/publication;
+16. P5 final publication free of M3 selection/currentness ancestry and fixed before qualification;
+17. currentness re-established from authoritative parents rather than paths/caller snapshots/scans;
+18. execution/storage/resource mechanisms preserve D1/D2 semantics rather than modifying the experiment to fit a machine;
+19. source-specific knowledge remains localized at adapter/D4 boundaries; and
+20. unsupported historical generations remain historical unless an explicitly accepted narrow migration proves equivalence.
 
 ## 13. Change and challenge routing
 

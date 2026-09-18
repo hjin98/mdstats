@@ -55,7 +55,6 @@ from .neutral_substrate.split_exclusion import (
     frame_split_exclusion_component_membership,
 )
 from .post_selection_cv_acceptance import (
-    CV_FOLD_ACCEPTANCE_SCHEMA_V1,
     CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE,
     CvCampaignAcceptance,
     CvFoldAcceptance,
@@ -63,7 +62,7 @@ from .post_selection_cv_acceptance import (
     accept_post_selection_cv_campaign,
     build_cv_fold_acceptance,
     require_cv_acceptance_for_method,
-    select_cv_fold_representative,
+    select_post_selection_representative,
 )
 from .post_selection_cv_plan import (
     PostSelectionCvPlan,
@@ -75,6 +74,9 @@ from .post_selection_cv_plan import (
 from .post_selection_execution import (
     DATASET_ROLE_CHECKPOINT_MONITOR,
     DATASET_ROLE_OUTER_EVALUATION,
+    RUN_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE,
+    RUN_OUTCOME_REPRESENTATIVE_SELECTED,
+    EvaluationMeasurementIdentity,
     MacePostSelectionTrainer,
     PostSelectionCancelledError,
     PostSelectionExecutionError,
@@ -92,7 +94,9 @@ from .post_selection_execution import (
     materialize_post_selection_run,
     resolve_foundation_residual_inputs,
     post_selection_checkpoint_candidates,
+    post_selection_eval_role_digest,
     post_selection_runtime_plan,
+    write_outer_evaluation_transport,
 )
 from .bounded_inference import execution_batch_width
 from .post_selection_identity import (
@@ -101,9 +105,12 @@ from .post_selection_identity import (
     POST_SELECTION_REPLAY_HEAD_NAME,
     POST_SELECTION_TARGET_HEAD_NAME,
     PostSelectionMethodIdentity,
+    RETIRED_ASSESSMENT_ONLY_METHOD_FIELDS,
     compute_replay_lineage_digest,
+    cv_assessment_position_policy_digest,
     cv_training_budget_policy,
     final_production_training_budget_policy,
+    final_seed_assessment_policy_digest,
     post_selection_checkpoint_admissibility,
     resolve_cv_validation_policy_identity,
     resolve_final_production_policy_identity,
@@ -123,22 +130,43 @@ from .post_selection_publication import (
     resolve_current_final_production_publication,
 )
 from .post_selection_store import (
+    ASSESSMENT_ROLE_CV_FOLD,
+    ASSESSMENT_ROLE_FINAL_SEED,
+    POINTER_ASSESSMENT_POSITION,
     POINTER_CV_ACCEPTANCE,
     POINTER_CV_PLAN,
     POINTER_FINAL_PLAN,
+    POINTER_FINAL_PUBLICATION,
+    assessment_position_digest,
     open_post_selection_store,
     post_selection_publication_barrier,
     post_selection_root,
     publish_current_post_selection_pointer,
+    read_current_post_selection_pointer,
     resolve_current_post_selection_record,
 )
 
-#: ``(run evidence, assessed candidate records, representative, outer metrics)``
-#: of one executed run.  Evidence and representative are absent together, and
-#: only for a cross-validation fold whose candidates were all inadmissible.
-PostSelectionRunResult = tuple[
-    PostSelectionRunEvidence | None, tuple[Any, ...], Any | None, Any | None
-]
+@dataclass(frozen=True, slots=True)
+class PostSelectionRunResult:
+    """The assessment inputs of one evaluated run, before any assessment record.
+
+    ``candidates`` is the complete ordered (by epoch) checkpoint universe
+    assessed under the current hard policy; ``representative`` is its strict
+    D2.DEF.059A minimum or ``None`` when no candidate is hard-admissible.
+    ``measurements`` are every immutable measurement identity/metric record the
+    candidates, representative and held-out evaluation bind; they are durably
+    published before any assessment that references them.
+    """
+
+    training_root_identity: str
+    materialization: Any
+    runtime_summary_digest: str
+    candidates: tuple[Any, ...]
+    representative: Any | None
+    monitor_metrics: Any | None
+    outer_metrics: Any | None
+    measurements: tuple[Any, ...]
+    diagnostics: Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,7 +190,7 @@ class PostSelectionContext:
     # Every frozen selected size of this campaign generation.  The common target
     # monitor is separated from all of them, so it never depends on one size.
     governed_selected: tuple[CurrentSelectedTrainingContext, ...] = ()
-    _baseline_replay_cache: dict[str, float] = field(
+    _baseline_replay_cache: dict[str, Any] = field(
         default_factory=dict, repr=False, compare=False
     )
     _common_monitor_cache: dict[str, Any] = field(
@@ -485,6 +513,9 @@ def build_post_selection_contexts(
         )
     policies = resolve_post_selection_method_policies(cfg, config_dir=paths.config_dir)
     method = resolve_post_selection_method_identity(cfg, policies=policies)
+    configuration = policies.checkpoint_policy_configuration
+    for notice in () if configuration is None else configuration.migration_notices:
+        print(f"[P5 config] {notice}", flush=True)
     contexts = []
     for selected in selected_contexts:
         cv_max_num_epochs = None
@@ -509,7 +540,9 @@ def build_post_selection_contexts(
                     training_mode=policies.training_mode,
                 ),
                 production_policy=resolve_final_production_policy_identity(
-                    cfg, max_num_epochs=production_max_num_epochs
+                    cfg,
+                    max_num_epochs=production_max_num_epochs,
+                    training_mode=policies.training_mode,
                 ),
                 trainer=resolved_trainer,
                 inference_evaluator=inference_evaluator,
@@ -740,6 +773,198 @@ def _retire_post_selection_provider(provider: Any) -> None:
         provider.close()
 
 
+def _checkpoint_provider_realization(context: PostSelectionContext) -> dict[str, Any]:
+    """Numerically material realization of the TRAIN2 checkpoint provider."""
+
+    policies = context.method_policies
+    return {
+        "provider": "mdstats.p5-train2-checkpoint-mace-provider.v1",
+        "default_dtype": str(policies.default_dtype),
+        "device": str(policies.device),
+        "acceleration_backend": str(policies.acceleration_backend),
+        "forward_realization": (
+            "native" if context.inference_evaluator is None else "external_override"
+        ),
+    }
+
+
+def _foundation_provider_realization(context: PostSelectionContext) -> dict[str, Any]:
+    """Numerically material realization of the foundation baseline provider."""
+
+    policies = context.method_policies
+    return {
+        "provider": "mdstats.p5-foundation-baseline-mace-provider.v1",
+        "default_dtype": str(policies.default_dtype),
+        "device": str(policies.device),
+        "acceleration_backend": "e3nn",
+        "forward_realization": (
+            "native" if context.inference_evaluator is None else "external_override"
+        ),
+    }
+
+
+def _checkpoint_model_state(checkpoint_sha256: str, evaluation_model_state: str) -> dict[str, Any]:
+    return {
+        "kind": "train2_checkpoint",
+        "checkpoint_sha256": validate_digest(str(checkpoint_sha256), name="checkpoint_sha256"),
+        "evaluation_model_state": str(evaluation_model_state),
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class _ReusableMeasurements:
+    """Candidate/outer measurement records offered for exact-equivalence reuse.
+
+    Sources are only already-published immutable records reached by following
+    existing locators; nothing is found by scanning.  An offered record is used
+    only when its bound measurement identity equals the one the current
+    experiment derives - scalar equality is never evidence.
+    """
+
+    candidates: Mapping[str, Any] = field(default_factory=dict)
+    outer_by_checkpoint: Mapping[str, Any] = field(default_factory=dict)
+
+
+def _stored_metric(store: Any, digest_value: str | None) -> Any | None:
+    from .eval2 import Eval2TargetMetricRecord
+
+    if digest_value is None or not store.has(digest_value):
+        return None
+    return store.get(digest_value, Eval2TargetMetricRecord.from_dict)
+
+
+def authenticated_post_selection_candidate_records(
+    context: PostSelectionContext,
+    *,
+    candidate_record_digests: Sequence[str],
+    runtime_summary_digest: str,
+    representative_record_digest: str | None = None,
+) -> tuple[Any, ...]:
+    """Authenticate the complete durable candidate universe for one outcome.
+
+    A run assessment is not current merely because its selected record and
+    monitor metric can be read.  The outcome was decided from every TRAIN2
+    checkpoint, so every referenced candidate, its target metric, measurement
+    identity, and any replay metrics must still be present and internally
+    consistent.  This is deliberately a read through the existing evidence
+    store; it creates no second candidate index or alternate authority.
+    """
+
+    from .eval2 import Eval2CheckpointRecord, Eval2TargetMetricRecord
+
+    digests = tuple(
+        validate_digest(str(value), name="candidate_record_digest")
+        for value in candidate_record_digests
+    )
+    if not digests or len(set(digests)) != len(digests):
+        raise PostSelectionError(
+            "A current post-selection outcome must bind a non-empty unique "
+            "candidate-record set."
+        )
+    # The outcome's terminal runtime-summary digest and each checkpoint's
+    # trajectory-point runtime-summary digest are distinct authenticated
+    # records.  The former closes TRAIN2; the latter describes the checkpoint
+    # observation that became a candidate.  Both are required, but they are
+    # not expected to be byte-identical.
+    validate_digest(str(runtime_summary_digest), name="runtime_summary_digest")
+    store = context.evidence_store
+    records: list[Any] = []
+    for candidate_digest in digests:
+        try:
+            record = store.get(candidate_digest, Eval2CheckpointRecord.from_dict)
+        except Exception as exc:  # noqa: BLE001 - unreadable evidence is stale
+            raise PostSelectionError(
+                "A current post-selection outcome references an unreadable "
+                f"candidate record {candidate_digest[:12]}...; rerun the assessment."
+            ) from exc
+        if record.content_digest != candidate_digest:
+            raise PostSelectionError(
+                "A post-selection candidate record was resolved under a different "
+                "content identity."
+            )
+        if record.evaluation_record_digest != record.target_metrics.content_digest:
+            raise PostSelectionError(
+                "A post-selection candidate does not bind its embedded target "
+                "metric record."
+            )
+        try:
+            target_metric = store.get(
+                record.evaluation_record_digest, Eval2TargetMetricRecord.from_dict
+            )
+            store.get(
+                record.target_metrics.target_role_digest,
+                EvaluationMeasurementIdentity.from_dict,
+            )
+        except Exception as exc:  # noqa: BLE001 - incomplete evidence is stale
+            raise PostSelectionError(
+                "A post-selection candidate is missing its durable target metric "
+                "or assessment-independent measurement identity."
+            ) from exc
+        if target_metric.content_digest != record.target_metrics.content_digest:
+            raise PostSelectionError(
+                "A post-selection candidate's stored target metric differs from "
+                "the metric embedded in its candidate record."
+            )
+        for metric_digest in (
+            record.replay_candidate_metric_record_digest,
+            record.replay_foundation_metric_record_digest,
+        ):
+            if metric_digest is None:
+                continue
+            try:
+                replay_metric = store.get(
+                    metric_digest, Eval2TargetMetricRecord.from_dict
+                )
+                store.get(
+                    replay_metric.target_role_digest,
+                    EvaluationMeasurementIdentity.from_dict,
+                )
+            except Exception as exc:  # noqa: BLE001 - incomplete evidence is stale
+                raise PostSelectionError(
+                    "A post-selection candidate is missing a durable replay metric "
+                    "or measurement identity."
+                ) from exc
+        records.append(record)
+
+    checkpoint_digests = tuple(
+        record.trajectory_point.checkpoint_sha256 for record in records
+    )
+    if len(set(checkpoint_digests)) != len(checkpoint_digests):
+        raise PostSelectionError(
+            "A post-selection outcome binds more than one candidate record to the "
+            "same checkpoint bytes."
+        )
+    if representative_record_digest is not None:
+        representative_digest = validate_digest(
+            str(representative_record_digest),
+            name="representative_record_digest",
+        )
+        if representative_digest not in digests:
+            raise PostSelectionError(
+                "A post-selection representative is outside the complete candidate "
+                "set."
+            )
+        representative = next(
+            record for record in records if record.content_digest == representative_digest
+        )
+        if not representative.admissible:
+            raise PostSelectionError(
+                "A post-selection representative record is not admissible under its "
+                "own persisted candidate outcome."
+            )
+    return tuple(records)
+
+
+def _publishable_measurement(
+    identity: EvaluationMeasurementIdentity, metrics: Any
+) -> tuple[Any, Any]:
+    if metrics.target_role_digest != identity.content_digest:
+        raise PostSelectionExecutionError(
+            "An EVAL2 metric record does not bind the measurement identity it claims."
+        )
+    return identity, metrics
+
+
 def evaluate_post_selection_run_candidates(
     context: PostSelectionContext,
     *,
@@ -751,17 +976,20 @@ def evaluate_post_selection_run_candidates(
     summary: Any,
     monitor_frame_uids: Sequence[str],
     replay_resolution: Any,
-) -> tuple[Any, tuple[Any, ...], Any | None, Any | None]:
-    """Evaluate the run's checkpoint candidates and freeze its representative.
+    training_root_identity: str,
+    reusable: _ReusableMeasurements | None = None,
+) -> tuple[tuple[Any, ...], Any | None, Any | None, tuple[Any, ...]]:
+    """Assess every governed checkpoint and freeze the strict representative.
 
-    This is the one implementation of "which checkpoint does this run publish,
-    and what were its exact M3 target metrics".  It returns the catalog, every
-    assessed candidate record, and the representative with its monitor metrics;
-    the last two are ``None`` exactly when every candidate failed mandatory
-    admissibility, which the caller owns interpreting for its run role.  It is used both while a run
-    executes and when an already completed run's durable representative records
-    have to be recovered, so recovery re-evaluates through the real EVAL2 owner
-    instead of reconstructing evidence from stored digests.
+    Hard admissibility is composed here, after authenticated TRAIN2, and not
+    before.  Every catalogued checkpoint becomes a candidate.  For each one the
+    assessment-independent measurement identities are derived first (common
+    monitor, candidate TRUE_DFT replay, foundation replay baseline); a
+    previously published measurement is reused only when its bound identity is
+    exactly equal, otherwise the measurement is recomputed from the preserved
+    authenticated checkpoint.  The representative is the D2.DEF.059A minimum
+    over hard-admissible candidates, or ``None``.  Returned measurements must be
+    published before any assessment binds them.
     """
 
     from .eval2 import assess_eval2_checkpoint
@@ -778,190 +1006,220 @@ def evaluate_post_selection_run_candidates(
     from .target_size_execution import target_size_evaluation_model_state
 
     evaluation_model_state = target_size_evaluation_model_state(optimizer_policy)
+    offered = reusable or _ReusableMeasurements()
+    store = context.evidence_store
+    metric_policy = _eval2_target_metric_policy_digest()
+    checkpoint_realization = _checkpoint_provider_realization(context)
 
     candidates = post_selection_checkpoint_candidates(
-        run_plan=run_plan,
+        run_identity=training_root_identity,
         checkpoint_directory=checkpoint_directory,
         runtime_plan=runtime_plan,
     )
-    catalog = _checkpoint_catalog(run_plan, checkpoint_directory)
+    catalog = _checkpoint_catalog(training_root_identity, checkpoint_directory)
     monitor_blocks = _component_block_ids(selected, monitor_frame_uids)
-    selection_policy = context.method_policies.checkpoint_selection
+    monitor_artifact = materialization.checkpoint_monitor_artifact
+
+    replay_monitor_artifact = None
+    replay_monitor_path = None
+    replay_blocks: tuple[str, ...] = ()
+    baseline_identity = None
+    if admissibility.replay_enabled:
+        if replay_resolution is None or replay_resolution.monitor_artifact is None:
+            raise PostSelectionError("Missing required TRUE_DFT replay monitor artifact.")
+        replay_monitor_artifact = replay_resolution.monitor_artifact
+        replay_monitor_path = Path(replay_resolution.monitor_path)
+        if not replay_monitor_path.is_file():
+            raise PostSelectionError(
+                f"TRUE_DFT replay monitor file is missing: {replay_monitor_path}"
+            )
+        if sha256_file_cached(replay_monitor_path) != replay_monitor_artifact.sha256:
+            raise PostSelectionError("TRUE_DFT replay monitor file bytes changed on disk.")
+        replay_blocks = tuple(
+            f"replay_block_{i}" for i in range(replay_monitor_artifact.configuration_count)
+        )
+        foundation_identity = context.method_policies.foundation_potential_identity
+        if context.method_policies.foundation_model is None or foundation_identity is None:
+            # A replay baseline without authenticated foundation identity has
+            # nothing scientific to key on; a runtime locator is not identity.
+            raise PostSelectionExecutionError(
+                "Replay admissibility evaluation requires a configured, canonically "
+                "identified foundation model."
+            )
+        baseline_identity = post_selection_eval_role_digest(
+            dataset_role="replay_monitor_baseline",
+            artifact=replay_monitor_artifact,
+            model_state={
+                "kind": "foundation_checkpoint",
+                "foundation_content_digest": foundation_identity.canonical_content_digest,
+                "foundation_head": context.method_policies.foundation_head,
+            },
+            provider_realization=_foundation_provider_realization(context),
+            prediction_head=context.method_policies.foundation_head,
+            metric_policy_digest=metric_policy,
+            block_ids=replay_blocks,
+        )
+
+    measurements: list[Any] = []
+    baseline_metrics = None
     records = []
-    monitor_metrics_by_identity: dict[str, Any] = {}
     for point in candidates:
         checkpoint = catalog.checkpoint_by_sha256(point.checkpoint_sha256)
-        provider, _evaluated = authenticate_post_selection_provider(
-            materialization=materialization,
-            materialization_directory=material_directory,
-            checkpoint_directory=checkpoint_directory,
-            checkpoint_name=Path(checkpoint.relative_path).name,
-            checkpoint_sha256=checkpoint.sha256,
-            checkpoint_epoch=getattr(checkpoint, "epoch", None),
-            summary=summary,
-            evaluation_model_state=evaluation_model_state,
-            allow_forward_override=context.inference_evaluator is not None,
-            foundation_model_path=context.method_policies.foundation_model,
+        model_state = _checkpoint_model_state(checkpoint.sha256, evaluation_model_state)
+        monitor_identity = post_selection_eval_role_digest(
+            dataset_role=DATASET_ROLE_CHECKPOINT_MONITOR,
+            artifact=monitor_artifact,
+            model_state=model_state,
+            provider_realization=checkpoint_realization,
+            prediction_head=runtime_plan.target_head_name,
+            metric_policy_digest=metric_policy,
+            block_ids=monitor_blocks,
         )
-        replay_candidate_rmse = None
-        replay_foundation_rmse = None
-        replay_label_mode = None
-        try:
-            metrics = evaluate_post_selection_dataset(
-                run_plan=run_plan,
-                artifact=materialization.checkpoint_monitor_artifact,
-                dataset_role=DATASET_ROLE_CHECKPOINT_MONITOR,
-                root_directory=material_directory,
-                provider=provider,
-                block_ids=monitor_blocks,
-                execution_batch_width=batch_width,
-                extxyz_policy=extxyz_policy,
-                inference_evaluator=context.inference_evaluator,
+        replay_identity = (
+            None
+            if replay_monitor_artifact is None
+            else post_selection_eval_role_digest(
+                dataset_role="replay_monitor",
+                artifact=replay_monitor_artifact,
+                model_state=model_state,
+                provider_realization=checkpoint_realization,
+                prediction_head=runtime_plan.target_head_name,
+                metric_policy_digest=metric_policy,
+                block_ids=replay_blocks,
             )
-            if admissibility.replay_enabled:
+        )
+        prior = offered.candidates.get(point.checkpoint_sha256)
+        metrics = None
+        candidate_replay = None
+        if prior is not None and prior.trajectory_point == point:
+            if prior.target_metrics.target_role_digest == monitor_identity.content_digest:
+                metrics = prior.target_metrics
+            if replay_identity is not None:
+                reused = _stored_metric(store, prior.replay_candidate_metric_record_digest)
                 if (
-                    replay_resolution is None
-                    or replay_resolution.monitor_artifact is None
+                    reused is not None
+                    and reused.target_role_digest == replay_identity.content_digest
                 ):
-                    raise PostSelectionError(
-                        "Missing required TRUE_DFT replay monitor artifact."
+                    candidate_replay = reused
+                if baseline_metrics is None:
+                    reused = _stored_metric(
+                        store, prior.replay_foundation_metric_record_digest
                     )
-                replay_monitor_artifact = replay_resolution.monitor_artifact
-                replay_monitor_path = Path(replay_resolution.monitor_path)
-                if not replay_monitor_path.is_file():
-                    raise PostSelectionError(
-                        f"TRUE_DFT replay monitor file is missing: {replay_monitor_path}"
-                    )
-                if (
-                    sha256_file_cached(replay_monitor_path)
-                    != replay_monitor_artifact.sha256
-                ):
-                    raise PostSelectionError(
-                        "TRUE_DFT replay monitor file bytes changed on disk."
-                    )
-
-                replay_blocks = tuple(
-                    f"replay_block_{i}"
-                    for i in range(replay_monitor_artifact.configuration_count)
-                )
-                candidate_replay_metrics = evaluate_post_selection_dataset(
-                    run_plan=run_plan,
-                    artifact=replay_monitor_artifact,
-                    dataset_role="replay_monitor",
-                    root_directory=replay_monitor_path.parent,
-                    provider=provider,
-                    block_ids=replay_blocks,
-                    execution_batch_width=batch_width,
-                    extxyz_policy=extxyz_policy,
-                    inference_evaluator=context.inference_evaluator,
-                )
-                replay_candidate_rmse = (
-                    candidate_replay_metrics.force_component_rmse_ev_per_angstrom
-                )
-        finally:
-            _retire_post_selection_provider(provider)
-
-        if admissibility.replay_enabled:
-            foundation_identity = (
-                context.method_policies.foundation_potential_identity
+                    if (
+                        reused is not None
+                        and reused.target_role_digest == baseline_identity.content_digest
+                    ):
+                        baseline_metrics = reused
+        needs_provider = metrics is None or (
+            replay_identity is not None and candidate_replay is None
+        )
+        if needs_provider:
+            provider, _evaluated = authenticate_post_selection_provider(
+                materialization=materialization,
+                materialization_directory=material_directory,
+                checkpoint_directory=checkpoint_directory,
+                checkpoint_name=Path(checkpoint.relative_path).name,
+                checkpoint_sha256=checkpoint.sha256,
+                checkpoint_epoch=getattr(checkpoint, "epoch", None),
+                summary=summary,
+                evaluation_model_state=evaluation_model_state,
+                allow_forward_override=context.inference_evaluator is not None,
+                foundation_model_path=context.method_policies.foundation_model,
             )
-            foundation_model = context.method_policies.foundation_model
-            foundation_head = context.method_policies.foundation_head
-            if foundation_model is None:
-                raise PostSelectionExecutionError(
-                    "Replay admissibility evaluation requires a configured foundation model."
-                )
-
-            if foundation_identity is None:
-                # A foundation-backed replay evaluation without authenticated
-                # foundation identity has nothing scientific to key its baseline
-                # on.  Substituting the runtime locator would reintroduce
-                # location into what is content/head identity.
-                raise PostSelectionExecutionError(
-                    "Replay admissibility evaluation requires canonical "
-                    "foundation identity."
-                )
-            foundation_content_digest = foundation_identity.canonical_content_digest
-            cache_key = digest(
-                {
-                    "foundation_content_digest": foundation_content_digest,
-                    "foundation_head": foundation_head,
-                    "monitor_sha256": replay_monitor_artifact.sha256,
-                    "monitor_digest": (
-                        getattr(replay_monitor_artifact, "content_digest", None)
-                        or getattr(
-                            replay_monitor_artifact, "logical_digest", None
-                        )
-                    ),
-                    "eval2_metric_policy_digest": _eval2_target_metric_policy_digest(),
-                    "default_dtype": (
-                        context.method_policies.default_dtype
-                    ),
-                    "device": context.method_policies.device,
-                }
-            )
-            if cache_key in context._baseline_replay_cache:
-                replay_foundation_rmse = context._baseline_replay_cache[
-                    cache_key
-                ]
-            else:
-                from .post_selection_execution import (
-                    build_post_selection_foundation_baseline_provider,
-                )
-
-                baseline_provider = build_post_selection_foundation_baseline_provider(
-                    foundation_path=foundation_model,
-                    foundation_identity=foundation_identity,
-                    foundation_head=foundation_head,
-                    device=context.method_policies.device,
-                    default_dtype=context.method_policies.default_dtype,
-                )
-                try:
-                    baseline_replay_metrics = evaluate_post_selection_dataset(
-                        run_plan=run_plan,
+            try:
+                if metrics is None:
+                    metrics = evaluate_post_selection_dataset(
+                        measurement=monitor_identity,
+                        artifact=monitor_artifact,
+                        dataset_role=DATASET_ROLE_CHECKPOINT_MONITOR,
+                        root_directory=material_directory,
+                        provider=provider,
+                        block_ids=monitor_blocks,
+                        execution_batch_width=batch_width,
+                        extxyz_policy=extxyz_policy,
+                        inference_evaluator=context.inference_evaluator,
+                    )
+                if replay_identity is not None and candidate_replay is None:
+                    candidate_replay = evaluate_post_selection_dataset(
+                        measurement=replay_identity,
                         artifact=replay_monitor_artifact,
-                        dataset_role="replay_monitor_baseline",
+                        dataset_role="replay_monitor",
                         root_directory=replay_monitor_path.parent,
-                        provider=baseline_provider,
+                        provider=provider,
                         block_ids=replay_blocks,
                         execution_batch_width=batch_width,
                         extxyz_policy=extxyz_policy,
                         inference_evaluator=context.inference_evaluator,
                     )
-                finally:
-                    _retire_post_selection_provider(baseline_provider)
-                replay_foundation_rmse = (
-                    baseline_replay_metrics.force_component_rmse_ev_per_angstrom
-                )
-                context._baseline_replay_cache[cache_key] = (
-                    replay_foundation_rmse
-                )
-            replay_label_mode = "true_dft"
+            finally:
+                _retire_post_selection_provider(provider)
+        measurements.append(_publishable_measurement(monitor_identity, metrics))
+        if replay_identity is not None:
+            measurements.append(_publishable_measurement(replay_identity, candidate_replay))
+            if baseline_metrics is None:
+                cache = context._baseline_replay_cache
+                cached = cache.get(baseline_identity.content_digest)
+                if cached is not None:
+                    baseline_metrics = cached
+                else:
+                    from .post_selection_execution import (
+                        build_post_selection_foundation_baseline_provider,
+                    )
 
+                    baseline_provider = build_post_selection_foundation_baseline_provider(
+                        foundation_path=context.method_policies.foundation_model,
+                        foundation_identity=(
+                            context.method_policies.foundation_potential_identity
+                        ),
+                        foundation_head=context.method_policies.foundation_head,
+                        device=context.method_policies.device,
+                        default_dtype=context.method_policies.default_dtype,
+                    )
+                    try:
+                        baseline_metrics = evaluate_post_selection_dataset(
+                            measurement=baseline_identity,
+                            artifact=replay_monitor_artifact,
+                            dataset_role="replay_monitor_baseline",
+                            root_directory=replay_monitor_path.parent,
+                            provider=baseline_provider,
+                            block_ids=replay_blocks,
+                            execution_batch_width=batch_width,
+                            extxyz_policy=extxyz_policy,
+                            inference_evaluator=context.inference_evaluator,
+                        )
+                    finally:
+                        _retire_post_selection_provider(baseline_provider)
+                cache[baseline_identity.content_digest] = baseline_metrics
+            measurements.append(_publishable_measurement(baseline_identity, baseline_metrics))
         record = assess_eval2_checkpoint(
             point,
             evaluation_record_digest=metrics.content_digest,
             target_metrics=metrics,
             admissibility_policy=admissibility,
-            replay_candidate_force_rmse_ev_per_angstrom=replay_candidate_rmse,
-            replay_foundation_force_rmse_ev_per_angstrom=replay_foundation_rmse,
-            replay_label_mode=replay_label_mode,
+            replay_candidate_force_rmse_ev_per_angstrom=(
+                None
+                if candidate_replay is None
+                else candidate_replay.force_component_rmse_ev_per_angstrom
+            ),
+            replay_foundation_force_rmse_ev_per_angstrom=(
+                None
+                if baseline_metrics is None
+                else baseline_metrics.force_component_rmse_ev_per_angstrom
+            ),
+            replay_label_mode=None if candidate_replay is None else "true_dft",
+            replay_candidate_metric_record_digest=(
+                None if candidate_replay is None else candidate_replay.content_digest
+            ),
+            replay_foundation_metric_record_digest=(
+                None if baseline_metrics is None else baseline_metrics.content_digest
+            ),
         )
         records.append(record)
-        monitor_metrics_by_identity[record.stable_candidate_identity] = metrics
 
-    representative = select_cv_fold_representative(
-        records,
-        selection_policy=selection_policy,
-        seed_material_digest=run_plan.content_digest,
-    )
-    if representative is None:
-        return catalog, tuple(records), None, None
-    monitor_metrics = monitor_metrics_by_identity[
-        representative.stable_candidate_identity
-    ]
-
-    return catalog, tuple(records), representative, monitor_metrics
+    ordered = tuple(sorted(records, key=lambda item: item.trajectory_point.epoch))
+    representative = select_post_selection_representative(ordered)
+    monitor_metrics = None if representative is None else representative.target_metrics
+    return ordered, representative, monitor_metrics, tuple(measurements)
 
 
 def _abort_post_selection_run_if_cancelled(
@@ -987,6 +1245,39 @@ def _abort_post_selection_run_if_cancelled(
         )
 
 
+@dataclass(frozen=True, slots=True)
+class _TrainingRoot:
+    """Where one run's training bytes live, and under which identity.
+
+    For every post-cutover run the root is ``runs/<training trajectory>``.  A
+    legacy root is used only through the one-time historical derivation, which
+    proves training equivalence from authenticated stored evidence; its name
+    is the historical full-plan-derived run identity and is never renamed.
+    """
+
+    path: Path
+    identity: str
+    legacy: Any | None = None
+
+
+def resolve_post_selection_training_root(
+    context: PostSelectionContext, run_plan: Any
+) -> _TrainingRoot:
+    """Resolve the current or (one-time) legacy training root of a run position."""
+
+    root = (
+        post_selection_root(context.paths, context.selected.binding.campaign_generation)
+        / "runs"
+        / run_plan.run_identity
+    )
+    if root.is_dir() and any(root.iterdir()):
+        return _TrainingRoot(path=root, identity=run_plan.run_identity)
+    legacy = resolve_legacy_training_root(context, run_plan)
+    if legacy is not None:
+        return _TrainingRoot(path=legacy.root, identity=legacy.root.name, legacy=legacy)
+    return _TrainingRoot(path=root, identity=run_plan.run_identity)
+
+
 def execute_post_selection_run(
     context: PostSelectionContext,
     *,
@@ -1001,28 +1292,28 @@ def execute_post_selection_run(
     progress_observer: Callable[[Mapping[str, Any]], None] | None = None,
     telemetry_ref: Any | None = None,
     stop_after_training: bool = False,
+    reusable: _ReusableMeasurements | None = None,
 ) -> PostSelectionRunResult | None:
-    """Run one post-selection job end to end and return its bound evidence.
+    """Train (if needed), seal, then evaluate one run; publish nothing.
 
-    Order matters and is enforced by construction: the representative is frozen
-    from the run's own monitor before the held-out outer data is evaluated at
-    all, so outer evidence cannot influence the checkpoint it judges.
+    Order is enforced by construction.  An unsealed root trains under its
+    pre-fit trajectory until authenticated terminal TRAIN2, and is then sealed
+    as a training-only root *before* EVAL2.  A sealed root is never written
+    again: EVAL2 reads it read-only under the same run-activity lease, so
+    archive/dedup/reclamation cannot move its bytes mid-evaluation.  The
+    representative is frozen from the common monitor before any held-out
+    transport exists; held-out EXTXYZ is realized only afterwards, in bounded
+    attempt scratch outside the root.  Fresh held-out identity/metric evidence
+    is committed before that scratch is reclaimed; the caller publishes the
+    remaining returned measurements and assessment outside this lease.
 
-    A cross-validation run whose checkpoint candidates are all inadmissible
-    returns no run evidence, no representative and no outer metrics - only its
-    candidate records - because there is no checkpoint to judge.  A
-    final-production run in that state cannot publish anything and fails.
-
-    ``stop_after_training`` ends the call at the authenticated TRAIN2 summary
-    and returns ``None``. That summary and its materialization are already
-    durable, so a later call with the same arguments resumes through the
-    existing continuation path and performs EVAL2 without retraining. The TRAIN
-    scheduler uses this so one training slot owns TRAIN2 accelerator lifetime
-    only and never carries post-TRAIN EVAL2 work.
+    ``stop_after_training`` ends at the sealed terminal boundary and returns
+    ``None``; the TRAIN scheduler uses it so a training slot never carries EVAL2.
     """
 
-    run_root = context.run_root(run_plan.run_identity)
-    with post_selection_run_activity_lease(run_root):
+    root = resolve_post_selection_training_root(context, run_plan)
+    root.path.mkdir(parents=True, exist_ok=True)
+    with post_selection_run_activity_lease(root.path):
         return _execute_post_selection_run_locked(
             context,
             run_plan=run_plan,
@@ -1030,13 +1321,14 @@ def execute_post_selection_run(
             training_frame_uids=training_frame_uids,
             monitor_frame_uids=monitor_frame_uids,
             outer_evaluation_frame_uids=outer_evaluation_frame_uids,
-            run_root=run_root,
+            root=root,
             progress_context=progress_context,
             cancellation_event=cancellation_event,
             progress_callback=progress_callback,
             progress_observer=progress_observer,
             telemetry_ref=telemetry_ref,
             stop_after_training=stop_after_training,
+            reusable=reusable,
         )
 
 
@@ -1050,8 +1342,6 @@ _POST_SELECTION_MATERIALIZATION_FILES = frozenset(
         "target_train.extxyz.manifest.json",
         "checkpoint_monitor.extxyz",
         "checkpoint_monitor.extxyz.manifest.json",
-        "outer_evaluation.extxyz",
-        "outer_evaluation.extxyz.manifest.json",
     }
 )
 
@@ -1210,7 +1500,6 @@ def _materialization_allowed_nodes(
         for artifact_name, artifact in (
             ("target training artifact", record.target_train_artifact),
             ("checkpoint-monitor artifact", record.checkpoint_monitor_artifact),
-            ("outer-evaluation artifact", record.outer_evaluation_artifact),
         ):
             if artifact is None:
                 continue
@@ -1485,11 +1774,10 @@ def _validate_post_selection_materialization_artifacts(
     record: PostSelectionMaterialization,
     training_frame_uids: Sequence[str],
     monitor_frame_uids: Sequence[str],
-    outer_evaluation_frame_uids: Sequence[str] | None,
     preparation: Any,
     extxyz_policy: Any,
 ) -> None:
-    """Re-authenticate DATA8 role artifacts before treating a record as owned."""
+    """Re-authenticate the training-only DATA8 artifacts before treating a record as owned."""
 
     expected = [
         (
@@ -1507,29 +1795,6 @@ def _validate_post_selection_materialization_artifacts(
             None,
         ),
     ]
-    outer_frames = () if outer_evaluation_frame_uids is None else tuple(
-        str(value) for value in outer_evaluation_frame_uids
-    )
-    if outer_frames:
-        if record.outer_evaluation_artifact is None:
-            _post_selection_recovery_error(
-                "P5 materialization is missing its required outer-evaluation artifact."
-            )
-        expected.append(
-            (
-                "outer evaluation",
-                record.outer_evaluation_artifact,
-                "outer_evaluation",
-                outer_frames,
-                None,
-            )
-        )
-    elif record.outer_evaluation_artifact is not None:
-        _post_selection_recovery_error(
-            "P5 materialization carries an outer-evaluation artifact for a run "
-            "that has no outer-evaluation membership."
-        )
-
     from .target_size_execution import validate_target_size_extxyz_artifact
 
     authorities = selected.authorities
@@ -1576,7 +1841,6 @@ def _classify_post_selection_materialization(
     run_root: Path,
     training_frame_uids: Sequence[str],
     monitor_frame_uids: Sequence[str],
-    outer_evaluation_frame_uids: Sequence[str] | None,
     preparation: Any,
     optimizer_policy: Any,
     extxyz_policy: Any,
@@ -1595,11 +1859,11 @@ def _classify_post_selection_materialization(
 
     if any(
         (run_root / name).exists() or (run_root / name).is_symlink()
-        for name in RUN_TERMINAL_RECORD_NAMES
+        for name in (*RUN_TERMINAL_RECORD_NAMES, RUN_COMPLETION_ANCHOR_FILENAME)
     ):
         _post_selection_recovery_error(
-            "P5 run root already carries terminal evidence; refusing to re-enter "
-            "its materialization recovery path."
+            "P5 run root already carries terminal evidence or a completion seal; "
+            "refusing to re-enter its materialization recovery path."
         )
     if material_directory.is_symlink():
         _post_selection_recovery_error(
@@ -1654,14 +1918,13 @@ def _classify_post_selection_materialization(
         )
 
     if (
-        record.run_plan_digest != run_plan.content_digest
-        or record.run_identity != run_plan.run_identity
+        record.training_trajectory_identity != run_plan.training_trajectory_identity
         or record.preparation_digest != preparation.content_digest
         or Path(record.output_directory).resolve() != material_directory.resolve()
     ):
         _post_selection_recovery_error(
             "P5 materialization is internally valid but belongs to a different "
-            "run, plan, preparation, or output directory; preserving it."
+            "training trajectory, preparation, or output directory; preserving it."
         )
     _validate_post_selection_materialization_artifacts(
         context.selected,
@@ -1669,7 +1932,6 @@ def _classify_post_selection_materialization(
         record=record,
         training_frame_uids=training_frame_uids,
         monitor_frame_uids=monitor_frame_uids,
-        outer_evaluation_frame_uids=outer_evaluation_frame_uids,
         preparation=preparation,
         extxyz_policy=extxyz_policy,
     )
@@ -1722,7 +1984,7 @@ def _classify_post_selection_materialization(
         )
 
     expected_config = _post_selection_mace_config(
-        run_identity=run_plan.run_identity,
+        run_identity=run_plan.training_trajectory_identity,
         optimizer_seed=run_plan.optimizer_seed,
         planned_epochs=run_plan.planned_epochs,
         preparation=preparation,
@@ -1788,7 +2050,8 @@ def _fit_post_selection_run_preparation(
     membership.  A fresh run acquires them once and publishes them into its
     materialization before any other artifact; a recovering run re-fits from
     that immutable record rather than repeating accelerator inference.  The
-    common monitor's and held-out frames are governed transfer consumers.
+    common monitor's and held-out frames are governed transfer consumers whose
+    geometry only (the label-blind composition projection) is inspected.
     """
 
     policy = context.method_policies.preparation
@@ -1847,12 +2110,59 @@ def _fit_post_selection_run_preparation(
     return fit_post_selection_preparation(
         context.selected,
         membership=training,
-        owner_plan_digest=run_plan.content_digest,
+        training_trajectory_identity=run_plan.training_trajectory_identity,
         preparation_policy=policy,
         foundation_residual_inputs=inputs,
         common_monitor_record_digest=monitor_digest,
         consumer_frame_uids=consumers,
     )
+
+
+def _post_selection_runtime_plan_for(
+    context: PostSelectionContext,
+    *,
+    run_plan: Any,
+    budget_policy: Any,
+    optimizer_policy: Any,
+    structures_per_epoch: int,
+    replay_resolution: Any | None,
+) -> Any:
+    return post_selection_runtime_plan(
+        method=context.method,
+        optimizer_policy=optimizer_policy,
+        budget_policy=budget_policy,
+        structures_per_epoch=int(structures_per_epoch),
+        learning_rate_policy=context.method_policies.learning_rate_schedule,
+        replay_monitor_enabled=context.method_policies.replay_enabled,
+        true_replay_monitor_sha256=(
+            replay_resolution.monitor_artifact.sha256
+            if replay_resolution is not None
+            else None
+        ),
+        target_head_name=context.method_policies.target_head_name,
+        replay_head_name=context.method_policies.replay_head_name,
+    )
+
+
+def _training_replay_resolution(context: PostSelectionContext) -> Any | None:
+    """Replay execution comes from the training method/replay lineage only.
+
+    No checkpoint-decision policy is consulted: whether TRAIN2 trains a replay
+    head and monitors TRUE_DFT replay is a property of the training method, so
+    a changed hard/warning/target/selection policy cannot block or alter
+    training recovery.
+    """
+
+    if not context.method_policies.replay_enabled:
+        return None
+    replay_resolution = _resolve_post_selection_replay_resolution(
+        context, require_train=True
+    )
+    if replay_resolution is None or replay_resolution.monitor_artifact is None:
+        raise PostSelectionError(
+            "Could not resolve TRUE_DFT replay monitor artifact for replay-enabled run."
+        )
+    return replay_resolution
 
 
 def _prepare_post_selection_run(
@@ -1863,26 +2173,17 @@ def _prepare_post_selection_run(
     training_frame_uids: Sequence[str],
     monitor_frame_uids: Sequence[str],
     outer_evaluation_frame_uids: Sequence[str] | None,
+    run_root: Path,
 ) -> _PostSelectionRunSetup:
-    """Authenticate one run's recoverable state without changing its files."""
+    """Authenticate one unsealed run's recoverable state without changing files."""
 
-    material_directory = context.run_root(run_plan.run_identity) / "materialization"
-    checkpoint_directory = context.run_root(run_plan.run_identity) / "checkpoints"
+    material_directory = run_root / "materialization"
+    checkpoint_directory = run_root / "checkpoints"
     optimizer_policy = _optimizer_policy_for(
         context, seed=run_plan.optimizer_seed, planned_epochs=run_plan.planned_epochs
     )
     extxyz_policy = context.method_policies.extxyz
-    # Authenticate the run's role-effective admissibility before any training.
-    admissibility = context.checkpoint_admissibility(run_plan)
-    replay_resolution = None
-    if admissibility.replay_enabled:
-        replay_resolution = _resolve_post_selection_replay_resolution(
-            context, require_train=True
-        )
-        if replay_resolution is None or replay_resolution.monitor_artifact is None:
-            raise PostSelectionError(
-                "Could not resolve TRUE_DFT replay monitor artifact for replay-enabled run."
-            )
+    replay_resolution = _training_replay_resolution(context)
 
     # A durable materialization is fitted from current authority in memory
     # before it is authenticated or replaced. This is the same recovery
@@ -1899,24 +2200,17 @@ def _prepare_post_selection_run(
             outer_evaluation_frame_uids=outer_evaluation_frame_uids,
             acquire_residual_inputs=False,
         )
-    runtime_plan = post_selection_runtime_plan(
-        method=context.method,
-        optimizer_policy=optimizer_policy,
+    runtime_plan = _post_selection_runtime_plan_for(
+        context,
+        run_plan=run_plan,
         budget_policy=budget_policy,
+        optimizer_policy=optimizer_policy,
         structures_per_epoch=(
             len(preparation.membership)
             if preparation is not None
             else len(tuple(str(value) for value in training_frame_uids))
         ),
-        learning_rate_policy=context.method_policies.learning_rate_schedule,
-        replay_monitor_enabled=admissibility.replay_enabled,
-        true_replay_monitor_sha256=(
-            replay_resolution.monitor_artifact.sha256
-            if replay_resolution is not None
-            else None
-        ),
-        target_head_name=context.method_policies.target_head_name,
-        replay_head_name=context.method_policies.replay_head_name,
+        replay_resolution=replay_resolution,
     )
     continuation_summary, start_epoch = _authenticate_post_selection_continuation(
         checkpoint_directory,
@@ -1926,10 +2220,9 @@ def _prepare_post_selection_run(
         context,
         run_plan=run_plan,
         material_directory=material_directory,
-        run_root=context.run_root(run_plan.run_identity),
+        run_root=run_root,
         training_frame_uids=training_frame_uids,
         monitor_frame_uids=monitor_frame_uids,
-        outer_evaluation_frame_uids=outer_evaluation_frame_uids,
         preparation=preparation,
         optimizer_policy=optimizer_policy,
         extxyz_policy=extxyz_policy,
@@ -1950,7 +2243,112 @@ def _prepare_post_selection_run(
     )
 
 
-def _execute_post_selection_run_locked(
+@dataclass(frozen=True, slots=True)
+class _SealedTrainingState:
+    """The authenticated read-only training state of one sealed root."""
+
+    material_directory: Path
+    checkpoint_directory: Path
+    materialization: Any
+    summary: Any
+    runtime_plan: Any
+    replay_resolution: Any | None
+
+
+def _authenticate_sealed_training_root(
+    context: PostSelectionContext,
+    *,
+    run_plan: Any,
+    budget_policy: Any,
+    root: _TrainingRoot,
+    completion: Any,
+) -> _SealedTrainingState:
+    """Authenticate a sealed training root for EVAL2 without writing to it.
+
+    The compact completion anchor's TRAIN2 terminal proof names the exact
+    runtime summary and materialization it sealed; both are re-read and must
+    reproduce those digests, the materialization must belong to this run's
+    training trajectory, and the summary must belong to the runtime plan the
+    current training method derives.  Nothing here publishes, locks, or
+    creates a node beneath the root.
+    """
+
+    from .train2_runtime import load_train2_runtime_summary
+
+    if root.legacy is not None:
+        return _authenticate_legacy_sealed_training_root(
+            context,
+            run_plan=run_plan,
+            budget_policy=budget_policy,
+            root=root,
+            completion=completion,
+        )
+    proof = completion.terminal_proof
+    if proof is None:
+        _post_selection_recovery_error(
+            "A post-cutover training root carries a pre-cutover assessment-coupled "
+            "completion proof; its training identity is not current."
+        )
+    material_directory = root.path / "materialization"
+    checkpoint_directory = root.path / "checkpoints"
+    try:
+        payload = _load_owner_record(material_directory / "materialization.json")
+        materialization = PostSelectionMaterialization.from_dict(payload)
+    except Exception as exc:
+        _post_selection_recovery_error(
+            "Sealed training root materialization does not authenticate.", exc
+        )
+    if (
+        materialization.content_digest != proof["materialization_digest"]
+        or materialization.training_trajectory_identity
+        != run_plan.training_trajectory_identity
+    ):
+        _post_selection_recovery_error(
+            "Sealed training root materialization is not the one its completion "
+            "proof sealed for this training trajectory."
+        )
+    try:
+        summary = load_train2_runtime_summary(checkpoint_directory)
+    except Exception as exc:
+        _post_selection_recovery_error(
+            "Sealed training root TRAIN2 summary does not authenticate.", exc
+        )
+    if summary.content_digest != proof["runtime_summary_digest"]:
+        _post_selection_recovery_error(
+            "Sealed training root TRAIN2 summary is not the terminal summary its "
+            "completion proof sealed."
+        )
+    replay_resolution = _training_replay_resolution(context)
+    optimizer_policy = _optimizer_policy_for(
+        context, seed=run_plan.optimizer_seed, planned_epochs=run_plan.planned_epochs
+    )
+    runtime_plan = _post_selection_runtime_plan_for(
+        context,
+        run_plan=run_plan,
+        budget_policy=budget_policy,
+        optimizer_policy=optimizer_policy,
+        structures_per_epoch=int(materialization.target_train_artifact.configuration_count),
+        replay_resolution=replay_resolution,
+    )
+    if (
+        summary.plan_digest != runtime_plan.content_digest
+        or proof["runtime_plan_digest"] != runtime_plan.content_digest
+    ):
+        _post_selection_recovery_error(
+            "Sealed training root was trained under a different TRAIN2 runtime plan "
+            "than the current training method derives; it is not this trajectory."
+        )
+    return _SealedTrainingState(
+        material_directory=material_directory,
+        checkpoint_directory=checkpoint_directory,
+        materialization=materialization,
+        summary=summary,
+        runtime_plan=runtime_plan,
+        replay_resolution=replay_resolution,
+    )
+
+
+def _train_post_selection_run(
     context: PostSelectionContext,
     *,
     run_plan: Any,
@@ -1959,14 +2357,13 @@ def _execute_post_selection_run_locked(
     monitor_frame_uids: Sequence[str],
     outer_evaluation_frame_uids: Sequence[str] | None,
     run_root: Path,
-    progress_context: Mapping[str, Any] | None = None,
-    cancellation_event: Any | None = None,
-    progress_callback: Callable[[str], None] | None = None,
-    progress_observer: Callable[[Mapping[str, Any]], None] | None = None,
-    telemetry_ref: Any | None = None,
-    stop_after_training: bool = False,
-) -> PostSelectionRunResult | None:
-    """The run body, executed while this run root's activity lease is held."""
+    progress_context: Mapping[str, Any] | None,
+    cancellation_event: Any | None,
+    progress_callback: Callable[[str], None] | None,
+    progress_observer: Callable[[Mapping[str, Any]], None] | None,
+    telemetry_ref: Any | None,
+) -> None:
+    """Train one unsealed root to authenticated terminal TRAIN2, then seal it."""
 
     from ._campaign_cli_core import _cfg
 
@@ -1980,17 +2377,15 @@ def _execute_post_selection_run_locked(
         training_frame_uids=training_frame_uids,
         monitor_frame_uids=monitor_frame_uids,
         outer_evaluation_frame_uids=outer_evaluation_frame_uids,
+        run_root=run_root,
     )
     material_directory = setup.material_directory
     checkpoint_directory = setup.checkpoint_directory
     optimizer_policy = setup.optimizer_policy
-    extxyz_policy = setup.extxyz_policy
     replay_resolution = setup.replay_resolution
     preparation = setup.preparation
     runtime_plan = setup.runtime_plan
     continuation_summary = setup.continuation_summary
-    start_epoch = setup.start_epoch
-    rebuild_materialization = setup.rebuild_materialization
     # Finish any detached scratch left by an earlier interrupted invocation
     # before entering the next canonical transition.  The helper refuses to
     # touch a scratch destination while its canonical namespace is present,
@@ -2001,7 +2396,7 @@ def _execute_post_selection_run_locked(
             run_root / canonical_name,
             canonical_name=canonical_name,
         )
-    if rebuild_materialization:
+    if setup.rebuild_materialization:
         # The classifier has established that this is local, run-owned,
         # nonterminal scratch.  The live namespace is detached before any
         # recursive reclaim, so an interruption cannot expose a partially
@@ -2030,9 +2425,9 @@ def _execute_post_selection_run_locked(
         method=context.method,
         training_frame_uids=training_frame_uids,
         monitor_frame_uids=monitor_frame_uids,
-        outer_evaluation_frame_uids=outer_evaluation_frame_uids,
+        transfer_consumer_frame_uids=tuple(outer_evaluation_frame_uids or ()),
         optimizer_policy=optimizer_policy,
-        extxyz_policy=extxyz_policy,
+        extxyz_policy=setup.extxyz_policy,
         output_directory=material_directory,
         preparation=preparation,
         objective=context.method_policies.objective,
@@ -2052,9 +2447,8 @@ def _execute_post_selection_run_locked(
     if continuation_summary is not None and (
         continuation_summary.completed_epochs == runtime_plan.execution_epoch_limit
     ):
-        # A crash after the last durable epoch but before EVAL2/terminal
-        # publication can reuse the fully authenticated summary without asking
-        # the trainer seam to perform a zero-epoch call.
+        # A crash after the last durable epoch but before the seal can reuse
+        # the fully authenticated summary without a zero-epoch trainer call.
         summary = continuation_summary
     else:
         # The last boundary before the trainer takes ownership of a child
@@ -2072,7 +2466,7 @@ def _execute_post_selection_run_locked(
                 materialization_directory=material_directory,
                 checkpoint_directory=checkpoint_directory,
                 optimizer_policy=optimizer_policy,
-                start_epoch=start_epoch,
+                start_epoch=setup.start_epoch,
                 foundation_identity=context.method_policies.foundation_potential_identity,
                 foundation_model_path=(
                     Path(context.method_policies.foundation_model)
@@ -2131,117 +2525,997 @@ def _execute_post_selection_run_locked(
         raise PostSelectionExecutionError(
             "The TRAIN2 runtime summary does not belong to this run's runtime plan."
         )
+    if int(summary.completed_epochs) != int(runtime_plan.budget_policy.planned_epochs):
+        raise PostSelectionExecutionError(
+            "Fixed-budget TRAIN2 did not reach its terminal epoch; the training root "
+            "is not sealable."
+        )
+    # The realized training records are evidence outside the root; the seal is
+    # the root's own create-once completion proof, taken under the run lease.
+    store = context.evidence_store
+    store.put(preparation)
+    store.put(materialization)
+    record_post_selection_training_completion(
+        run_root,
+        runtime_summary=summary,
+        runtime_plan_digest=runtime_plan.content_digest,
+        materialization_digest=materialization.content_digest,
+    )
 
+
+def _execute_post_selection_run_locked(
+    context: PostSelectionContext,
+    *,
+    run_plan: Any,
+    budget_policy: Any,
+    training_frame_uids: Sequence[str],
+    monitor_frame_uids: Sequence[str],
+    outer_evaluation_frame_uids: Sequence[str] | None,
+    root: _TrainingRoot,
+    progress_context: Mapping[str, Any] | None = None,
+    cancellation_event: Any | None = None,
+    progress_callback: Callable[[str], None] | None = None,
+    progress_observer: Callable[[Mapping[str, Any]], None] | None = None,
+    telemetry_ref: Any | None = None,
+    stop_after_training: bool = False,
+    reusable: _ReusableMeasurements | None = None,
+) -> PostSelectionRunResult | None:
+    """The run body, executed while the training root's activity lease is held."""
+
+    completion, _why = read_post_selection_run_completion(root.path)
+    if completion is None:
+        if root.legacy is not None:
+            _complete_legacy_training_root(
+                context,
+                run_plan=run_plan,
+                budget_policy=budget_policy,
+                root=root,
+                progress_context=progress_context,
+                cancellation_event=cancellation_event,
+                progress_callback=progress_callback,
+                progress_observer=progress_observer,
+                telemetry_ref=telemetry_ref,
+            )
+        else:
+            _train_post_selection_run(
+                context,
+                run_plan=run_plan,
+                budget_policy=budget_policy,
+                training_frame_uids=training_frame_uids,
+                monitor_frame_uids=monitor_frame_uids,
+                outer_evaluation_frame_uids=outer_evaluation_frame_uids,
+                run_root=root.path,
+                progress_context=progress_context,
+                cancellation_event=cancellation_event,
+                progress_callback=progress_callback,
+                progress_observer=progress_observer,
+                telemetry_ref=telemetry_ref,
+            )
+        completion, why = read_post_selection_run_completion(root.path)
+        if completion is None:
+            raise PostSelectionExecutionError(
+                f"Training root {root.identity[:12]}... is not sealed after terminal "
+                f"TRAIN2: {why}"
+            )
     if stop_after_training:
-        # TRAIN2 ownership ends here. The authenticated summary, checkpoints,
-        # and materialization are the durable boundary; no additional handoff
-        # record is created, and an interruption before EVAL2 resumes from them.
+        # TRAIN2 ownership ends at the sealed terminal boundary; an interruption
+        # before EVAL2 resumes from the seal without any trainer launch.
         return None
 
-    catalog, candidates, representative, monitor_metrics = (
+    sealed = _authenticate_sealed_training_root(
+        context,
+        run_plan=run_plan,
+        budget_policy=budget_policy,
+        root=root,
+        completion=completion,
+    )
+    candidates, representative, monitor_metrics, measurements = (
         evaluate_post_selection_run_candidates(
             context,
             run_plan=run_plan,
-            runtime_plan=runtime_plan,
-            materialization=materialization,
-            material_directory=material_directory,
-            checkpoint_directory=checkpoint_directory,
-            summary=summary,
+            runtime_plan=sealed.runtime_plan,
+            materialization=sealed.materialization,
+            material_directory=sealed.material_directory,
+            checkpoint_directory=sealed.checkpoint_directory,
+            summary=sealed.summary,
             monitor_frame_uids=monitor_frame_uids,
-            replay_resolution=replay_resolution,
+            replay_resolution=sealed.replay_resolution,
+            training_root_identity=root.identity,
+            reusable=reusable,
         )
     )
-    store = context.evidence_store
-    if representative is None:
-        reasons = sorted(
-            {reason for item in candidates for reason in item.rejection_reasons}
-        )
-        if str(getattr(run_plan, "run_role", "")) != "post_selection_cv":
-            raise PostSelectionError(
-                f"No checkpoint of run {run_plan.run_identity[:12]}... passed "
-                "mandatory admissibility (production checkpoint target-force "
-                "ceiling "
-                f"{context.production_policy.checkpoint_maximum_target_force_rmse_ev_per_angstrom}"
-                f" eV/angstrom); rejection reasons: {reasons}. An "
-                "inadmissible checkpoint is never promoted to a representative."
-            )
-        # The fold's scientific result is decided by these records alone, so
-        # they are published as the durable candidate evidence its verdict
-        # binds. No representative exists, so no outer evaluation happens.
-        store.put(preparation)
-        store.put(materialization)
-        for record in candidates:
-            store.put(record)
-        return None, candidates, None, None
-
     outer_metrics = None
-    if outer_evaluation_frame_uids:
-        checkpoint = catalog.checkpoint_by_sha256(
-            representative.trajectory_point.checkpoint_sha256
+    outer_measurements: tuple[Any, ...] = ()
+    if representative is not None and outer_evaluation_frame_uids:
+        outer_metrics, outer_measurements = _evaluate_held_out_representative(
+            context,
+            run_plan=run_plan,
+            root=root,
+            sealed=sealed,
+            representative=representative,
+            outer_evaluation_frame_uids=outer_evaluation_frame_uids,
+            reusable=reusable,
         )
+    diagnostics = build_post_selection_checkpoint_diagnostics(
+        context,
+        run_plan=run_plan,
+        candidates=candidates,
+        representative=representative,
+    )
+    return PostSelectionRunResult(
+        training_root_identity=root.identity,
+        materialization=sealed.materialization,
+        runtime_summary_digest=sealed.summary.content_digest,
+        candidates=candidates,
+        representative=representative,
+        monitor_metrics=monitor_metrics,
+        outer_metrics=outer_metrics,
+        measurements=measurements + outer_measurements,
+        diagnostics=diagnostics,
+    )
+
+
+def _evaluate_held_out_representative(
+    context: PostSelectionContext,
+    *,
+    run_plan: Any,
+    root: _TrainingRoot,
+    sealed: _SealedTrainingState,
+    representative: Any,
+    outer_evaluation_frame_uids: Sequence[str],
+    reusable: _ReusableMeasurements | None,
+) -> tuple[Any, tuple[Any, ...]]:
+    """Measure the frozen representative on its held-out fold, outside the root.
+
+    The held-out EXTXYZ is realized only now, after D2.DEF.059A froze the
+    representative, in bounded attempt-local scratch that is not beneath any
+    training root.  A fresh measurement is committed to the existing evidence
+    store before this call returns, so the ``TemporaryDirectory`` cleanup is
+    downstream of durable measurement publication.  Its exact membership,
+    serialized label/reference bytes and transport policy enter the immutable
+    measurement identity - the scratch locator does not - so a later retry may
+    regenerate identical transport and reuse the published measurement.
+    """
+
+    import tempfile
+
+    from .target_size_execution import target_size_evaluation_model_state
+
+    optimizer_policy = _optimizer_policy_for(
+        context,
+        seed=run_plan.optimizer_seed,
+        planned_epochs=run_plan.planned_epochs,
+    )
+    evaluation_model_state = target_size_evaluation_model_state(optimizer_policy)
+    checkpoint_sha256 = representative.trajectory_point.checkpoint_sha256
+    frames = tuple(str(value) for value in outer_evaluation_frame_uids)
+    blocks = _component_block_ids(context.selected, frames)
+    offered = reusable or _ReusableMeasurements()
+    with tempfile.TemporaryDirectory(prefix="mdstats-p5-eval2-held-out-") as scratch:
+        scratch_path = Path(scratch).resolve()
+        if root.path.resolve() in (scratch_path, *scratch_path.parents):
+            raise PostSelectionExecutionError(
+                "Held-out EVAL2 transport must be realized outside the training root."
+            )
+        artifact = write_outer_evaluation_transport(
+            context.selected,
+            scratch_directory=scratch_path,
+            frame_uids=frames,
+            extxyz_policy=context.method_policies.extxyz,
+        )
+        identity = post_selection_eval_role_digest(
+            dataset_role=DATASET_ROLE_OUTER_EVALUATION,
+            artifact=artifact,
+            model_state=_checkpoint_model_state(checkpoint_sha256, evaluation_model_state),
+            provider_realization=_checkpoint_provider_realization(context),
+            prediction_head=sealed.runtime_plan.target_head_name,
+            metric_policy_digest=_eval2_target_metric_policy_digest(),
+            block_ids=blocks,
+        )
+        prior = offered.outer_by_checkpoint.get(checkpoint_sha256)
+        if prior is not None and prior.target_role_digest == identity.content_digest:
+            # The offered metric and its identity were read from the durable
+            # evidence store before this attempt; no caller-side write is
+            # needed for a reusable measurement.
+            return prior, ()
+        catalog = _checkpoint_catalog(root.identity, sealed.checkpoint_directory)
+        checkpoint = catalog.checkpoint_by_sha256(checkpoint_sha256)
         provider, _evaluated = authenticate_post_selection_provider(
-            materialization=materialization,
-            materialization_directory=material_directory,
-            checkpoint_directory=checkpoint_directory,
+            materialization=sealed.materialization,
+            materialization_directory=sealed.material_directory,
+            checkpoint_directory=sealed.checkpoint_directory,
             checkpoint_name=Path(checkpoint.relative_path).name,
             checkpoint_sha256=checkpoint.sha256,
             checkpoint_epoch=getattr(checkpoint, "epoch", None),
-            summary=summary,
-            evaluation_model_state=resolve_post_selection_evaluation_model_state(
-                context,
-                seed=run_plan.optimizer_seed,
-                planned_epochs=run_plan.planned_epochs,
-            ),
+            summary=sealed.summary,
+            evaluation_model_state=evaluation_model_state,
             allow_forward_override=context.inference_evaluator is not None,
             foundation_model_path=context.method_policies.foundation_model,
         )
         try:
-            outer_metrics = evaluate_post_selection_dataset(
-                run_plan=run_plan,
-                artifact=materialization.outer_evaluation_artifact,
+            metrics = evaluate_post_selection_dataset(
+                measurement=identity,
+                artifact=artifact,
                 dataset_role=DATASET_ROLE_OUTER_EVALUATION,
-                root_directory=material_directory,
+                root_directory=scratch_path,
                 provider=provider,
-                block_ids=_component_block_ids(selected, outer_evaluation_frame_uids),
+                block_ids=blocks,
                 execution_batch_width=execution_batch_width(optimizer_policy),
-                extxyz_policy=extxyz_policy,
+                extxyz_policy=context.method_policies.extxyz,
                 inference_evaluator=context.inference_evaluator,
             )
         finally:
             _retire_post_selection_provider(provider)
+        measurement = _publishable_measurement(identity, metrics)
+        # The attempt-local transport must still be live at both immutable
+        # object writes.  This is the existing content-addressed evidence owner;
+        # no scratch locator or publication marker becomes durable currentness.
+        store = context.evidence_store
+        store.put(measurement[0])
+        store.put(measurement[1])
+    # The fresh outer identity and metric are already durable.  Keeping them
+    # out of the later generic publication pass avoids a redundant write while
+    # leaving monitor/candidate evidence on that existing path.
+    return metrics, ()
 
-    evidence = PostSelectionRunEvidence(
-        run_plan_digest=run_plan.content_digest,
-        run_identity=run_plan.run_identity,
-        run_role=run_plan.run_role,
-        materialization_digest=materialization.content_digest,
-        preparation_digest=preparation.content_digest,
-        runtime_summary_digest=summary.content_digest,
-        representative_candidate_identity=representative.stable_candidate_identity,
-        representative_checkpoint_sha256=(
-            representative.trajectory_point.checkpoint_sha256
-        ),
-        representative_record_digest=representative.content_digest,
-        monitor_metric_record_digest=monitor_metrics.content_digest,
-        outer_metric_record_digest=(
-            None if outer_metrics is None else outer_metrics.content_digest
+
+def publish_post_selection_run_measurements(
+    context: PostSelectionContext, result: PostSelectionRunResult
+) -> None:
+    """Durably publish every measurement and candidate before any assessment.
+
+    Measurement identities are published as their own authenticated records so
+    each metric record's bound numerical experiment is inspectable without the
+    run or any plan.  Diagnostics are published too, but nothing references
+    them: warning evidence is never an assessment parent.
+    """
+
+    store = context.evidence_store
+    for identity, metrics in result.measurements:
+        store.put(identity)
+        store.put(metrics)
+    for record in result.candidates:
+        store.put(record)
+    store.put(result.diagnostics)
+
+
+def build_post_selection_checkpoint_diagnostics(
+    context: PostSelectionContext,
+    *,
+    run_plan: Any,
+    candidates: Sequence[Any],
+    representative: Any | None,
+) -> Any:
+    """Diagnostic-only per-checkpoint report; also printed in bounded form.
+
+    A representative whose replay degradation exceeds the diagnostic warning
+    threshold is reported as a *warning*, never as a failed run.
+    """
+
+    from .post_selection_execution import (
+        PostSelectionCheckpointDiagnostics,
+        post_selection_checkpoint_diagnostic_rows,
+    )
+
+    hard = context.checkpoint_admissibility(run_plan)
+    warning = context.method_policies.replay_warning_policy
+    rows = post_selection_checkpoint_diagnostic_rows(
+        candidates, hard_policy=hard, warning_policy=warning, representative=representative
+    )
+    diagnostics = PostSelectionCheckpointDiagnostics(
+        training_trajectory_identity=run_plan.training_trajectory_identity,
+        run_role=str(run_plan.run_role),
+        hard_policy=hard.to_dict(),
+        warning_policy=None if warning is None else warning.to_dict(),
+        rows=rows,
+        representative_candidate_identity=(
+            None if representative is None else representative.stable_candidate_identity
         ),
     )
-    store.put(preparation)
-    store.put(materialization)
-    # The exact records that *decided* this run's representative are durable
-    # evidence, not intermediate state.  A later cross-seed publication decision
-    # has to authenticate them rather than reconstruct a ranking from digests.
-    for record in candidates:
-        store.put(record)
-    store.put(monitor_metrics)
-    store.put(evidence)
-    # Final-production evidence is independently restartable. Publish its
-    # run-root proof before the shared scheduler can observe a later sibling
-    # failure; CV still waits for its separate fold-acceptance authority.
-    if str(getattr(run_plan, "run_role", "")) == "final_production":
-        _record_completed_run_evidence(context, run_plan, evidence)
-    return evidence, candidates, representative, outer_metrics
+    if warning is not None:
+        warned = [row for row in rows if row["warning_codes"]]
+        print(
+            f"[EVAL2 replay] run={run_plan.run_identity[:12]}; checkpoints={len(rows)}; "
+            f"warning>{warning.warning_threshold_ev_per_angstrom:g}: {len(warned)}; "
+            f"hard>{hard.replay_degradation_hard_limit_ev_per_angstrom:g} rejected: "
+            f"{sum(1 for row in rows if 'replay_catastrophic_forgetting_limit_exceeded' in row['hard_rejection_reasons'])}",
+            flush=True,
+        )
+        if diagnostics.representative_warning_codes:
+            selected = next(row for row in rows if row["selected"])
+            print(
+                "[EVAL2 replay] WARNING (diagnostic, not a failure): the selected "
+                f"representative epoch {selected['epoch']} has signed replay "
+                f"degradation {selected['replay_degradation_ev_per_angstrom']:.6g} "
+                f"eV/angstrom above the warning threshold "
+                f"{warning.warning_threshold_ev_per_angstrom:g} and within the hard "
+                f"limit {hard.replay_degradation_hard_limit_ev_per_angstrom:g}.",
+                flush=True,
+            )
+    return diagnostics
+
+
+# ---------------------------------------------------------------------------
+# One-time historical (pre-cutover) training reuse
+# ---------------------------------------------------------------------------
+
+
+LEGACY_TRAINING_REUSE_SCHEMA = "mdstats.post-selection-legacy-training-reuse.v1"
+
+
+def _historical_record(store: Any, content_digest: str | None) -> dict[str, Any] | None:
+    """One authenticated store object as raw JSON, without current-schema parsing."""
+
+    if content_digest is None:
+        return None
+    try:
+        value = validate_digest(str(content_digest), name="content_digest")
+    except TrainingDataInputError:
+        return None
+    raw = _load_owner_record(store.object_path(value))
+    if not isinstance(raw, Mapping):
+        return None
+    body = {key: item for key, item in raw.items() if key != "content_digest"}
+    if str(raw.get("content_digest", "")) != value or digest(body) != value:
+        return None
+    return dict(raw)
+
+
+def post_selection_legacy_source_plan_digest(
+    context: PostSelectionContext, *, kind: str
+) -> str | None:
+    """Carry the one authenticated historical plan locator across the cutover.
+
+    It is read from the existing plan pointer *before* a current plan replaces
+    it: a historical (pre-cutover) plan is itself the source; a current plan
+    carries its own already-derived source forward.  Nothing is scanned.
+    """
+
+    from .post_selection_cv_plan import POST_SELECTION_CV_PLAN_SCHEMA_V2
+    from .post_selection_production import FINAL_PRODUCTION_PLAN_SCHEMA_V2
+
+    historical_schema = {
+        POINTER_CV_PLAN: POST_SELECTION_CV_PLAN_SCHEMA_V2,
+        POINTER_FINAL_PLAN: FINAL_PRODUCTION_PLAN_SCHEMA_V2,
+    }[kind]
+    pointer = read_current_post_selection_pointer(
+        context.store, binding=context.selected.binding, kind=kind
+    )
+    raw = _historical_record(context.evidence_store, pointer)
+    if raw is None:
+        return None
+    binding = raw.get("binding")
+    if not isinstance(binding, Mapping) or str(binding.get("content_digest", "")) != (
+        context.selected.binding.content_digest
+    ):
+        return None
+    if raw.get("schema") == historical_schema:
+        return str(pointer)
+    source = raw.get("legacy_source_plan_digest")
+    return None if source is None else str(source)
+
+
+@dataclass(frozen=True, slots=True)
+class LegacyTrainingReuse:
+    """The one immutable per-trajectory reuse binding of a historical root.
+
+    It records the historical root/run identity, the current pre-fit training
+    trajectory, and the exact equivalence proof coordinates.  The root is never
+    renamed, copied, linked or rewritten; this binding only authorizes reading
+    it (and, if terminal-but-unsealed, its one append-only seal, or, if
+    interrupted, continuation under its own historical identities).
+    """
+
+    root: Path
+    run_role: str
+    historical_plan_digest: str
+    historical_run_plan_digest: str
+    historical_method_identity_digest: str
+    training_trajectory_identity: str
+    proof: Mapping[str, Any]
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": LEGACY_TRAINING_REUSE_SCHEMA,
+            "historical_run_root": self.root.name,
+            "run_role": self.run_role,
+            "historical_plan_digest": self.historical_plan_digest,
+            "historical_run_plan_digest": self.historical_run_plan_digest,
+            "historical_method_identity_digest": self.historical_method_identity_digest,
+            "training_trajectory_identity": self.training_trajectory_identity,
+            "proof": dict(self.proof),
+        }
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+
+def resolve_legacy_training_root(
+    context: PostSelectionContext, run_plan: Any
+) -> LegacyTrainingReuse | None:
+    """Prove one historical root training-equivalent to a current trajectory.
+
+    The source is only the authenticated historical plan the current plan
+    carries; the historical root name is the historical full-plan-derived run
+    identity recomputed from it.  Every training-bearing coordinate is compared
+    exactly: the v3 method minus only its two retired assessment-only fields,
+    selected binding, exact gradient membership, seed, horizon, common monitor,
+    replay lineage, and the held-out/monitor label-blind composition identity.
+    Any mismatch returns ``None`` (the run trains fresh under its current
+    trajectory); nothing is inferred from names, mtimes or scans.
+    """
+
+    from .post_selection_cv_plan import PostSelectionCvPlan
+    from .post_selection_identity import historical_method_training_projection
+    from .post_selection_production import FinalProductionPlan
+    from .post_selection_run_identity import post_selection_run_identity
+
+    store = context.evidence_store
+    trajectory = run_plan.training_trajectory
+    cv = str(run_plan.run_role) == PostSelectionRunRole.POST_SELECTION_CV.value
+    try:
+        current_plan = (
+            store.get(run_plan.cv_plan_digest, PostSelectionCvPlan.from_dict)
+            if cv
+            else store.get(run_plan.final_plan_digest, FinalProductionPlan.from_dict)
+        )
+    except Exception:
+        return None
+    source = current_plan.legacy_source_plan_digest
+    historical = _historical_record(store, source)
+    if historical is None:
+        return None
+    binding = historical.get("binding")
+    if not isinstance(binding, Mapping) or str(binding.get("content_digest", "")) != (
+        trajectory.selected_binding_digest
+    ):
+        return None
+    method_payload = _historical_record(store, historical.get("method_identity_digest"))
+    if method_payload is None:
+        return None
+    try:
+        if historical_method_training_projection(method_payload) != (
+            context.method.training_projection()
+        ):
+            return None
+    except TrainingDataSerializationError:
+        return None
+    if (
+        historical.get("common_monitor_record_digest")
+        != trajectory.common_monitor_record_digest
+        or historical.get("replay_lineage_digest") != trajectory.replay_lineage_digest
+    ):
+        return None
+    seed = int(run_plan.optimizer_seed)
+    from .post_selection_execution import transfer_consumer_composition_digest
+
+    monitor_record, _separation = context.common_target_monitor()
+    monitor_uids = tuple(monitor_record.selected_identities)
+    if cv:
+        fold_payload = next(
+            (
+                item
+                for item in historical.get("folds", ())
+                if int(item.get("fold_index", -1)) == int(run_plan.fold_index)
+            ),
+            None,
+        )
+        policy_payload = _historical_record(
+            store, historical.get("cv_policy_identity_digest")
+        )
+        if fold_payload is None or policy_payload is None:
+            return None
+        training_uids = [str(v) for v in fold_payload["training_frame_uids"]]
+        outer_uids = tuple(str(v) for v in fold_payload["outer_evaluation_frame_uids"])
+        if (
+            seed not in {int(v) for v in historical.get("required_cv_seeds", ())}
+            or int(policy_payload.get("cv_max_num_epochs", -1)) != trajectory.planned_epochs
+            or digest({"frame_uids": training_uids}) != trajectory.training_membership_digest
+            or transfer_consumer_composition_digest(
+                context.selected,
+                training_mode=context.method.training_mode,
+                consumer_frame_uids=monitor_uids + outer_uids,
+            )
+            != trajectory.transfer_consumer_composition_digest
+        ):
+            return None
+        historical_run_identity = post_selection_run_identity(
+            role=PostSelectionRunRole.POST_SELECTION_CV,
+            plan_digest=str(source),
+            optimizer_seed=seed,
+            fold_index=int(run_plan.fold_index),
+        )
+        historical_run_plan_digest = digest(
+            {
+                "schema": "mdstats.post-selection-cv-fold-run-plan.v1",
+                "cv_plan_digest": str(source),
+                "method_identity_digest": str(historical["method_identity_digest"]),
+                "cv_policy_identity_digest": str(historical["cv_policy_identity_digest"]),
+                "selected_binding_digest": trajectory.selected_binding_digest,
+                "fold_index": int(run_plan.fold_index),
+                "optimizer_seed": seed,
+                "planned_epochs": trajectory.planned_epochs,
+                "run_role": PostSelectionRunRole.POST_SELECTION_CV.value,
+                "run_identity": historical_run_identity,
+            }
+        )
+    else:
+        if (
+            seed not in {int(v) for v in historical.get("required_final_seeds", ())}
+            or int(historical.get("planned_epochs", -1)) != trajectory.planned_epochs
+            or historical.get("target_membership_digest")
+            != trajectory.training_membership_digest
+            or transfer_consumer_composition_digest(
+                context.selected,
+                training_mode=context.method.training_mode,
+                consumer_frame_uids=monitor_uids,
+            )
+            != trajectory.transfer_consumer_composition_digest
+        ):
+            return None
+        historical_run_identity = post_selection_run_identity(
+            role=PostSelectionRunRole.FINAL_PRODUCTION,
+            plan_digest=str(source),
+            optimizer_seed=seed,
+        )
+        historical_run_plan_digest = digest(
+            {
+                "schema": "mdstats.post-selection-final-production-run-plan.v1",
+                "final_plan_digest": str(source),
+                "method_identity_digest": str(historical["method_identity_digest"]),
+                "final_production_policy_digest": str(
+                    historical["final_production_policy_digest"]
+                ),
+                "selected_binding_digest": trajectory.selected_binding_digest,
+                "optimizer_seed": seed,
+                "planned_epochs": trajectory.planned_epochs,
+                "run_role": PostSelectionRunRole.FINAL_PRODUCTION.value,
+                "run_identity": historical_run_identity,
+            }
+        )
+    root = (
+        post_selection_root(context.paths, context.selected.binding.campaign_generation)
+        / "runs"
+        / historical_run_identity
+    )
+    if root.is_symlink() or not root.is_dir():
+        return None
+    from .train2_runtime import TRAIN2_RUNTIME_SUMMARY_FILENAME
+
+    if not (root / "checkpoints" / TRAIN2_RUNTIME_SUMMARY_FILENAME).is_file():
+        # Without durable TRAIN2 state there is nothing to reuse; a fresh
+        # current trajectory is the admissible path.
+        return None
+    return LegacyTrainingReuse(
+        root=root,
+        run_role=str(run_plan.run_role),
+        historical_plan_digest=str(source),
+        historical_run_plan_digest=historical_run_plan_digest,
+        historical_method_identity_digest=str(historical["method_identity_digest"]),
+        training_trajectory_identity=trajectory.content_digest,
+        proof={
+            "method_training_projection_digest": digest(
+                context.method.training_projection()
+            ),
+            "retired_method_fields": list(RETIRED_ASSESSMENT_ONLY_METHOD_FIELDS),
+            "selected_binding_digest": trajectory.selected_binding_digest,
+            "training_membership_digest": trajectory.training_membership_digest,
+            "optimizer_seed": seed,
+            "planned_epochs": trajectory.planned_epochs,
+            "common_monitor_record_digest": trajectory.common_monitor_record_digest,
+            "replay_lineage_digest": trajectory.replay_lineage_digest,
+            "transfer_consumer_composition_digest": (
+                trajectory.transfer_consumer_composition_digest
+            ),
+        },
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _HistoricalMaterializationView:
+    """Read-only view of one historical v2 materialization record.
+
+    It exposes exactly the training transports and configuration identities
+    the existing trainer/provider owners consume.  The historical held-out
+    outer-evaluation artifact stays in the historical record untouched and is
+    never current measurement ancestry.
+    """
+
+    payload: Mapping[str, Any]
+    target_train_artifact: Any
+    checkpoint_monitor_artifact: Any
+
+    @property
+    def content_digest(self) -> str:
+        return str(self.payload["content_digest"])
+
+    @property
+    def preparation_digest(self) -> str:
+        return str(self.payload["preparation_digest"])
+
+    @property
+    def mace_config_relative_path(self) -> str:
+        return str(self.payload["mace_config_relative_path"])
+
+    @property
+    def mace_config_sha256(self) -> str:
+        return str(self.payload["mace_config_sha256"])
+
+    @property
+    def mace_config_digest(self) -> str:
+        return str(self.payload["mace_config_digest"])
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(self.payload)
+
+
+def authenticated_training_materialization(
+    run_root: str | os.PathLike[str], *, expected_digest: str
+) -> Any:
+    """The training materialization a seed assessment bound, read from its root.
+
+    A current root holds a v3 training-only record; an authenticated historical
+    root holds its immutable v2 record, exposed read-only through the same
+    training-transport/configuration attributes.  Either must reproduce the
+    exact digest the assessment bound.
+    """
+
+    from .post_selection_execution import POST_SELECTION_MATERIALIZATION_SCHEMA_V2
+    from .target_size_execution import TargetSizeExtxyzArtifact
+
+    raw = _load_owner_record(Path(run_root) / "materialization" / "materialization.json")
+    if not isinstance(raw, Mapping):
+        raise PostSelectionError("Training root materialization is not readable.")
+    if raw.get("schema") == POST_SELECTION_MATERIALIZATION_SCHEMA_V2:
+        body = {key: value for key, value in raw.items() if key != "content_digest"}
+        if digest(body) != str(raw.get("content_digest", "")):
+            raise PostSelectionError("Historical materialization digest mismatch.")
+        record: Any = _HistoricalMaterializationView(
+            payload=dict(raw),
+            target_train_artifact=TargetSizeExtxyzArtifact.from_dict(
+                raw["target_train_artifact"]
+            ),
+            checkpoint_monitor_artifact=TargetSizeExtxyzArtifact.from_dict(
+                raw["checkpoint_monitor_artifact"]
+            ),
+        )
+    else:
+        record = PostSelectionMaterialization.from_dict(raw)
+    if record.content_digest != str(expected_digest):
+        raise PostSelectionError(
+            "Training root materialization is not the one the assessment bound."
+        )
+    return record
+
+
+def _authenticate_legacy_training_state(
+    context: PostSelectionContext,
+    *,
+    run_plan: Any,
+    budget_policy: Any,
+    root: _TrainingRoot,
+) -> tuple[_HistoricalMaterializationView, Any, Any, Any]:
+    """Exact realized-state proof of one historical root under its own identities.
+
+    Returns ``(materialization view, historical runtime plan, replay
+    resolution, optimizer policy)``.  The historical fitted preparation is
+    re-derived in memory from the root's own persisted residual inputs and must
+    reproduce the historical preparation digest; artifacts, the generated MACE
+    configuration and the TRAIN2 runtime plan must equal what the current
+    training method derives under the historical labels.  Nothing is written.
+    """
+
+    import dataclasses
+
+    from .post_selection_execution import (
+        POST_SELECTION_MATERIALIZATION_SCHEMA_V2,
+        POST_SELECTION_PREPARATION_SCHEMA_V3,
+    )
+    from .target_size_execution import (
+        TargetSizeExtxyzArtifact,
+        validate_target_size_extxyz_artifact,
+    )
+
+    legacy = root.legacy
+    material_directory = root.path / "materialization"
+    for node in _observe_run_root_nodes(root.path):
+        if node["kind"] not in ("file", "directory"):
+            _post_selection_recovery_error(
+                f"Historical root contains a non-regular node {node['path']!r}; it is "
+                "preserved and not reused."
+            )
+    raw = _load_owner_record(material_directory / "materialization.json")
+    body = (
+        {key: value for key, value in raw.items() if key != "content_digest"}
+        if isinstance(raw, Mapping)
+        else None
+    )
+    if (
+        body is None
+        or raw.get("schema") != POST_SELECTION_MATERIALIZATION_SCHEMA_V2
+        or digest(body) != str(raw.get("content_digest", ""))
+        or raw.get("run_identity") != root.path.name
+        or raw.get("run_plan_digest") != legacy.historical_run_plan_digest
+    ):
+        _post_selection_recovery_error(
+            "Historical root materialization does not authenticate as the v2 record "
+            "of its own historical run position."
+        )
+    view = _HistoricalMaterializationView(
+        payload=dict(raw),
+        target_train_artifact=TargetSizeExtxyzArtifact.from_dict(raw["target_train_artifact"]),
+        checkpoint_monitor_artifact=TargetSizeExtxyzArtifact.from_dict(
+            raw["checkpoint_monitor_artifact"]
+        ),
+    )
+    optimizer_policy = _optimizer_policy_for(
+        context, seed=run_plan.optimizer_seed, planned_epochs=run_plan.planned_epochs
+    )
+    monitor_record, _separation = context.common_target_monitor()
+    monitor_uids = tuple(monitor_record.selected_identities)
+    training_uids = tuple(view.target_train_artifact.frame_uids)
+    outer = raw.get("outer_evaluation_artifact")
+    outer_uids = () if outer is None else tuple(str(v) for v in outer["frame_uids"])
+    preparation = _fit_post_selection_run_preparation(
+        context,
+        run_plan=run_plan,
+        material_directory=material_directory,
+        optimizer_policy=optimizer_policy,
+        training_frame_uids=training_uids,
+        monitor_frame_uids=monitor_uids,
+        outer_evaluation_frame_uids=outer_uids,
+        acquire_residual_inputs=False,
+    )
+    historical_preparation = dict(preparation._payload())
+    historical_preparation.pop("training_trajectory_identity")
+    historical_preparation["schema"] = POST_SELECTION_PREPARATION_SCHEMA_V3
+    historical_preparation["owner_plan_digest"] = legacy.historical_run_plan_digest
+    if digest(historical_preparation) != view.preparation_digest:
+        _post_selection_recovery_error(
+            "Historical root was fitted to a different realized preparation than the "
+            "current training method reproduces; it is not training-equivalent."
+        )
+    authorities = context.selected.authorities
+    for artifact, lineage in (
+        (view.target_train_artifact, view.preparation_digest),
+        (view.checkpoint_monitor_artifact, None),
+    ):
+        if artifact.common_preparation_digest != lineage:
+            _post_selection_recovery_error(
+                "Historical training artifact preparation lineage is inconsistent."
+            )
+        try:
+            validate_target_size_extxyz_artifact(
+                artifact,
+                root_directory=material_directory,
+                canonical_frame_authority=authorities.frame_authority,
+                policy=context.method_policies.extxyz,
+                frame_catalog=authorities.frame_catalog,
+                frame_data_by_run=authorities.frame_data_by_run,
+                frame_array_index=authorities.frame_array_index,
+            )
+        except Exception as exc:
+            _post_selection_recovery_error(
+                "Historical training artifact failed authentication.", exc
+            )
+    replay_resolution = _training_replay_resolution(context)
+    expected_config = _post_selection_mace_config(
+        run_identity=root.path.name,
+        optimizer_seed=run_plan.optimizer_seed,
+        planned_epochs=run_plan.planned_epochs,
+        preparation=preparation,
+        objective=context.method_policies.objective,
+        optimizer_policy=optimizer_policy,
+        target_train=view.target_train_artifact,
+        monitor=view.checkpoint_monitor_artifact,
+        extxyz_policy=context.method_policies.extxyz,
+        method=context.method,
+        mace_architecture=context.method_policies.mace_architecture,
+        foundation_head=context.method_policies.foundation_head,
+        multiheads_finetuning=(
+            context.method_policies.training_mode == "multihead_replay"
+        ),
+        replay_train=None if replay_resolution is None else replay_resolution.train_path,
+        replay_monitor=(
+            None if replay_resolution is None else replay_resolution.monitor_path
+        ),
+    )
+    expected_config["method_identity_digest"] = legacy.historical_method_identity_digest
+    config_bytes = (material_directory / view.mace_config_relative_path).read_bytes()
+    if (
+        hashlib.sha256(config_bytes).hexdigest() != view.mace_config_sha256
+        or json.loads(config_bytes.decode("utf-8")) != expected_config
+        or digest(expected_config) != view.mace_config_digest
+    ):
+        _post_selection_recovery_error(
+            "Historical generated MACE configuration is not the one the current "
+            "training method derives under the historical labels."
+        )
+    current_runtime_plan = _post_selection_runtime_plan_for(
+        context,
+        run_plan=run_plan,
+        budget_policy=budget_policy,
+        optimizer_policy=optimizer_policy,
+        structures_per_epoch=len(training_uids),
+        replay_resolution=replay_resolution,
+    )
+    historical_runtime_plan = dataclasses.replace(
+        current_runtime_plan,
+        training_protocol_digest=legacy.historical_method_identity_digest,
+    )
+    return view, historical_runtime_plan, replay_resolution, optimizer_policy
+
+
+def _authenticate_legacy_sealed_training_root(
+    context: PostSelectionContext,
+    *,
+    run_plan: Any,
+    budget_policy: Any,
+    root: _TrainingRoot,
+    completion: Any,
+) -> _SealedTrainingState:
+    """Authenticate a sealed historical root for read-only EVAL2 reuse."""
+
+    from .train2_runtime import load_train2_runtime_summary
+
+    closed, why = certify_closed_post_selection_run_root(root.path)
+    if not closed:
+        _post_selection_recovery_error(
+            f"Historical sealed root does not certify as a closed subtree: {why}"
+        )
+    view, runtime_plan, replay_resolution, _optimizer = _authenticate_legacy_training_state(
+        context, run_plan=run_plan, budget_policy=budget_policy, root=root
+    )
+    checkpoint_directory = root.path / "checkpoints"
+    summary = load_train2_runtime_summary(checkpoint_directory)
+    proof = completion.terminal_proof
+    if (
+        summary.plan_digest != runtime_plan.content_digest
+        or int(summary.completed_epochs) != int(runtime_plan.budget_policy.planned_epochs)
+        or (
+            proof is not None
+            and (
+                proof["runtime_summary_digest"] != summary.content_digest
+                or proof["materialization_digest"] != view.content_digest
+                or proof["runtime_plan_digest"] != runtime_plan.content_digest
+            )
+        )
+    ):
+        _post_selection_recovery_error(
+            "Historical sealed root is not the terminal TRAIN2 state of its own "
+            "historical runtime identity."
+        )
+    context.evidence_store.put(root.legacy)
+    return _SealedTrainingState(
+        material_directory=root.path / "materialization",
+        checkpoint_directory=checkpoint_directory,
+        materialization=view,
+        summary=summary,
+        runtime_plan=runtime_plan,
+        replay_resolution=replay_resolution,
+    )
+
+
+def _complete_legacy_training_root(
+    context: PostSelectionContext,
+    *,
+    run_plan: Any,
+    budget_policy: Any,
+    root: _TrainingRoot,
+    progress_context: Mapping[str, Any] | None,
+    cancellation_event: Any | None,
+    progress_callback: Callable[[str], None] | None,
+    progress_observer: Callable[[Mapping[str, Any]], None] | None,
+    telemetry_ref: Any | None,
+) -> None:
+    """Continue (if interrupted) and append-only seal one unsealed historical root.
+
+    An interrupted historical trajectory continues only under its own
+    historical materialization/config/runtime identities, after the exact
+    training-equivalence proof.  Once terminal, the root receives exactly one
+    append-only topology manifest + completion anchor under this run-activity
+    lease; no pre-existing byte is rewritten, and pre-cutover terminal
+    assessment files or an inconsistent partial proof fail closed.
+    """
+
+    if any(
+        observed_node_kind_is_present(root.path / name)
+        for name in RUN_TERMINAL_RECORD_NAMES
+    ):
+        _post_selection_recovery_error(
+            "Historical root carries a terminal assessment record but no valid "
+            "completion anchor; this partial proof state is preserved and not reused."
+        )
+    view, runtime_plan, replay_resolution, optimizer_policy = (
+        _authenticate_legacy_training_state(
+            context, run_plan=run_plan, budget_policy=budget_policy, root=root
+        )
+    )
+    checkpoint_directory = root.path / "checkpoints"
+    summary, start_epoch = _authenticate_post_selection_continuation(
+        checkpoint_directory, runtime_plan=runtime_plan
+    )
+    if summary is None:
+        _post_selection_recovery_error(
+            "Historical root has no authenticated TRAIN2 continuation to reuse."
+        )
+    config_payload = json.loads(
+        (root.path / "materialization" / view.mace_config_relative_path).read_text(
+            encoding="utf-8"
+        )
+    )
+    _validate_post_selection_continuation_execution_evidence(
+        context,
+        materialization=view,
+        config_payload=config_payload,
+        continuation_summary=summary,
+        replay_resolution=replay_resolution,
+        optimizer_policy=optimizer_policy,
+    )
+    if summary.completed_epochs != runtime_plan.execution_epoch_limit:
+        _abort_post_selection_run_if_cancelled(cancellation_event, phase="pre-training")
+        summary = context.trainer(
+            PostSelectionRungRequest(
+                plan=runtime_plan,
+                run_plan=run_plan,
+                materialization=view,
+                materialization_directory=root.path / "materialization",
+                checkpoint_directory=checkpoint_directory,
+                optimizer_policy=optimizer_policy,
+                start_epoch=start_epoch,
+                foundation_identity=context.method_policies.foundation_potential_identity,
+                foundation_model_path=(
+                    Path(context.method_policies.foundation_model)
+                    if context.method_policies.foundation_model
+                    else None
+                ),
+                replay_train_artifact=(
+                    None if replay_resolution is None else replay_resolution.train_artifact
+                ),
+                replay_train_path=(
+                    None if replay_resolution is None else Path(replay_resolution.train_path)
+                ),
+                replay_monitor_artifact=(
+                    None
+                    if replay_resolution is None
+                    else replay_resolution.monitor_artifact
+                ),
+                replay_monitor_path=(
+                    None
+                    if replay_resolution is None
+                    else Path(replay_resolution.monitor_path)
+                ),
+                replay_geometry_identities=(
+                    None
+                    if replay_resolution is None
+                    else getattr(replay_resolution, "replay_geometry_identities", None)
+                ),
+                progress_context=progress_context,
+                cancellation_event=cancellation_event,
+                progress_callback=progress_callback,
+                progress_observer=progress_observer,
+                telemetry_ref=telemetry_ref,
+            )
+        )
+        if summary is None or summary.plan_digest != runtime_plan.content_digest:
+            raise PostSelectionExecutionError(
+                "Historical continuation did not return its own authenticated summary."
+            )
+    if int(summary.completed_epochs) != int(runtime_plan.budget_policy.planned_epochs):
+        raise PostSelectionExecutionError(
+            "Historical TRAIN2 did not reach its terminal epoch; not sealable."
+        )
+    context.evidence_store.put(root.legacy)
+    record_post_selection_training_completion(
+        root.path,
+        runtime_summary=summary,
+        runtime_plan_digest=runtime_plan.content_digest,
+        materialization_digest=view.content_digest,
+    )
 
 
 def authenticated_run_representative_records(
@@ -2258,6 +3532,19 @@ def authenticated_run_representative_records(
     from .eval2 import Eval2CheckpointRecord, Eval2TargetMetricRecord
 
     store = context.evidence_store
+    authenticated_post_selection_candidate_records(
+        context,
+        candidate_record_digests=evidence.candidate_record_digests,
+        runtime_summary_digest=evidence.runtime_summary_digest,
+        representative_record_digest=(
+            evidence.representative_record_digest if evidence.selected else None
+        ),
+    )
+    if not evidence.selected:
+        raise PostSelectionError(
+            f"Final-seed assessment of run {run_plan.run_identity[:12]}... has no "
+            "admissible representative; nothing can be published from it."
+        )
     if not (
         store.has(evidence.representative_record_digest)
         and store.has(evidence.monitor_metric_record_digest)
@@ -2273,21 +3560,19 @@ def authenticated_run_representative_records(
     )
 
 
-def _checkpoint_catalog(run_plan: Any, checkpoint_directory: Path) -> Any:
+def _checkpoint_catalog(run_identity: str, checkpoint_directory: Path) -> Any:
     from .post_selection_execution import post_selection_checkpoint_catalog
 
     return post_selection_checkpoint_catalog(
-        run_plan=run_plan, checkpoint_directory=checkpoint_directory
+        run_identity=run_identity, checkpoint_directory=checkpoint_directory
     )
 
 
-#: Filename of one fold's completed acceptance inside its own run directory.
-#: Fold evidence is content-addressed like everything else, but a restart needs
-#: to find it by *position* rather than by digest, so the position record lives
-#: beside the run it describes.
+#: Pre-cutover root-local terminal assessment files.  Current P5 never writes
+#: them: fold/seed assessments are immutable evidence-store objects behind the
+#: position locator.  The names stay known so historical sealed roots remain
+#: certifiable and read-only compatible.
 FOLD_ACCEPTANCE_FILENAME = "fold-acceptance.json"
-
-#: The same idea for one completed final-production job.
 RUN_EVIDENCE_FILENAME = "run-evidence.json"
 
 #: One completed run's terminal proof is deliberately **two** records with two
@@ -2310,7 +3595,13 @@ RUN_EVIDENCE_FILENAME = "run-evidence.json"
 RUN_TOPOLOGY_MANIFEST_FILENAME = "run-topology.json"
 RUN_TOPOLOGY_MANIFEST_SCHEMA = "mdstats.post-selection-run-topology.v1"
 RUN_COMPLETION_ANCHOR_FILENAME = "run-completion.json"
-RUN_COMPLETION_ANCHOR_SCHEMA = "mdstats.post-selection-run-completion.v1"
+#: v2 is the training-only terminal proof: authenticated terminal TRAIN2 (the
+#: exact runtime summary, runtime plan and materialization) seals the root
+#: before any assessment.  v1 anchors named terminal assessment files and
+#: remain valid, read-only historical proofs.
+RUN_COMPLETION_ANCHOR_SCHEMA = "mdstats.post-selection-run-completion.v2"
+RUN_COMPLETION_ANCHOR_SCHEMA_V1 = "mdstats.post-selection-run-completion.v1"
+TRAIN2_TERMINAL_PROOF_KIND = "train2_terminal"
 
 #: The superseded single-file development anchor.  It was never a released
 #: durable authority, and it is not one now: a run root carrying only this file
@@ -2501,7 +3792,12 @@ def _load_owner_record(path: Path) -> Any | None:
 
 @dataclass(frozen=True, slots=True)
 class PostSelectionRunCompletion:
-    """The compact, O(1) proof that one post-selection run finished."""
+    """The compact, O(1) proof that one post-selection run's root is closed.
+
+    ``terminal_proof`` is the v2 TRAIN2 terminal proof of a training-only root;
+    it is ``None`` for a historical v1 anchor, whose ``terminal_records`` name
+    the pre-cutover assessment files it was sealed after.
+    """
 
     run_root: str
     terminal_records: tuple[str, ...]
@@ -2510,6 +3806,29 @@ class PostSelectionRunCompletion:
     file_count: int
     directory_count: int
     content_digest: str
+    terminal_proof: Mapping[str, Any] | None = None
+
+
+def _validated_terminal_proof(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    proof = payload.get("terminal_proof")
+    if not isinstance(proof, Mapping) or proof.get("kind") != TRAIN2_TERMINAL_PROOF_KIND:
+        return None
+    result: dict[str, Any] = {"kind": TRAIN2_TERMINAL_PROOF_KIND}
+    for name in ("runtime_summary_digest", "runtime_plan_digest", "materialization_digest"):
+        value = str(proof.get(name, ""))
+        if len(value) != 64:
+            return None
+        result[name] = value
+    try:
+        completed = int(proof["completed_epochs"])
+        planned = int(proof["planned_epochs"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if completed <= 0 or completed != planned:
+        return None
+    result["completed_epochs"] = completed
+    result["planned_epochs"] = planned
+    return result
 
 
 def read_post_selection_run_completion(
@@ -2518,11 +3837,13 @@ def read_post_selection_run_completion(
     """Validate the compact completion anchor of one run root.
 
     This is the **one** validating reader every consumer goes through, and it is
-    deliberately bounded: it reads a single small record, re-derives that
+    deliberately bounded: it reads a single small record (opened no-follow and
+    authenticated as a regular file on the opened descriptor), re-derives that
     record's own digest, checks the run identity it claims, and confirms the
     bound topology manifest is present.  It never reads or hashes the manifest
     and never walks the run, so normal reporting stays independent of how much
-    the run holds.
+    the run holds.  Completion never depends on terminal assessment files still
+    being hot: a v2 anchor proves terminal TRAIN2 itself.
 
     Ambiguity reduces authority.  A missing, malformed, unsupported, tampered,
     or copied-for-another-run anchor returns ``None`` with a truthful reason; it
@@ -2544,7 +3865,13 @@ def read_post_selection_run_completion(
             "run root carries no retained completion anchor, so this owner cannot "
             "certify that it finished or which descendants it produced"
         )
-    payload = _self_authenticated(_load_owner_record(path), RUN_COMPLETION_ANCHOR_SCHEMA)
+    raw = _load_owner_record(path)
+    schema = raw.get("schema") if isinstance(raw, Mapping) else None
+    payload = (
+        _self_authenticated(raw, str(schema))
+        if schema in (RUN_COMPLETION_ANCHOR_SCHEMA, RUN_COMPLETION_ANCHOR_SCHEMA_V1)
+        else None
+    )
     if payload is None:
         return None, (
             "run completion anchor is unreadable, carries an unsupported schema, or "
@@ -2555,12 +3882,22 @@ def read_post_selection_run_completion(
             "run completion anchor names a different run root, so it was copied "
             "rather than published for this run"
         )
-    terminal = tuple(str(item) for item in payload.get("terminal_records", ()))
-    if not terminal or not set(terminal) <= RUN_TERMINAL_RECORD_NAMES:
-        return None, (
-            "run completion anchor names no recognized terminal evidence record, so "
-            "it does not certify a finished run"
-        )
+    proof = None
+    if schema == RUN_COMPLETION_ANCHOR_SCHEMA:
+        proof = _validated_terminal_proof(payload)
+        if proof is None:
+            return None, (
+                "run completion anchor carries no valid terminal TRAIN2 proof, so it "
+                "does not certify a finished training root"
+            )
+        terminal: tuple[str, ...] = (TRAIN2_TERMINAL_PROOF_KIND,)
+    else:
+        terminal = tuple(str(item) for item in payload.get("terminal_records", ()))
+        if not terminal or not set(terminal) <= RUN_TERMINAL_RECORD_NAMES:
+            return None, (
+                "run completion anchor names no recognized terminal evidence record, so "
+                "it does not certify a finished run"
+            )
     topology_digest = str(payload.get("topology_digest", ""))
     if len(topology_digest) != 64:
         return None, "run completion anchor binds no topology manifest identity"
@@ -2586,6 +3923,7 @@ def read_post_selection_run_completion(
             file_count=file_count,
             directory_count=directory_count,
             content_digest=str(payload["content_digest"]),
+            terminal_proof=proof,
         ),
         f"completion anchor published with {', '.join(sorted(terminal))}",
     )
@@ -2694,53 +4032,74 @@ def post_selection_run_is_complete(
     return completion is not None, why
 
 
-def record_post_selection_run_members(run_root: str | os.PathLike[str]) -> Path:
-    """Freeze this owner's terminal completion proof, once.
+def record_post_selection_training_completion(
+    run_root: str | os.PathLike[str],
+    *,
+    runtime_summary: Any,
+    runtime_plan_digest: str,
+    materialization_digest: str,
+) -> Path:
+    """Seal one training-only root at authenticated terminal TRAIN2, once.
 
-    Publication order is the contract: the terminal evidence is already durable,
-    the full topology manifest is published next, and the compact anchor - which
-    binds that manifest's identity - is published last and is therefore the
-    commit point.  A crash between the two leaves a manifest nothing points at,
-    which grants nothing, rather than an anchor pointing at a manifest that does
-    not exist.
+    The caller holds the run-activity lease, so no trainer or storage writer
+    can race the seal.  Publication order is the contract: the full topology
+    manifest first, then the compact anchor - which binds that manifest's
+    identity and the TRAIN2 terminal proof - last, as the commit point.  A crash
+    between them leaves a manifest nothing points at, which grants nothing.
 
-    It is create-once.  A second terminal publication verifies the existing
-    proof; it deliberately does **not** rescan the tree first, because by then
-    storage may legitimately have moved represented members into a cold archive
-    and a freshly derived set would falsely look like a conflicting claim.
+    It is create-once and never requires a terminal assessment file.  A second
+    call verifies the existing proof and stops; it deliberately does **not**
+    rescan the tree, because storage may legitimately have moved represented
+    members cold since, and a freshly derived set would falsely conflict.  A
+    present-but-invalid anchor, a manifest/anchor disagreement, or a
+    pre-existing proof that names different terminal state fails closed.  The
+    same owner provides the one append-only seal of a terminal-but-unsealed
+    legacy root: it records the existing nodes and rewrites none of them.
     """
 
     from .target_size_execution import publish_immutable_json_create_or_verify
 
     root = Path(run_root)
     anchor_path = root / RUN_COMPLETION_ANCHOR_FILENAME
-    terminal = sorted(
-        name for name in sorted(RUN_TERMINAL_RECORD_NAMES) if (root / name).is_file()
-    )
+    proof = {
+        "kind": TRAIN2_TERMINAL_PROOF_KIND,
+        "runtime_summary_digest": validate_digest(
+            str(runtime_summary.content_digest), name="runtime_summary_digest"
+        ),
+        "runtime_plan_digest": validate_digest(
+            str(runtime_plan_digest), name="runtime_plan_digest"
+        ),
+        "materialization_digest": validate_digest(
+            str(materialization_digest), name="materialization_digest"
+        ),
+        "completed_epochs": int(runtime_summary.completed_epochs),
+        "planned_epochs": int(runtime_summary.planned_epochs),
+    }
+    if proof["completed_epochs"] != proof["planned_epochs"]:
+        raise PostSelectionExecutionError(
+            f"Post-selection run {root.name} is not at terminal fixed-budget TRAIN2; "
+            "only a terminal training root can be sealed."
+        )
     existing, why = read_post_selection_run_completion(root)
     if existing is not None:
-        # An immutable proof already exists. Verify it and stop; the depleted hot
-        # tree is not evidence about what the completed run produced.
         nodes, detail = read_post_selection_run_topology(root, existing)
         if nodes is None:
             raise PostSelectionExecutionError(
                 f"Post-selection run {root.name} carries a completion anchor whose "
                 f"topology manifest does not authenticate: {detail}"
             )
+        if existing.terminal_proof is not None and dict(existing.terminal_proof) != proof:
+            raise PostSelectionExecutionError(
+                f"Post-selection run {root.name} is already sealed with a different "
+                "terminal TRAIN2 proof; completion authority is create-once."
+            )
         return anchor_path
-    if anchor_path.is_file():
+    if observed_node_kind_is_present(anchor_path):
         raise PostSelectionExecutionError(
             f"Refusing to republish the completion proof of post-selection run "
             f"{root.name}: an anchor is already present but does not validate "
             f"({why}). Completion authority is create-once, so a disagreement is an "
             "integrity conflict rather than an update."
-        )
-    if not terminal:
-        raise PostSelectionExecutionError(
-            f"Refusing to record post-selection run completion for {root.name}: no "
-            "terminal fold-acceptance or run-evidence record is durable yet. The "
-            "completion proof is only ever written downstream of the evidence it "
-            "certifies."
         )
     nodes = _run_root_nodes(root)
     topology = _sealed(
@@ -2761,7 +4120,7 @@ def record_post_selection_run_members(run_root: str | os.PathLike[str]) -> Path:
                 {
                     "schema": RUN_COMPLETION_ANCHOR_SCHEMA,
                     "run_root": root.name,
-                    "terminal_records": terminal,
+                    "terminal_proof": proof,
                     "topology_locator": RUN_TOPOLOGY_MANIFEST_FILENAME,
                     "topology_digest": topology["content_digest"],
                     "node_count": len(nodes),
@@ -2779,6 +4138,12 @@ def record_post_selection_run_members(run_root: str | os.PathLike[str]) -> Path:
             "authority, so a disagreement is an integrity conflict, not an update."
         ) from exc
     return anchor_path
+
+
+def observed_node_kind_is_present(path: Path) -> bool:
+    from .storage.owners import NODE_ABSENT, observed_node_kind
+
+    return observed_node_kind(path) != NODE_ABSENT
 
 
 def certified_post_selection_run_nodes(
@@ -2855,133 +4220,6 @@ def certify_closed_post_selection_run_root(
     )
 
 
-def _completed_fold_acceptance(
-    context: PostSelectionContext, run_plan: Any
-) -> CvFoldAcceptance | None:
-    """Reuse a completed fold on restart, after re-checking what it binds.
-
-    An interrupted cross-validation must not retrain folds that already
-    finished - with real MACE that is the difference between resuming and
-    starting over. Reuse is still conditional: the stored acceptance must belong
-    to this exact run plan and must have been judged under the current
-    acceptance predicate, or it is not evidence about the campaign being run now.
-
-    A current (v2) verdict also binds the checkpoint candidates its outcome was
-    decided from.  Those records are re-read through the authenticated evidence
-    store - a missing or corrupt one fails there - and must still reproduce the
-    verdict's candidate classification: the persisted reason union, no
-    admissible candidate behind a no-admissible verdict, and an admissible
-    representative with the recorded identity behind a selected one.  v1
-    verdicts bind no candidate set, so there is nothing further to re-check.
-    """
-
-    path = context.run_root(run_plan.run_identity) / FOLD_ACCEPTANCE_FILENAME
-    if not path.is_file():
-        return None
-    acceptance = CvFoldAcceptance.from_dict(
-        json.loads(path.read_text(encoding="utf-8"))
-    )
-    policy = context.cv_policy
-    if (
-        acceptance.run_plan_digest != run_plan.content_digest
-        or acceptance.cv_plan_digest != run_plan.cv_plan_digest
-        or acceptance.acceptance_metric != policy.acceptance_metric
-        or acceptance.acceptance_maximum != policy.acceptance_maximum
-    ):
-        raise PostSelectionError(
-            f"Stored evidence for cross-validation run "
-            f"{run_plan.run_identity[:12]}... does not belong to the current plan or "
-            "acceptance predicate. Post-selection evidence is never reinterpreted "
-            "under a changed policy."
-        )
-    if acceptance.serialization_schema == CV_FOLD_ACCEPTANCE_SCHEMA_V1:
-        return acceptance
-
-    from .eval2 import Eval2CheckpointRecord
-
-    candidates = [
-        context.evidence_store.get(item, Eval2CheckpointRecord.from_dict)
-        for item in acceptance.candidate_record_digests
-    ]
-    # The constructor already guarantees a selected representative's digest is
-    # one of the bound candidates, so it resolves exactly when one was selected.
-    representative = next(
-        (
-            item
-            for item in candidates
-            if item.content_digest == acceptance.representative_checkpoint_record_digest
-        ),
-        None,
-    )
-    reasons = tuple(sorted({r for item in candidates for r in item.rejection_reasons}))
-    if (
-        reasons != acceptance.checkpoint_rejection_reasons
-        or (representative is None and any(item.admissible for item in candidates))
-        or (
-            representative is not None
-            and (
-                not representative.admissible
-                or representative.stable_candidate_identity
-                != acceptance.representative_candidate_identity
-            )
-        )
-    ):
-        raise PostSelectionError(
-            f"Stored fold verdict for cross-validation run "
-            f"{run_plan.run_identity[:12]}... is not reproduced by the checkpoint "
-            "candidate evidence it binds. A fold verdict is never reused on "
-            "evidence that no longer proves it; rerun the affected work."
-        )
-    return acceptance
-
-
-def _record_completed_fold_acceptance(
-    context: PostSelectionContext, run_plan: Any, acceptance: CvFoldAcceptance
-) -> None:
-    from .target_size_execution import publish_immutable_json_create_or_verify
-
-    run_root = context.run_root(run_plan.run_identity)
-    publish_immutable_json_create_or_verify(
-        run_root / FOLD_ACCEPTANCE_FILENAME,
-        acceptance.to_dict(),
-        deserializer=CvFoldAcceptance.from_dict,
-    )
-    record_post_selection_run_members(run_root)
-
-
-def _completed_run_evidence(
-    context: PostSelectionContext, run_plan: Any
-) -> PostSelectionRunEvidence | None:
-    """Reuse a completed final-production job on restart."""
-
-    path = context.run_root(run_plan.run_identity) / RUN_EVIDENCE_FILENAME
-    if not path.is_file():
-        return None
-    evidence = PostSelectionRunEvidence.from_dict(
-        json.loads(path.read_text(encoding="utf-8"))
-    )
-    if evidence.run_plan_digest != run_plan.content_digest:
-        raise PostSelectionError(
-            f"Stored evidence for production run {run_plan.run_identity[:12]}... "
-            "belongs to a different run plan."
-        )
-    return evidence
-
-
-def _record_completed_run_evidence(
-    context: PostSelectionContext, run_plan: Any, evidence: PostSelectionRunEvidence
-) -> None:
-    from .target_size_execution import publish_immutable_json_create_or_verify
-
-    run_root = context.run_root(run_plan.run_identity)
-    publish_immutable_json_create_or_verify(
-        run_root / RUN_EVIDENCE_FILENAME,
-        evidence.to_dict(),
-        deserializer=PostSelectionRunEvidence.from_dict,
-    )
-    record_post_selection_run_members(run_root)
-
-
 # ---------------------------------------------------------------------------
 # Cross-validation
 # ---------------------------------------------------------------------------
@@ -2997,6 +4235,7 @@ class _PendingPostSelectionRun:
     monitor_frame_uids: tuple[str, ...]
     outer_evaluation_frame_uids: tuple[str, ...] | None
     progress_context: Mapping[str, Any]
+    reusable: _ReusableMeasurements | None = None
 
 
 def _post_selection_training_concurrency_policy(
@@ -3133,7 +4372,10 @@ def _preflight_post_selection_pending_runs(
     """Reject durable foreign continuations before any sibling reaches EVAL2."""
 
     for task in sorted(pending, key=lambda item: int(item.slot)):
-        run_root = context.run_root(task.run_plan.run_identity)
+        root = resolve_post_selection_training_root(context, task.run_plan)
+        if root.legacy is not None:
+            continue
+        run_root = root.path
         checkpoint_directory = run_root / "checkpoints"
         if not checkpoint_directory.exists() and not checkpoint_directory.is_symlink():
             continue
@@ -3147,6 +4389,8 @@ def _preflight_post_selection_pending_runs(
         # against another P5 process while keeping it free of publication or
         # replacement side effects.
         with post_selection_run_activity_lease(run_root):
+            if read_post_selection_run_completion(run_root)[0] is not None:
+                continue
             _prepare_post_selection_run(
                 context,
                 run_plan=task.run_plan,
@@ -3154,6 +4398,7 @@ def _preflight_post_selection_pending_runs(
                 training_frame_uids=task.training_frame_uids,
                 monitor_frame_uids=task.monitor_frame_uids,
                 outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
+                run_root=run_root,
             )
 
 
@@ -3512,6 +4757,7 @@ def _execute_post_selection_pending_runs(
                 outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
                 progress_context=task.progress_context,
                 telemetry_ref=telemetry_ref,
+                reusable=task.reusable,
             )
             if result is None:
                 raise PostSelectionExecutionError(
@@ -3649,14 +4895,134 @@ def _execute_post_selection_pending_runs(
     return complete_eval2_for_trained_slots()
 
 
+def _offered_measurements(
+    store: Any,
+    *,
+    candidate_record_digests: Sequence[str],
+    representative_record_digest: str | None = None,
+    outer_metric_record_digest: str | None = None,
+    into: dict[str, dict[str, Any]],
+) -> None:
+    """Collect published candidate/outer records as exact-reuse *offers*."""
+
+    from .eval2 import Eval2CheckpointRecord
+
+    for value in candidate_record_digests:
+        if not store.has(value):
+            continue
+        record = store.get(value, Eval2CheckpointRecord.from_dict)
+        into["candidates"].setdefault(record.trajectory_point.checkpoint_sha256, record)
+    if representative_record_digest and outer_metric_record_digest:
+        outer = _stored_metric(store, outer_metric_record_digest)
+        if outer is not None and store.has(representative_record_digest):
+            representative = store.get(
+                representative_record_digest, Eval2CheckpointRecord.from_dict
+            )
+            into["outer"].setdefault(
+                representative.trajectory_point.checkpoint_sha256, outer
+            )
+
+
+def _reusable(offers: dict[str, dict[str, Any]]) -> _ReusableMeasurements:
+    return _ReusableMeasurements(
+        candidates=dict(offers["candidates"]), outer_by_checkpoint=dict(offers["outer"])
+    )
+
+
+def _run_post_selection_positions(
+    context: PostSelectionContext,
+    *,
+    pending: Sequence[_PendingPostSelectionRun],
+    budget_policy: Any,
+) -> dict[int, PostSelectionRunResult]:
+    """TRAIN only unsealed positions; evaluate every position from its sealed root.
+
+    A position whose training root is already sealed (a completed trajectory,
+    a policy-only reassessment, or an authenticated historical root) never
+    enters the TRAIN scheduler and never launches a trainer.
+    """
+
+    sealed: list[_PendingPostSelectionRun] = []
+    training: list[_PendingPostSelectionRun] = []
+    for task in pending:
+        root = resolve_post_selection_training_root(context, task.run_plan)
+        completion, _why = read_post_selection_run_completion(root.path)
+        (sealed if completion is not None else training).append(task)
+    results = _execute_post_selection_pending_runs(
+        context, pending=training, budget_policy=budget_policy
+    )
+    for task in sorted(sealed, key=lambda item: int(item.slot)):
+        print(
+            "[TRAIN] status=reused; sealed training root; "
+            + "; ".join(f"{key}={value}" for key, value in task.progress_context.items()),
+            flush=True,
+        )
+        result = execute_post_selection_run(
+            context,
+            run_plan=task.run_plan,
+            budget_policy=budget_policy,
+            training_frame_uids=task.training_frame_uids,
+            monitor_frame_uids=task.monitor_frame_uids,
+            outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
+            progress_context=task.progress_context,
+            reusable=task.reusable,
+        )
+        if result is None:
+            raise PostSelectionExecutionError(
+                f"Sealed position slot {task.slot} produced no evaluated result."
+            )
+        results[task.slot] = result
+    return results
+
+
+def _cv_position(context: PostSelectionContext, run_plan: Any, policy_digest: str) -> str:
+    return assessment_position_digest(
+        assessment_role=ASSESSMENT_ROLE_CV_FOLD,
+        assessment_position_policy_digest=policy_digest,
+        training_trajectory_identity=run_plan.training_trajectory_identity,
+        optimizer_seed=run_plan.optimizer_seed,
+        fold_index=run_plan.fold_index,
+    )
+
+
+def _final_position(context: PostSelectionContext, run_plan: Any, policy_digest: str) -> str:
+    return assessment_position_digest(
+        assessment_role=ASSESSMENT_ROLE_FINAL_SEED,
+        assessment_position_policy_digest=policy_digest,
+        training_trajectory_identity=run_plan.training_trajectory_identity,
+        optimizer_seed=run_plan.optimizer_seed,
+        fold_index=None,
+    )
+
+
+def _previous_cv_assessments(context: PostSelectionContext) -> tuple[CvFoldAcceptance, ...]:
+    """Fold assessments of the previously current CV verdict, as reuse offers only."""
+
+    try:
+        campaign = resolve_current_cv_acceptance(context)
+    except Exception:
+        return ()
+    if campaign is None:
+        return ()
+    return tuple(
+        fold
+        for seed in campaign.seed_acceptances
+        for fold in seed.fold_acceptances
+        if fold.is_current
+    )
+
+
 def execute_post_selection_cross_validation(
     context: PostSelectionContext,
 ) -> tuple[PostSelectionCvPlan, CvCampaignAcceptance]:
     """Build, execute, and accept the complete selected-only cross-validation.
 
-    A rerun of the same plan is a resume: fold evidence is content-addressed and
-    reused when it already exists, and the current selected binding is
-    re-authenticated before any of it is trusted.
+    Training positions are pre-fit trajectories, so a policy-only edit reuses
+    every sealed root with zero trainer launch.  Each fold is then assessed
+    under the current hard policy + D2.DEF.059A + outer verdict policy; its
+    immutable assessment is published in the evidence store behind the
+    position locator, never into the training root.  Published measurements
+    are reused only under exact measurement-identity equality.
     """
 
     selected = context.selected
@@ -3673,6 +5039,7 @@ def execute_post_selection_cross_validation(
         if replay_enabled
         else None
     )
+    previous = _previous_cv_assessments(context)
     plan = build_post_selection_cv_plan(
         selected,
         context.method,
@@ -3681,6 +5048,9 @@ def execute_post_selection_cross_validation(
         monitor_separation=monitor_separation,
         projection=projection,
         replay_lineage_digest=replay_lineage_digest,
+        legacy_source_plan_digest=post_selection_legacy_source_plan_digest(
+            context, kind=POINTER_CV_PLAN
+        ),
     )
     store = context.evidence_store
     # The policy identities are persisted as records, not just as digests, so a
@@ -3706,8 +5076,13 @@ def execute_post_selection_cross_validation(
         )
 
     budget_policy = cv_training_budget_policy(context.method, context.cv_policy)
-    acceptances_by_slot: dict[int, CvFoldAcceptance] = {}
+    policy_digest = cv_assessment_position_policy_digest(
+        post_selection_checkpoint_admissibility(context.method_policies, context.cv_policy),
+        context.cv_policy,
+    )
     pending: list[_PendingPostSelectionRun] = []
+    positions: dict[int, tuple[Any, str]] = {}
+    expected_positions: dict[tuple[int, int], tuple[str, str]] = {}
     required_runs = tuple(plan.required_run_matrix)
     total_runs = len(required_runs)
     for slot, (seed, fold_index) in enumerate(required_runs):
@@ -3719,17 +5094,38 @@ def execute_post_selection_cross_validation(
             planned_epochs=context.cv_policy.cv_max_num_epochs,
         )
         store.put(run_plan)
-        completed = _completed_fold_acceptance(context, run_plan)
-        if completed is not None:
-            acceptances_by_slot[slot] = completed
-            print(
-                "[TRAIN] status=reused; "
-                f"N_selected={selected.n_selected}; run={slot + 1}/{total_runs}; "
-                f"seed={seed}; fold={fold_index + 1}/{plan.fold_count}; "
-                "restored=reused; phase=reused",
-                flush=True,
-            )
-            continue
+        store.put(run_plan.training_trajectory)
+        position = _cv_position(context, run_plan, policy_digest)
+        positions[slot] = (run_plan, position)
+        expected_positions[(seed, fold_index)] = (
+            run_plan.training_trajectory_identity,
+            policy_digest,
+        )
+        offers: dict[str, dict[str, Any]] = {"candidates": {}, "outer": {}}
+        sources = list(previous)
+        current = resolve_current_post_selection_record(
+            context.store,
+            context.paths,
+            selected,
+            kind=POINTER_ASSESSMENT_POSITION,
+            deserializer=CvFoldAcceptance.from_dict,
+            position=position,
+        )
+        if current is not None:
+            sources.insert(0, current)
+        for item in sources:
+            if (
+                item.training_trajectory_identity == run_plan.training_trajectory_identity
+                and item.cv_seed == seed
+                and item.fold_index == fold_index
+            ):
+                _offered_measurements(
+                    store,
+                    candidate_record_digests=item.candidate_record_digests,
+                    representative_record_digest=item.representative_checkpoint_record_digest,
+                    outer_metric_record_digest=item.outer_metric_record_digest,
+                    into=offers,
+                )
         pending.append(
             _PendingPostSelectionRun(
                 slot=slot,
@@ -3745,42 +5141,56 @@ def execute_post_selection_cross_validation(
                     "restored": "executing",
                     "phase": "executing",
                 },
+                reusable=_reusable(offers),
             )
         )
 
-    results = _execute_post_selection_pending_runs(
-        context,
-        pending=pending,
-        budget_policy=budget_policy,
+    results = _run_post_selection_positions(
+        context, pending=pending, budget_policy=budget_policy
     )
-    for task in pending:
-        _evidence, candidates, representative, outer_metrics = results[task.slot]
+    acceptances: list[CvFoldAcceptance] = []
+    for slot in range(total_runs):
+        run_plan, position = positions[slot]
+        result = results[slot]
+        publish_post_selection_run_measurements(context, result)
         acceptance = build_cv_fold_acceptance(
-            run_plan=task.run_plan,
-            candidates=candidates,
-            representative=representative,
-            outer_metrics=outer_metrics,
+            run_plan=run_plan,
+            candidates=result.candidates,
+            representative=result.representative,
+            outer_metrics=result.outer_metrics,
             policy=context.cv_policy,
+            assessment_position_policy_digest=policy_digest,
+            training_root_identity=result.training_root_identity,
+            runtime_summary_digest=result.runtime_summary_digest,
         )
         if acceptance.outcome == CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE:
             print(
                 "[EVAL2] status=rejected; "
                 f"N_selected={selected.n_selected}; "
-                f"seed={task.run_plan.optimizer_seed}; "
-                f"fold={task.run_plan.fold_index + 1}/{plan.fold_count}; "
+                f"seed={run_plan.optimizer_seed}; "
+                f"fold={run_plan.fold_index + 1}/{plan.fold_count}; "
                 f"candidates={len(acceptance.candidate_record_digests)}; "
                 "outcome=no admissible checkpoint (methodological rejection); "
                 "mandatory admissibility reasons="
                 f"{list(acceptance.checkpoint_rejection_reasons)}",
                 flush=True,
             )
-        store.put(acceptance)
-        _record_completed_fold_acceptance(context, task.run_plan, acceptance)
-        acceptances_by_slot[task.slot] = acceptance
+        with post_selection_publication_barrier(
+            context.paths, selected.binding.campaign_generation
+        ):
+            store.put(acceptance)
+            publish_current_post_selection_pointer(
+                context.store,
+                binding=selected.binding,
+                kind=POINTER_ASSESSMENT_POSITION,
+                content_digest=acceptance.content_digest,
+                position=position,
+            )
+        acceptances.append(acceptance)
 
-    acceptances = [acceptances_by_slot[slot] for slot in range(total_runs)]
-
-    campaign = accept_post_selection_cv_campaign(plan, context.cv_policy, acceptances)
+    campaign = accept_post_selection_cv_campaign(
+        plan, context.cv_policy, acceptances, expected_positions=expected_positions
+    )
     with post_selection_publication_barrier(
         context.paths, selected.binding.campaign_generation
     ):
@@ -3795,13 +5205,20 @@ def execute_post_selection_cross_validation(
 
 
 def resolve_current_cv_plan(context: PostSelectionContext) -> PostSelectionCvPlan | None:
-    plan = resolve_current_post_selection_record(
-        context.store,
-        context.paths,
-        context.selected,
-        kind=POINTER_CV_PLAN,
-        deserializer=PostSelectionCvPlan.from_dict,
-    )
+    try:
+        plan = resolve_current_post_selection_record(
+            context.store,
+            context.paths,
+            context.selected,
+            kind=POINTER_CV_PLAN,
+            deserializer=PostSelectionCvPlan.from_dict,
+        )
+    except TrainingDataSerializationError as exc:
+        raise PostSelectionError(
+            "The published CV plan is a pre-cutover historical plan; it is history, "
+            "not current authority. Run `cross-validate` to reclose CV under the "
+            f"current policy ({exc})."
+        ) from exc
     if plan is not None:
         replay_enabled = context.method_policies.replay_enabled
         replay_resolution = None
@@ -3842,18 +5259,69 @@ def resolve_current_cv_plan(context: PostSelectionContext) -> PostSelectionCvPla
 def resolve_current_cv_acceptance(
     context: PostSelectionContext,
 ) -> CvCampaignAcceptance | None:
-    return resolve_current_post_selection_record(
-        context.store,
-        context.paths,
-        context.selected,
-        kind=POINTER_CV_ACCEPTANCE,
-        deserializer=CvCampaignAcceptance.from_dict,
-    )
+    """The current aggregate CV verdict, or ``None``.
+
+    A historical (pre-cutover) verdict is never relabeled current: it simply
+    does not resolve here, so CV must be reclosed under the current policy.
+    """
+
+    try:
+        record = resolve_current_post_selection_record(
+            context.store,
+            context.paths,
+            context.selected,
+            kind=POINTER_CV_ACCEPTANCE,
+            deserializer=CvCampaignAcceptance.from_dict,
+        )
+    except TrainingDataSerializationError:
+        return None
+    if record is None or not record.is_current:
+        return None
+    for seed_acceptance in record.seed_acceptances:
+        for fold in seed_acceptance.fold_acceptances:
+            authenticated_post_selection_candidate_records(
+                context,
+                candidate_record_digests=fold.candidate_record_digests,
+                runtime_summary_digest=fold.runtime_summary_digest,
+                representative_record_digest=(
+                    fold.representative_checkpoint_record_digest
+                    if fold.outcome != CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE
+                    else None
+                ),
+            )
+    return record
 
 
 # ---------------------------------------------------------------------------
 # Fresh final production
 # ---------------------------------------------------------------------------
+
+
+def _previous_final_assessments(context: PostSelectionContext) -> tuple[Any, ...]:
+    """Seed assessments behind the previously current publication, as offers only."""
+
+    from .post_selection_publication import FinalProductionPublicationDecision
+
+    try:
+        decision = resolve_current_post_selection_record(
+            context.store,
+            context.paths,
+            context.selected,
+            kind=POINTER_FINAL_PUBLICATION,
+            deserializer=FinalProductionPublicationDecision.from_dict,
+        )
+    except Exception:
+        return ()
+    if decision is None:
+        return ()
+    store = context.evidence_store
+    found = []
+    for item in decision.seed_evidence:
+        try:
+            found.append(store.get(item.run_evidence_digest, PostSelectionRunEvidence.from_dict))
+        except Exception:
+            continue
+    return tuple(found)
 
 
 def execute_final_production(
@@ -3863,11 +5331,13 @@ def execute_final_production(
     tuple[PostSelectionRunEvidence, ...],
     "FinalProductionPublicationDecision",
 ]:
-    """Authorize and run fresh full-``T_selected`` production.
+    """Authorize, run (or reuse), assess, and publish full-``T_selected`` production.
 
-    Authorization is checked before any bytes are written: a missing, stale, or
-    method-mismatched cross-validation stops the command here rather than after
-    it has produced a model that looks legitimate.
+    Current accepted CV is re-authenticated before anything else: a missing,
+    stale, historical or rejected CV blocks production - including the reuse
+    of historically produced final bytes.  Each seed is assessed at its own
+    position (final hard policy + D2.DEF.059A only); every candidate and the
+    typed outcome are durably published before any failure is reported.
     """
 
     selected = context.selected
@@ -3897,6 +5367,7 @@ def execute_final_production(
         else None
     )
     common_monitor, monitor_separation = context.common_target_monitor()
+    previous = _previous_final_assessments(context)
     final_plan = build_final_production_plan(
         selected,
         context.method,
@@ -3906,6 +5377,9 @@ def execute_final_production(
         common_monitor=common_monitor,
         monitor_separation=monitor_separation,
         replay_lineage_digest=replay_lineage_digest,
+        legacy_source_plan_digest=post_selection_legacy_source_plan_digest(
+            context, kind=POINTER_FINAL_PLAN
+        ),
     )
     validate_final_production_plan(
         final_plan,
@@ -3935,23 +5409,38 @@ def execute_final_production(
     budget_policy = final_production_training_budget_policy(
         context.method, context.production_policy
     )
-    evidence_by_slot: dict[int, PostSelectionRunEvidence] = {}
+    policy_digest = final_seed_assessment_policy_digest(
+        post_selection_checkpoint_admissibility(
+            context.method_policies, context.production_policy
+        )
+    )
     pending: list[_PendingPostSelectionRun] = []
+    positions: dict[int, tuple[Any, str]] = {}
     required_seeds = tuple(final_plan.required_final_seeds)
     total_runs = len(required_seeds)
     for slot, seed in enumerate(required_seeds):
         run_plan = build_final_production_run_plan(final_plan, optimizer_seed=seed)
         store.put(run_plan)
-        completed = _completed_run_evidence(context, run_plan)
-        if completed is not None:
-            evidence_by_slot[slot] = completed
-            print(
-                "[TRAIN] status=reused; "
-                f"N_selected={selected.n_selected}; run={slot + 1}/{total_runs}; "
-                f"seed={seed}; restored=reused; phase=reused",
-                flush=True,
-            )
-            continue
+        store.put(run_plan.training_trajectory)
+        position = _final_position(context, run_plan, policy_digest)
+        positions[slot] = (run_plan, position)
+        offers: dict[str, dict[str, Any]] = {"candidates": {}, "outer": {}}
+        sources = list(previous)
+        current = resolve_current_post_selection_record(
+            context.store,
+            context.paths,
+            selected,
+            kind=POINTER_ASSESSMENT_POSITION,
+            deserializer=PostSelectionRunEvidence.from_dict,
+            position=position,
+        )
+        if current is not None:
+            sources.insert(0, current)
+        for item in sources:
+            if item.training_trajectory_identity == run_plan.training_trajectory_identity:
+                _offered_measurements(
+                    store, candidate_record_digests=item.candidate_record_digests, into=offers
+                )
         pending.append(
             _PendingPostSelectionRun(
                 slot=slot,
@@ -3966,24 +5455,83 @@ def execute_final_production(
                     "restored": "executing",
                     "phase": "executing",
                 },
+                reusable=_reusable(offers),
             )
         )
 
-    results = _execute_post_selection_pending_runs(
-        context,
-        pending=pending,
-        budget_policy=budget_policy,
+    results = _run_post_selection_positions(
+        context, pending=pending, budget_policy=budget_policy
     )
-    for task in pending:
-        run_evidence, _candidates, _representative, _outer = results[task.slot]
-        evidence_by_slot[task.slot] = run_evidence
+    evidence: list[PostSelectionRunEvidence] = []
+    for slot in range(total_runs):
+        run_plan, position = positions[slot]
+        result = results[slot]
+        publish_post_selection_run_measurements(context, result)
+        representative = result.representative
+        reasons = tuple(
+            sorted({reason for item in result.candidates for reason in item.rejection_reasons})
+        )
+        assessment = PostSelectionRunEvidence(
+            selected_binding_digest=selected.binding.content_digest,
+            assessment_position_policy_digest=policy_digest,
+            training_trajectory_identity=run_plan.training_trajectory_identity,
+            training_root_identity=result.training_root_identity,
+            optimizer_seed=run_plan.optimizer_seed,
+            materialization_digest=result.materialization.content_digest,
+            runtime_summary_digest=result.runtime_summary_digest,
+            outcome=(
+                RUN_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE
+                if representative is None
+                else RUN_OUTCOME_REPRESENTATIVE_SELECTED
+            ),
+            candidate_record_digests=tuple(item.content_digest for item in result.candidates),
+            checkpoint_rejection_reasons=reasons,
+            representative_candidate_identity=(
+                None if representative is None else representative.stable_candidate_identity
+            ),
+            representative_checkpoint_sha256=(
+                None
+                if representative is None
+                else representative.trajectory_point.checkpoint_sha256
+            ),
+            representative_record_digest=(
+                None if representative is None else representative.content_digest
+            ),
+            monitor_metric_record_digest=(
+                None if representative is None else result.monitor_metrics.content_digest
+            ),
+        )
+        with post_selection_publication_barrier(
+            context.paths, selected.binding.campaign_generation
+        ):
+            store.put(assessment)
+            publish_current_post_selection_pointer(
+                context.store,
+                binding=selected.binding,
+                kind=POINTER_ASSESSMENT_POSITION,
+                content_digest=assessment.content_digest,
+                position=position,
+            )
+        evidence.append(assessment)
 
-    evidence = [evidence_by_slot[slot] for slot in range(total_runs)]
+    rejected = [item for item in evidence if not item.selected]
+    if rejected:
+        detail = "; ".join(
+            f"seed {item.optimizer_seed}: {list(item.checkpoint_rejection_reasons)}"
+            for item in rejected
+        )
+        raise PostSelectionError(
+            "No checkpoint passed mandatory hard admissibility for final-production "
+            f"{detail} (production checkpoint target-force ceiling "
+            f"{context.production_policy.checkpoint_maximum_target_force_rmse_ev_per_angstrom}"
+            " eV/angstrom). The complete assessed candidate sets and the typed "
+            "no-admissible outcome are published; an inadmissible checkpoint is never "
+            "promoted to a representative."
+        )
 
     # Deciding which of the completed seeds constitute the released product is
     # the last pre-qualification act, and it belongs here: every input it uses
-    # already exists, and no downstream release evidence does yet.  Taking the
-    # decision any later would let release evidence choose the product.
+    # already exists, and no downstream release evidence does yet.
     completion = FinalProductionCompletion(plan=final_plan, runs=tuple(evidence))
     decision = publish_final_production_publication(context, context.store, completion)
     return final_plan, tuple(evidence), decision
@@ -3992,13 +5540,16 @@ def execute_final_production(
 def resolve_current_final_production_plan(
     context: PostSelectionContext,
 ) -> FinalProductionPlan | None:
-    plan = resolve_current_post_selection_record(
-        context.store,
-        context.paths,
-        context.selected,
-        kind=POINTER_FINAL_PLAN,
-        deserializer=FinalProductionPlan.from_dict,
-    )
+    try:
+        plan = resolve_current_post_selection_record(
+            context.store,
+            context.paths,
+            context.selected,
+            kind=POINTER_FINAL_PLAN,
+            deserializer=FinalProductionPlan.from_dict,
+        )
+    except TrainingDataSerializationError:
+        return None
     if plan is not None:
         replay_enabled = context.method_policies.replay_enabled
         replay_resolution = None
@@ -4024,12 +5575,12 @@ def resolve_current_final_production_plan(
     return plan
 
 
-FINAL_PRODUCTION_COMPLETION_SCHEMA = "mdstats.mlff-final-production-completion.v1"
+FINAL_PRODUCTION_COMPLETION_SCHEMA = "mdstats.mlff-final-production-completion.v2"
 
 
 @dataclass(frozen=True, slots=True)
 class FinalProductionCompletion:
-    """Truthful completed run evidence for the exact current final plan."""
+    """Every required seed's current selected assessment for the exact final plan."""
 
     plan: FinalProductionPlan
     runs: tuple[PostSelectionRunEvidence, ...]
@@ -4038,12 +5589,19 @@ class FinalProductionCompletion:
     def __post_init__(self) -> None:
         if not self.runs:
             raise PostSelectionError("Final-production completion requires at least one run.")
+        if any(not run.selected for run in self.runs):
+            raise PostSelectionError(
+                "Final-production completion requires a selected representative for "
+                "every required seed."
+            )
         payload = {
             "schema": FINAL_PRODUCTION_COMPLETION_SCHEMA,
             "final_plan_digest": self.plan.content_digest,
             "required_final_seeds": list(self.plan.required_final_seeds),
             "run_evidence_digests": [run.content_digest for run in self.runs],
-            "run_identities": [run.run_identity for run in self.runs],
+            "training_trajectory_identities": [
+                run.training_trajectory_identity for run in self.runs
+            ],
         }
         object.__setattr__(self, "content_digest", digest(payload))
 
@@ -4051,7 +5609,12 @@ class FinalProductionCompletion:
 def resolve_current_final_production_completion(
     context: PostSelectionContext,
 ) -> FinalProductionCompletion | None:
-    """Verify that every required final run has authenticated completed evidence."""
+    """Every required seed's current assessment, found through its position locator.
+
+    The locator is not authority: each located assessment must bind the exact
+    current position (binding, final-seed policy, trajectory, seed) and a
+    selected representative, and publication re-authenticates its records.
+    """
 
     plan = resolve_current_final_production_plan(context)
     if plan is None:
@@ -4059,16 +5622,98 @@ def resolve_current_final_production_completion(
     evidence: list[PostSelectionRunEvidence] = []
     for seed in plan.required_final_seeds:
         run_plan = build_final_production_run_plan(plan, optimizer_seed=seed)
-        completed = _completed_run_evidence(context, run_plan)
-        if completed is None:
+        completed = resolve_current_final_seed_assessment(context, run_plan)
+        if completed is None or not completed.selected:
             return None
-        if completed.run_plan_digest != run_plan.content_digest:
-            raise PostSelectionError(
-                f"Stored evidence for production run {run_plan.run_identity[:12]}... "
-                "belongs to a different run plan."
-            )
         evidence.append(completed)
     return FinalProductionCompletion(plan=plan, runs=tuple(evidence))
+
+
+def resolve_current_final_seed_assessment(
+    context: PostSelectionContext, run_plan: Any
+) -> PostSelectionRunEvidence | None:
+    """The current assessment of one final-seed position, or ``None``.
+
+    Located through the position locator under the *current* final hard policy
+    + D2.DEF.059A; the located record must bind exactly that position.
+    """
+
+    policy_digest = final_seed_assessment_policy_digest(
+        post_selection_checkpoint_admissibility(
+            context.method_policies, context.production_policy
+        )
+    )
+    completed = resolve_current_post_selection_record(
+        context.store,
+        context.paths,
+        context.selected,
+        kind=POINTER_ASSESSMENT_POSITION,
+        deserializer=PostSelectionRunEvidence.from_dict,
+        position=_final_position(context, run_plan, policy_digest),
+    )
+    if completed is not None and (
+        completed.training_trajectory_identity != run_plan.training_trajectory_identity
+        or completed.assessment_position_policy_digest != policy_digest
+        or completed.optimizer_seed != int(run_plan.optimizer_seed)
+        or completed.selected_binding_digest != context.selected.binding.content_digest
+    ):
+        raise PostSelectionError(
+            f"The assessment located for production seed {run_plan.optimizer_seed} "
+            "belongs to a different assessment position."
+        )
+    if completed is not None:
+        authenticated_post_selection_candidate_records(
+            context,
+            candidate_record_digests=completed.candidate_record_digests,
+            runtime_summary_digest=completed.runtime_summary_digest,
+            representative_record_digest=(
+                completed.representative_record_digest
+                if completed.selected
+                else None
+            ),
+        )
+    return completed
+
+
+def resolve_current_cv_fold_assessment(
+    context: PostSelectionContext, run_plan: Any
+) -> CvFoldAcceptance | None:
+    """The current assessment of one CV fold position, or ``None``."""
+
+    policy_digest = cv_assessment_position_policy_digest(
+        post_selection_checkpoint_admissibility(context.method_policies, context.cv_policy),
+        context.cv_policy,
+    )
+    located = resolve_current_post_selection_record(
+        context.store,
+        context.paths,
+        context.selected,
+        kind=POINTER_ASSESSMENT_POSITION,
+        deserializer=CvFoldAcceptance.from_dict,
+        position=_cv_position(context, run_plan, policy_digest),
+    )
+    if located is not None and (
+        not located.is_current
+        or located.training_trajectory_identity != run_plan.training_trajectory_identity
+        or located.assessment_position_policy_digest != policy_digest
+        or (located.cv_seed, located.fold_index)
+        != (int(run_plan.optimizer_seed), int(run_plan.fold_index))
+    ):
+        raise PostSelectionError(
+            "The assessment located for a CV fold belongs to a different assessment position."
+        )
+    if located is not None:
+        authenticated_post_selection_candidate_records(
+            context,
+            candidate_record_digests=located.candidate_record_digests,
+            runtime_summary_digest=located.runtime_summary_digest,
+            representative_record_digest=(
+                located.representative_checkpoint_record_digest
+                if located.outcome != CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE
+                else None
+            ),
+        )
+    return located
 
 
 # ---------------------------------------------------------------------------
@@ -4352,9 +5997,12 @@ __all__ = [
     "execute_post_selection_run",
     "resolve_current_cv_acceptance",
     "resolve_current_cv_plan",
+    "authenticated_post_selection_candidate_records",
     "authenticated_run_representative_records",
     "evaluate_post_selection_run_candidates",
     "resolve_current_final_production_completion",
+    "resolve_current_final_seed_assessment",
+    "resolve_current_cv_fold_assessment",
     "resolve_current_final_production_publication",
     "resolve_current_final_production_plan",
     "resolve_post_selection_evaluation_model_state",

@@ -46,12 +46,15 @@ from .post_selection_identity import (
 )
 from .post_selection_run_identity import (
     PostSelectionRunRole,
-    post_selection_run_identity,
+    TrainingTrajectoryIdentity,
 )
 
-# v2 removes the M3 fields and binds the common target monitor.
-FINAL_PRODUCTION_PLAN_SCHEMA = "mdstats.post-selection-final-production-plan.v2"
-FINAL_PRODUCTION_RUN_PLAN_SCHEMA = "mdstats.post-selection-final-production-run-plan.v1"
+# v2 removed the M3 fields and bound the common target monitor.  v3 binds the
+# label-blind transfer-consumer composition identity its trajectories consume.
+FINAL_PRODUCTION_PLAN_SCHEMA = "mdstats.post-selection-final-production-plan.v3"
+FINAL_PRODUCTION_PLAN_SCHEMA_V2 = "mdstats.post-selection-final-production-plan.v2"
+# v2 run plans carry their pre-fit training trajectory as the run identity.
+FINAL_PRODUCTION_RUN_PLAN_SCHEMA = "mdstats.post-selection-final-production-run-plan.v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,11 +73,32 @@ class FinalProductionPlan:
     planned_epochs: int
     required_final_seeds: tuple[int, ...]
     replay_lineage_digest: str | None = None
+    transfer_consumer_composition_digest: str | None = None
+    #: One-time cutover locator of the authenticated historical (v2) final
+    #: plan; recovery ancestry only, never a training identity.
+    legacy_source_plan_digest: str | None = None
 
     def __post_init__(self) -> None:
+        if self.legacy_source_plan_digest is not None:
+            object.__setattr__(
+                self,
+                "legacy_source_plan_digest",
+                validate_digest(
+                    self.legacy_source_plan_digest, name="legacy_source_plan_digest"
+                ),
+            )
         if not isinstance(self.binding, PostSelectionBinding):
             raise TrainingDataInputError(
                 "A final-production plan requires the authenticated selected binding."
+            )
+        if self.transfer_consumer_composition_digest is not None:
+            object.__setattr__(
+                self,
+                "transfer_consumer_composition_digest",
+                validate_digest(
+                    self.transfer_consumer_composition_digest,
+                    name="transfer_consumer_composition_digest",
+                ),
             )
         for name in (
             "method_identity_digest",
@@ -132,6 +156,10 @@ class FinalProductionPlan:
             "n_selected": self.n_selected,
             "planned_epochs": self.planned_epochs,
             "required_final_seeds": list(self.required_final_seeds),
+            "transfer_consumer_composition_digest": (
+                self.transfer_consumer_composition_digest
+            ),
+            "legacy_source_plan_digest": self.legacy_source_plan_digest,
         }
         if self.replay_lineage_digest is not None:
             payload["replay_lineage_digest"] = self.replay_lineage_digest
@@ -169,6 +197,16 @@ class FinalProductionPlan:
                 if payload.get("replay_lineage_digest") is None
                 else str(payload["replay_lineage_digest"])
             ),
+            transfer_consumer_composition_digest=(
+                None
+                if payload.get("transfer_consumer_composition_digest") is None
+                else str(payload["transfer_consumer_composition_digest"])
+            ),
+            legacy_source_plan_digest=(
+                None
+                if payload.get("legacy_source_plan_digest") is None
+                else str(payload["legacy_source_plan_digest"])
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -179,7 +217,12 @@ class FinalProductionPlan:
 
 @dataclass(frozen=True, slots=True)
 class FinalProductionRunPlan:
-    """One exact fresh final-production job."""
+    """One exact fresh final-production job.
+
+    Its root/restart identity is the pre-fit training trajectory.  The final
+    plan digest (CV authorization, publication mode, role ceilings) is an
+    authorization parent and never names a training root.
+    """
 
     final_plan_digest: str
     method_identity_digest: str
@@ -187,7 +230,7 @@ class FinalProductionRunPlan:
     selected_binding_digest: str
     optimizer_seed: int
     planned_epochs: int
-    run_identity: str
+    training_trajectory: TrainingTrajectoryIdentity
     run_role: str = PostSelectionRunRole.FINAL_PRODUCTION.value
 
     def __post_init__(self) -> None:
@@ -196,7 +239,6 @@ class FinalProductionRunPlan:
             "method_identity_digest",
             "final_production_policy_digest",
             "selected_binding_digest",
-            "run_identity",
         ):
             object.__setattr__(
                 self, name, validate_digest(getattr(self, name), name=name)
@@ -213,15 +255,28 @@ class FinalProductionRunPlan:
         if planned <= 0:
             raise TrainingDataInputError("planned_epochs must be positive.")
         object.__setattr__(self, "planned_epochs", planned)
-        expected = post_selection_run_identity(
-            role=PostSelectionRunRole.FINAL_PRODUCTION,
-            plan_digest=self.final_plan_digest,
-            optimizer_seed=self.optimizer_seed,
-        )
-        if expected != self.run_identity:
+        trajectory = self.training_trajectory
+        if not isinstance(trajectory, TrainingTrajectoryIdentity) or (
+            trajectory.run_role != PostSelectionRunRole.FINAL_PRODUCTION.value
+            or trajectory.optimizer_seed != self.optimizer_seed
+            or trajectory.planned_epochs != self.planned_epochs
+            or trajectory.method_identity_digest != self.method_identity_digest
+            or trajectory.selected_binding_digest != self.selected_binding_digest
+        ):
             raise TrainingDataInputError(
-                "Final-production run identity does not match its (plan, seed) position."
+                "Final-production run plan does not bind its own (role, method, "
+                "binding, seed, horizon) training trajectory."
             )
+
+    @property
+    def training_trajectory_identity(self) -> str:
+        return self.training_trajectory.content_digest
+
+    @property
+    def run_identity(self) -> str:
+        """The run root/restart identity: the pre-fit training trajectory."""
+
+        return self.training_trajectory.content_digest
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -233,7 +288,7 @@ class FinalProductionRunPlan:
             "optimizer_seed": self.optimizer_seed,
             "planned_epochs": self.planned_epochs,
             "run_role": PostSelectionRunRole(self.run_role).value,
-            "run_identity": self.run_identity,
+            "training_trajectory": self.training_trajectory.to_dict(),
         }
 
     @property
@@ -259,7 +314,9 @@ class FinalProductionRunPlan:
             optimizer_seed=int(payload["optimizer_seed"]),
             planned_epochs=int(payload["planned_epochs"]),
             run_role=str(payload["run_role"]),
-            run_identity=str(payload["run_identity"]),
+            training_trajectory=TrainingTrajectoryIdentity.from_dict(
+                payload["training_trajectory"]
+            ),
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError(
@@ -278,8 +335,13 @@ def build_final_production_plan(
     common_monitor: Any,
     monitor_separation: CommonMonitorSeparationEvidence,
     replay_lineage_digest: str | None = None,
+    legacy_source_plan_digest: str | None = None,
 ) -> FinalProductionPlan:
     """Authorize fresh full-``T_selected`` production under the accepted method.
+
+    The transfer-consumer composition identity of production is the common
+    monitor's label-blind geometry projection (production has no held-out
+    consumer).
 
     The CV authorization is checked before the plan exists, so an unaccepted or
     method-mismatched cross-validation cannot produce a plan that later looks
@@ -306,6 +368,8 @@ def build_final_production_plan(
     require_common_monitor_lineage(
         cv_plan, common_monitor=common_monitor, monitor_separation=monitor_separation
     )
+    from .post_selection_execution import transfer_consumer_composition_digest
+
     return FinalProductionPlan(
         binding=context.binding,
         method_identity_digest=method.content_digest,
@@ -319,6 +383,12 @@ def build_final_production_plan(
         planned_epochs=policy.production_max_num_epochs,
         required_final_seeds=policy.production_seeds,
         replay_lineage_digest=replay_lineage_digest,
+        transfer_consumer_composition_digest=transfer_consumer_composition_digest(
+            context,
+            training_mode=method.training_mode,
+            consumer_frame_uids=tuple(common_monitor.selected_identities),
+        ),
+        legacy_source_plan_digest=legacy_source_plan_digest,
     )
 
 
@@ -371,31 +441,38 @@ def validate_final_production_plan(
 def build_final_production_run_plan(
     plan: FinalProductionPlan, *, optimizer_seed: int
 ) -> FinalProductionRunPlan:
-    """Bind one fresh final-production job below its plan."""
+    """Bind one fresh final-production job and its pre-fit training trajectory."""
 
     if int(optimizer_seed) not in plan.required_final_seeds:
         raise PostSelectionError(
             f"Final-production seed {int(optimizer_seed)} is not in the configured "
             f"production seed matrix {list(plan.required_final_seeds)}."
         )
-    plan_digest = plan.content_digest
+    trajectory = TrainingTrajectoryIdentity(
+        run_role=PostSelectionRunRole.FINAL_PRODUCTION.value,
+        selected_binding_digest=plan.binding.content_digest,
+        method_identity_digest=plan.method_identity_digest,
+        training_membership_digest=plan.target_membership_digest,
+        optimizer_seed=int(optimizer_seed),
+        planned_epochs=plan.planned_epochs,
+        replay_lineage_digest=plan.replay_lineage_digest,
+        common_monitor_record_digest=plan.common_monitor_record_digest,
+        transfer_consumer_composition_digest=plan.transfer_consumer_composition_digest,
+    )
     return FinalProductionRunPlan(
-        final_plan_digest=plan_digest,
+        final_plan_digest=plan.content_digest,
         method_identity_digest=plan.method_identity_digest,
         final_production_policy_digest=plan.final_production_policy_digest,
         selected_binding_digest=plan.binding.content_digest,
         optimizer_seed=int(optimizer_seed),
         planned_epochs=plan.planned_epochs,
-        run_identity=post_selection_run_identity(
-            role=PostSelectionRunRole.FINAL_PRODUCTION,
-            plan_digest=plan_digest,
-            optimizer_seed=int(optimizer_seed),
-        ),
+        training_trajectory=trajectory,
     )
 
 
 __all__ = [
     "FINAL_PRODUCTION_PLAN_SCHEMA",
+    "FINAL_PRODUCTION_PLAN_SCHEMA_V2",
     "FINAL_PRODUCTION_RUN_PLAN_SCHEMA",
     "FinalProductionPlan",
     "FinalProductionRunPlan",

@@ -101,29 +101,42 @@ partition_seed = 104729
 seeds = [0]
 max_num_epochs = 30
 purge_components_between_roles = 0
-checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.045
+checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.075
 acceptance_metric = "target_force_rmse_ev_per_angstrom"
-acceptance_maximum = 0.045
+acceptance_maximum = 0.075
 
 [post_selection.production]
 seeds = [1]
 committee_policy = "all_qualified_final_seeds"
+
+[acceptance]
+post_selection_checkpoint_policy_generation = "p5_target_replay_v2"
+maximum_target_force_rmse_ev_per_angstrom = 0.050
+replay_degradation_warning_mev_per_a = 50.0
+replay_degradation_hard_limit_mev_per_a = 100.0
 ```
 
-The generated campaign is a foundation (`multihead_replay`) campaign, so it
-exposes both foundation-CV defaults: `checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.045`
-(the CV checkpoint target-force competence ceiling on `M_mon`) and `acceptance_maximum = 0.045`
-(the held-out fold acceptance ceiling, in units of `acceptance_metric`). Fresh
-production checkpoints use `[acceptance].maximum_target_force_rmse_ev_per_angstrom`
-(generated `0.030`). All three post-selection thresholds are independently
-configurable policy parameters. When omitted, `checkpoint_maximum_target_force_rmse_ev_per_angstrom`
-defaults to `0.045` for foundation modes; `acceptance_maximum` defaults to `0.045`
-for foundation modes and `0.030` for scratch; and production checkpoint quality
-defaults to `0.030`. Scratch CV checkpoints keep the `[acceptance]` ceiling.
-An explicit value is never rewritten, and its units follow `acceptance_metric`
-for `acceptance_maximum` and target-force RMSE (`eV/angstrom`) for checkpoint
-ceilings. The exact resolution table is owned by the P5 specification
-section 12.1.
+The generated campaign stays campaign schema v2 and is a foundation
+(`multihead_replay`) campaign carrying the narrow checkpoint-policy generation
+marker. It exposes the foundation role defaults `tau_CV = 0.075`
+(`checkpoint_maximum_target_force_rmse_ev_per_angstrom`, the CV checkpoint
+competence ceiling on `M_mon`), `theta_CV = 0.075` (`acceptance_maximum`, in
+units of `acceptance_metric`), and `tau_prod = 0.050`
+(`[acceptance].maximum_target_force_rmse_ev_per_angstrom`), plus the shared
+replay policy: a diagnostic-only warning above 50 meV/angstrom and a
+catastrophic hard rejection above 100 meV/angstrom of signed TRUE_DFT replay
+degradation (`warning < hard` is required). All are configurable assessment
+coordinates; none is a training-method parent, so editing one re-assesses
+existing TRAIN2 trajectories without retraining. When omitted, foundation modes
+resolve `0.075/0.075/0.050` (the `0.075` outer default applies to the default
+force metric only) and scratch keeps `0.030`. With the marker every explicit
+value is used exactly; the retired one-number
+`allowed_replay_degradation_mev_per_a` is rejected. Without the marker, the
+historical generated values `0.045/0.045/0.030` and replay `30.0` migrate to
+the current defaults with a notice, other explicit role values are preserved,
+and a custom one-number replay budget or a mixed/unmarked new replay field fails
+closed. The exact resolution/migration table is owned by the P5 specification
+sections 12.1 and 16.
 
 The configured power ceiling is not a fixed scientific constant. Candidates
 are additionally bounded by the available `P_train` population and the

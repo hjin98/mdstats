@@ -1,21 +1,22 @@
 ---
 title: "mdstats MLFF Training-Data Architecture"
 artifact_level: "D3 software architecture and integration"
-status: "current normative D3 architecture"
-accepted_date: "2026-09-15"
+status: "proposed D3 renewal candidate pending independent review"
+accepted_current_baseline_date: "2026-09-15"
+candidate_date: "2026-09-18"
 ---
 
 # mdstats MLFF Training-Data Architecture (D3)
 
 ## Authority and scope
 
-This manual is the current D3 software-architecture authority for the machine-learned force-field (MLFF) branch of mdstats. It was narrowed from the former mixed pre-SSDP architecture when the reconstructed D1 and D2 method papers were explicitly accepted.
+This branch carries a proposed D3 renewal of the MLFF architecture. Until the renewal passes independent D3 Review and is promoted, the accepted-current baseline remains the pre-renewal canonical architecture. The candidate preserves the baseline except for the replay-retention/target-admissibility ownership/currentness changes under active Gate D. The manual was originally narrowed from the former mixed pre-SSDP architecture when the reconstructed D1 and D2 method papers were accepted.
 
 Authority is layered and directional:
 
 1. **D1 scientific/mathematical authority:** [`../../methods/mlff_scientific_method.md`](../../methods/mlff_scientific_method.md), with [`../../methods/mlff_target_training_order_scientific_method.md`](../../methods/mlff_target_training_order_scientific_method.md) as the accepted scoped owner for `TargetTrainingOrder` / `pi_train` scientific meaning.
 2. **D2 numerical/algorithmic authority:** [`../../methods/mlff_numerical_algorithmic_method.md`](../../methods/mlff_numerical_algorithmic_method.md), with [`../../methods/mlff_target_training_order_numerical_algorithmic_method.md`](../../methods/mlff_target_training_order_numerical_algorithmic_method.md) as the accepted scoped owner for target-training-order numerics.
-3. **D3 architecture/integration authority:** this manual, including [`45_target_training_order.md`](45_target_training_order.md) as the canonical detailed owner for the restored target-order subsystem.
+3. **D3 architecture/integration authority:** the accepted-current pre-renewal revision of this manual; this branch revision is its proposed replacement candidate, including [`45_target_training_order.md`](45_target_training_order.md) as the unchanged canonical detailed owner for the restored target-order subsystem.
 4. **D4 executable/source-specific authority:** [`../../specs/training_data/README.md`](../../specs/training_data/README.md) and the code owners it indexes.
 
 D3 owns subsystem decomposition, dependency direction, lifecycle and orchestration, interface and artifact boundaries, persistence responsibilities, backend seams, and ownership routing. D3 does **not** redefine scientific observables, estimands, assumptions, numerical estimators, deterministic algorithms, error semantics, or stochastic semantics owned by D1/D2. Exact schema fields, constants, source encodings, dependency probes, and runtime representations remain D4 unless they alter D1/D2 semantics.

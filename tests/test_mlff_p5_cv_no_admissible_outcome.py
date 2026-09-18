@@ -36,10 +36,9 @@ from mdstats.training_data.post_selection_cv_acceptance import (
     CvCampaignAcceptance,
     CvFoldAcceptance,
     build_cv_fold_acceptance,
-    select_cv_fold_representative,
+    select_post_selection_representative,
 )
 
-_SELECTION = mdstats.CheckpointSelectionPolicy()
 _SEED_DIGEST = "5" * 64
 _POLICY = SimpleNamespace(
     acceptance_metric="target_force_rmse_ev_per_angstrom", acceptance_maximum=0.02
@@ -48,9 +47,17 @@ _RUN_PLAN = SimpleNamespace(
     cv_plan_digest="a" * 64,
     content_digest="b" * 64,
     run_identity="c" * 64,
+    training_trajectory_identity="c" * 64,
+    selected_binding_digest="9" * 64,
     fold_index=0,
     optimizer_seed=11,
 )
+#: The current fold assessment binds its position, not the run plan.
+_POSITION = {
+    "assessment_position_policy_digest": "8" * 64,
+    "training_root_identity": "c" * 64,
+    "runtime_summary_digest": "7" * 64,
+}
 
 
 def _candidate(
@@ -74,19 +81,19 @@ def _candidate(
 
 def _no_replay(**kwargs) -> mdstats.CheckpointAdmissibilityPolicy:
     return mdstats.CheckpointAdmissibilityPolicy(
-        replay_enabled=False, replay_degradation_budget_ev_per_angstrom=None, **kwargs
+        replay_enabled=False, replay_degradation_hard_limit_ev_per_angstrom=None, **kwargs
     )
 
 
-_REPLAY = mdstats.CheckpointAdmissibilityPolicy()
+_REPLAY = mdstats.CheckpointAdmissibilityPolicy(
+    replay_degradation_hard_limit_ev_per_angstrom=0.100
+)
 
 
 def _decide(candidates, *, outer_rmse: float | None = None):
     """The runtime order: select, evaluate outer only for a representative, judge."""
 
-    representative = select_cv_fold_representative(
-        candidates, selection_policy=_SELECTION, seed_material_digest=_SEED_DIGEST
-    )
+    representative = select_post_selection_representative(candidates)
     outer = None
     if representative is not None:
         outer = target_metrics(outer_rmse, pred_digest="f" * 64)
@@ -96,6 +103,7 @@ def _decide(candidates, *, outer_rmse: float | None = None):
         representative=representative,
         outer_metrics=outer,
         policy=_POLICY,
+        **_POSITION,
     )
 
 
@@ -151,26 +159,40 @@ def test_case_c_all_candidates_fail_the_target_threshold():
     _assert_no_admissible(acceptance, {"target_threshold_exceeded"}, candidates)
 
 
-def test_case_d_all_candidates_fail_replay_retention():
+def test_case_d_all_candidates_fail_the_catastrophic_replay_limit():
     candidates = [
-        _candidate(1, 0.010, policy=_REPLAY, replay_candidate=0.060),
-        _candidate(2, 0.012, policy=_REPLAY, replay_candidate=0.070),
+        _candidate(1, 0.010, policy=_REPLAY, replay_candidate=0.130),
+        _candidate(2, 0.012, policy=_REPLAY, replay_candidate=0.140),
     ]
     representative, acceptance = _decide(candidates)
     assert representative is None
-    _assert_no_admissible(acceptance, {"replay_retention_ceiling_exceeded"}, candidates)
+    _assert_no_admissible(
+        acceptance, {"replay_catastrophic_forgetting_limit_exceeded"}, candidates
+    )
+
+
+def test_case_d2_moderate_replay_degradation_only_warns_and_stays_admissible():
+    candidates = [
+        _candidate(1, 0.010, policy=_REPLAY, replay_candidate=0.090),
+        _candidate(2, 0.012, policy=_REPLAY, replay_candidate=0.021),
+    ]
+    representative, acceptance = _decide(candidates, outer_rmse=0.010)
+    # 70 meV/A degradation is a diagnostic warning, not a rejection, and the
+    # lower target RMSE wins despite its worse replay margin.
+    assert representative is candidates[0]
+    assert acceptance.accepted
 
 
 def test_case_e_distinct_mandatory_reasons_are_all_preserved():
     candidates = [
         _candidate(1, 0.040, policy=_REPLAY, replay_candidate=0.021),
-        _candidate(2, 0.010, policy=_REPLAY, replay_candidate=0.070),
+        _candidate(2, 0.010, policy=_REPLAY, replay_candidate=0.140),
     ]
     representative, acceptance = _decide(candidates)
     assert representative is None
     _assert_no_admissible(
         acceptance,
-        {"target_threshold_exceeded", "replay_retention_ceiling_exceeded"},
+        {"target_threshold_exceeded", "replay_catastrophic_forgetting_limit_exceeded"},
         candidates,
     )
 
@@ -185,9 +207,7 @@ def test_case_f_all_candidates_fail_a_required_physical_gate():
 
 def test_case_g_zero_candidates_is_missing_evidence_not_a_verdict():
     with pytest.raises(PostSelectionError, match="no checkpoint candidates"):
-        select_cv_fold_representative(
-            [], selection_policy=_SELECTION, seed_material_digest=_SEED_DIGEST
-        )
+        select_post_selection_representative([])
     with pytest.raises(PostSelectionError, match="no checkpoint candidates"):
         build_cv_fold_acceptance(
             run_plan=_RUN_PLAN,
@@ -195,6 +215,7 @@ def test_case_g_zero_candidates_is_missing_evidence_not_a_verdict():
             representative=None,
             outer_metrics=None,
             policy=_POLICY,
+            **_POSITION,
         )
 
 
@@ -218,6 +239,7 @@ def test_case_h_corrupt_or_inconsistent_candidate_evidence_fails_hard():
             representative=None,
             outer_metrics=None,
             policy=_POLICY,
+            **_POSITION,
         )
     # Outer evidence without a representative is refused.
     with pytest.raises(PostSelectionError, match="cannot carry held-out outer"):
@@ -227,6 +249,7 @@ def test_case_h_corrupt_or_inconsistent_candidate_evidence_fails_hard():
             representative=None,
             outer_metrics=target_metrics(0.010),
             policy=_POLICY,
+            **_POSITION,
         )
     # An inadmissible or foreign "representative" is never promoted.
     for representative, candidates in ((bad, [good, bad]), (good, [bad])):
@@ -237,6 +260,7 @@ def test_case_h_corrupt_or_inconsistent_candidate_evidence_fails_hard():
                 representative=representative,
                 outer_metrics=target_metrics(0.010),
                 policy=_POLICY,
+                **_POSITION,
             )
     # A representative that reached acceptance without outer evidence fails.
     with pytest.raises(PostSelectionError, match="no held-out outer evaluation"):
@@ -246,6 +270,7 @@ def test_case_h_corrupt_or_inconsistent_candidate_evidence_fails_hard():
             representative=good,
             outer_metrics=None,
             policy=_POLICY,
+            **_POSITION,
         )
 
 
@@ -395,13 +420,18 @@ def test_property_outcome_is_determined_by_admissibility_alone(specs, outer):
 # --- the scientific boundary is unchanged (O11 / 8.7) ------------------------
 
 
-def test_mandatory_admissibility_boundaries_are_unchanged():
-    policy = mdstats.CheckpointAdmissibilityPolicy()
+def test_mandatory_admissibility_boundaries_follow_the_ratified_hard_limit():
+    # Current P5 receives its ratified 0.100 hard limit explicitly from the
+    # P5 method-policy owner; the generic exported TRAIN2 default is 0.030.
+    policy = mdstats.CheckpointAdmissibilityPolicy(
+        replay_degradation_hard_limit_ev_per_angstrom=0.100
+    )
     assert policy.maximum_target_force_rmse_ev_per_angstrom == 0.030
     assert policy.replay_enabled is True
-    assert policy.replay_degradation_budget_ev_per_angstrom == 0.030
+    assert policy.replay_degradation_hard_limit_ev_per_angstrom == 0.100
     assert policy.replay_label_requirement == "true_dft"
     above = math.nextafter(0.030, math.inf)
+    above_hard = math.nextafter(0.100, math.inf)
 
     def reasons(target: float, replay: float, label: str = "true_dft"):
         return policy.failure_reasons(
@@ -410,13 +440,17 @@ def test_mandatory_admissibility_boundaries_are_unchanged():
             replay_label_mode=label,
         )
 
-    assert reasons(0.030, 0.030) == ()
+    assert reasons(0.030, 0.100) == ()
     assert reasons(above, 0.030) == ("target_threshold_exceeded",)
-    assert reasons(0.030, above) == ("replay_retention_ceiling_exceeded",)
+    assert reasons(0.030, above_hard) == ("replay_catastrophic_forgetting_limit_exceeded",)
     assert "replay_true_dft_evidence_missing" in reasons(0.010, 0.010, "foundation")
-    # Replay remains a constraint with no ranking credit: the selector never
-    # sees a replay-aware key.
-    assert "replay" not in json.dumps(_SELECTION.to_dict()).lower()
+    # Replay has no ranking credit: the strict D2.DEF.059A key has no replay term.
+    from mdstats.training_data.post_selection_cv_acceptance import (
+        post_selection_representative_key,
+    )
+    import inspect
+
+    assert "replay" not in inspect.getsource(post_selection_representative_key).split('"""')[2]
 
 
 # ===========================================================================
@@ -433,6 +467,7 @@ from mdstats.training_data.campaign_post_selection_runtime import (  # noqa: E40
     FOLD_ACCEPTANCE_FILENAME,
     build_post_selection_contexts,
     resolve_current_cv_acceptance,
+    resolve_current_cv_fold_assessment,
     resolve_current_cv_plan,
 )
 from mdstats.training_data.post_selection_cv_acceptance import (  # noqa: E402
@@ -443,6 +478,10 @@ from mdstats.training_data.post_selection_cv_plan import (  # noqa: E402
 )
 from mdstats.training_data.post_selection_execution import (  # noqa: E402
     DATASET_ROLE_OUTER_EVALUATION,
+    EvaluationMeasurementIdentity,
+)
+from mdstats.training_data.post_selection_store import (  # noqa: E402
+    PostSelectionEvidenceStore,
 )
 
 #: Admissible under the mandatory 0.030 eV/A target gate and inside the
@@ -490,19 +529,34 @@ class _PlannedOffsetHarness(fx.PostSelectionHarness):
 
 
 def _count_outer_evaluations(monkeypatch, *, fail_for=None) -> dict[str, int]:
-    """Instrument the runtime owner's real dataset-evaluation seam."""
+    """Count real held-out numerical evaluations per run (and optionally fail one).
 
-    real = runtime.evaluate_post_selection_dataset
+    The runtime's held-out owner is still the real one; the count is taken at
+    the shared dataset-evaluation seam it calls, attributed to the run whose
+    representative is being measured.
+    """
+
+    real_outer = runtime._evaluate_held_out_representative
+    real_eval = runtime.evaluate_post_selection_dataset
     calls: dict[str, int] = {}
+    current: list = []
+
+    def outer(context, *, run_plan, **kwargs):
+        current.append(run_plan)
+        try:
+            return real_outer(context, run_plan=run_plan, **kwargs)
+        finally:
+            current.pop()
 
     def observed(**kwargs):
         if kwargs["dataset_role"] == DATASET_ROLE_OUTER_EVALUATION:
-            plan = kwargs["run_plan"]
+            plan = current[-1]
             calls[plan.run_identity] = calls.get(plan.run_identity, 0) + 1
             if fail_for is not None and fail_for(plan):
                 raise RuntimeError("injected held-out outer evaluation failure")
-        return real(**kwargs)
+        return real_eval(**kwargs)
 
+    monkeypatch.setattr(runtime, "_evaluate_held_out_representative", outer)
     monkeypatch.setattr(runtime, "evaluate_post_selection_dataset", observed)
     return calls
 
@@ -542,11 +596,14 @@ def _fold_verdicts(config: Path):
                     optimizer_seed=seed,
                     planned_epochs=context.cv_policy.cv_max_num_epochs,
                 )
-                path = context.run_root(run_plan.run_identity) / FOLD_ACCEPTANCE_FILENAME
-                if not path.is_file():
+                # Current verdicts are never root-local files.
+                assert not (
+                    context.run_root(run_plan.run_identity) / FOLD_ACCEPTANCE_FILENAME
+                ).exists()
+                verdict = resolve_current_cv_fold_assessment(context, run_plan)
+                if verdict is None:
                     folds[fold_index] = None
                     continue
-                verdict = CvFoldAcceptance.from_dict(json.loads(path.read_text()))
                 # The candidate evidence a verdict binds is durable and real.
                 records = [
                     context.evidence_store.get(item, Eval2CheckpointRecord.from_dict)
@@ -633,6 +690,61 @@ def test_outer_evaluation_failure_after_selection_stays_a_hard_failure(
     assert size.acceptance is None
 
 
+@pytest.mark.slow
+def test_outer_measurement_publication_failure_keeps_assessment_unpublished_and_retries(
+    tmp_path: Path, monkeypatch
+):
+    """A store failure cleans attempt scratch without publishing currentness."""
+
+    config, _workspace = fx.build_selected_campaign(tmp_path)
+    original_put = PostSelectionEvidenceStore.put
+    injected = False
+
+    def fail_outer_measurement(store, record):
+        nonlocal injected
+        if (
+            not injected
+            and isinstance(record, EvaluationMeasurementIdentity)
+            and record.dataset_role == DATASET_ROLE_OUTER_EVALUATION
+        ):
+            injected = True
+            raise RuntimeError("injected outer measurement publication failure")
+        return original_put(store, record)
+
+    monkeypatch.setattr(PostSelectionEvidenceStore, "put", fail_outer_measurement)
+    with pytest.raises(RuntimeError, match="outer measurement publication"):
+        fx.run_cross_validate(config, fx.PostSelectionHarness())
+    assert injected
+
+    (size,) = _fold_verdicts(config)
+    assert all(entry is None for entry in size.folds.values())
+    assert size.acceptance is None
+    # Resolve every assessment position through the current owner; no position
+    # locator may have become current merely because a measurement object failed.
+    cfg, paths, store = fx.load_context(config)
+    try:
+        context = build_post_selection_contexts(cfg, paths, store)[0]
+        plan = resolve_current_cv_plan(context)
+        assert plan is not None
+        for seed, fold_index in plan.required_run_matrix:
+            run_plan = build_cv_fold_run_plan(
+                plan,
+                fold_index=fold_index,
+                optimizer_seed=seed,
+                planned_epochs=context.cv_policy.cv_max_num_epochs,
+            )
+            assert resolve_current_cv_fold_assessment(context, run_plan) is None
+        assert resolve_current_cv_acceptance(context) is None
+    finally:
+        store.close()
+
+    monkeypatch.setattr(PostSelectionEvidenceStore, "put", original_put)
+    retry = fx.PostSelectionHarness()
+    assert fx.run_cross_validate(config, retry) == 0
+    assert retry.runs == []
+    assert retry.evaluations
+
+
 def _five_fold_campaign(tmp_path: Path, sizes, *, acceptance_maximum: str = "0.5") -> Path:
     """A prepared campaign with ``sizes`` frozen by explicit operator selection."""
 
@@ -655,7 +767,7 @@ def _five_fold_campaign(tmp_path: Path, sizes, *, acceptance_maximum: str = "0.5
 def _legacy_selection_that_aborts(monkeypatch) -> None:
     """Reproduce the pre-repair executable's abort at no-admissible selection."""
 
-    real = runtime.select_cv_fold_representative
+    real = runtime.select_post_selection_representative
 
     def legacy(candidates, **kwargs):
         chosen = real(candidates, **kwargs)
@@ -667,7 +779,7 @@ def _legacy_selection_that_aborts(monkeypatch) -> None:
             )
         return chosen
 
-    monkeypatch.setattr(runtime, "select_cv_fold_representative", legacy)
+    monkeypatch.setattr(runtime, "select_post_selection_representative", legacy)
 
 
 @pytest.mark.slow
@@ -739,11 +851,11 @@ def test_stakeholder_shaped_recovery_reuses_train2_and_completes_every_size(
     assert production.runs == []
 
 
-# --- restart reuse re-authenticates the candidate evidence a verdict binds ---
+# --- restart re-derives verdicts from sealed roots and exact measurements ---
 
 
 def _completed_rejected_campaign(tmp_path: Path):
-    """Two required folds persisted: fold 0 no-admissible, fold 1 selected."""
+    """Two required folds assessed: fold 0 no-admissible, fold 1 selected."""
 
     config, _workspace = fx.build_selected_campaign(tmp_path)
     harness = _PlannedOffsetHarness(
@@ -764,194 +876,153 @@ def _object_path(config: Path, content_digest: str) -> Path:
         store.close()
 
 
-def _rewrite_verdict(config: Path, run_identity: str, verdict: CvFoldAcceptance) -> None:
-    cfg, paths, store = fx.load_context(config)
-    try:
-        (context,) = build_post_selection_contexts(cfg, paths, store)
-        path = context.run_root(run_identity) / FOLD_ACCEPTANCE_FILENAME
-    finally:
-        store.close()
-    path.write_text(json.dumps(verdict.to_dict(), sort_keys=True), encoding="utf-8")
-
-
 def _corrupt_object(path: Path) -> None:
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload["full_evaluation_rank"] = int(payload.get("full_evaluation_rank") or 0) + 7
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
-def _tamper_candidate_admissible(config: Path, run_identity: str, verdict) -> None:
-    """Swap a bound candidate for an admissible one and re-bind the verdict to it."""
-
-    import dataclasses
-
-    from mdstats.training_data.eval2 import Eval2CheckpointRecord
-
-    digests = list(verdict.candidate_record_digests)
-    assert len(digests) >= 2, "the reason union must survive the swap"
-    path = _object_path(config, digests[0])
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    payload.update(admissible=True, rejection_reasons=[], content_digest=None)
-    forged = Eval2CheckpointRecord.from_dict(payload)
-    forged_path = _object_path(config, forged.content_digest)
-    forged_path.parent.mkdir(parents=True, exist_ok=True)
-    forged_path.write_text(json.dumps(forged.to_dict()), encoding="utf-8")
-    _rewrite_verdict(
-        config,
-        run_identity,
-        dataclasses.replace(
-            verdict, candidate_record_digests=(forged.content_digest, *digests[1:])
-        ),
-    )
-
-
-def _tamper_reason_union(config: Path, run_identity: str, verdict) -> None:
-    import dataclasses
-
-    _rewrite_verdict(
-        config,
-        run_identity,
-        dataclasses.replace(
-            verdict,
-            checkpoint_rejection_reasons=(
-                *verdict.checkpoint_rejection_reasons,
-                "replay_retention_ceiling_exceeded",
-            ),
-        ),
-    )
-
-
-_NOT_REPRODUCED = "not reproduced by the checkpoint candidate evidence"
-
-
 @pytest.mark.slow
-@pytest.mark.parametrize(
-    "fold_index, tamper, match",
-    [
-        (0, lambda c, run, v: _object_path(c, v.candidate_record_digests[0]).unlink(), "missing"),
-        (0, lambda c, run, v: _corrupt_object(_object_path(c, v.candidate_record_digests[0])), "digest"),
-        (0, _tamper_candidate_admissible, _NOT_REPRODUCED),
-        (0, _tamper_reason_union, _NOT_REPRODUCED),
-        (
-            1,
-            lambda c, run, v: _object_path(c, v.representative_checkpoint_record_digest).unlink(),
-            "missing",
-        ),
-        (
-            1,
-            lambda c, run, v: _corrupt_object(
-                _object_path(c, v.representative_checkpoint_record_digest)
-            ),
-            "digest",
-        ),
-    ],
-    ids=[
-        "no-admissible-candidate-deleted",
-        "no-admissible-candidate-corrupt",
-        "no-admissible-candidate-forged-admissible",
-        "no-admissible-reason-union-tampered",
-        "selected-representative-deleted",
-        "selected-representative-corrupt",
-    ],
-)
-def test_restart_refuses_a_verdict_whose_candidate_evidence_no_longer_proves_it(
-    tmp_path: Path, monkeypatch, fold_index, tamper, match
-):
-    """R1: a persisted v2 verdict is reused only on authentic candidate evidence."""
-
-    config, harness, size = _completed_rejected_campaign(tmp_path)
-    run_identity, verdict = size.folds[fold_index]
-    expected = (
-        CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE
-        if fold_index == 0
-        else CV_FOLD_OUTCOME_REPRESENTATIVE_SELECTED
-    )
-    assert verdict.outcome == expected
-    tamper(config, run_identity, verdict)
-    trained, evaluated = list(harness.runs), list(harness.evaluations)
-    outer_calls = _count_outer_evaluations(monkeypatch)
-
-    with pytest.raises((PostSelectionError, ValueError), match=match) as excinfo:
-        fx.run_cross_validate(config, harness)
-    # A hard failure, never translated into (or hidden behind) a rejection.
-    assert not isinstance(excinfo.value, PostSelectionCvRejectedError)
-    assert harness.runs == trained and harness.evaluations == evaluated
-    assert outer_calls == {}
-
-
-@pytest.mark.slow
-def test_restart_reuses_authentic_negative_and_v1_verdicts_without_retraining(
+def test_restart_reproduces_verdicts_without_retraining_or_reevaluation(
     tmp_path: Path, monkeypatch
 ):
-    """R1: authentic v2 negative folds and v1 selected folds are reused as stored."""
+    """Restart re-derives each fold verdict from its sealed root and reuses
+    every exact measurement: identical verdict digests, zero TRAIN2, zero EVAL2."""
 
     config, harness, size = _completed_rejected_campaign(tmp_path)
-    (_negative_run, negative), (selected_run, selected) = size.folds[0], size.folds[1]
-    assert negative.outcome == CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE
-    # A pre-repair representative-bearing record for the same run plan: v1
-    # binds no candidate set, and none is guessed for it.
-    v1 = selected.to_dict()
-    for key in ("outcome", "candidate_record_digests", "checkpoint_rejection_reasons"):
-        v1.pop(key)
-    v1.update(schema=CV_FOLD_ACCEPTANCE_SCHEMA_V1, content_digest=None)
-    v1 = CvFoldAcceptance.from_dict(v1).to_dict()
+    before = {index: verdict.content_digest for index, (_run, verdict) in size.folds.items()}
+    trained, evaluated = list(harness.runs), list(harness.evaluations)
+    outer_calls = _count_outer_evaluations(monkeypatch)
+    with pytest.raises(PostSelectionCvRejectedError):
+        fx.run_cross_validate(config, harness)
+    assert harness.runs == trained and harness.evaluations == evaluated
+    assert outer_calls == {}
+    (after,) = _fold_verdicts(config)
+    assert {index: verdict.content_digest for index, (_run, verdict) in after.folds.items()} == before
+
+
+@pytest.mark.slow
+def test_restart_recomputes_missing_measurements_and_fails_hard_on_corrupt_ones(
+    tmp_path: Path, monkeypatch
+):
+    config, harness, size = _completed_rejected_campaign(tmp_path)
+    _run, negative = size.folds[0]
+    trained = list(harness.runs)
+
+    # A missing offered measurement is recomputed (EVAL2 only), never guessed;
+    # the re-derived verdict is identical.
+    _object_path(config, negative.candidate_record_digests[0]).unlink()
+    evaluated = len(harness.evaluations)
+    with pytest.raises(PostSelectionCvRejectedError):
+        fx.run_cross_validate(config, harness)
+    assert harness.runs == trained
+    assert len(harness.evaluations) > evaluated
+    (after,) = _fold_verdicts(config)
+    assert after.folds[0][1].content_digest == negative.content_digest
+
+    # A corrupt immutable object is an integrity failure, never a verdict.
+    _corrupt_object(_object_path(config, negative.candidate_record_digests[1]))
+    with pytest.raises((PostSelectionError, ValueError), match="digest") as excinfo:
+        fx.run_cross_validate(config, harness)
+    assert not isinstance(excinfo.value, PostSelectionCvRejectedError)
+    assert harness.runs == trained
+
+
+@pytest.mark.slow
+def test_a_tampered_located_verdict_is_never_reused(tmp_path: Path, monkeypatch):
+    """The locator is not authority: a planted 'accepted' verdict is replaced by
+    the verdict the sealed root and current policy actually produce."""
+
+    import dataclasses
+
+    from mdstats.training_data.post_selection_store import (
+        POINTER_ASSESSMENT_POSITION,
+        publish_current_post_selection_pointer,
+    )
+
+    config, harness, size = _completed_rejected_campaign(tmp_path)
+    _run, negative = size.folds[0]
+    forged = dataclasses.replace(
+        negative, checkpoint_rejection_reasons=("replay_retention_ceiling_exceeded",)
+    )
     cfg, paths, store = fx.load_context(config)
     try:
         (context,) = build_post_selection_contexts(cfg, paths, store)
-        selected_path = context.run_root(selected_run) / FOLD_ACCEPTANCE_FILENAME
+        plan = resolve_current_cv_plan(context)
+        run_plan = build_cv_fold_run_plan(
+            plan, fold_index=0, optimizer_seed=negative.cv_seed,
+            planned_epochs=context.cv_policy.cv_max_num_epochs,
+        )
+        context.evidence_store.put(forged)
+        policy = runtime.cv_assessment_position_policy_digest(
+            runtime.post_selection_checkpoint_admissibility(
+                context.method_policies, context.cv_policy
+            ),
+            context.cv_policy,
+        )
+        publish_current_post_selection_pointer(
+            context.store,
+            binding=context.selected.binding,
+            kind=POINTER_ASSESSMENT_POSITION,
+            content_digest=forged.content_digest,
+            position=runtime._cv_position(context, run_plan, policy),
+        )
     finally:
         store.close()
-    selected_path.write_text(json.dumps(v1, sort_keys=True), encoding="utf-8")
-    v1_bytes = selected_path.read_bytes()
-    trained, evaluated = list(harness.runs), list(harness.evaluations)
-    outer_calls = _count_outer_evaluations(monkeypatch)
-    real_reuse = runtime._completed_fold_acceptance
-    reused = []
-
-    def observed(context, run_plan):
-        result = real_reuse(context, run_plan)
-        reused.append(result)
-        return result
-
-    monkeypatch.setattr(runtime, "_completed_fold_acceptance", observed)
-
+    trained = list(harness.runs)
     with pytest.raises(PostSelectionCvRejectedError):
         fx.run_cross_validate(config, harness)
-    assert harness.runs == trained, "a completed fold was retrained"
-    assert harness.evaluations == evaluated and outer_calls == {}
-    assert [item.outcome for item in reused] == [
-        CV_FOLD_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE,
-        CV_FOLD_OUTCOME_REPRESENTATIVE_SELECTED,
-    ]
-    assert reused[0] == negative
-    assert reused[1].serialization_schema == CV_FOLD_ACCEPTANCE_SCHEMA_V1
-    assert reused[1].candidate_record_digests == ()
-    assert reused[1].to_dict() == v1
-    assert selected_path.read_bytes() == v1_bytes
+    assert harness.runs == trained
+    (after,) = _fold_verdicts(config)
+    assert after.folds[0][1].content_digest == negative.content_digest
 
 
 @pytest.mark.slow
-def test_final_production_without_an_admissible_checkpoint_still_fails_hard(
+def test_final_production_without_an_admissible_checkpoint_publishes_a_typed_outcome(
     tmp_path: Path,
 ):
-    """F9: success-shaped production evidence never gains a negative state."""
+    """Every candidate and the typed no-admissible outcome are durable before the
+    hard failure; nothing is written into the sealed training root."""
 
     from mdstats.training_data.campaign_post_selection_runtime import (
         RUN_EVIDENCE_FILENAME,
         resolve_current_final_production_completion,
+        resolve_current_final_production_plan,
+        resolve_current_final_seed_assessment,
+    )
+    from mdstats.training_data.eval2 import Eval2CheckpointRecord
+    from mdstats.training_data.post_selection_execution import (
+        RUN_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE,
+    )
+    from mdstats.training_data.post_selection_production import (
+        build_final_production_run_plan,
     )
 
     config, _workspace = fx.build_selected_campaign(tmp_path)
     assert fx.run_cross_validate(config, fx.PostSelectionHarness()) == 0
     production = fx.PostSelectionHarness(force_offset=_INADMISSIBLE_OFFSET)
-    with pytest.raises(PostSelectionError, match="passed mandatory admissibility"):
+    with pytest.raises(PostSelectionError, match="passed mandatory hard admissibility"):
         fx.run_train_production(config, production)
     assert production.runs
     cfg, paths, store = fx.load_context(config)
     try:
         (context,) = build_post_selection_contexts(cfg, paths, store)
         assert resolve_current_final_production_completion(context) is None
-        for run_identity in production.runs:
-            assert not (context.run_root(run_identity) / RUN_EVIDENCE_FILENAME).exists()
+        plan = resolve_current_final_production_plan(context)
+        for seed in plan.required_final_seeds:
+            run_plan = build_final_production_run_plan(plan, optimizer_seed=seed)
+            assert not (context.run_root(run_plan.run_identity) / RUN_EVIDENCE_FILENAME).exists()
+            assessment = resolve_current_final_seed_assessment(context, run_plan)
+            assert assessment.outcome == RUN_OUTCOME_NO_ADMISSIBLE_REPRESENTATIVE
+            assert assessment.representative_record_digest is None
+            records = [
+                context.evidence_store.get(item, Eval2CheckpointRecord.from_dict)
+                for item in assessment.candidate_record_digests
+            ]
+            # The complete ordered checkpoint universe (one per durable epoch).
+            assert [r.trajectory_point.epoch for r in records] == list(
+                range(plan.planned_epochs)
+            )
+            assert not any(record.admissible for record in records)
     finally:
         store.close()

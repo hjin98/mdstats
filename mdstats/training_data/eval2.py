@@ -26,7 +26,11 @@ from .train2_policy import CheckpointAdmissibilityPolicy, CheckpointSelectionPol
 EVAL2_TRAJECTORY_POINT_SCHEMA = "mdstats.eval2-trajectory-point.v1"
 EVAL2_TARGET_BLOCK_METRIC_SCHEMA = "mdstats.eval2-target-block-metric.v1"
 EVAL2_TARGET_METRIC_SCHEMA = "mdstats.eval2-target-metric.v1"
-EVAL2_CHECKPOINT_RECORD_SCHEMA = "mdstats.eval2-checkpoint-record.v1"
+# v2 links the candidate/foundation replay measurements by their immutable
+# metric-record digests so a later assessment can prove exact measurement
+# reuse; v1 records stay readable and re-serialize byte-identically.
+EVAL2_CHECKPOINT_RECORD_SCHEMA = "mdstats.eval2-checkpoint-record.v2"
+EVAL2_CHECKPOINT_RECORD_SCHEMA_V1 = "mdstats.eval2-checkpoint-record.v1"
 EVAL2_BOOTSTRAP_COMPARISON_SCHEMA = "mdstats.eval2-bootstrap-comparison.v1"
 EVAL2_RUN_RECORD_SCHEMA = "mdstats.eval2-run-record.v1"
 EVAL2_EVALUATION_PLAN_SCHEMA = "mdstats.eval2-evaluation-plan.v1"
@@ -592,11 +596,19 @@ class Eval2CheckpointRecord:
     rejection_reasons: tuple[str, ...]
     shortlist_reasons: tuple[str, ...] = ()
     full_evaluation_rank: int = 0
+    replay_candidate_metric_record_digest: str | None = None
+    replay_foundation_metric_record_digest: str | None = None
     serialization_schema: str = field(default=EVAL2_CHECKPOINT_RECORD_SCHEMA, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        if self.serialization_schema != EVAL2_CHECKPOINT_RECORD_SCHEMA:
+        if self.serialization_schema not in (EVAL2_CHECKPOINT_RECORD_SCHEMA, EVAL2_CHECKPOINT_RECORD_SCHEMA_V1):
             raise TrainingDataInputError("Unsupported EVAL2 checkpoint-record schema.")
+        for name in ("replay_candidate_metric_record_digest", "replay_foundation_metric_record_digest"):
+            value = getattr(self, name)
+            if value is not None:
+                if self.serialization_schema == EVAL2_CHECKPOINT_RECORD_SCHEMA_V1:
+                    raise TrainingDataInputError("A v1 EVAL2 checkpoint record links no replay measurement.")
+                object.__setattr__(self, name, validate_digest(value, name=name))
         object.__setattr__(self, "evaluation_record_digest", validate_digest(self.evaluation_record_digest, name="evaluation_record_digest"))
         for name in (
             "replay_candidate_force_rmse_ev_per_angstrom",
@@ -624,7 +636,7 @@ class Eval2CheckpointRecord:
         return self.trajectory_point.stable_candidate_identity
 
     def _payload(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": self.serialization_schema,
             "trajectory_point": self.trajectory_point.to_dict(),
             "evaluation_record_digest": self.evaluation_record_digest,
@@ -638,6 +650,10 @@ class Eval2CheckpointRecord:
             "shortlist_reasons": list(self.shortlist_reasons),
             "full_evaluation_rank": self.full_evaluation_rank,
         }
+        if self.serialization_schema != EVAL2_CHECKPOINT_RECORD_SCHEMA_V1:
+            payload["replay_candidate_metric_record_digest"] = self.replay_candidate_metric_record_digest
+            payload["replay_foundation_metric_record_digest"] = self.replay_foundation_metric_record_digest
+        return payload
 
     @property
     def content_digest(self) -> str:
@@ -648,7 +664,8 @@ class Eval2CheckpointRecord:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "Eval2CheckpointRecord":
-        if payload.get("schema") != EVAL2_CHECKPOINT_RECORD_SCHEMA:
+        schema = payload.get("schema")
+        if schema not in (EVAL2_CHECKPOINT_RECORD_SCHEMA, EVAL2_CHECKPOINT_RECORD_SCHEMA_V1):
             raise TrainingDataSerializationError("Unsupported EVAL2 checkpoint-record schema.")
         result = cls(
             trajectory_point=Eval2TrajectoryPoint.from_dict(payload["trajectory_point"]),
@@ -662,6 +679,9 @@ class Eval2CheckpointRecord:
             rejection_reasons=tuple(str(v) for v in payload.get("rejection_reasons", ())),
             shortlist_reasons=tuple(str(v) for v in payload.get("shortlist_reasons", ())),
             full_evaluation_rank=int(payload.get("full_evaluation_rank", 0)),
+            replay_candidate_metric_record_digest=payload.get("replay_candidate_metric_record_digest"),
+            replay_foundation_metric_record_digest=payload.get("replay_foundation_metric_record_digest"),
+            serialization_schema=str(schema),
         )
         _validate_record_digest(payload, result.content_digest, name="EVAL2 checkpoint record")
         return result
@@ -1081,6 +1101,8 @@ def assess_eval2_checkpoint(
     replay_label_mode: str | None,
     shortlist_reasons: Sequence[str] = (),
     full_evaluation_rank: int = 0,
+    replay_candidate_metric_record_digest: str | None = None,
+    replay_foundation_metric_record_digest: str | None = None,
 ) -> Eval2CheckpointRecord:
     degradation = None
     if replay_candidate_force_rmse_ev_per_angstrom is not None and replay_foundation_force_rmse_ev_per_angstrom is not None:
@@ -1102,6 +1124,8 @@ def assess_eval2_checkpoint(
         rejection_reasons=reasons,
         shortlist_reasons=tuple(shortlist_reasons),
         full_evaluation_rank=full_evaluation_rank,
+        replay_candidate_metric_record_digest=replay_candidate_metric_record_digest,
+        replay_foundation_metric_record_digest=replay_foundation_metric_record_digest,
     )
 
 

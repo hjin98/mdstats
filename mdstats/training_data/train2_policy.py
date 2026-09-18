@@ -2,8 +2,8 @@
 
 The TRAIN2 family deliberately separates concerns that were historically
 entangled in :class:`AdaptiveTrainingStopPolicy`.  TRAIN2A establishes the
-immutable policy identities and, critically, turns replay retention into a
-hard admissibility constraint with zero ranking credit.  TRAIN2B/EVAL2 own the
+immutable policy identities.  Replay retention carries zero ranking credit: a
+catastrophic hard limit rejects, and a separate diagnostic threshold warns.  TRAIN2B/EVAL2 own the
 later runtime scheduler and full checkpoint-trajectory evaluator.
 """
 
@@ -17,14 +17,40 @@ from ._common import TrainingDataInputError, TrainingDataSerializationError, dig
 
 TRAINING_BUDGET_POLICY_SCHEMA = "mdstats.train2-training-budget-policy.v1"
 LEARNING_RATE_SCHEDULE_POLICY_SCHEMA = "mdstats.train2-learning-rate-schedule-policy.v1"
-CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA = "mdstats.train2-checkpoint-admissibility-policy.v1"
+CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA = "mdstats.train2-checkpoint-admissibility-policy.v2"
+#: The superseded single replay-retention budget generation.  Readable history.
+CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA_V1 = "mdstats.train2-checkpoint-admissibility-policy.v1"
+REPLAY_WARNING_DIAGNOSTIC_POLICY_SCHEMA = "mdstats.train2-replay-warning-diagnostic-policy.v1"
 CHECKPOINT_SELECTION_POLICY_SCHEMA = "mdstats.train2-checkpoint-selection-policy.v1"
 TRAIN2_POLICY_FAMILY = "train2"
+#: Current foundation-P5 resolved replay hard-limit default.  The generic
+#: exported policy constructor retains the pre-existing TRAIN2 default below;
+#: P5 passes this value explicitly through its method-policy owner.
+TRAIN2_DEFAULT_REPLAY_HARD_LIMIT_EV_PER_ANGSTROM = 0.100
+TRAIN2_DEFAULT_REPLAY_WARNING_EV_PER_ANGSTROM = 0.050
+#: Compatibility spelling for the pre-existing generic TRAIN2 default.
 TRAIN2_DEFAULT_REPLAY_DEGRADATION_EV_PER_ANGSTROM = 0.030
+#: Historical internal spelling retained as an alias, not a second authority.
+TRAIN2_LEGACY_REPLAY_DEGRADATION_EV_PER_ANGSTROM = (
+    TRAIN2_DEFAULT_REPLAY_DEGRADATION_EV_PER_ANGSTROM
+)
+REPLAY_CATASTROPHIC_FORGETTING_REASON = "replay_catastrophic_forgetting_limit_exceeded"
+REPLAY_WARNING_CODE = "replay_degradation_warning_threshold_exceeded"
 TRAIN2_DEFAULT_PRACTICAL_EQUIVALENCE_EV_PER_ANGSTROM = 0.001
 TRAIN2_DEFAULT_BOOTSTRAP_REPLICATES = 2000
 TRAIN2_DEFAULT_BOOTSTRAP_CONFIDENCE = 0.95
 TRAIN2_DEFAULT_BOOTSTRAP_MIN_BLOCKS = 10
+
+_MISSING_REPLAY_LIMIT = object()
+
+
+def _replay_limits_compatible(left: Any, right: Any) -> bool:
+    if left is None or right is None:
+        return left is right
+    try:
+        return float(left) == float(right)
+    except (TypeError, ValueError, OverflowError):
+        return False
 
 
 def _finite_positive(value: float, *, name: str, allow_zero: bool = False) -> float:
@@ -258,19 +284,25 @@ class LearningRateSchedulePolicy:
         return result
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class CheckpointAdmissibilityPolicy:
     """Hard target/replay qualification gates for TRAIN2/EVAL2 candidates.
 
-    Replay degradation is a constraint only.  No replay weight, reward, score,
-    or tie-break parameter exists in this schema.
+    Replay degradation is a hard constraint only at the catastrophic limit:
+    signed candidate-minus-foundation TRUE_DFT degradation strictly above
+    ``replay_degradation_hard_limit_ev_per_angstrom`` rejects the checkpoint.
+    Moderate degradation is diagnostic evidence owned by
+    :class:`ReplayWarningDiagnosticPolicy`, which is deliberately not a parent of
+    this policy.  No replay weight, reward, score, or tie-break exists here.
+
+    Schema v1 payloads (the superseded single replay-retention budget) remain
+    readable and re-serialize byte-identically under their own schema; they are
+    historical provenance and never the current P5 hard-decision policy.
     """
 
     maximum_target_force_rmse_ev_per_angstrom: float = 0.030
     replay_enabled: bool = True
-    replay_degradation_budget_ev_per_angstrom: float | None = (
-        TRAIN2_DEFAULT_REPLAY_DEGRADATION_EV_PER_ANGSTROM
-    )
+    replay_degradation_hard_limit_ev_per_angstrom: float | None = None
     replay_label_requirement: str = "true_dft"
     require_finite_metrics: bool = True
     required_physical_gates: tuple[str, ...] = ()
@@ -278,8 +310,72 @@ class CheckpointAdmissibilityPolicy:
         default=CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA, repr=False, compare=False
     )
 
+    def __init__(
+        self,
+        maximum_target_force_rmse_ev_per_angstrom: float = 0.030,
+        replay_enabled: bool = True,
+        replay_degradation_hard_limit_ev_per_angstrom: Any = _MISSING_REPLAY_LIMIT,
+        replay_label_requirement: str = "true_dft",
+        require_finite_metrics: bool = True,
+        required_physical_gates: tuple[str, ...] = (),
+        serialization_schema: str = CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA,
+        *,
+        replay_degradation_budget_ev_per_angstrom: Any = _MISSING_REPLAY_LIMIT,
+    ) -> None:
+        """Build one policy with the canonical hard-limit storage.
+
+        ``replay_degradation_budget_ev_per_angstrom`` is the historical public
+        constructor spelling.  It is accepted in the same owner for source
+        compatibility, but it is immediately normalized into the one canonical
+        hard-limit field.  Supplying both spellings is allowed only when they
+        denote the same value; disagreement is ambiguous and fails closed.
+        """
+
+        hard_supplied = (
+            replay_degradation_hard_limit_ev_per_angstrom is not _MISSING_REPLAY_LIMIT
+        )
+        legacy_supplied = (
+            replay_degradation_budget_ev_per_angstrom is not _MISSING_REPLAY_LIMIT
+        )
+        if hard_supplied and legacy_supplied:
+            if not _replay_limits_compatible(
+                replay_degradation_hard_limit_ev_per_angstrom,
+                replay_degradation_budget_ev_per_angstrom,
+            ):
+                raise TrainingDataInputError(
+                    "TRAIN2 replay hard-limit constructor spellings disagree; "
+                    "the policy is ambiguous."
+                )
+        if hard_supplied:
+            hard_limit = replay_degradation_hard_limit_ev_per_angstrom
+        elif legacy_supplied:
+            hard_limit = replay_degradation_budget_ev_per_angstrom
+        else:
+            hard_limit = (
+                TRAIN2_DEFAULT_REPLAY_DEGRADATION_EV_PER_ANGSTROM
+                if bool(replay_enabled)
+                else None
+            )
+        object.__setattr__(
+            self,
+            "maximum_target_force_rmse_ev_per_angstrom",
+            maximum_target_force_rmse_ev_per_angstrom,
+        )
+        object.__setattr__(self, "replay_enabled", bool(replay_enabled))
+        object.__setattr__(
+            self, "replay_degradation_hard_limit_ev_per_angstrom", hard_limit
+        )
+        object.__setattr__(self, "replay_label_requirement", replay_label_requirement)
+        object.__setattr__(self, "require_finite_metrics", require_finite_metrics)
+        object.__setattr__(self, "required_physical_gates", required_physical_gates)
+        object.__setattr__(self, "serialization_schema", serialization_schema)
+        self.__post_init__()
+
     def __post_init__(self) -> None:
-        if self.serialization_schema != CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA:
+        if self.serialization_schema not in (
+            CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA,
+            CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA_V1,
+        ):
             raise TrainingDataInputError("Unsupported TRAIN2 checkpoint-admissibility policy schema.")
         object.__setattr__(
             self,
@@ -290,25 +386,25 @@ class CheckpointAdmissibilityPolicy:
             ),
         )
         if self.replay_enabled:
-            if self.replay_degradation_budget_ev_per_angstrom is None:
+            if self.replay_degradation_hard_limit_ev_per_angstrom is None:
                 raise TrainingDataInputError(
-                    "Replay-enabled TRAIN2 admissibility requires a degradation budget."
+                    "Replay-enabled TRAIN2 admissibility requires a catastrophic replay hard limit."
                 )
             object.__setattr__(
                 self,
-                "replay_degradation_budget_ev_per_angstrom",
+                "replay_degradation_hard_limit_ev_per_angstrom",
                 _finite_positive(
-                    self.replay_degradation_budget_ev_per_angstrom,
-                    name="TRAIN2 replay_degradation_budget_ev_per_angstrom",
+                    self.replay_degradation_hard_limit_ev_per_angstrom,
+                    name="TRAIN2 replay_degradation_hard_limit_ev_per_angstrom",
                 ),
             )
             if str(self.replay_label_requirement).strip().lower() != "true_dft":
                 raise TrainingDataInputError(
                     "TRAIN2 replay admissibility requires authenticated TRUE_DFT evidence."
                 )
-        elif self.replay_degradation_budget_ev_per_angstrom is not None:
+        elif self.replay_degradation_hard_limit_ev_per_angstrom is not None:
             raise TrainingDataInputError(
-                "Replay-disabled TRAIN2 admissibility cannot carry a replay degradation budget."
+                "Replay-disabled TRAIN2 admissibility cannot carry a replay hard limit."
             )
         if not self.require_finite_metrics:
             raise TrainingDataInputError("TRAIN2 v1 requires finite admissibility metrics.")
@@ -320,6 +416,16 @@ class CheckpointAdmissibilityPolicy:
         object.__setattr__(self, "required_physical_gates", gates)
         object.__setattr__(self, "replay_label_requirement", str(self.replay_label_requirement).strip().lower())
 
+    @property
+    def replay_degradation_budget_ev_per_angstrom(self) -> float | None:
+        """Read-only compatibility alias for the canonical hard limit."""
+
+        return self.replay_degradation_hard_limit_ev_per_angstrom
+
+    @property
+    def is_historical(self) -> bool:
+        return self.serialization_schema == CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA_V1
+
     def replay_absolute_ceiling_ev_per_angstrom(self, foundation_rmse: float) -> float | None:
         if not self.replay_enabled:
             return None
@@ -328,8 +434,8 @@ class CheckpointAdmissibilityPolicy:
             name="TRAIN2 foundation replay RMSE",
             allow_zero=True,
         )
-        assert self.replay_degradation_budget_ev_per_angstrom is not None
-        return baseline + self.replay_degradation_budget_ev_per_angstrom
+        assert self.replay_degradation_hard_limit_ev_per_angstrom is not None
+        return baseline + self.replay_degradation_hard_limit_ev_per_angstrom
 
     def failure_reasons(
         self,
@@ -339,6 +445,15 @@ class CheckpointAdmissibilityPolicy:
         replay_label_mode: str | None = None,
         physical_gate_results: Mapping[str, bool] | None = None,
     ) -> tuple[str, ...]:
+        """Hard rejection reasons only.
+
+        Both comparisons are exact binary64: the target ceiling is inclusive and
+        the replay hard limit is strict, so a value exactly at either boundary
+        passes.  Signed replay degradation is used as measured; a negative
+        value is an improvement.  Missing or non-finite required TRUE_DFT
+        evidence is a hard evidence failure regardless of any threshold.
+        """
+
         reasons: list[str] = []
         target = float(target_force_rmse_ev_per_angstrom)
         if not math.isfinite(target) or target < 0.0:
@@ -354,8 +469,12 @@ class CheckpointAdmissibilityPolicy:
                 replay = float(replay_degradation_ev_per_angstrom)
                 if not math.isfinite(replay):
                     reasons.append("replay_metric_nonfinite")
-                elif replay > float(self.replay_degradation_budget_ev_per_angstrom):
-                    reasons.append("replay_retention_ceiling_exceeded")
+                elif replay > float(self.replay_degradation_hard_limit_ev_per_angstrom):
+                    reasons.append(
+                        "replay_retention_ceiling_exceeded"
+                        if self.is_historical
+                        else REPLAY_CATASTROPHIC_FORGETTING_REASON
+                    )
         observed = {} if physical_gate_results is None else {
             str(key): bool(value) for key, value in physical_gate_results.items()
         }
@@ -368,11 +487,16 @@ class CheckpointAdmissibilityPolicy:
         return not self.failure_reasons(**kwargs)
 
     def _payload(self) -> dict[str, Any]:
+        replay_key = (
+            "replay_degradation_budget_ev_per_angstrom"
+            if self.is_historical
+            else "replay_degradation_hard_limit_ev_per_angstrom"
+        )
         return {
             "schema": self.serialization_schema,
             "maximum_target_force_rmse_ev_per_angstrom": self.maximum_target_force_rmse_ev_per_angstrom,
             "replay_enabled": self.replay_enabled,
-            "replay_degradation_budget_ev_per_angstrom": self.replay_degradation_budget_ev_per_angstrom,
+            replay_key: self.replay_degradation_hard_limit_ev_per_angstrom,
             "replay_label_requirement": self.replay_label_requirement,
             "require_finite_metrics": self.require_finite_metrics,
             "required_physical_gates": list(self.required_physical_gates),
@@ -387,26 +511,88 @@ class CheckpointAdmissibilityPolicy:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "CheckpointAdmissibilityPolicy":
-        if payload.get("schema") != CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA:
+        schema = payload.get("schema")
+        if schema not in (
+            CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA,
+            CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA_V1,
+        ):
             raise TrainingDataSerializationError(
                 "Unsupported TRAIN2 checkpoint-admissibility policy schema."
             )
+        replay_key = (
+            "replay_degradation_budget_ev_per_angstrom"
+            if schema == CHECKPOINT_ADMISSIBILITY_POLICY_SCHEMA_V1
+            else "replay_degradation_hard_limit_ev_per_angstrom"
+        )
         result = cls(
             maximum_target_force_rmse_ev_per_angstrom=float(
                 payload["maximum_target_force_rmse_ev_per_angstrom"]
             ),
             replay_enabled=bool(payload["replay_enabled"]),
-            replay_degradation_budget_ev_per_angstrom=(
+            replay_degradation_hard_limit_ev_per_angstrom=(
                 None
-                if payload.get("replay_degradation_budget_ev_per_angstrom") is None
-                else float(payload["replay_degradation_budget_ev_per_angstrom"])
+                if payload.get(replay_key) is None
+                else float(payload[replay_key])
             ),
             replay_label_requirement=str(payload["replay_label_requirement"]),
             require_finite_metrics=bool(payload["require_finite_metrics"]),
             required_physical_gates=tuple(str(v) for v in payload.get("required_physical_gates", ())),
+            serialization_schema=str(schema),
         )
         _validate_digest(payload, result.policy_digest, label="TRAIN2 checkpoint-admissibility policy")
         return result
+
+
+@dataclass(frozen=True, slots=True)
+class ReplayWarningDiagnosticPolicy:
+    """The diagnostic-only replay-degradation warning threshold.
+
+    Its digest is a parent of warning/report evidence only.  It is never a
+    parent of hard admissibility, representative selection, CV acceptance,
+    production authorization, or publication membership, so editing it cannot
+    change any of those.
+    """
+
+    warning_threshold_ev_per_angstrom: float = TRAIN2_DEFAULT_REPLAY_WARNING_EV_PER_ANGSTROM
+
+    def __post_init__(self) -> None:
+        if isinstance(self.warning_threshold_ev_per_angstrom, bool):
+            raise TrainingDataInputError("Replay warning threshold must be numeric.")
+        object.__setattr__(
+            self,
+            "warning_threshold_ev_per_angstrom",
+            _finite_positive(
+                self.warning_threshold_ev_per_angstrom,
+                name="replay_degradation_warning_ev_per_angstrom",
+            ),
+        )
+
+    def diagnostic_warnings(
+        self, replay_degradation_ev_per_angstrom: float | None
+    ) -> tuple[str, ...]:
+        """Strict ``>`` at the exact binary64 threshold; missing/non-finite is not a warning."""
+
+        if replay_degradation_ev_per_angstrom is None:
+            return ()
+        value = float(replay_degradation_ev_per_angstrom)
+        if math.isfinite(value) and value > self.warning_threshold_ev_per_angstrom:
+            return (REPLAY_WARNING_CODE,)
+        return ()
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": REPLAY_WARNING_DIAGNOSTIC_POLICY_SCHEMA,
+            "warning_threshold_ev_per_angstrom": self.warning_threshold_ev_per_angstrom,
+            "comparator": "strict_greater_than",
+            "decision_authority": "diagnostic_only",
+        }
+
+    @property
+    def policy_digest(self) -> str:
+        return digest(self._payload())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "policy_digest": self.policy_digest}
 
 
 @dataclass(frozen=True, slots=True)

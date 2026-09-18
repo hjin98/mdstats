@@ -839,8 +839,10 @@ def _publish_historical_run(paths, generation: int, name: str, members: dict) ->
     order real execution uses and the only order the anchor accepts.
     """
 
+    from types import SimpleNamespace
+
     from mdstats.training_data.campaign_post_selection_runtime import (
-        record_post_selection_run_members,
+        record_post_selection_training_completion,
     )
 
     root = paths.internal / "post-selection" / f"g{generation}" / "runs" / name
@@ -850,8 +852,15 @@ def _publish_historical_run(paths, generation: int, name: str, members: dict) ->
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(payload)
         os.chmod(destination, 0o644)
-    (root / "run-evidence.json").write_text("{}\n", encoding="utf-8")
-    record_post_selection_run_members(root)
+    (root / "checkpoints" / "train2_runtime.json").write_text("{}\n", encoding="utf-8")
+    record_post_selection_training_completion(
+        root,
+        runtime_summary=SimpleNamespace(
+            content_digest="a" * 64, completed_epochs=1, planned_epochs=1
+        ),
+        runtime_plan_digest="b" * 64,
+        materialization_digest="c" * 64,
+    )
     return root
 
 
@@ -1328,7 +1337,7 @@ def test_partial_reclaim_resumes_after_the_terminal_evidence_goes_cold(
         "reclaim-run",
         {
             "checkpoints/first.bin": b"first" * 512,
-            # Sorts after `run-evidence.json`, so the interruption below lands
+            # Sorts after the TRAIN2 summary, so the interruption below lands
             # with the terminal record already cold and a member still hot.
             "zz-late.bin": b"late" * 512,
         },
@@ -1338,7 +1347,7 @@ def test_partial_reclaim_resumes_after_the_terminal_evidence_goes_cold(
         RUN_TOPOLOGY_MANIFEST_FILENAME,
     )
 
-    evidence = run_root / "run-evidence.json"
+    evidence = run_root / "checkpoints" / "train2_runtime.json"
     anchor = run_root / RUN_COMPLETION_ANCHOR_FILENAME
     topology = run_root / RUN_TOPOLOGY_MANIFEST_FILENAME
     late = run_root / "zz-late.bin"

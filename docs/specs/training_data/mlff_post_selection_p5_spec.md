@@ -1,27 +1,39 @@
-# MLFF post-selection P5 current specification
+# MLFF post-selection P5 renewal candidate specification
 
-**Status:** current normative D4 contract for post-selection cross-validation and fresh final production  
-**Upstream authority:** `docs/methods/mlff_scientific_method.md`, `docs/methods/mlff_numerical_algorithmic_method.md`, and current D3 MLFF training-data architecture  
+**Status:** renewed D4 contract; Gate-D R3 independent Review PASS of `de360579`; D4 implementation candidate prepared, pending independent D4 Review
+**Upstream authority:** ratified D1, stakeholder-ratified D2 target `32508991d472c1c6e4bd8b818b38d0880401845f` / D2 blob `30e6e6336cf41a05879650a3a2d7d583c4ef713a`, and the accompanying D3 MLFF training-data architecture candidate  
 **Scope:** current P5 only; P3 target-size screening and P5 scratch retain their separately accepted contracts
+
 
 ## 1. Purpose
 
-This specification freezes the externally visible D4 contract required to implement the accepted post-selection restoration without inventing parallel method, monitor, E0, publication, or currentness machinery.
+This specification freezes the D4 contract required to implement the accepted replay-retention/target-admissibility numerical semantics through the proposed D3 ownership cutover. It reuses current P5 owners and removes policy-overbinding rather than adding a parallel trainer, evaluator, policy graph, evidence store, or compatibility registry.
 
-The current P5 authority chain is:
+The post-cutover authority chain is:
 
 ```text
-TargetBinding
-  -> PostSelectionMethodIdentity
-  -> role policy
-  -> role plan
+TargetBinding + training-only PostSelectionMethodIdentity + training-bearing parents
+  -> TrainingTrajectoryIdentity
   -> PostSelectionFittedPreparation
   -> PostSelectionMaterialization
-  -> run/checkpoint/evaluation evidence
-  -> CV acceptance or final publication
+  -> TRAIN2 runtime/checkpoints
+  -> sealed training root
+
+checkpoint/model + exact evaluation evidence
+  -> EvaluationMeasurementIdentity
+  -> immutable target/replay measurements
+
+role assessment plan + hard decision policy + strict P5 selection identity
+  -> complete checkpoint assessments
+  -> representative
+  -> CV/final assessment
+  -> publication
+
+replay warning policy + replay measurement
+  -> diagnostic evidence only
 ```
 
-`TrainingProtocolIdentity` is not a current P5 authorization record. It may remain for separately current non-P5 consumers and historical provenance. A historical DATA8/`TrainingProtocolIdentity` payload that deserializes does not become current P5.
+`TrainingProtocolIdentity` is not current P5 authorization. Historical DATA8 payloads remain provenance only. A current role-plan digest is not a training-root or numerical-measurement identity merely because pre-cutover schemas used it that way.
 
 ## 2. Current training modes
 
@@ -37,35 +49,33 @@ This specification's restored foundation-adaptation requirements apply to `naive
 
 P5 scratch retains its separately accepted weighted/from-scratch method. P3 target-size screening retains its accepted weighted objective and complete-batch exposure. No foundation-P5 repair may globally change either.
 
-## 3. `PostSelectionMethodIdentity`
 
-`PostSelectionMethodIdentity` is the sole current P5 method identity. Its current schema generation SHALL advance from the pre-restoration generation because the old payload can authorize a materially different method.
+## 3. `PostSelectionMethodIdentity` and training-trajectory identity
 
-The method identity SHALL bind only method-bearing P5 inputs. It SHALL NOT bind the whole `TargetSizeCommonTrainingPolicy.content_digest`.
+`PostSelectionMethodIdentity` remains the sole current P5 training-method identity. Advance its schema generation because pre-cutover schema v3 over-binds assessment-only checkpoint constraints/selection policy.
 
-The resolved current identity SHALL include, directly or through named component-policy digests:
+It SHALL bind only method-bearing trajectory-generating inputs, directly or through named component-policy digests:
 
 ```text
 method recipe generation
 training mode
 foundation checkpoint + selected foundation head when applicable
-foundation-P5 objective identity when applicable
+foundation-P5 objective identity
 P5 atomic-reference/preparation-policy identity
-learning-rate schedule policy
-shared checkpoint constraints (replay retention budget/TRUE_DFT requirement,
-  finite metrics, required physical gates) - never a role target-force ceiling
-checkpoint selection policy
-shared optimizer settings
+learning-rate schedule
+optimizer settings
 replay training-label/exposure policy
-extended-XYZ transport policy
+extended-XYZ training transport policy
 MACE architecture/model-feature identity
 checkpoint interval
 model dtype
-execution device/backend identity where method-bearing
-accepted single-process foundation-execution identity
+execution device/backend identity where numerically method-bearing
+accepted single-process foundation execution identity
 ```
 
-For foundation modes the objective identity SHALL resolve exactly:
+It SHALL NOT bind `delta_warn`, `delta_hard`, `tau_CV`, `theta_CV`, `tau_prod`, checkpoint admissibility classification, D2.DEF.059A/059B selection identity, CV verdict policy, or publication policy.
+
+For foundation modes the fixed objective remains:
 
 ```text
 loss_family   = universal
@@ -75,17 +85,31 @@ forces_weight = 10.0
 stress_weight = 1.0
 ```
 
-The one numeric `huber_delta=0.01` retains the D2 dimensional interpretations:
+D4 SHALL continue the accepted dimensional interpretations and SHALL NOT expose three independent delta knobs.
+
+Define one current role-specific `TrainingTrajectoryIdentity`/digest as the canonical **pre-fit** projection of every already-available input capable of changing exact TRAIN2/materialization/restart behavior. It SHALL include at least:
 
 ```text
-energy threshold      0.01 eV/atom
-force base threshold  0.01 eV/Angstrom
-stress threshold      0.01 eV/Angstrom^3
+run role and exact gradient/replay-training membership
+optimizer seed and planned horizon
+training-only PostSelectionMethodIdentity
+foundation checkpoint/head and replay-training lineage
+P5 preparation-policy identity
+authorized fit membership
+selected-head prediction/reference-E0 input identity where applicable
+common-monitor / required-composition-set identity where preparation consumes them
+rank/null-space/tolerance/accepted-anchor policy inputs
+objective/loss, exposure/corpus order, optimizer/LR
+precision/backend/model architecture
+checkpoint cadence and MACE execution semantics
+trainer-consumed validation artifacts
 ```
 
-D4 SHALL NOT expose three independent delta knobs.
+It SHALL NOT include `PostSelectionFittedPreparation.content_digest`, the fitted atomic-reference result, composition-transfer result, materialization digest, runtime summary, checkpoint digest, or any other descendant product. Assessment-only inputs SHALL also be absent.
 
-A P3-only objective, configuration-weight, target-size harness, or unrelated screening change SHALL NOT change foundation-P5 method identity unless a genuinely shared component changed. Conversely, a true P5 foundation, loss, replay-label/exposure, optimizer, checkpoint-policy, precision/backend, or method-bearing execution change SHALL invalidate dependent P5 evidence.
+New run/checkpoint roots derive from `TrainingTrajectoryIdentity`, not the full CV/final assessment plan. Exact continuation/reuse SHALL authenticate the tuple of the pre-fit trajectory identity plus the exact descendant fitted-preparation/result, materialization/config, runtime/optimizer/RNG and checkpoint ancestry required by D2.DEF.060. A different realized fitted result under the same pre-fit identity is a hard mismatch, not a new parent identity.
+
+For one-time historical reuse, the existing recovery/currentness owner may prove one legacy schema-v3 method/run lineage training-equivalent by exact comparison of all training-bearing fields while excluding only the retired assessment-only parents. This is a bounded source-preserving derivation, not a general compatibility translator or alias registry.
 
 ## 4. P5 preparation-policy identity
 
@@ -102,7 +126,7 @@ A shared implementation type is permitted only if its content identity is mode-d
 The current foundation-adaptation fitted-preparation representation SHALL expose these invariants:
 
 ```text
-owner plan/run ancestry                      required
+training trajectory / training-position ancestry  required
 preparation kind / training mode             explicit and authenticated
 P5 preparation-policy digest                 required
 exact fit membership + membership digest     required
@@ -114,13 +138,7 @@ rank/null-space/tolerance/anchor evidence     required
 composition-transfer result                  required
 ```
 
-The owning role plan/run plan is created before its fitted preparation. A
-current fitted preparation binds that owning plan/run ancestry together with
-the common-monitor and required-composition transfer ancestry it realizes.
-The fitted preparation is therefore downstream of the plan; its digest is
-then bound by `PostSelectionMaterialization` and the resulting run evidence.
-Current CV and final-production plans SHALL NOT bind a fitted-preparation
-digest.
+The role training position is established before fitted preparation. A current fitted preparation binds `TrainingTrajectoryIdentity` together with the common-monitor and required-composition transfer ancestry actually consumed by preparation/runtime. It SHALL NOT bind checkpoint-decision, warning, outer-acceptance, representative-selection or publication policy merely because the role assessment plan carries those coordinates. Its digest is then bound by `PostSelectionMaterialization` and TRAIN2 runtime evidence.
 
 The following are forbidden as current foundation-P5 preparation parents or payloads:
 
@@ -281,210 +299,354 @@ The sampler SHALL select exact membership from the label-usable neutral parent f
 
 The selected-only `SelectedRelationProjection` SHALL NOT be used as the sole proof of target-versus-monitor separation. Plan admission SHALL use canonical P1 relation authority capable of exposing cross-role relations between the realized monitor and every governed `T_N`.
 
-## 11. CV policy and fold schemas
 
-The current CV policy generation SHALL remove `checkpoint_monitor_components_per_fold` and any equivalent selected-fold target-monitor budget.
+## 11. CV policy, fold, training-position, and assessment schemas
 
-The current default fold count is exactly 3. One resolver owns that default. Explicit override is permitted only for `K >= 2`.
+The current default fold count remains exactly 3; explicit override requires `K >= 2`. `PostSelectionCvFold` membership contains only gradient training, held-out outer evaluation, and purge/exclusion evidence; no fold-local target checkpoint monitor is current.
 
-`PostSelectionCvFold` current membership SHALL contain only:
-
-```text
-fold gradient-training membership
-held-out outer-evaluation membership
-purge/exclusion membership/evidence
-```
-
-It SHALL NOT contain selected-only checkpoint-monitor membership/components.
-
-The CV plan/run-plan SHALL bind:
+A current CV role plan SHALL bind both projections explicitly:
 
 ```text
-TargetBinding identity
-PostSelectionMethodIdentity digest
-CV policy digest
-exact common-monitor record digest
-current monitor-vs-target protected-relation separation evidence
-fold membership identity
-replay authority/monitor lineage where applicable
+training projection:
+  TargetBinding
+  training-only PostSelectionMethodIdentity
+  exact common-monitor / separation / preparation inputs consumed by training
+  fold training membership
+  replay training lineage
+  seed + horizon
+  -> TrainingTrajectoryIdentity
+
+assessment projection:
+  TargetBinding
+  exact common-monitor record
+  current hard checkpoint-decision policy digest
+  fixed D2.DEF.059A strict-selection identity
+  configured CV outer metric + theta_CV policy
+  training_trajectory_identity
+  fold/seed position
+  -> CV assessment-plan digest
 ```
 
-Every sibling selected size, fold, and seed within the same current campaign/method SHALL bind the same common-monitor record digest.
+The warning-only replay policy SHALL NOT be an assessment-plan parent. Every sibling selected size/fold/seed in the campaign binds the same common-monitor record but has its own training/assessment position.
 
-Held-out labels SHALL remain unavailable to fitting, checkpoint selection, adaptive stop, common-monitor construction, or final-publication ranking.
+Held-out labels remain unavailable to fitting, checkpoint selection, adaptive stop, common-monitor construction, or final-publication ranking.
+
 
 ## 12. Checkpoint/adaptive-stop policy
 
-### 12.1 Role-effective checkpoint admissibility
+### 12.1 Resolved hard and diagnostic policy
 
-Target-force checkpoint ceilings are role policy, not method identity. `CvValidationPolicyIdentity` (schema `mdstats.post-selection-cv-policy-identity.v3`) and `FinalProductionPolicyIdentity` (schema `mdstats.post-selection-final-production-policy-identity.v2`) each carry `checkpoint_maximum_target_force_rmse_ev_per_angstrom` in eV/angstrom. `PostSelectionMethodIdentity` (schema `mdstats.post-selection-method-identity.v3`) carries `shared_checkpoint_constraints_digest` instead of the retired target-bearing `checkpoint_admissibility_policy_digest`.
+Advance the role-policy/checkpoint-policy generation. The default foundation values are:
 
-Resolution SHALL be:
+| Coordinate | Foundation CV | Foundation production | Comparator / role |
+|---|---:|---:|---|
+| target checkpoint ceiling | `0.075 eV/angstrom` | `0.050 eV/angstrom` | inclusive binary64 `<=` |
+| default-force CV outer threshold | `0.075 eV/angstrom` | n/a | inclusive binary64 `<=` |
+| replay warning | `0.050 eV/angstrom` | `0.050 eV/angstrom` | strict binary64 `>`, diagnostic only |
+| replay catastrophic hard limit | `0.100 eV/angstrom` | `0.100 eV/angstrom` | strict binary64 `>`, hard failure |
 
-| Mode | CV checkpoint ceiling | CV `acceptance_maximum` default | Production checkpoint ceiling |
-|---|---|---|---|
-| `naive_fine_tuning`, `multihead_replay` | `[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom`, default `0.045` | `0.045` | `[acceptance].maximum_target_force_rmse_ev_per_angstrom`, default `0.030` |
-| `scratch` | `[acceptance].maximum_target_force_rmse_ev_per_angstrom`, default `0.030` | `0.030` | same key, default `0.030` |
+Scratch retains its separately accepted `0.030` target-threshold behavior.
 
-For foundation modes the three values are the independently configurable thresholds of D1 §10.3/§11 and D2 §17.1: `tau_cv` (CV checkpoint competence), `theta_cv` (`acceptance_maximum`, CV held-out threshold), and `tau_prod` (production checkpoint quality). This section is their single D4 resolution contract.
+`CheckpointAdmissibilityPolicy` SHALL contain the catastrophic replay hard limit, role-effective target checkpoint ceiling, TRUE_DFT requirement, finite/evidence-validity requirements, and existing physical/integrity hard gates. It SHALL NOT contain the replay warning threshold as a hard-decision parent.
 
-An explicit `[post_selection.cv].acceptance_maximum` is used as written. Its units follow `acceptance_metric`; it never supplies either checkpoint ceiling. An explicit `[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom` is valid for foundation modes, is not a second outer-acceptance threshold, always has target-force RMSE units (eV/angstrom), and defaults to `0.045` when omitted. P5 scratch keeps its pre-separation resolution and fails closed if the foundation CV checkpoint field is configured under `[post_selection.cv]`. `[acceptance].maximum_target_force_rmse_ev_per_angstrom` is the foundation-production threshold source, keeps its generic/non-P5 meaning, and is not rewritten; no second production alias (for example under `[post_selection.production]`) exists.
-
-Each of the three values SHALL be a finite positive TOML integer or float. Booleans, strings (including quoted numerics such as `"0.040"`), non-finite values, and nonpositive values SHALL fail with a typed input error before identity construction or execution; the raw configured value, not a pre-coerced float, is validated by the owning policy identity. Explicitly configuring a default and omitting it SHALL resolve the identical policy identity when every other field is equal.
-
-Changing one threshold SHALL move only its owning role-policy lineage and material dependents:
+The configuration owner resolves one replay policy family but exposes two dependency projections:
 
 ```text
-tau_cv or theta_cv edit -> CV policy/plan/run + CV acceptance; dependent production authorization stale
-tau_prod edit           -> final-production policy/plan/run only
-shared constraint edit  -> shared method + both roles
+hard replay decision digest -> delta_hard and hard descendants
+warning diagnostic digest    -> delta_warn and warning/report descendants only
 ```
 
-Each run SHALL be judged under one effective `CheckpointAdmissibilityPolicy` composed from the method's shared constraints and its role policy's ceiling. Before a run's preparation/training and before its checkpoint candidates are evaluated, the runtime SHALL verify that the run plan's `method_identity_digest` and role-policy digest (`cv_policy_identity_digest` or `final_production_policy_digest`) equal current authority and SHALL fail closed otherwise; a run of one role can never be judged under the other role's policy.
+Recommended diagnostic/rejection codes are:
 
-P5 binds that effective policy through the existing per-run lineage rather than a DATA8 `TrainingProtocolIdentity` or a generic `Eval2EvaluationPlan`: the role plan binds the method and role-policy digests, run identity and run root derive from the plan, and fold acceptance/run evidence bind the run-plan digest. Checkpoint records carry no additional role field. A role-ceiling change therefore yields a different plan and run position; stored candidate classifications are never re-thresholded under another ceiling.
+```text
+replay_degradation_warning_threshold_exceeded
+replay_catastrophic_forgetting_limit_exceeded
+```
 
-Retired target/replay **training-head scalar** weights have no current P5 field in config, plan, materialization, runtime evidence, or content identity.
+A checkpoint above the hard limit may carry both warning and rejection. Missing, stale, unauthenticated, incompatible, or non-finite required TRUE_DFT replay evidence remains a hard evidence failure independent of the numeric degradation value.
 
-Existing target/replay checkpoint/adaptive-stop score weights remain separate current owners. Their semantics are not changed by retirement of training-head weights.
+### 12.2 Role target resolution
 
-Stage/order requirement: implementation may preserve/regression-protect these score/admissibility policies before common-monitor construction exists, but current target-monitor routing cannot authenticate until the exact common monitor is constructed and bound. No temporary fold/M3 target-monitor owner is permitted.
+For foundation modes:
 
-## 13. Final-production plan
+```text
+[post_selection.cv].checkpoint_maximum_target_force_rmse_ev_per_angstrom
+  omitted/current default -> 0.075
 
-The current final-production plan SHALL bind:
+[post_selection.cv].acceptance_metric
+  default -> target_force_rmse_ev_per_angstrom
+
+[post_selection.cv].acceptance_maximum
+  omitted under default force metric -> 0.075
+
+[acceptance].maximum_target_force_rmse_ev_per_angstrom
+  omitted/current foundation-production default -> 0.050
+```
+
+An alternative outer metric keeps its accepted units/default resolver; it SHALL NOT import `0.075` merely because `acceptance_maximum` is omitted. Explicit values are preserved after migration and validation. Scratch fails closed if the foundation-only CV checkpoint field is configured.
+
+Every public threshold value SHALL be finite and positive; replay requires `warning < hard` after canonical conversion. Booleans, strings/quoted numerics, NaN, infinity, and nonpositive values fail before identity construction/execution.
+
+### 12.3 Complete checkpoint assessment and strict representative
+
+Every governed durable P5 checkpoint SHALL receive required measurement/assessment. Hard-admissible checkpoints are ordered exactly by:
+
+```text
+(target force RMSE on M_mon, checkpoint epoch, lowercase checkpoint SHA-256)
+```
+
+The representative is the lexicographic minimum. Target RMSE is strict primary authority; replay warning/margin, secondary metrics, energy/stress diagnostics, maturity/refinement phase, practical-equivalence bands, bootstrap uncertainty, and historical score weights SHALL NOT override a lower finite target RMSE.
+
+Quality-dependent candidate thinning is forbidden. If no hard-admissible checkpoint exists, persist the complete assessed candidate set and publish the typed no-admissible outcome.
+
+The hard/selection assessment occurs only after authenticated TRAIN2. `_prepare_post_selection_run()` or its successor SHALL resolve replay execution from training method/replay lineage and SHALL NOT consult current checkpoint admissibility merely to decide training/replay runtime construction.
+
+
+## 13. Final-production plan and dependency projections
+
+A current final-production control-plane plan MAY bind all authorization and publication coordinates required to execute the complete role:
 
 ```text
 TargetBinding identity
-PostSelectionMethodIdentity digest
-final-production policy digest
-accepted current CV ancestry
-exact common-monitor record digest
-current monitor-vs-target protected-relation separation evidence
+training-only PostSelectionMethodIdentity
+TrainingTrajectoryIdentity projection for each seed
+accepted current CV authorization ancestry
+exact common-monitor record + protected-relation evidence
+current final hard checkpoint-decision policy digest
+fixed D2.DEF.059A within-run selection identity
+publication mode and D2.DEF.059B identity when single-best is requested
 replay authority/monitor lineage where applicable
-production seed/run identity
 ```
 
-The following P5 plan fields/parents are retired:
+The full plan digest is **not** the per-seed assessment identity. It exposes two narrower canonical projections:
 
 ```text
-m3_evaluation_size
-m3_membership_digest
-M3 target checkpoint-monitor ancestry
-M3 final-seed ranking ancestry
+FinalSeedAssessmentPolicyDigest
+  = final hard checkpoint-decision policy
+  + D2.DEF.059A within-run selection identity
+
+FinalPublicationPolicyDigest
+  = publication mode
+  + D2.DEF.059B when single_best_final_seed
 ```
 
-Historical payloads may remain readable as history but cannot authorize current production.
+Current accepted CV is a separately re-authenticated authorization precondition for final assessment/publication; it is not a parent of the already-realized per-seed checkpoint assessment. Thus a CV-authorization-only change may block or reauthorize use of an existing seed assessment without changing that assessment's content identity. Likewise a 059B/publication-mode-only change moves only aggregate publication.
+
+The replay warning diagnostic digest is neither a per-seed hard-assessment nor publication-membership parent.
+
+The following P5 plan parents remain retired: M3 evaluation size/membership, M3 checkpoint-monitor ancestry, and M3 seed-ranking ancestry.
+
+A historically fresh completed final-production TRAIN2 trajectory may be reassessed under current policy without retraining only after current CV has been reclosed and accepted and exact training-semantic equivalence is proven. Current CV rejection blocks current final assessment/publication from that historical trajectory.
+
 
 ## 14. Final representative and publication contract
 
-Each current final-production seed freezes one admissible representative and its already-authenticated target metric record evaluated on the exact shared common monitor.
-
-Publication supports:
+Each current final-production seed first freezes its representative under section 12.3.
 
 ### `all_qualified_final_seeds`
 
-Publish all already-admissible required final representatives. No cross-seed ranking is performed.
+Publish all already-admissible required seed representatives. No cross-seed numerical ranking is performed.
 
 ### `single_best_final_seed`
 
-The publication owner SHALL:
-
-1. consume only already-frozen admissible final representatives;
-2. consume each representative's already-authenticated target metric record on the exact shared common monitor;
-3. reuse the accepted target-only representative-ordering semantics, including primary force-RMSE bands, uncertainty/bootstrap/materiality logic, secondary target metrics, maturity/lower-LR preference, and deterministic stable tie semantics where applicable;
-4. derive any ordering seed material deterministically from current final-plan/publication ancestry, never process or completion order;
-5. perform no second target evaluation; and
-6. perform no M3 evaluation.
-
-The publication record SHALL persist enough ordering-policy identity and input metric-record lineage to reproduce the chosen member.
-
-A raw scalar `min(RMSE)` replacement is nonconforming unless D2/D3 is explicitly revised.
-
-M3 remains P3 evidence and may support a separately authorized downstream development/qualification probe through the P3 owner only.
-
-## 15. `PostSelectionMaterialization` and runtime evidence
-
-Current P5 materialization/runtime evidence SHALL bind enough information to authenticate the actual method. For foundation modes this includes at least:
+Consume only already-frozen admissible seed representatives and their authenticated common-monitor target RMSE records. Choose the lexicographic minimum:
 
 ```text
+(target force RMSE on M_mon, optimizer seed, lowercase checkpoint SHA-256)
+```
+
+The target RMSE coordinate is strict primary authority. Replay values/warnings, secondary metrics, maturity, practical-equivalence and bootstrap quantities SHALL NOT affect ordering. Seed and digest are consulted only after exact equality of canonical binary64 target RMSE.
+
+Publication performs no second target evaluation and no M3 evaluation. The publication record SHALL bind the fixed ordering identity and the exact input representative/metric-record lineage needed to reconstruct the decision.
+
+
+## 15. `PostSelectionMaterialization`, sealed training roots, and EVAL2 separation
+
+Current `PostSelectionMaterialization` is a **training-only** durable product. Advance its schema beyond historical `mdstats.post-selection-materialization.v2`; the new schema binds the training trajectory rather than the full assessment plan. For foundation modes it includes at least:
+
+```text
+TrainingTrajectoryIdentity
 training role/mode
-P5 method identity and P5 preparation-policy digest
-foundation checkpoint + selected head identity
-resolved native loss family/class + numeric parameters
-canonical residual units and dimensional Huber interpretation
-conditional-force regime and nine-entry stress reduction identity
-binary property-mask policy
-E:F:S coefficients
-atomic-reference fit mode + fit membership/input/result digests
-rank/null-space/tolerance/anchor evidence
-required composition-set digest + transfer result
-target/replay membership digests and counts
-combined count/head counts
-ordered pre-shuffle layout
-shuffle/sampler seed and policy
-single-process identity
-batch size / drop_last / batches per epoch
-force_mh_ft_lr / real_pt_data_ratio_threshold / realized duplication factor
-LR / EMA / precision / backend
-common-monitor parent/policy/record/membership digest with exact count 256
-plan-level protected-relation separation evidence
-replay monitor lineage
-fold train/eval/purge membership where applicable
-method/CV/final/run-plan digests
-final publication metric lineage where applicable
+training-only P5 method identity and preparation-policy digest
+foundation checkpoint + selected head
+resolved loss/objective + dimensional semantics
+atomic-reference fit ancestry and composition-transfer evidence
+target/replay training memberships and exposure order
+optimizer/LR/EMA/precision/backend/model architecture
+seed + planned horizon + checkpoint cadence
+common-monitor / validation / transfer-consumer inputs actually consumed by preparation/runtime
+generated MACE training configuration identity
+checkpoint/runtime continuation ancestry
 ```
 
-Materialization and run evidence are downstream of the owning plan/run plan
-and bind the resulting fitted-preparation digest. They do not become parents
-of the CV or final-production plan through that binding.
+The current training materialization SHALL NOT contain or identify a held-out outer-evaluation transport. In particular, the post-cutover schema SHALL NOT contain `outer_evaluation_artifact`, a held-out EXTXYZ path, its sidecar/manifest, held-out label/reference digest, EVAL2 provider identity, or equivalent assessment-only serialization. `outer_evaluation.extxyz` and its sidecar SHALL NOT be members of a post-cutover run root.
 
-Transport formats such as extended XYZ carry only fields needed by their consumer; longer ancestry remains in authenticated sidecars/records rather than becoming a second authority.
+The only held-out-derived input permitted before TRAIN2 is the **label-blind geometry projection actually consumed by preparation**: the canonical required-composition / transfer-consumer identity. The fitted preparation may bind that projection so composition-transfer identifiability is decided before training, but held-out labels and evaluation serialization never become training ancestry.
 
-## 16. Configuration/public contract
+After authenticated terminal fixed-budget TRAIN2, while holding `post_selection_run_activity_lease()`, publish/reuse the existing typed topology manifest and completion anchor so the run root becomes a sealed training-only subtree. The terminal proof binds the authenticated `Train2RuntimeSummary` and exact checkpoint/runtime boundary and SHALL NOT require `fold-acceptance.json`, `run-evidence.json`, any held-out evaluation artifact, or any other assessment file.
 
-Current configuration behavior is frozen as follows:
+The existing completion-proof safety contract remains mandatory: topology/anchor authority files are opened with `O_NOFOLLOW` and regular-file status is established by `fstat` on the opened descriptor; manifest/anchor are non-reclaimable owner infrastructure; the compact anchor remains sufficient even when terminal assessment evidence is absent or cold; an existing valid proof is verified/reused rather than reconstructed from a storage-depleted tree; and tampered, copied/root-mismatched, partially conflicting, or self-inconsistent proof state fails closed.
 
-- no user-facing corpus-order knob;
-- no three-property Huber-delta knob family;
-- foundation P5 objective is fixed by accepted D2 and independent of P3 `[objective]`/`[weighting]` overrides;
-- a dedicated P5 field attempting to change accepted delta, E:F:S, corpus order, or distributed exposure fails closed / requires upstream revision;
-- explicitly incompatible foundation E0 fit mode fails with an actionable error rather than being silently overwritten;
-- retired target/replay training-head scalar fields fail closed in current config;
-- canonical replay omission resolves TRUE_DFT;
-- ambiguous omitted legacy split-file replay semantics fail closed;
-- current P5 fold default resolves to 3 and explicit overrides require `K >= 2`;
-- role target-force ceilings and the CV outer default resolve as in section 12.1, and an explicit `acceptance_maximum` is never rewritten;
-- generated and shipped foundation configuration show all three section 12.1 threshold defaults explicitly (`checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.045` and `acceptance_maximum = 0.045` under `[post_selection.cv]`, `maximum_target_force_rmse_ev_per_angstrom = 0.030` under `[acceptance]`), and the CLI specification and user guide state the same defaults and units;
-- foundation distributed execution fails closed;
-- exact-monitor shortfall, relation collision, unusable monitor labels, or failed composition transfer are typed infeasibility/failure, not fallback paths.
+Post-cutover EVAL2 and reassessment SHALL NOT write assessment state or held-out evaluation transport into the sealed run root. They hold `post_selection_run_activity_lease()` for the full interval in which checkpoint/materialization/model bytes are read from that root, then release it before publishing external immutable assessment objects. If the post-selection publication barrier is needed concurrently, acquisition order is run-activity lease then publication barrier.
 
-## 17. Currentness and schema cutover
+### 15.1 Held-out outer-evaluation transport
 
-Schema/generation tokens SHALL advance at the narrowest owner wherever the pre-restoration payload could authorize a materially different method. At minimum the cutover SHALL cover, as applicable:
+For CV, the held-out outer-evaluation artifact is realized **only after the checkpoint representative has been frozen under D2.DEF.059A**. It is an EVAL2-owned attempt-local transport, not training materialization and not a durable currentness owner.
+
+The implementation SHALL:
+
+1. derive exact held-out membership from the authenticated CV fold/assessment position;
+2. materialize the accepted evaluation representation in an owner-controlled attempt scratch location **outside the sealed run root**;
+3. authenticate the exact membership, label/reference content, transport policy and serialized bytes before numerical evaluation;
+4. bind that exact artifact identity into `EvaluationMeasurementIdentity` / the immutable EVAL2 metric record;
+5. publish the resulting immutable measurement record through the existing post-selection evidence store; and
+6. treat the transport path itself as disposable scratch that may be removed after the measurement record is durably published.
+
+No second durable evaluation-artifact store, filesystem registry, pointer database, or shadow materialization namespace is authorized. File existence or scratch pathname is never currentness. A retry may regenerate the transport from authoritative upstream evidence; reuse is decided by the measurement record and D2.DEF.060B equivalence, not by finding old scratch.
+
+The exact durable measurement identity SHALL expose, directly or through one authenticated artifact subrecord, at least:
 
 ```text
-PostSelectionMethodIdentity
-P5 preparation-policy identity
-PostSelectionFittedPreparation
-CV policy/fold/plan/run-plan schemas
-common target-monitor policy/record as needed for exact-256 no-fallback semantics
-MLCV target-monitor catalog/run-monitor schemas where they currently encode independent target sampling
-final-production plan
-final-publication decision
-PostSelectionMaterialization/runtime evidence
-restart/currentness stamps
+held-out membership/content identity
+label/reference content identity
+evaluation transport policy identity
+serialized artifact SHA-256/content digest
+checkpoint/model-state identity
+metric/reduction/units
+head/prediction semantics
+provider/evaluator realization
+numerically material precision/backend semantics
 ```
 
-The exact token strings are delegated D4 implementation details provided the cutover is unambiguous and tested.
+The scratch locator is deliberately excluded from that identity.
 
-The threshold-separation cutover advances `PostSelectionMethodIdentity` to v3, the CV policy to v3, and the final-production policy to v2. Pre-cutover P5 CV/final plans, fold verdicts, and run evidence become stale once; unaffected P1/P2/P3, frozen-selection, common-monitor, replay, and source/cache evidence remain reusable. Plan, run-plan, fold-acceptance, checkpoint-record, and EVAL2 schemas do not advance because only ancestor digest values change.
+Historical materialization schema v2 may contain `outer_evaluation_artifact` and historical roots may contain `outer_evaluation.extxyz*`. Those roots remain immutable. A historical held-out artifact may support current measurement reuse only after exact D2.DEF.060B equivalence is established. If equivalence is incomplete or false, regenerate the current EVAL2 transport outside the historical root; never copy, delete, rename or rewrite the historical held-out bytes into the new training-root topology.
 
-Old foundation weighted-stress trajectories, fold-local checkpoint-monitor plans, M3-dependent P5 plans/publications, from-scratch-E0 foundation preparations, target-first replay exposure records, missing-transfer preparations, and broad DATA8/`TrainingProtocolIdentity` P5 records SHALL fail currentness before execution/restart reuse.
+### 15.2 Assessment-independent measurement records
 
-Replay views and legacy true-label rematerializations produced before the section 9.1 transport contract (v1 view/receipt/materialization schemas) SHALL NOT be reused as current; they are rematerialized from their unchanged authenticated parents. That view-only cutover preserves the replay source, geometry split, true-label cache, foundation-prediction cache, and pseudo qualification, and SHALL NOT trigger foundation re-inference or a scientific resplit. The ordinary `prepare` publication converges the current replay aliases on the repaired views; post-selection readers rematerialize the same views from the published parents.
+Advance the target/replay/held-out measurement identity/schema wherever current role/prediction digests inherit full run-plan ancestry. In particular, `post_selection_eval_role_digest()` or its successor SHALL NOT hash the full `run_plan_digest`, current hard/outer policy, or publication policy merely to preserve the historical schema shape. It binds only the exact evaluation experiment coordinates that are numerically material. A current measurement record SHALL directly bind all numerically material inputs needed by D2.DEF.060B:
 
-Independent P1/P2/P3/T_selected evidence remains reusable when its real owner/semantics are unchanged. A P5-only cutover SHALL NOT blanket-stale unchanged P3 evidence.
+```text
+exact checkpoint/model-state identity
+exact evaluation artifact/membership and labels/reference values
+metric name/definition/units/reduction/aggregation
+model/head and prediction semantics
+provider/evaluator realization
+numerically material precision/backend semantics
+```
+
+Assessment thresholds, warning policy, strict-selection policy, CV/publication policy, and full assessment-plan digest SHALL NOT be measurement inputs. Historical records remain immutable. Reuse requires exact D2 measurement-equivalence proof; otherwise recompute EVAL2 from the preserved authenticated checkpoint/evaluation evidence.
+
+### 15.3 Policy assessment records and complete candidate sets
+
+Final production SHALL evolve the existing `PostSelectionRunEvidence` owner into one outcome-discriminated current **per-seed assessment** schema:
+
+```text
+training_trajectory_identity
+final_seed_assessment_policy_digest
+  = current final hard-decision policy + D2.DEF.059A only
+outcome = representative_selected | no_admissible_representative
+complete ordered candidate_record_digests
+representative identity/checkpoint/record only for representative_selected
+current monitor metric identity as required
+```
+
+The current per-seed assessment record SHALL NOT bind the full final-plan digest, current-CV authorization digest, publication mode, or D2.DEF.059B as identity-bearing parents. Those are checked/bound by their separate authorization/publication owners.
+
+The constructor SHALL enforce tagged outcome invariants. Every candidate assessment is durably published before the terminal outcome.
+
+CV retains `CvFoldAcceptance` as the fold-assessment owner, but current records are external to the training root.
+
+Extend the existing CampaignStore pointer seam with one position-addressed assessment locator. The canonical key is:
+
+```text
+selected_binding_digest
+assessment_role = cv_fold | final_seed
+assessment_position_policy_digest
+training_trajectory_identity
+optimizer_seed
+fold_index for CV, absent for final seed
+```
+
+For `cv_fold`, `assessment_position_policy_digest` binds the current CV hard checkpoint policy + D2.DEF.059A + configured outer metric/`theta_CV` verdict policy. For `final_seed`, it binds the current final hard checkpoint policy + D2.DEF.059A only. It explicitly excludes replay warning policy, current-CV authorization ancestry, publication mode, and D2.DEF.059B.
+
+The value is the immutable current assessment-record digest. Existing selected-binding commit-time stale-generation fencing applies. Campaign-level CV-acceptance and final-publication pointers remain aggregate current authorities. Aggregate final publication separately re-authenticates current accepted CV and binds `FinalPublicationPolicyDigest` plus the exact frozen seed assessments/representatives it consumes. Do not add a second pointer database, filesystem registry, content-store scan, or shadow assessment store.
+
+Warning-only evidence may be published separately from signed replay degradation and SHALL NOT move the hard-assessment locator.
+
+
+## 16. Configuration/public contract and migration
+
+Keep global campaign schema `mdstats.mlff-campaign-cli.v2`. Add one narrow generated discriminator under `[acceptance]`:
+
+```toml
+post_selection_checkpoint_policy_generation = "p5_target_replay_v2"
+```
+
+Current generated foundation configuration is:
+
+```toml
+[post_selection.cv]
+checkpoint_maximum_target_force_rmse_ev_per_angstrom = 0.075
+acceptance_metric = "target_force_rmse_ev_per_angstrom"
+acceptance_maximum = 0.075
+
+[acceptance]
+post_selection_checkpoint_policy_generation = "p5_target_replay_v2"
+maximum_target_force_rmse_ev_per_angstrom = 0.050
+replay_degradation_warning_mev_per_a = 50.0
+replay_degradation_hard_limit_mev_per_a = 100.0
+```
+
+With the new marker, the retired `allowed_replay_degradation_mev_per_a` is invalid. Explicit current values, including `0.045/0.045/0.030`, are lawful overrides after validation.
+
+For foundation-adaptation TRAIN2 configs without the marker:
+
+- absent replay field or exact historical generated `allowed_replay_degradation_mev_per_a = 30.0` with no new replay fields migrates to current `50/100 meV/angstrom` and emits bounded migration notice;
+- a custom legacy one-number replay value, mixed legacy/new replay fields, or new replay fields without the marker fails closed with actionable migration guidance;
+- absent production target or exact historical generated `0.030` resolves to current foundation production `0.050`; other finite positive legacy production values are preserved;
+- absent foundation CV checkpoint value or exact historical generated `0.045` resolves to `0.075`; other finite positive values are preserved;
+- under default `target_force_rmse_ev_per_angstrom` outer metric, absent/exact historical generated `acceptance_maximum=0.045` resolves to `0.075`; a non-default outer metric is not force-RMSE-migrated and retains its accepted units/resolution;
+- scratch keeps its accepted `0.030` semantics and is not migrated to foundation defaults.
+
+Schema-less/pre-TRAIN2 generations retain their historical semantics and are not silently converted.
+
+Generated template, `init` output, shipped example, CLI specification and user guide SHALL converge on the marker/current fields and units. Generic EVAL2 configuration for uncertainty/practical-equivalence/secondary/maturity may remain only for unaffected consumers with scope stated accurately; it SHALL NOT be described as P5 representative authority.
+
+
+## 17. Currentness, historical reuse, and schema cutover
+
+Advance schema/generation tokens at the narrowest changed owners. At minimum the cutover SHALL cover the training-only `PostSelectionMethodIdentity`, `TrainingTrajectoryIdentity`/run-root identity, post-selection training materialization after historical v2, CV/final assessment-plan ancestry, hard checkpoint-decision policy, strict representative/publication decision identity, assessment-independent measurement identity, final outcome-discriminated assessment evidence, and the narrow checkpoint-policy generation marker.
+
+Do not bump global campaign schema v2 solely for this change.
+
+Steady-state invalidation SHALL match D2.AX.004 exactly:
+
+```text
+delta_warn only -> warning/report evidence only
+delta_hard      -> checkpoint assessments/representative + dependent verdict/publication
+tau_CV          -> CV hard assessment/representative + outer verdict + production authorization
+theta_CV        -> CV outer verdict + production authorization only
+tau_prod        -> production assessment/representative/publication only
+strict order    -> representative/publication descendants only
+training input  -> TrainingTrajectoryIdentity and TRAIN2 descendants
+measurement input -> EvaluationMeasurementIdentity and measurement descendants
+held-out label/reference/artifact/provider-only change
+                  -> EvaluationMeasurementIdentity + EVAL2/outer-verdict descendants only
+                  -> no TrainingTrajectoryIdentity/materialization/root/TRAIN2 change
+```
+
+A historical verdict is never made current by monotonic implication. Reassessment publishes a new record.
+
+Historical TRAIN2 reuse requires exact training-semantic equivalence. The one-time historical mapping SHALL prove the legacy schema-v3 method projection, full-plan-derived run/root position, fitted preparation/materialization/runtime ancestry, and any measurement reuse separately. It SHALL NOT be implemented as "ignore method digest", pathname scan, newest-mtime choice, content-store reverse lookup, root rename/copy/symlink, or mutable alias registry.
+
+An already sealed legacy root is strictly read-only. For a completed terminal-but-unsealed legacy root lacking the old assessment-coupled terminal anchor, authenticate the exact terminal TRAIN2 summary/checkpoints/runtime boundary and every existing root node, acquire the existing P5 run-activity lease, then publish exactly one append-only topology manifest + completion anchor under the same create-once/verify owner. No pre-existing historical byte may be rewritten; a conflicting or partially inconsistent proof fails closed. For an interrupted root, continue only under exact historical fitted-preparation/materialization/runtime/protocol/optimizer/RNG ancestry after the training-equivalence proof; do not rewrite that ancestry mid-trajectory.
+
+Every affected historical CV fold/seed is reassessed under current hard/selection policy. Historical v2 materialization/roots containing held-out evaluation bytes remain immutable. Reuse a historical held-out artifact or numeric measurement only when D2.DEF.060B proof succeeds; otherwise regenerate current EVAL2 attempt-local transport outside the historical root and rerun EVAL2 without retraining. If the representative changes, evaluate the new representative on the exact held-out population. Publish new current fold/campaign assessments.
+
+Historical final production is reassessed only after current CV reclosure accepts. If historical candidate-set provenance is incomplete, rerun full governed-checkpoint EVAL2 from preserved checkpoints. Never infer a winner from an old shortlist or content-store scan.
+
+Unchanged P1/P2/P3/source/replay/common-monitor evidence remains reusable through its real owner when semantics/identity remain applicable.
 
 ## 18. MLCV monitor disposition
 
@@ -492,77 +654,109 @@ Current MLCV monitor machinery may continue to own replay monitoring and trainin
 
 Where current `target-light` and `target-full` budgets are both 256, the current target-light membership SHALL directly equal the authenticated common `M_mon` membership rather than invoking a second target sampler.
 
+
 ## 19. Failure behavior
 
 Current P5 SHALL fail closed, with typed/actionable errors, for at least:
 
-- unsupported/ambiguous current training mode;
-- stale or competing protocol identity;
-- incompatible foundation checkpoint/head;
-- missing selected-head residual inputs;
-- invalid residual-fit ancestry;
-- failed composition transfer;
-- insufficient exact common-monitor support;
-- unusable monitor labels;
-- protected relation collision;
-- fold/final monitor digest mismatch;
-- retired training-head scalar fields;
-- ambiguous legacy replay label mode;
-- a directly consumed replay transport whose MACE-resolved weights are not neutral/binary masks;
-- runtime loss/exposure mismatch;
-- implicit target duplication;
-- wrong replay/target pre-shuffle order;
-- distributed foundation execution;
-- stale historical restart/currentness state; or
-- M3 re-entry into P5 checkpoint/ranking/publication ancestry.
+- unsupported/ambiguous training mode or stale/competing P5 authority;
+- incompatible foundation checkpoint/head, residual-fit ancestry, or composition transfer;
+- exact common-monitor shortfall, unusable labels, relation collision, or monitor mismatch;
+- invalid/mixed replay-policy generation, invalid threshold type/value/order, or ambiguous custom legacy replay migration;
+- missing/stale/unauthenticated/non-finite required TRUE_DFT replay evidence;
+- no hard-admissible checkpoint after complete governed-checkpoint assessment;
+- incomplete/foreign training trajectory identity or continuation ancestry;
+- attempted policy-only root duplication instead of reuse of a training-equivalent trajectory;
+- attempted historical scalar reuse without exact measurement-equivalence proof;
+- attempted current final assessment/publication without current accepted CV authorization;
+- attempted write of current assessment state into a sealed post-cutover training root;
+- a post-cutover training materialization/root containing `outer_evaluation_artifact`, `outer_evaluation.extxyz*`, held-out labels, or equivalent EVAL2 transport;
+- EVAL2 attempt transport materialized beneath a sealed run root or treated as durable currentness by pathname/existence;
+- a current held-out measurement record that cannot authenticate exact membership, label/reference content, serialized artifact identity, provider/metric/precision ancestry required by D2.DEF.060B;
+- root-dependent EVAL2/reassessment without the existing run-activity exclusion;
+- content-store/run-directory scanning to reconstruct candidate sets or locate legacy roots;
+- M3 re-entry into P5 checkpoint/ranking/publication ancestry;
+- distributed foundation execution without separate D2-equivalence acceptance; or
+- runtime loss/exposure/precision/provider semantics inconsistent with authenticated training/measurement authority.
 
 No compatibility wrapper may convert these into a different current method.
 
+
 ## 20. Required falsification before implementation acceptance
 
-At minimum, implementation tests/review SHALL reject these counterfactuals:
+Implementation acceptance SHALL exercise the real P5 owners and reject at least these counterfactuals:
 
-1. P5 identity says UniversalLoss while runtime resolves stress;
-2. fixing foundation P5 globally changes P3/P5-scratch loss semantics;
-3. UniversalLoss delta/E:F:S/conditional-force/stress-reduction semantics differ from D2;
-4. foundation P5 still binds/fits nontrivial configuration weights;
-5. current config accepts retired training-head scalars;
-6. canonical replay omission does not resolve TRUE_DFT;
-7. ambiguous legacy omission silently resolves pseudo;
-8. foundation adaptation uses from-scratch E0 or wrong foundation head;
-9. monitor/held-out labels leak into residual fit;
-10. a composition outside fit row space passes transfer without accepted anchor;
-11. exact monitor realizes fewer than 256 and continues;
-12. relation collision causes filtering/replacement/resampling;
-13. selected-only relation projection misses cross-role leakage;
-14. sibling CV/final plans bind different common-monitor records;
-15. selected fold still contains checkpoint-monitor membership;
-16. current MLCV builds an independent target checkpoint parent;
-17. default K resolves to a value other than 3;
-18. target duplication or `force_mh_ft_lr=false` occurs;
-19. replay/target pre-shuffle order is reversed under same seed;
-20. foundation `drop_last` differs from accepted naive/multihead geometry;
-21. distributed foundation execution is admitted;
-22. old incompatible checkpoint/preparation/plan resumes as current;
-23. P5 identity/preparation still binds whole P3 common-training policy;
-24. final plan/publication still binds or evaluates M3 to choose seed;
-25. `single_best_final_seed` uses raw scalar-RMSE sorting rather than accepted ordering;
-26. final publication reruns target evaluation instead of consuming frozen common-monitor metrics;
-27. a P5-only generation change blanket-invalidates unchanged P3 evidence;
-28. a true method-bearing change fails to invalidate dependent P5 evidence;
-29. inherited source `config_weight` or non-binary `config_{energy,forces,stress}_weight` survives into a current replay view or directly consumed legacy split file and reaches native UniversalLoss;
-30. a replay stress mask disagrees with the rendered stress label, or missing stress is fabricated; and
-31. a pre-contract replay view is reused as current, or its repair re-runs foundation inference or resplits replay;
-32. a foundation CV checkpoint at 42 meV/angstrom fails because a 30 meV/angstrom ceiling survives in method, run, or evaluation ancestry, or a foundation production checkpoint at 42 meV/angstrom is admitted;
-33. default scratch begins admitting 42 meV/angstrom because foundation CV changed;
-34. a role-only ceiling edit moves `PostSelectionMethodIdentity`, or a shared replay-constraint edit does not;
-35. a non-target-force outer metric threshold becomes the checkpoint ceiling;
-36. a run is judged under a role policy its plan does not bind;
-37. an explicit non-default `tau_cv`, `theta_cv`, or `tau_prod` is ignored by its assessment, moves the shared method or the other role's policy, or (for a CV-only edit changing no other field) leaves the prior CV acceptance authorizing production;
-38. an explicit default resolves a different identity than omission;
-39. a boolean, string, quoted-numeric, non-finite, or nonpositive threshold value is accepted from real TOML configuration; and
-40. generated template, shipped example, CLI specification, and guide disagree on the three defaults.
+1. changing only replay warning threshold changes TRAIN2, hard admissibility, representative, CV verdict, production authorization, or publication;
+2. replay degradation equal to 50 or 100 meV/angstrom triggers the strict warning/hard predicate, or the next binary64 value above either boundary does not;
+3. negative replay degradation warns/rejects;
+4. a `60 meV/angstrom` target-monitor checkpoint fails default foundation CV or passes default foundation production;
+5. exact `75 meV/angstrom` CV checkpoint/outer force-RMSE fails, exact `50 meV/angstrom` production checkpoint fails, or the next binary64 value above either ceiling passes;
+6. a non-default CV outer metric inherits force-RMSE `0.075`;
+7. a lower-target hard-admissible checkpoint loses to replay margin/warning, secondary metric, maturity, practical-equivalence band, or bootstrap result;
+8. exact within-run target ties resolve by anything other than epoch then checkpoint SHA-256;
+9. exact cross-seed target ties resolve by anything other than optimizer seed then checkpoint SHA-256;
+10. any governed durable checkpoint is omitted/thinned before hard assessment/selection;
+11. a no-admissible outcome omits the complete ordered candidate-record set or carries a representative;
+12. a selected outcome's representative is not a member of its bound candidate set;
+13. `single_best_final_seed` performs a second target/M3 evaluation or imports old uncertainty/secondary/maturity ranking;
+14. `all_qualified_final_seeds` performs cross-seed ranking;
+15. a policy-only threshold/D2.DEF.059A/059B change moves `TrainingTrajectoryIdentity` or launches TRAIN2 when pre-fit training-bearing inputs are identical;
+16. a pre-fit training-bearing membership/loss/LR/seed/horizon/preparation-input/precision/backend change fails to move training identity, or a changed fitted-preparation/result under the same identity is silently accepted instead of failing realized-state authentication;
+17. `PostSelectionFittedPreparation`, materialization, generated MACE config, checkpoint catalog, runtime summary, or continuation still requires full policy-bearing plan identity;
+18. pre-training preparation consults current checkpoint admissibility merely to decide replay execution;
+19. terminal TRAIN2 cannot seal the run root until assessment files exist, or current EVAL2 writes `fold-acceptance.json`/`run-evidence.json` into a post-cutover sealed root;
+20. root-dependent EVAL2/reassessment can race archive/dedup/reclamation because the P5 run-activity exclusion is absent or lock order is reversed;
+21. warning-only diagnostics, current-CV-authorization-only edits, or D2.DEF.059B/publication-mode-only edits move a final-seed hard-assessment position locator;
+22. a final hard-policy or D2.DEF.059A change fails to derive a new final-seed assessment position over the same training trajectory, or a 059B-only change fails to derive a new aggregate publication decision;
+23. a second pointer database, assessment filesystem registry, shadow evidence store, or content-store scan is introduced;
+24. a future target/replay/held-out measurement or evaluation-role digest changes solely because an assessment threshold/full role-plan digest changed, or `post_selection_eval_role_digest()` retains full `run_plan_digest` ancestry without independent numerical meaning;
+25. historical scalar equality alone is accepted as measurement equivalence;
+26. failure to reuse historical measurement triggers TRAIN2 rather than EVAL2-only recomputation;
+27. any affected historical CV fold is skipped because it previously passed;
+28. changed historical CV representative reuses the old representative's outer metric;
+29. historical final production is reassessed/published before current CV reclosure accepts;
+30. historical final candidate winner is inferred from an old shortlist/store scan instead of complete bound evidence or recomputed EVAL2;
+31. a sealed legacy root is modified; a terminal-but-unsealed legacy root is sealed by anything other than the one append-only authenticated manifest/anchor publication; legacy roots are renamed, copied, symlinked, located by scan/mtime, or have historical hashes/runtime ancestry rewritten;
+32. interrupted legacy trajectory continues without exact historical optimizer/EMA/RNG/runtime ancestry plus training-equivalence proof;
+33. global campaign schema advances solely for this local policy cutover;
+34. legacy generated foundation `0.045/0.045/0.030` defaults fail to migrate as specified, while explicit current values under the new marker are accidentally rewritten;
+35. custom legacy one-number replay degradation is guessed into warning/hard meaning instead of failing closed;
+36. scratch `0.030` semantics change as collateral;
+37. generated template, init output, shipped example, CLI spec, and guide disagree on current `75/75/50` target and `50/100` replay defaults;
+38. P3 target-size screening or P5 scratch loss/exposure semantics change as collateral;
+39. replay transport masks/label semantics, residual E0 selected-head semantics, common-monitor exact-256 semantics, or composition-transfer requirements regress; and
+40. a P5-only generation change blanket-invalidates unchanged P1/P2/P3 evidence;
+41. post-cutover `PostSelectionMaterialization` serializes `outer_evaluation_artifact` or the sealed root topology contains `outer_evaluation.extxyz`, its sidecar, or any equivalent held-out evaluation transport;
+42. changing only held-out labels/reference values or EVAL2 transport serialization moves `TrainingTrajectoryIdentity`, fitted preparation, training materialization/root identity, or launches TRAIN2;
+43. changing the label-blind required-composition / transfer-consumer projection fails to move the affected training position/preparation when that projection changes;
+44. EVAL2 held-out transport is created before representative freeze, is materialized inside the sealed run root, survives as a currentness requirement after its metric record is durable, or requires a new persistent store/registry;
+45. an EVAL2 measurement record omits exact held-out membership/content, label/reference identity, serialized artifact identity, checkpoint/model, metric/reduction, provider or numerically material precision ancestry required by D2.DEF.060B;
+46. a historical v2 root carrying held-out evaluation bytes is rewritten/copied into a post-cutover root, or those bytes are reused without exact D2.DEF.060B equivalence; and
+47. deleting attempt-local held-out transport after durable metric publication makes an otherwise authenticated measurement non-reusable or forces TRAIN2.
+
+Focused tests alone do not close the work. Final acceptance also requires affected regression, assembled real-owner `cross-validate` and `train-production` recovery/reassessment paths, repository-required checks, and bounded scientific qualification. Production-scale GPU qualification remains deferred to the final complete release package.
 
 ## 21. Documentation boundary
 
 This specification is the pre-code G1B handoff freeze. Later implementation documentation may add examples, concrete schema tokens, generated views, and explanatory history, but it may not change method-bearing schema presence/absence, failure behavior, currentness, public/config semantics, or owner-facing interfaces without reopening G1B and any upstream owner actually affected.
+
+## 22. Implementation realization (informative)
+
+This section records concrete D4 tokens chosen within the delegated space of sections 3-17; it changes no contract above.
+
+| Contract object | Realization |
+|---|---|
+| training-only method identity | `mdstats.post-selection-method-identity.v4` (v3 readable only by the one-time training-equivalence projection) |
+| `TrainingTrajectoryIdentity` | `mdstats.post-selection-training-trajectory.v1`; run root = its digest |
+| CV / final run plans | `...-cv-fold-run-plan.v2`, `...-final-production-run-plan.v2` (carry the trajectory) |
+| CV / final plans | `...-cv-plan.v3`, `...-final-production-plan.v3` (label-blind transfer-consumer composition identity; one-time `legacy_source_plan_digest` locator) |
+| fitted preparation | `mdstats.post-selection-fitted-preparation.v4` (binds the trajectory) |
+| training materialization | `mdstats.post-selection-materialization.v3` (no held-out transport) |
+| completion proof | `mdstats.post-selection-run-completion.v2` with a `train2_terminal` proof; v1 anchors remain valid historical proofs |
+| hard policy / warning | `mdstats.train2-checkpoint-admissibility-policy.v2` (`replay_catastrophic_forgetting_limit_exceeded`); `mdstats.train2-replay-warning-diagnostic-policy.v1` (`replay_degradation_warning_threshold_exceeded`) |
+| measurement identity | `mdstats.post-selection-eval2-measurement.v2` (`EvaluationMeasurementIdentity`, published as its own evidence object); predictions `...-eval2-predictions.v2`; `mdstats.eval2-checkpoint-record.v2` links replay measurement records |
+| assessments | `mdstats.post-selection-cv-fold-acceptance.v3`, `mdstats.post-selection-run-evidence.v2`, `mdstats.post-selection-cv-campaign-acceptance.v2` |
+| assessment locator | CampaignStore pointer kind `assessment_position` keyed by `mdstats.post-selection-assessment-position.v1` |
+| publication | `mdstats.post-selection-final-publication-decision.v3`, seed evidence v2, decision identity `...strict-target-rmse-seed-sha256.v3`, `mdstats.post-selection-final-publication-policy.v1` |
+| diagnostics | `mdstats.post-selection-checkpoint-diagnostics.v1` (unreferenced diagnostic evidence) |
+| held-out transport | bounded `tempfile` scratch outside every training root, removed on return |
