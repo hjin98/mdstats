@@ -6,7 +6,7 @@ workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-REWORK-1
 parent_D1_ratified_target: d761171f3c86c3c79b87a90cfc02ac324c261b1a
 parent_D1_blob: 612294ec4680db01a18085e13fbfe5dcfa9fb7ed
 accepted_D2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
-d2_candidate_blob: 894b2f5b6fe16ae483bb98dcc9af4910ccd3b311
+d2_candidate_blob: 9e12728432d20bc7d16b9c5654bf7833cdee8df9
 scope:
   - docs/methods/mlff_numerical_algorithmic_method.md
 ---

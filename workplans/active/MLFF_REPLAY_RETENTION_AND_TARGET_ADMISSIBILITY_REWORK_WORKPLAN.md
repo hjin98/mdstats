@@ -1201,7 +1201,7 @@ On 2026-09-18 the stakeholder explicitly accepted that exact candidate. Ratifica
 
 The reviewed D1 blob is not rewritten by ratification. It is the accepted branch-local D1 parent for Gate C.
 
-### Gate C - D2 numerical renewal - CANDIDATE AUTHORING
+### Gate C - D2 numerical renewal - AWAITING INDEPENDENT REVIEW
 
 Formally define:
 
@@ -1213,7 +1213,7 @@ Formally define:
 - replay warning/rejection numerical oracle;
 - old-measurement reassessment equivalence.
 
-Independent Protocol 6.4 D2 review is required on the exact authored candidate; D2 may not inherit acceptance from implementation precedent or the prior Protocol-6.4 reconstruction.
+Immutable D2 R1 candidate is `e2b39917ab8c16556eb218d6a41e9682331bbca0` with canonical D2 blob `9e12728432d20bc7d16b9c5654bf7833cdee8df9`. Independent Protocol 6.4 D2 review is required on this exact target; D2 may not inherit acceptance from implementation precedent or the prior Protocol-6.4 reconstruction. Review handoff: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_INDEPENDENT_REVIEW_R1_HANDOFF.md`.
 
 ### Gate D - D3 authority/currentness reconciliation
 
