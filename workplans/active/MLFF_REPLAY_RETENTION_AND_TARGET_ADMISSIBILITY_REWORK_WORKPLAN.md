@@ -1158,12 +1158,12 @@ Gate B is **not yet closed**. Independent R2 review passed semantic target `2549
 
 Renderer-repair semantic descendant:
 
-- commit: `cac2524facbc3fab6956fcbfcfa16f446e0287dc`;
-- D1 blob: `3885f286db224e7f4e67abc8ce012d084615442b`.
+- commit: `8599947c19bf95284ebe07422cd564b5390a0f7a`;
+- D1 blob: `4b5037fb0987a28919ed079b860a1c000e3c164b`.
 
 The representation-only edits flatten the three affected equations so no display block contains a standalone `=` line and simplify the hard-admissible set braces; the intended mathematics is unchanged. The reviewed target `2549dee7...` remains immutable historical review evidence.
 
-Before stakeholder ratification, perform a bounded representation-equivalence check from `2549dee7...` to `cac2524...`. Gate C remains blocked until that check passes and the stakeholder ratifies the exact renderer-repaired target.
+Before stakeholder ratification, perform a bounded representation-equivalence check from `2549dee7...` to `8599947c...`. Gate C remains blocked until that check passes and the stakeholder ratifies the exact renderer-repaired target.
 
 ### Gate C - D2 numerical renewal
 
