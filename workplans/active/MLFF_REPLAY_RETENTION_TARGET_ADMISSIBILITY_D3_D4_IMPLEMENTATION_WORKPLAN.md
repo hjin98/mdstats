@@ -28,8 +28,9 @@ independent_d4_review_disposition: NO-PASS
 independent_d4_review_date: 2026-09-18
 independent_d4_review_highest_affected_domain: D4 implementation/evidence/lifecycle closure
 independent_d4_review_serious_challenge: none
-repair_base: dfe9a53cbf3fc45046b73270063841e83391cd61
-repair_candidate_target: pending
+repair_base: 16447343eb2632abb4e8554967d9526a08ad924b
+repair_candidate_target: 042b84b74d0b109dd576b725eafe6359629a55ea
+repair_evidence_state: COMPLETE_PENDING_FRESH_INDEPENDENT_D4_REVIEW
 initial_implementation_candidate_tracked_diff_sha256_excluding_this_workplan: 80f0d07231b4c30a0f34f9a47a14cdd1be317f9f2b3afd2c1e7889d208b5330c
 initial_implementation_candidate_untracked_test_content_sha256: 9649c44b016e0cc7a4124a70f5ae5ffa51b32bb9084ab7e2cfba0a2d5095509f
 ---
@@ -273,18 +274,18 @@ The implementation is directionally conforming and the following accepted struct
 
 | Obligation | Review state | Required disposition |
 |---|---|---|
-| I1 | provisionally conforming | Preserve; re-run identity counterfactuals after repair. |
-| I2 | provisionally conforming | Preserve; no repair may move hard assessment before authenticated terminal TRAIN2. |
-| I3 | provisionally conforming | Preserve training-only seal and legacy append-only exception. |
-| I3A | **BLOCKED (R1)** | Fresh held-out scratch is reclaimed before its newly computed measurement is durable; repair exact publication/cleanup order below. |
-| I4 | provisionally conforming | Preserve assessment-independent measurement ancestry and exact D2.DEF.060B inputs. |
-| I5 | P5 semantics conforming; acceptance open | Preserve current P5 50/100 behavior; reconcile the shared exported TRAIN2 policy API without globalizing P5 defaults. |
-| I6 | P5 config/migration path conforming; acceptance open | Preserve marker/migration semantics; close shared-policy regression break under R2. |
-| I7 | provisionally conforming | Preserve complete candidate universe and exact 059A/059B keys. |
-| I8 | provisionally conforming | Preserve external assessment records/currentness projections and one pointer plane. |
-| I9 | provisionally conforming | Preserve authenticated historical reuse and no historical-byte rewrite. |
-| I10 | provisionally conforming | Preserve run-activity exclusion and lease -> publication-barrier order where both are required. |
-| I11 | provisionally conforming | Preserve diagnostic-only warning authority. |
+| I1 | evidence-backed on `042b84b7...` | Fresh independent D4 Review must revalidate identity counterfactuals. |
+| I2 | evidence-backed on `042b84b7...` | Fresh independent D4 Review must confirm hard assessment remains after authenticated terminal TRAIN2. |
+| I3 | evidence-backed on `042b84b7...` | Fresh independent D4 Review must confirm the training-only seal and legacy append-only exception. |
+| I3A | repaired/evidence-backed on `042b84b7...` (R1) | Fresh independent D4 Review must confirm publication-before-cleanup and root exclusion. |
+| I4 | evidence-backed on `042b84b7...` | Fresh independent D4 Review must confirm assessment-independent measurement ancestry and D2.DEF.060B inputs. |
+| I5 | repaired/evidence-backed on `042b84b7...` (R2) | Fresh independent D4 Review must confirm P5 50/100 behavior and generic-policy compatibility. |
+| I6 | repaired/evidence-backed on `042b84b7...` (R2) | Fresh independent D4 Review must confirm marker/migration and role-owner defaults. |
+| I7 | evidence-backed on `042b84b7...` | Fresh independent D4 Review must confirm complete candidate assessment and exact keys. |
+| I8 | evidence-backed on `042b84b7...` | Fresh independent D4 Review must confirm one external assessment/currentness plane. |
+| I9 | evidence-backed on `042b84b7...` | Fresh independent D4 Review must confirm authenticated reuse and no historical-byte rewrite. |
+| I10 | evidence-backed on `042b84b7...` | Fresh independent D4 Review must confirm run-activity exclusion and lease -> publication-barrier order. |
+| I11 | evidence-backed on `042b84b7...` | Fresh independent D4 Review must confirm diagnostic-only warning authority. |
 
 Evidence recorded for the reviewed candidate remains evidence **for `b657460c...` only**:
 
@@ -379,6 +380,78 @@ Required closeout sequence:
 6. In that same lifecycle closeout, update `workplans/active/README.md` and the parent workplan’s lifecycle prose so they no longer claim implementation has not begun or is blocked before Gate D. Do not alter their scientific/numerical authority.
 7. Perform the required PEM closeout learning assessment against the existing HAS. Add or modify PEM only if the admission threshold is met or an existing entry materially changes; ordinary repair chronology belongs here/Git, not as a manufactured new family.
 8. Submit the executable repair SHA plus its evidence-only binding descendant for fresh independent D4 Review. Do not archive or mark this plan complete before that Review passes.
+
+## 5C. R1-R3 executable repair evidence (2026-09-18)
+
+The immutable executable repair candidate is `042b84b74d0b109dd576b725eafe6359629a55ea`, with repair base `16447343eb2632abb4e8554967d9526a08ad924b`. It contains the last source/test mutation for R1/R2; all evidence below was executed against that exact SHA. This section binds evidence and lifecycle state only. It does not approve the candidate or close this active plan.
+
+### R1 implementation and falsification
+
+- `_evaluate_held_out_representative()` now commits a fresh outer `EvaluationMeasurementIdentity` and metric through the existing `PostSelectionEvidenceStore` while the attempt-local `TemporaryDirectory` is still live. The existing run-activity lease and lease-before-publication-barrier order remain unchanged; CampaignStore assessment/currentness publication remains outside that lease.
+- The fresh-scratch real-owner falsification observed both immutable store writes while `outer_evaluation.extxyz*` existed, verified the scratch was outside `runs/<training_trajectory_identity>`, and verified cleanup after successful publication. The same module preserved label-only invalidation and durable reuse with zero TRAIN2/numerical EVAL2 forward.
+- The injected outer measurement-publication failure produced no fold verdict/current acceptance/current assessment; retry completed with zero TRAIN2 relaunch. No second P5 evidence store, registry, durable held-out namespace, pointer family, or publication marker was added.
+
+### R2 implementation and falsification
+
+- `CheckpointAdmissibilityPolicy()` retains generic TRAIN2 hard-limit compatibility at `0.030`; the legacy constructor/property spelling and exported constant remain aliases to the single canonical stored hard-limit value. Incompatible old/new constructor values fail closed.
+- Current foundation-P5 policy receives the explicit `0.100` hard limit from the P5 method-policy owner, with the independent `0.050` diagnostic warning threshold; current v2 and historical v1 reason/serialization semantics remain distinct. The explicit discrimination test resolves generic `0.030` versus foundation-P5 `0.100`.
+
+### Exact final commands and results
+
+All commands used the `mace` Conda environment, Python 3.11, and CPU/available-device execution. No GPU qualification is claimed; production-scale GPU qualification remains deferred to the final complete release package.
+
+```text
+conda run -n mace python -m compileall -q mdstats tests/test_mlff_eval2.py tests/test_mlff_p5_cv_no_admissible_outcome.py tests/test_mlff_p5_replay_target_policy_identity.py tests/test_mlff_p5_replay_target_real_owner.py tests/test_mlff_target_size_p5_r7_guards.py tests/test_mlff_target_size_p5d_cv_acceptance.py tests/test_mlff_train2a_policy.py tests/test_mlff_train2a_specification.py
+PASS
+
+conda run -n mace ruff check mdstats/training_data/train2_policy.py mdstats/training_data/campaign_post_selection_runtime.py tests/test_mlff_p5_cv_no_admissible_outcome.py tests/test_mlff_p5_replay_target_real_owner.py tests/test_mlff_target_size_p5d_cv_acceptance.py tests/test_mlff_target_size_p5_r7_guards.py --select F401,F821,F822,F823,F841,E9 --output-format concise
+All checks passed!
+
+conda run -n mace python -m pytest -q tests/test_mlff_train2a_policy.py tests/test_mlff_train2a_specification.py tests/test_mlff_eval2.py tests/test_mlff_audit_eval_perf1.py
+22 passed in 2.72s
+
+conda run -n mace python -m pytest -q tests/test_mlff_target_size_p5d_cv_acceptance.py
+11 passed in 172.34s
+
+conda run -n mace python -m pytest -q tests/test_mlff_target_size_p5_r6_guards.py
+16 passed in 304.51s
+
+conda run -n mace python -m pytest -q tests/test_mlff_target_size_p5_r7_guards.py
+19 passed in 84.36s
+
+conda run -n mace python -m pytest -q tests/test_mlff_p5_replay_target_policy_identity.py
+56 passed in 8.47s
+
+conda run -n mace python -m pytest -q tests/test_mlff_p5_replay_target_real_owner.py
+9 passed in 289.61s
+
+conda run -n mace python -m pytest -q tests/test_mlff_p5_cv_no_admissible_outcome.py
+38 passed in 221.79s
+
+conda run -n mace python -m pytest -q tests/test_mlff_target_size_p5e_production_and_restart.py
+27 passed in 592.05s
+
+conda run -n mace python -m pytest -q tests/test_mlff_storage_reset_core.py
+291 passed in 543.55s
+
+conda run -n mace python -m pytest --collect-only -q tests/test_mlff_storage_reset_integration.py
+167 tests collected in 3.45s
+
+conda run -n mace python -m pytest -q tests/test_mlff_storage_reset_integration.py
+167 passed, 162 warnings in 5575.98s (1:32:55)
+
+conda run -n mace python -c 'from dataclasses import fields; from mdstats.training_data.post_selection_execution import PostSelectionMaterialization; names={f.name for f in fields(PostSelectionMaterialization)}; assert "outer_evaluation_artifact" not in names and "training_trajectory_identity" in names; print("training-only materialization fields:", sorted(names))'
+training-only materialization fields: ['checkpoint_monitor_artifact', 'mace_config_digest', 'mace_config_relative_path', 'mace_config_sha256', 'output_directory', 'preparation_digest', 'target_train_artifact', 'training_trajectory_identity']
+
+count=$(rg -n '^class .*EvidenceStore' mdstats/training_data/post_selection_store.py | wc -l); test "$count" -eq 1; ! rg -n 'outer_evaluation\.extxyz' mdstats/training_data/post_selection_execution.py
+P5 post-selection evidence-store class count: 1; no current materialization outer_evaluation.extxyz literal
+```
+
+The listed suites total 656 passing tests, with zero reported failures or skips. The exact-SHA structural check also confirmed that current `PostSelectionMaterialization` has no `outer_evaluation_artifact` field, current materialization has no `outer_evaluation.extxyz` literal, and the P5 post-selection owner contains one `PostSelectionEvidenceStore` class. `git diff --check` was clean. No repository-configured mypy/pyright/package gate was found in the checked project configuration; the focused ruff rule set above is the applicable static check used here.
+
+### PEM closeout assessment
+
+The existing PEM/HAS was reviewed for this repair. The implementation reinforces the already recorded owner-reduction, authenticated-boundary, and immutable-reuse guidance (SP-001, SP-002, and SP-003) and is adjacent to the restart-boundary lesson in FF-002, but this ordinary D4 repair chronology does not meet the admission threshold for a new family, a new recurrence occurrence, or a material existing-family change before fresh independent review. No PEM family, occurrence, or notice is added; the evidence is retained in this workplan and Git. Reassess the PEM only if independent D4 Review establishes a new accepted recurring lesson or a material change to an existing one.
 
 ### Explicit non-repair
 

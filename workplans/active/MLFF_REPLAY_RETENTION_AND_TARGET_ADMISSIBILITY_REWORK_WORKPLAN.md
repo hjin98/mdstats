@@ -1,21 +1,21 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: active-d4-implementation-ready
+status: active-d4-repair-evidence-pending-independent-review
 highest_affected_domain: D1
 branch: design/mlff-replay-retention-target-admissibility-rework
 analysis_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 implementation_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 protocol_6_4_authority_merge: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 stakeholder_direction_date: 2026-09-18
-review_state: gate-d-r3-pass-d4-implementation-authorized
+review_state: gate-d-r3-pass-d4-repair-evidence-bound-independent-review-pending
 ---
 
 # MLFF Replay Retention and Target Admissibility Rework Workplan
 
 ## 0. Lifecycle state and baseline review disposition
 
-Protocol 6.4 D1/D2 renewal is complete and merged to `main` at `a759e81aa1b4c70c8fb513c569ddce57e99cbdb2`. This workplan is now active on branch `design/mlff-replay-retention-target-admissibility-rework`, but implementation remains blocked until this new replay/target-policy change itself passes the required D1 then D2 renewal under Protocol 6.4.
+Protocol 6.4 D1/D2 renewal is complete and merged to `main` at `a759e81aa1b4c70c8fb513c569ddce57e99cbdb2`. Gate D R3 is also closed. This workplan remains active on branch `design/mlff-replay-retention-target-admissibility-rework` because the reopened D4 repair is bound to executable candidate `042b84b74d0b109dd576b725eafe6359629a55ea` and awaits fresh independent Protocol 6.4 D4 Review; implementation is no longer blocked by the D1/D2/Gate-D authority gates.
 
 The accepted Protocol 6.4 baseline currently still states the old method: replay retention is a hard shared admissibility constraint; `tau_prod` defaults to `0.030 eV/angstrom`; and P5 representative/final single-best ordering may use practical-equivalence, bootstrap, secondary target metrics, and maturity semantics. The stakeholder direction below therefore **reopens accepted D1/D2**; it is not already authorized merely because the preceding Protocol 6.4 reconstruction closed PASS.
 
@@ -1281,7 +1281,7 @@ The R2 handoff defect is repaired in exact immutable candidate `de360579686bd6f0
 
 Fresh independent Gate-D Review R3 of that exact target returns **PASS with no SERIOUS CHALLENGE**. Review record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D3_INDEPENDENT_REVIEW_R3.md`. Gate D is closed. The reviewed D3/D4 authority/workplan is implementation-authorizing for Gate E; any later semantic mutation reopens the affected review scope.
 
-### Gate E - D4 implementation - READY / IMPLEMENTER HANDOFF AUTHORIZED
+### Gate E - D4 implementation - EXECUTED / REPAIR EVIDENCE BOUND; FRESH D4 REVIEW PENDING
 
 Implement by reduction/rewiring at current owners:
 
@@ -1300,14 +1300,16 @@ Implement by reduction/rewiring at current owners:
 
 Do not introduce a new parallel trainer/evaluator/policy graph.
 
-### Gate F - Focused and affected regression
+The R1-R3 repair is frozen in executable candidate `042b84b74d0b109dd576b725eafe6359629a55ea`, descended from reopen commit `16447343eb2632abb4e8554967d9526a08ad924b`. Final affected CPU regression, including the complete 167-test storage-integration collection, is recorded in the child implementation workplan section 5C. No D1/D2/D3 semantic authority was reopened; the plan remains active until fresh independent D4 Review.
 
-Execute the complete matrix in section 10 through real semantic owners.
+### Gate F - Focused and affected regression - COMPLETE ON `042b84b7...`
 
-Include old-workspace recovery fixtures whose obsolete assessment ancestry covers the former replay threshold binding and historical generated foundation-CV `0.045/0.045` / production `0.030` defaults. Prove zero training launch whenever training-bearing semantics are otherwise identical.
-### Gate G - Bounded real scientific qualification
+The complete affected matrix in section 10 was executed against `042b84b74d0b109dd576b725eafe6359629a55ea`; exact commands/results are bound in the child implementation workplan section 5C.
 
-After CPU/real-owner correctness passes, use a bounded representative real-data run to confirm:
+The executed matrix includes old-workspace recovery/restart fixtures covering obsolete assessment ancestry, and the real-owner evidence proves zero training launch whenever training-bearing semantics are otherwise identical. The exact commands/results remain bound in the child implementation workplan section 5C.
+### Gate G - Bounded real scientific qualification - CPU EVIDENCE COMPLETE; GPU DEFERRED
+
+The bounded CPU/real-owner runs confirm:
 
 - target-minimum selection;
 - replay warning behavior;
