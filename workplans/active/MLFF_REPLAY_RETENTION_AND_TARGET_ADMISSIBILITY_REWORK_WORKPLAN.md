@@ -482,7 +482,7 @@ After cutover:
 - a warning-threshold-only change may publish new diagnostic evidence without touching the sealed root or hard-assessment locator;
 - a hard-policy/selection change publishes a new assessment record/locator over the same trajectory root.
 
-The storage/topology owner must continue to certify a closed subtree and cold-storage semantics. Reassessment may consume only checkpoint/materialization bytes still available through an authenticated storage owner.
+The storage/topology owner must continue to certify a closed subtree and cold-storage semantics. Any EVAL2/reassessment that reads materialization/checkpoint bytes from a sealed run root must acquire the existing `post_selection_run_activity_lease()` for the full root-read/evaluation interval, so archive/dedup/reclamation cannot move those bytes concurrently. Release that lease after all root-dependent numerical reads complete; then publish immutable assessment objects/pointers. If a path must hold both locks, preserve the established order `run-activity lease -> post-selection publication barrier`, never the reverse. Do not add a second reader-lock protocol.
 
 ### 5.5 Separate evaluation measurement from assessment policy
 
@@ -992,7 +992,8 @@ Also review the post-selection restoration recurrence record that required D1/D2
 65. Current CV rejection blocks current final-production assessment/publication even if historical final TRAIN2 bytes are reusable; current CV acceptance plus exact production training equivalence permits reassessment with zero trainer launch.
 66. Current CV/final assessment is found through the canonical position pointer `(selected binding, role, current assessment-plan digest, training trajectory, seed, optional fold)` in the existing CampaignStore/post-selection pointer infrastructure; hard-policy/selection changes move that position, warning-only changes do not.
 67. The existing completion/topology/storage tests prove the evolved TRAIN2-terminal seal remains create-once, closed-subtree certifiable, lease-safe, and compatible with cold-storage/reclamation semantics.
-68. Shipped example/generated config remain campaign schema v2 and no longer describe bootstrap/refinement/secondary ordering as P5 representative authority.
+68. Concurrent reassessment versus archive/dedup/reclamation proves the reassessment holds the existing run-activity lease while reading/evaluating root bytes; storage mutation waits, no root byte disappears mid-EVAL2, and publication occurs without lock-order inversion.
+69. Shipped example/generated config remain campaign schema v2 and no longer describe bootstrap/refinement/secondary ordering as P5 representative authority.
 
 ### 10.7 Real-run oracle from the observed trajectory
 
@@ -1229,6 +1230,7 @@ Independent review reconstructs D1-D4 and attempts to falsify:
 - duplicate policy/currentness machinery;
 - missing negative-production EVAL2 persistence;
 - assessment files or policy diagnostics written into a post-cutover sealed training root;
+- reassessment reading sealed root bytes without the existing run-activity/storage exclusion, permitting concurrent archive/dedup/reclamation races;
 - warning/hard/target/selection policy consulted before TRAIN2 recovery;
 - training-position identity omitting preparation/validation/composition-transfer inputs that can change materialization;
 - current final publication derived from reusable historical production bytes after current CV rejection;
@@ -1266,7 +1268,7 @@ The cycle may close only when all of the following are true:
 22. Current CV/final assessments are deterministically locatable through an extension of the existing CampaignStore pointer seam keyed by selected binding + assessment role + current assessment-plan digest + training trajectory + seed/fold position; no content-store scan, run-root assessment file, or second evidence store is introduced.
 23. Historical interrupted trajectories continue only under exact historical runtime/protocol ancestry after explicit training-equivalence proof; completed historical trajectories are reused without rewriting bytes or hashes.
 24. Historical final-production training may be reassessed only after current CV reclosure accepts; current CV rejection blocks current final publication regardless of retained final checkpoint quality.
-25. Existing completion/topology/cold-storage ownership remains create-once, closed-subtree certifiable and lease-safe after TRAIN2 becomes a recognized terminal proof.
+25. Existing completion/topology/cold-storage ownership remains create-once, closed-subtree certifiable and lease-safe after TRAIN2 becomes a recognized terminal proof; every later root-consuming EVAL2/reassessment uses the existing run-activity lease to exclude concurrent storage mutation.
 26. Current method/policy/evidence lineage remains singular and acyclic; no compatibility wrapper, shadow registry, duplicated threshold authority, second checkpoint selector, or second evidence store is added.
 27. Focused, affected, real-owner and bounded scientific qualification evidence passes on the exact candidate.
 28. Independent assembled Protocol 6.4 review passes.
