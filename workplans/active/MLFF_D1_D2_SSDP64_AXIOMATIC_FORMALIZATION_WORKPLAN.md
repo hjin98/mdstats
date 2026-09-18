@@ -239,3 +239,12 @@ R4 may reuse the exact R3 D1/D2 kernel blobs if the repair audit finds no semant
 ### R4 gate
 
 Cut a new immutable target only after R3-B1 is structurally closed and R3-B2 has current real-owner executable evidence. Fresh R4 review must inspect the complete assembled candidate against accepted `cb07d683...`; it may not inherit R3 author closure. PASS remains prerequisite to stakeholder ratification and canonical promotion.
+
+
+## 11. R4 author closure and independent-review handoff state
+
+R4 author repair is complete for the two blockers in Independent Review R3. The R4 direct dependency trace is structurally closed author-side, and current real-owner D4 evidence exists on the unchanged executable owner/test blobs. Primary passing evidence is run `35300235175` at `dbe6c552b216d583caf9230d2c1e0879b68f8c3e`; confirmatory passing evidence is run `35300268107` at `17af93877ba312600ab1bf7a2f1f2990c9c2ef00`. Both required target-order commands passed in the supported CPU MLFF environment.
+
+The temporary R4 validation workflow has been removed. The next clean commit containing the unchanged D1/D2 kernels, R4 trace, D4 repair/tests, workplan and R4 repair closure may be bound directly as the immutable R4 candidate by a descendant handoff. Do not add a no-op marker merely to obtain another SHA.
+
+The active workplan remains review-open until fresh independent R4 Review returns PASS. Author repair closure does not ratify or promote the candidate. GPU qualification remains deferred and is not an R4 gate.

@@ -148,8 +148,7 @@ not product architecture, D4 authority, or a permanent CI addition.
 
 ## 5. R4 gate
 
-The next commit after this closure is the new immutable R4 semantic target. A
-descendant handoff must bind that exact SHA.
+This clean closure descendant is eligible to be bound as the immutable R4 semantic target. A descendant handoff must bind the exact chosen SHA; no synthetic no-op or target-marker commit is required.
 
 Fresh independent R4 review must review the entire assembled candidate against
 accepted basis `cb07d68372f1b6d25f9e8b62a2fb7e31fb82e824`, not merely confirm
