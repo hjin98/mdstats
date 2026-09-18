@@ -1198,8 +1198,8 @@ The stakeholder also questioned the D1 ledger entry `P5 E:F:S coefficients = 1:1
 
 New immutable D1 R3 candidate:
 
-- commit: `e29030ff9501ed2df6e0a96c693b4f98f3aa4c94`;
-- canonical D1 blob: `93db84050e68ec5488282e75463556d02d0973af`;
+- commit: `d32536569322cc19722d6842896c9a467f7ef30d`;
+- canonical D1 blob: `479ff368917baf576d12f553caad571da856ae28`;
 - dependency trace: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D1_DEPENDENCY_TRACE_R3.md`.
 
 The prior R2 PASS does **not** ratify the new `75/75` defaults. The R3 reconciliation additionally makes explicit that CV authorization does not guarantee production success and that `theta_CV` is outer-assessment-only currentness. Gate B remains open for fresh independent D1 review of the final R3 candidate. Gate C remains blocked.

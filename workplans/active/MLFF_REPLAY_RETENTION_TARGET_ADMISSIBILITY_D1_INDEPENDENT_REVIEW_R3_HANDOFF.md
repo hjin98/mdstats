@@ -6,9 +6,9 @@ workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-REWORK-1
 accepted_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 prior_r2_reviewed_candidate: 2549dee709fb8bb383341ee3aebca7c71973a903
 prior_r2_review_commit: 8bf25f37e74667ff897e938a9b17830ea9fee225
-immutable_d1_r3_candidate: e29030ff9501ed2df6e0a96c693b4f98f3aa4c94
-d1_r3_candidate_blob: 93db84050e68ec5488282e75463556d02d0973af
-dependency_trace_blob: 2d337c85515983ddd6650cd9160036de2e8be531
+immutable_d1_r3_candidate: d32536569322cc19722d6842896c9a467f7ef30d
+d1_r3_candidate_blob: 479ff368917baf576d12f553caad571da856ae28
+dependency_trace_blob: 55acec8b806d65d8ceab54cace3e8419b8698800
 highest_review_owner: D1
 d2_gate_state: BLOCKED_PENDING_D1_ACCEPTANCE
 ---
@@ -19,7 +19,7 @@ d2_gate_state: BLOCKED_PENDING_D1_ACCEPTANCE
 
 Perform a fresh Protocol-6.4 D1 review of immutable target:
 
-`e29030ff9501ed2df6e0a96c693b4f98f3aa4c94`
+`d32536569322cc19722d6842896c9a467f7ef30d`
 
 against accepted current baseline:
 
@@ -27,7 +27,7 @@ against accepted current baseline:
 
 Canonical D1 blob:
 
-`93db84050e68ec5488282e75463556d02d0973af`.
+`479ff368917baf576d12f553caad571da856ae28`.
 
 The R2 PASS remains evidence for the unchanged replay-warning/hard, checkpoint-universe, target-only ordering, currentness and fresh-production semantics, but it does **not** authorize the post-R2 CV threshold amendment.
 
@@ -78,12 +78,13 @@ Challenge at minimum:
 
 1. whether `tau_CV=75` is too permissive to serve as meaningful common-monitor method-competence evidence;
 2. whether `theta_CV=75` is too permissive to serve as meaningful held-out authorization;
-3. whether `75/75` can systematically accept a method that cannot meet fresh-production `50`, and whether that is an acceptable screening/final distinction or a D1 defect;
+3. whether `75/75` can accept a method whose fresh production cannot meet `50`, and whether the candidate's explicit interpretation—CV authorizes the production attempt but does not guarantee production success—is scientifically coherent;
 4. whether the all-position CV rule, held-out evidence, and downstream no-feedback boundary keep the looser CV policy scientifically meaningful;
-5. whether changing these thresholds remains assessment-only and leaves TRAIN2 semantics unchanged;
+5. whether `tau_CV` and `theta_CV` have correctly separated assessment currentness: `tau_CV` may change checkpoint admissibility/representative while `theta_CV` may change only the outer verdict; neither may change TRAIN2;
 6. whether scratch/P3 thresholds remain unaffected;
 7. whether the `1:10:1` clarification is purely a semantic clarification of the already-accepted UniversalLoss objective and does not conflate property coefficients with target/replay or frame weighting;
-8. whether all previously reviewed replay and target-only representative semantics remain source-closed after the amendment.
+8. whether the historical `45/45` calibration supplied any stronger scientific guarantee than the candidate acknowledges; repository history describes it as stakeholder calibration, not a universal boundary;
+9. whether all previously reviewed replay and target-only representative semantics remain source-closed after the amendment.
 
 Raise SERIOUS CHALLENGE if the `75/75` policy makes CV scientifically incapable of performing its claimed authorization role.
 
@@ -91,6 +92,6 @@ Raise SERIOUS CHALLENGE if the `75/75` policy makes CV scientifically incapable 
 
 Return **D1 PASS** only if the new threshold family and the clarification are coherent and all unchanged R2 semantics remain intact.
 
-PASS still requires explicit stakeholder ratification of exact target `e29030ff9501ed2df6e0a96c693b4f98f3aa4c94`.
+PASS still requires explicit stakeholder ratification of exact target `d32536569322cc19722d6842896c9a467f7ef30d`.
 
 Do not start D2 before D1 PASS plus exact-target ratification.
