@@ -1,14 +1,14 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: active-authority-reopen-pending
+status: active-d1-renewal-review-pending
 highest_affected_domain: D1
 branch: design/mlff-replay-retention-target-admissibility-rework
 analysis_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 implementation_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 protocol_6_4_authority_merge: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 stakeholder_direction_date: 2026-09-18
-review_state: third-pass-baseline-reconciled-awaiting-d1-d2-renewal
+review_state: d1-candidate-authored-awaiting-fresh-independent-review
 ---
 
 # MLFF Replay Retention and Target Admissibility Rework Workplan
@@ -1134,17 +1134,36 @@ Confirmed:
 
 Branch opened from exact baseline: `design/mlff-replay-retention-target-admissibility-rework`.
 
-### Gate B - D1 renewal for replay role and production target quality
+### Gate B - D1 renewal for replay role and production target quality - OPEN / CANDIDATE AUTHORED
 
-Formally amend and independently review:
+Proposed D1 authority has been authored at immutable target:
 
-- replay warning vs catastrophic rejection semantics;
-- target-only minimum-RMSE representative rule;
-- configurable defaults `0.050/0.100` replay and `0.050` foundation-production target;
-- downstream qualification separation;
-- evidence-reuse interpretation.
+`06f1255ed39f41d178daf73985829a2190a2bee8`
 
-Close only after independent Protocol 6.4 D1 falsification PASS and explicit stakeholder ratification of this new amendment.
+with canonical D1 blob:
+
+`65713ab4e8caa848e21d27a75e594664528ee6eb`.
+
+The candidate amends the canonical D1 owner rather than adding a parallel policy paper. It formalizes:
+
+- mandatory TRUE_DFT replay retention as an authenticated signed foundation-relative observable;
+- independent configurable diagnostic-warning / catastrophic-hard replay policy with generated defaults `0.050/0.100 eV/angstrom`;
+- replay warning as explicitly non-vetoing and replay hard violation as catastrophic forgetting;
+- replay as auxiliary inherited-capability evidence with no positive checkpoint-ranking or tie-break credit;
+- strict minimum authoritative target force RMSE over the hard-admissible set as the sole foundation-P5 checkpoint quality ordering;
+- the same strict target ordering for `single_best_final_seed`, while `all_qualified_final_seeds` stays unranked;
+- foundation-production target default `tau_prod = 0.050 eV/angstrom` with foundation CV remaining `0.045/0.045`;
+- no required numerical ordering between CV and production role ceilings, explicitly superseding the old “production is necessarily stricter” calibration rationale;
+- fixed-budget training and assessment-policy noninterference with an otherwise identical realized trajectory;
+- current-CV reauthorization before a training-equivalent historical fresh final trajectory can support current production assessment/publication.
+
+The author-side bounded Challenge Pass raises no SERIOUS CHALLENGE to submitting this candidate, but explicitly records that `0.100` replay-hard and `0.050` production-target defaults are stakeholder-selected current calibrations rather than universal adequacy constants, and that target-only ranking may intentionally select a replay-warning-bearing checkpoint below the catastrophic limit. Downstream qualification remains the external-adequacy owner.
+
+Fresh independent Review is bound by:
+
+`workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D1_INDEPENDENT_REVIEW_HANDOFF.md`.
+
+Gate B remains **OPEN**. Close only after a fresh Protocol 6.4 D1 falsification PASS on exact target `06f1255e...` and explicit stakeholder ratification of that exact reviewed target. D2 Gate C remains blocked until then.
 
 ### Gate C - D2 numerical renewal
 
