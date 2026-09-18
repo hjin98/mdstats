@@ -380,19 +380,15 @@ $$
 
 be the same observable on the same exact replay membership under the authenticated frozen foundation identity `\Phi`. Define signed replay degradation
 
-$$
-\Delta_{\mathrm{replay}}(c)
-=
-R_{\mathrm{replay}}(c)-R_{\mathrm{replay}}(\Phi).
-$$
+$
+\Delta_{\mathrm{replay}}(c)=R_{\mathrm{replay}}(c)-R_{\mathrm{replay}}(\Phi).
+$
 
 The replay decision-policy family is
 
-$$
-\Psi_{\mathrm{replay}}
-=
-(\delta_{\mathrm{warn}},\delta_{\mathrm{hard}}),
-$$
+$
+\Psi_{\mathrm{replay}}=(\delta_{\mathrm{warn}},\delta_{\mathrm{hard}}),
+$
 
 where both coordinates are finite positive `CONFIGURABLE_WITH_GENERATED_DEFAULT` values satisfying `\delta_{\mathrm{warn}}<\delta_{\mathrm{hard}}`. Current generated defaults are
 
@@ -461,14 +457,9 @@ Every member of `C_rho` must receive the required checkpoint assessment. Failure
 
 Let
 
-$$
-H_\rho
-=
-\left\{
-c\in C_\rho:
-c\text{ satisfies every current hard checkpoint requirement}
-\right\},
-$$
+$
+H_\rho=\{c\in C_\rho : c\text{ satisfies every current hard checkpoint requirement}\},
+$
 
 where the hard requirements include evidence validity, finite/integrity/physical constraints, the role-effective target ceiling, and catastrophic replay protection where replay is enabled.
 
