@@ -1219,7 +1219,7 @@ A renderer-only descendant then removed disallowed `\\operatorname` constructs a
 
 A second renderer-only repair was required because D2.DEF.027 still used escaped set braces and compound restricted-sum subscripts that triggered the renderer's “Extra open brace or missing close brace” failure. The exact sets and sums are now expressed through named restricted witness sets and simple sums. Repair record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_R2_RENDER_REPAIR_2.md`.
 
-The resulting renderer-safe D2 blob is `30e6e6336cf41a05879650a3a2d7d583c4ef713a`; its semantic basis remains the independently reviewed D2 R2 target `4f161b1c4820de10abe638287b13152147d12fd9`. Gate C remains open only for ratification of the final representation-safe descendant; D3 stays blocked until ratification.
+The final renderer-safe D2 ratification target is `32508991d472c1c6e4bd8b818b38d0880401845f`, with D2 blob `30e6e6336cf41a05879650a3a2d7d583c4ef713a`. Its semantic basis remains the independently reviewed D2 R2 target `4f161b1c4820de10abe638287b13152147d12fd9`. Gate C remains open only for ratification of this exact representation-safe target; D3 stays blocked until ratification.
 
 ### Gate D - D3 authority/currentness reconciliation
 
