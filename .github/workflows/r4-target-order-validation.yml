@@ -20,19 +20,18 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install accepted CPU MLFF runtime and test dependencies
+      - name: Install supported CPU MLFF runtime and test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-          python -m pip install 'mace-torch==0.3.16' 'ase==3.29.0'
           python -m pip install -e '.[manifest]' pytest hypothesis
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install 'mace-torch==0.3.16'
       - name: Record validation environment
         run: |
           python - <<'PY'
           import importlib.metadata as md, platform
-          names = ['mdstats','mace-torch','ase','torch','torch-ema','e3nn','numpy','scipy','pytest','hypothesis']
           print('python=' + platform.python_version())
-          for name in names:
+          for name in ['mdstats','mace-torch','ase','torch','torch-ema','e3nn','hypothesis','numpy','scipy','pytest']:
               try:
                   print(f'{name}={md.version(name)}')
               except Exception:
