@@ -1,6 +1,6 @@
 # MLFF post-selection P5 renewal candidate specification
 
-**Status:** proposed renewed D4 contract; implementation blocked until the accompanying D3 architecture candidate passes independent Review  
+**Status:** proposed renewed D4 contract; R2 handoff repair prepared, implementation blocked until fresh Gate-D independent Review passes the repaired candidate  
 **Upstream authority:** ratified D1, stakeholder-ratified D2 target `32508991d472c1c6e4bd8b818b38d0880401845f` / D2 blob `30e6e6336cf41a05879650a3a2d7d583c4ef713a`, and the accompanying D3 MLFF training-data architecture candidate  
 **Scope:** current P5 only; P3 target-size screening and P5 scratch retain their separately accepted contracts
 
@@ -460,9 +460,9 @@ The target RMSE coordinate is strict primary authority. Replay values/warnings, 
 Publication performs no second target evaluation and no M3 evaluation. The publication record SHALL bind the fixed ordering identity and the exact input representative/metric-record lineage needed to reconstruct the decision.
 
 
-## 15. `PostSelectionMaterialization`, sealed training roots, measurements, and assessment evidence
+## 15. `PostSelectionMaterialization`, sealed training roots, and EVAL2 separation
 
-Current materialization/TRAIN2 evidence SHALL bind the training trajectory rather than the full assessment plan. For foundation modes it includes at least:
+Current `PostSelectionMaterialization` is a **training-only** durable product. Advance its schema beyond historical `mdstats.post-selection-materialization.v2`; the new schema binds the training trajectory rather than the full assessment plan. For foundation modes it includes at least:
 
 ```text
 TrainingTrajectoryIdentity
@@ -479,13 +479,50 @@ generated MACE training configuration identity
 checkpoint/runtime continuation ancestry
 ```
 
-After authenticated terminal fixed-budget TRAIN2, while holding `post_selection_run_activity_lease()`, publish/reuse the existing typed topology manifest and completion anchor so the run root becomes a sealed training-only subtree. The terminal proof binds the authenticated `Train2RuntimeSummary` and exact checkpoint/runtime boundary and SHALL NOT require `fold-acceptance.json`, `run-evidence.json`, or any other assessment file.
+The current training materialization SHALL NOT contain or identify a held-out outer-evaluation transport. In particular, the post-cutover schema SHALL NOT contain `outer_evaluation_artifact`, a held-out EXTXYZ path, its sidecar/manifest, held-out label/reference digest, EVAL2 provider identity, or equivalent assessment-only serialization. `outer_evaluation.extxyz` and its sidecar SHALL NOT be members of a post-cutover run root.
+
+The only held-out-derived input permitted before TRAIN2 is the **label-blind geometry projection actually consumed by preparation**: the canonical required-composition / transfer-consumer identity. The fitted preparation may bind that projection so composition-transfer identifiability is decided before training, but held-out labels and evaluation serialization never become training ancestry.
+
+After authenticated terminal fixed-budget TRAIN2, while holding `post_selection_run_activity_lease()`, publish/reuse the existing typed topology manifest and completion anchor so the run root becomes a sealed training-only subtree. The terminal proof binds the authenticated `Train2RuntimeSummary` and exact checkpoint/runtime boundary and SHALL NOT require `fold-acceptance.json`, `run-evidence.json`, any held-out evaluation artifact, or any other assessment file.
 
 The existing completion-proof safety contract remains mandatory: topology/anchor authority files are opened with `O_NOFOLLOW` and regular-file status is established by `fstat` on the opened descriptor; manifest/anchor are non-reclaimable owner infrastructure; the compact anchor remains sufficient even when terminal assessment evidence is absent or cold; an existing valid proof is verified/reused rather than reconstructed from a storage-depleted tree; and tampered, copied/root-mismatched, partially conflicting, or self-inconsistent proof state fails closed.
 
-Post-cutover EVAL2 and reassessment SHALL NOT write current assessment state into the sealed run root. They read root-dependent materialization/checkpoint bytes while holding `post_selection_run_activity_lease()` for the full numerical-read interval, then release it before publishing external immutable assessment objects. If the post-selection publication barrier is needed concurrently, acquisition order is run-activity lease then publication barrier.
+Post-cutover EVAL2 and reassessment SHALL NOT write assessment state or held-out evaluation transport into the sealed run root. They hold `post_selection_run_activity_lease()` for the full interval in which checkpoint/materialization/model bytes are read from that root, then release it before publishing external immutable assessment objects. If the post-selection publication barrier is needed concurrently, acquisition order is run-activity lease then publication barrier.
 
-### 15.1 Assessment-independent measurement records
+### 15.1 Held-out outer-evaluation transport
+
+For CV, the held-out outer-evaluation artifact is realized **only after the checkpoint representative has been frozen under D2.DEF.059A**. It is an EVAL2-owned attempt-local transport, not training materialization and not a durable currentness owner.
+
+The implementation SHALL:
+
+1. derive exact held-out membership from the authenticated CV fold/assessment position;
+2. materialize the accepted evaluation representation in an owner-controlled attempt scratch location **outside the sealed run root**;
+3. authenticate the exact membership, label/reference content, transport policy and serialized bytes before numerical evaluation;
+4. bind that exact artifact identity into `EvaluationMeasurementIdentity` / the immutable EVAL2 metric record;
+5. publish the resulting immutable measurement record through the existing post-selection evidence store; and
+6. treat the transport path itself as disposable scratch that may be removed after the measurement record is durably published.
+
+No second durable evaluation-artifact store, filesystem registry, pointer database, or shadow materialization namespace is authorized. File existence or scratch pathname is never currentness. A retry may regenerate the transport from authoritative upstream evidence; reuse is decided by the measurement record and D2.DEF.060B equivalence, not by finding old scratch.
+
+The exact durable measurement identity SHALL expose, directly or through one authenticated artifact subrecord, at least:
+
+```text
+held-out membership/content identity
+label/reference content identity
+evaluation transport policy identity
+serialized artifact SHA-256/content digest
+checkpoint/model-state identity
+metric/reduction/units
+head/prediction semantics
+provider/evaluator realization
+numerically material precision/backend semantics
+```
+
+The scratch locator is deliberately excluded from that identity.
+
+Historical materialization schema v2 may contain `outer_evaluation_artifact` and historical roots may contain `outer_evaluation.extxyz*`. Those roots remain immutable. A historical held-out artifact may support current measurement reuse only after exact D2.DEF.060B equivalence is established. If equivalence is incomplete or false, regenerate the current EVAL2 transport outside the historical root; never copy, delete, rename or rewrite the historical held-out bytes into the new training-root topology.
+
+### 15.2 Assessment-independent measurement records
 
 Advance the target/replay measurement identity/schema wherever current role/prediction digests inherit a full run-plan ancestry. A current measurement record SHALL directly bind all numerically material inputs needed by D2.DEF.060B:
 
@@ -500,7 +537,7 @@ numerically material precision/backend semantics
 
 Assessment thresholds, warning policy, strict-selection policy, CV/publication policy, and full assessment-plan digest SHALL NOT be measurement inputs. Historical records remain immutable. Reuse requires exact D2 measurement-equivalence proof; otherwise recompute EVAL2 from the preserved authenticated checkpoint/evaluation evidence.
 
-### 15.2 Policy assessment records and complete candidate sets
+### 15.3 Policy assessment records and complete candidate sets
 
 Final production SHALL evolve the existing `PostSelectionRunEvidence` owner into one outcome-discriminated current **per-seed assessment** schema:
 
@@ -579,7 +616,7 @@ Generated template, `init` output, shipped example, CLI specification and user g
 
 ## 17. Currentness, historical reuse, and schema cutover
 
-Advance schema/generation tokens at the narrowest changed owners. At minimum the cutover SHALL cover the training-only `PostSelectionMethodIdentity`, `TrainingTrajectoryIdentity`/run-root identity, CV/final assessment-plan ancestry, hard checkpoint-decision policy, strict representative/publication decision identity, assessment-independent measurement identity, final outcome-discriminated assessment evidence, and the narrow checkpoint-policy generation marker.
+Advance schema/generation tokens at the narrowest changed owners. At minimum the cutover SHALL cover the training-only `PostSelectionMethodIdentity`, `TrainingTrajectoryIdentity`/run-root identity, post-selection training materialization after historical v2, CV/final assessment-plan ancestry, hard checkpoint-decision policy, strict representative/publication decision identity, assessment-independent measurement identity, final outcome-discriminated assessment evidence, and the narrow checkpoint-policy generation marker.
 
 Do not bump global campaign schema v2 solely for this change.
 
@@ -594,6 +631,9 @@ tau_prod        -> production assessment/representative/publication only
 strict order    -> representative/publication descendants only
 training input  -> TrainingTrajectoryIdentity and TRAIN2 descendants
 measurement input -> EvaluationMeasurementIdentity and measurement descendants
+held-out label/reference/artifact/provider-only change
+                  -> EvaluationMeasurementIdentity + EVAL2/outer-verdict descendants only
+                  -> no TrainingTrajectoryIdentity/materialization/root/TRAIN2 change
 ```
 
 A historical verdict is never made current by monotonic implication. Reassessment publishes a new record.
@@ -602,7 +642,7 @@ Historical TRAIN2 reuse requires exact training-semantic equivalence. The one-ti
 
 An already sealed legacy root is strictly read-only. For a completed terminal-but-unsealed legacy root lacking the old assessment-coupled terminal anchor, authenticate the exact terminal TRAIN2 summary/checkpoints/runtime boundary and every existing root node, acquire the existing P5 run-activity lease, then publish exactly one append-only topology manifest + completion anchor under the same create-once/verify owner. No pre-existing historical byte may be rewritten; a conflicting or partially inconsistent proof fails closed. For an interrupted root, continue only under exact historical fitted-preparation/materialization/runtime/protocol/optimizer/RNG ancestry after the training-equivalence proof; do not rewrite that ancestry mid-trajectory.
 
-Every affected historical CV fold/seed is reassessed under current hard/selection policy. Reuse numeric measurements only when D2.DEF.060B proof succeeds; otherwise rerun EVAL2 without retraining. If the representative changes, evaluate the new representative on the exact held-out population. Publish new current fold/campaign assessments.
+Every affected historical CV fold/seed is reassessed under current hard/selection policy. Historical v2 materialization/roots containing held-out evaluation bytes remain immutable. Reuse a historical held-out artifact or numeric measurement only when D2.DEF.060B proof succeeds; otherwise regenerate current EVAL2 attempt-local transport outside the historical root and rerun EVAL2 without retraining. If the representative changes, evaluate the new representative on the exact held-out population. Publish new current fold/campaign assessments.
 
 Historical final production is reassessed only after current CV reclosure accepts. If historical candidate-set provenance is incomplete, rerun full governed-checkpoint EVAL2 from preserved checkpoints. Never infer a winner from an old shortlist or content-store scan.
 
@@ -630,6 +670,9 @@ Current P5 SHALL fail closed, with typed/actionable errors, for at least:
 - attempted historical scalar reuse without exact measurement-equivalence proof;
 - attempted current final assessment/publication without current accepted CV authorization;
 - attempted write of current assessment state into a sealed post-cutover training root;
+- a post-cutover training materialization/root containing `outer_evaluation_artifact`, `outer_evaluation.extxyz*`, held-out labels, or equivalent EVAL2 transport;
+- EVAL2 attempt transport materialized beneath a sealed run root or treated as durable currentness by pathname/existence;
+- a current held-out measurement record that cannot authenticate exact membership, label/reference content, serialized artifact identity, provider/metric/precision ancestry required by D2.DEF.060B;
 - root-dependent EVAL2/reassessment without the existing run-activity exclusion;
 - content-store/run-directory scanning to reconstruct candidate sets or locate legacy roots;
 - M3 re-entry into P5 checkpoint/ranking/publication ancestry;
@@ -682,7 +725,14 @@ Implementation acceptance SHALL exercise the real P5 owners and reject at least 
 37. generated template, init output, shipped example, CLI spec, and guide disagree on current `75/75/50` target and `50/100` replay defaults;
 38. P3 target-size screening or P5 scratch loss/exposure semantics change as collateral;
 39. replay transport masks/label semantics, residual E0 selected-head semantics, common-monitor exact-256 semantics, or composition-transfer requirements regress; and
-40. a P5-only generation change blanket-invalidates unchanged P1/P2/P3 evidence.
+40. a P5-only generation change blanket-invalidates unchanged P1/P2/P3 evidence;
+41. post-cutover `PostSelectionMaterialization` serializes `outer_evaluation_artifact` or the sealed root topology contains `outer_evaluation.extxyz`, its sidecar, or any equivalent held-out evaluation transport;
+42. changing only held-out labels/reference values or EVAL2 transport serialization moves `TrainingTrajectoryIdentity`, fitted preparation, training materialization/root identity, or launches TRAIN2;
+43. changing the label-blind required-composition / transfer-consumer projection fails to move the affected training position/preparation when that projection changes;
+44. EVAL2 held-out transport is created before representative freeze, is materialized inside the sealed run root, survives as a currentness requirement after its metric record is durable, or requires a new persistent store/registry;
+45. an EVAL2 measurement record omits exact held-out membership/content, label/reference identity, serialized artifact identity, checkpoint/model, metric/reduction, provider or numerically material precision ancestry required by D2.DEF.060B;
+46. a historical v2 root carrying held-out evaluation bytes is rewritten/copied into a post-cutover root, or those bytes are reused without exact D2.DEF.060B equivalence; and
+47. deleting attempt-local held-out transport after durable metric publication makes an otherwise authenticated measurement non-reusable or forces TRAIN2.
 
 Focused tests alone do not close the work. Final acceptance also requires affected regression, assembled real-owner `cross-validate` and `train-production` recovery/reassessment paths, repository-required checks, and bounded scientific qualification. Production-scale GPU qualification remains deferred to the final complete release package.
 

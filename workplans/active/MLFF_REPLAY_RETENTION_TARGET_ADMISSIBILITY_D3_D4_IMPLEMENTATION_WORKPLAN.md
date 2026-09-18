@@ -4,7 +4,7 @@ protocol_version: 6.4.0
 workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-D3-D4-1
 parent_workplan: workplans/active/MLFF_REPLAY_RETENTION_AND_TARGET_ADMISSIBILITY_REWORK_WORKPLAN.md
 branch: design/mlff-replay-retention-target-admissibility-rework
-status: REVIEW_R2_NO_PASS_D4_HANDOFF_REOPENED
+status: R2_HANDOFF_REPAIR_CANDIDATE_PENDING_INDEPENDENT_REVIEW
 parent_d1_target: d761171f3c86c3c79b87a90cfc02ac324c261b1a
 parent_d1_blob: 612294ec4680db01a18085e13fbfe5dcfa9fb7ed
 parent_d2_target: 32508991d472c1c6e4bd8b818b38d0880401845f
@@ -29,7 +29,7 @@ Do not hand this plan to the implementer yet. The D3/D4 authority must first be 
 
 The R1 repairs are frozen in candidate `5d7c62f803fc8757a4068b7b115fadb7a5ec4636`: pre-fit acyclic trajectory identity, one append-only terminal-unsealed legacy sealing path, final-seed hard+059A assessment projection with 059B aggregate-only, and full retained completion/storage safety.
 
-Independent R2 Review confirms those D3 repairs but returns **NO-PASS** on the assembled D3->D4 handoff because current `PostSelectionMaterialization` still owns the held-out `outer_evaluation_artifact` inside the run root while the repaired D3 requires a training-only root and D2.DEF.060B classifies that artifact/labels as evaluation-measurement ancestry. This plan is not implementer-authorizing until that coupling is explicitly removed and the repaired candidate passes fresh independent Review.
+Independent R2 Review confirms those D3 repairs but returns **NO-PASS** on the assembled D3->D4 handoff because current `PostSelectionMaterialization` still owns the held-out `outer_evaluation_artifact` inside the run root while the repaired D3 requires a training-only root and D2.DEF.060B classifies that artifact/labels as evaluation-measurement ancestry. The R2 handoff repair is now specified below: current training materialization excludes held-out evaluation transport, EVAL2 realizes it only as attempt-local scratch outside the root, and the durable metric record in the existing P5 evidence store owns measurement identity. Fresh independent Review is still required before implementation.
 
 ## 1. Governing outcome and implementation gate
 
@@ -123,20 +123,24 @@ Acceptance:
 
 ### I3A - Remove held-out evaluation bytes from the training root
 
-Post-cutover `PostSelectionMaterialization` and the sealed run-root topology SHALL contain only training-bearing/preparation/runtime artifacts. The current `outer_evaluation_artifact` field and `outer_evaluation.extxyz` / sidecar files SHALL NOT remain identity-bearing members of training materialization or the sealed run root.
+Advance post-cutover `PostSelectionMaterialization` beyond historical schema v2 and remove `outer_evaluation_artifact` from the current schema/content digest. Remove `outer_evaluation.extxyz` and its sidecar from the current run-owned materialization file set and from every post-cutover completion topology.
 
-Materialize/authenticate the held-out outer-evaluation population through the existing EVAL2/assessment evidence path outside the sealed training root. Reuse the existing content-addressed P5 evidence/currentness infrastructure; do not add a second store, filesystem registry, or shadow materialization namespace.
+Do not replace that field with another durable evaluation-artifact store. After the representative is frozen, the EVAL2 owner SHALL materialize exact held-out evaluation transport in bounded attempt-local scratch outside `runs/<training_trajectory_identity>`, evaluate it, bind its exact content identity into the immutable EVAL2 measurement record, publish that record in the existing `PostSelectionEvidenceStore`, and clean/reclaim the attempt scratch. Scratch path/existence is never currentness.
 
-The training/preparation path may retain only the held-out geometry projection actually consumed before TRAIN2: required composition/transfer-consumer identity. Held-out labels, reference values, metric/provider realization, and evaluation transport serialization remain measurement ancestry only.
+The training/preparation path retains only the label-blind held-out geometry projection actually consumed before TRAIN2: the canonical required-composition / transfer-consumer identity. It must be derived without serializing or reading held-out labels into training materialization.
 
-Historical roots that already contain outer-evaluation materialization remain immutable history. Reuse their held-out bytes only when D2.DEF.060B proves the exact measurement experiment; otherwise regenerate EVAL2 input outside the historical root.
+Historical v2 materialization and roots remain readable, immutable history. Their embedded `outer_evaluation_artifact` may be used only after exact D2.DEF.060B equivalence; otherwise EVAL2 rematerializes current held-out input outside the historical root.
 
 Acceptance:
-- changing only held-out labels/reference values, evaluation transport bytes, metric or evaluator/provider semantics does not move `TrainingTrajectoryIdentity`, fitted preparation, post-cutover training materialization/root identity, or TRAIN2;
-- such a change moves `EvaluationMeasurementIdentity` and only the dependent EVAL2/outer verdict;
-- a post-cutover sealed root topology contains no `outer_evaluation.extxyz`, sidecar, or equivalent held-out evaluation artifact;
-- composition-transfer coverage remains correct through the explicit required-composition projection;
-- historical root bytes are never rewritten during migration/reassessment.
+- current `PostSelectionMaterialization.to_dict()` has no `outer_evaluation_artifact` or equivalent held-out transport field;
+- current materialization/recovery allowlist and sealed topology contain no `outer_evaluation.extxyz*`;
+- held-out transport is created only after representative freeze, outside the sealed root, through the existing EVAL2 owner;
+- the durable measurement record binds exact held-out membership/content, label/reference content, transport artifact SHA/content digest, checkpoint/model state, metric/reduction, provider and precision semantics;
+- deleting EVAL2 attempt scratch after metric publication neither invalidates the measurement record nor forces TRAIN2;
+- changing only held-out labels/reference/transport/provider/metric changes measurement descendants, not training identity/preparation/materialization/root/TRAIN2;
+- changing required-composition / transfer-consumer geometry changes the training-bearing projection as required;
+- no second evidence store, filesystem registry, currentness pointer family, or shadow materialization namespace is introduced;
+- historical root bytes are never rewritten or copied into the new training-root topology.
 
 ### I4 - Assessment-independent measurement identity
 
@@ -243,7 +247,7 @@ No historical mechanism is mandatory merely because PEM records it; the table bi
 
 Run focused checks after each coherent executable stage, then final affected regression after assembly. Required evidence classes:
 
-- structural source checks proving assessment-only fields are absent from training identity and no second store/registry/selector exists;
+- structural source checks proving assessment-only fields are absent from training identity, `PostSelectionMaterialization` contains no held-out evaluation transport, sealed roots contain no `outer_evaluation.extxyz*`, and no second store/registry/selector exists;
 - exact D2 boundary/tie/currentness tests;
 - current config and migration counterfactuals;
 - completion/topology and storage concurrency/failure-injection tests;
@@ -261,9 +265,9 @@ Re-derive from the final candidate. Expected affected owners include:
 
 - P5 method/policy identity and config resolution;
 - CV/final plan and run identity/currentness;
-- fitted preparation/materialization;
+- fitted preparation/training-only materialization;
 - TRAIN2 runtime/completion/topology and checkpoint catalog;
-- EVAL2 target/replay metric identity and evaluation;
+- EVAL2 target/replay/held-out transport, metric identity and evaluation;
 - checkpoint assessment/selection and final publication;
 - CampaignStore pointer/currentness;
 - post-selection storage owner views, archive/dedup/reclamation exclusion;
@@ -279,7 +283,7 @@ P1/P2/P3 and target-order semantics are protected collateral surfaces, not inten
 - no global campaign-schema bump;
 - no distributed foundation-P5 enablement;
 - no new assessment/evidence database, shadow policy registry, second selector, or compatibility service;
-- no rewriting historical checkpoints/runtime summaries/policy records;
+- no rewriting historical checkpoints/runtime summaries/policy records or legacy v2 held-out evaluation materialization;
 - no production-scale GPU qualification before the final complete release package.
 
 ## 8. Reopen / Challenge triggers

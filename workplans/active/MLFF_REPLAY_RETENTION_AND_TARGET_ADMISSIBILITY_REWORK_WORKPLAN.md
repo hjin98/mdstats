@@ -1,7 +1,7 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: active-d3-r2-review-reopen
+status: active-d3-r2-handoff-repair-candidate
 highest_affected_domain: D1
 branch: design/mlff-replay-retention-target-admissibility-rework
 analysis_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
@@ -1236,7 +1236,7 @@ The final renderer-safe D2 ratification target is `32508991d472c1c6e4bd8b818b38d
 
 On 2026-09-18 the stakeholder explicitly accepted that exact D2 candidate. Ratification record: `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D2_R2_RATIFICATION.md`. The D2 blob remains unchanged by ratification. Gate C is closed; Gate D may proceed.
 
-### Gate D - D3 authority/currentness reconciliation - R2 REVIEW NO-PASS / D4 HANDOFF REOPENED
+### Gate D - D3 authority/currentness reconciliation - R2 HANDOFF REPAIR CANDIDATE PREPARED / FRESH REVIEW REQUIRED
 
 Before code edits:
 
@@ -1277,7 +1277,7 @@ Required repair before another immutable Gate-D candidate may be reviewed:
 4. keep historical pre-cutover roots immutable even when they contain legacy outer-evaluation materialization; reuse those bytes only through exact D2.DEF.060B measurement-equivalence authentication and never rewrite them into the new topology;
 5. add falsification proving a held-out label/reference/measurement-artifact-only change leaves `TrainingTrajectoryIdentity`, fitted preparation, training materialization, sealed root and TRAIN2 current while moving only `EvaluationMeasurementIdentity`/EVAL2 and dependent outer verdict; also prove post-cutover root certification contains no held-out outer-evaluation artifact.
 
-Gate E remains blocked until this D4 handoff is repaired and a fresh independent Gate-D Review passes the new immutable candidate.
+The R2 handoff defect is repaired in the candidate D4 contract/workplan: post-cutover training materialization is explicitly free of held-out evaluation transport; EVAL2 owns attempt-local outer materialization outside the sealed root; durable measurement identity remains in the existing P5 evidence store; historical v2 roots remain immutable. Gate E remains blocked until fresh independent Gate-D Review passes the exact immutable repair target.
 
 ### Gate E - D4 implementation - BLOCKED ON GATE D ACCEPTANCE
 
@@ -1290,6 +1290,7 @@ Implement by reduction/rewiring at current owners:
 - terminal TRAIN2 sealing through the existing completion/topology owner and run-activity lease;
 - external policy assessment/currentness locators with no assessment writes into sealed training roots;
 - assessment-independent future measurement identity;
+- removal of `outer_evaluation_artifact` / `outer_evaluation.extxyz*` from current training materialization/root, with held-out EVAL2 transport realized as disposable attempt scratch outside the root and bound only through durable measurement evidence;
 - complete outcome-discriminated production candidate-set evidence;
 - one-time legacy completed/interrupted trajectory reuse and current-CV reauthorization;
 - currentness/recovery narrowing;
@@ -1328,11 +1329,14 @@ Independent review reconstructs D1-D4 and attempts to falsify:
 - scratch collateral changes or incorrect CV migration/currentness;
 - duplicate policy/currentness machinery;
 - missing negative-production EVAL2 persistence;
-- assessment files or policy diagnostics written into a post-cutover sealed training root;
+- assessment files, held-out `outer_evaluation.extxyz*`, or policy diagnostics written into a post-cutover sealed training root;
 - reassessment reading sealed root bytes without the existing run-activity/storage exclusion, permitting concurrent archive/dedup/reclamation races;
 - warning/hard/target/selection policy consulted before TRAIN2 recovery;
 - training-position identity omitting preparation/validation/composition-transfer inputs that can change materialization;
 - current final publication derived from reusable historical production bytes after current CV rejection;
+- held-out label/reference/artifact-only changes moving training identity/materialization/root or launching TRAIN2;
+- EVAL2 attempt scratch becoming durable currentness or a second evidence store/registry;
+- historical v2 held-out evaluation bytes being rewritten/copied rather than authenticated or rematerialized externally; and
 - global campaign-schema bump or second evidence store introduced solely for this local change.
 
 Close only after affected documentation/history/dependency and PEM learning assessment are reconciled.
@@ -1361,17 +1365,18 @@ The cycle may close only when all of the following are true:
 16. Future final-production assessment evidence is outcome-discriminated and binds the complete candidate set for selected and no-admissible outcomes before publication/failure.
 17. Global campaign schema remains v2; the generated `post_selection_checkpoint_policy_generation = "p5_target_replay_v2"` marker owns the narrow migration. Historical generated foundation CV `0.045/0.045`, production target `0.030`, and replay `30.0` migrate by the explicit rules; non-default CV/production values remain explicit overrides, custom/ambiguous legacy replay values fail closed, and explicit `0.045/0.045/0.030` under the new marker remain configurable.
 18. Warning diagnostics are not hard-decision ancestors; changing only the warning threshold cannot move representative/CV/publication membership.
-19. New post-cutover run roots are training-only, are sealed under the run-activity lease at authenticated terminal TRAIN2 before EVAL2, and current assessments never mutate their topology.
+19. New post-cutover run roots are training-only, are sealed under the run-activity lease at authenticated terminal TRAIN2 before EVAL2, contain no held-out `outer_evaluation_artifact` / `outer_evaluation.extxyz*`, and current assessments never mutate their topology.
 20. Training-position identity is the singular acyclic **pre-fit** restart/root owner; fitted preparation/materialization/checkpoint/runtime are descendants and exact realized preparation state is separately authenticated for continuation. Assessment-only edits reproduce the identity and every tested pre-fit training-bearing edit changes it.
 21. Replay execution/recovery is resolved without current checkpoint-admissibility policy; hard assessment begins only after authenticated TRAIN2 at EVAL2.
 22. Current CV/final assessments are deterministically locatable through the existing CampaignStore pointer seam keyed by selected binding + assessment role + narrow assessment-position-policy digest + training trajectory + seed/fold position. Final-seed assessment excludes current-CV authorization and D2.DEF.059B/publication mode; no content-store scan, run-root assessment file, or second evidence store is introduced.
 23. Historical interrupted trajectories continue only under exact historical fitted-preparation/runtime/protocol ancestry after explicit training-equivalence proof. Already sealed completed roots are reused without modification; terminal-but-unsealed roots permit only the authenticated append-only manifest/anchor seal and never rewrite existing bytes or hashes.
 24. Historical final-production training may be reassessed only after current CV reclosure accepts; current CV rejection blocks current final publication regardless of retained final checkpoint quality.
 25. Existing completion/topology/cold-storage ownership remains create-once, closed-subtree certifiable and lease-safe after TRAIN2 becomes a recognized terminal proof, with opened-descriptor no-follow authentication, non-reclaimable owner proof infrastructure, assessment-file-independent completion, idempotent proof reuse and fail-closed tamper handling preserved; every later root-consuming EVAL2/reassessment uses the existing run-activity lease to exclude concurrent storage mutation.
-26. Current method/policy/evidence lineage remains singular and acyclic; no compatibility wrapper, shadow registry, duplicated threshold authority, second checkpoint selector, or second evidence store is added.
-27. Focused, affected, real-owner and bounded scientific qualification evidence passes on the exact candidate.
-28. Independent assembled Protocol 6.4 review passes.
-29. Production-scale GPU qualification remains deferred to the final complete release package.
+26. Held-out outer evaluation is EVAL2-owned: its transport is generated only after representative freeze as attempt-local scratch outside the sealed root, its exact experiment is bound by `EvaluationMeasurementIdentity`/immutable metric evidence, scratch deletion does not invalidate durable measurement evidence, and label/reference/artifact/provider-only changes cannot move TRAIN2 identity or root state. Historical v2 roots containing held-out transport remain immutable and are reused only under D2.DEF.060B equivalence.
+27. Current method/policy/evidence lineage remains singular and acyclic; no compatibility wrapper, shadow registry, duplicated threshold authority, second checkpoint selector, or second evidence store is added.
+28. Focused, affected, real-owner and bounded scientific qualification evidence passes on the exact candidate.
+29. Independent assembled Protocol 6.4 review passes.
+30. Production-scale GPU qualification remains deferred to the final complete release package.
 
 ## 15. Reopen conditions
 
