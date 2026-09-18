@@ -7,17 +7,17 @@ accepted_D2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 ratified_parent_D1_target: d761171f3c86c3c79b87a90cfc02ac324c261b1a
 prior_D2_R1_candidate: e2b39917ab8c16556eb218d6a41e9682331bbca0
 prior_D2_R1_review_commit: 786dd6fd40f15a048eb53dcb3c75b39087ed2ce4
-immutable_D2_R2_candidate: 2c078ebe8b475951781b637827ab84947da02dfc
-D2_R2_candidate_blob: 3a2745cab24c7010eae39b9e780a3658fad3e696
+immutable_D2_R2_candidate: 4f161b1c4820de10abe638287b13152147d12fd9
+D2_R2_candidate_blob: 3e7fb744fc733f23bbd93a8347246cfa306ebe89
 highest_review_owner: D2
 d3_gate_state: BLOCKED_PENDING_D2_ACCEPTANCE
 ---
 
 # Independent D2 R2 Review handoff
 
-Review exact immutable D2 target `2c078ebe8b475951781b637827ab84947da02dfc` against ratified D1 target `d761171f3c86c3c79b87a90cfc02ac324c261b1a` and accepted-current D2 baseline `a759e81aa1b4c70c8fb513c569ddce57e99cbdb2`.
+Review exact immutable D2 target `4f161b1c4820de10abe638287b13152147d12fd9` against ratified D1 target `d761171f3c86c3c79b87a90cfc02ac324c261b1a` and accepted-current D2 baseline `a759e81aa1b4c70c8fb513c569ddce57e99cbdb2`.
 
-Canonical D2 blob: `3a2745cab24c7010eae39b9e780a3658fad3e696`.
+Canonical D2 blob: `3e7fb744fc733f23bbd93a8347246cfa306ebe89`.
 
 R1 returned NO-PASS without a D1 challenge. R2 must independently verify the entire renewal and specifically attempt to falsify the repairs:
 
