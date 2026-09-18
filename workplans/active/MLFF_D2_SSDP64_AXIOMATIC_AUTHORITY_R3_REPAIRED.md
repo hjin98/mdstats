@@ -384,11 +384,11 @@ O_c(S)=\{o:q_o(S)<k_o\text{ and }c\in A_o\},\qquad H(c;S)=|O_c(S)|,
 $$
 
 $$
-G_m(c;S)=\sum_{\substack{w\in W_m\\A_m(w,c)=1\\n_m(w;S)=0}}\omega_m(w),\qquad G(c;S)=\sum_mG_m(c;S),
+G_m(c;S)=\sum_{w\in W_m:\,A_m(w,c)=1,\,n_m(w;S)=0}\omega_m(w),\qquad G(c;S)=\sum_mG_m(c;S),
 $$
 
 $$
-R(c;S)=\sum_m\sum_{\substack{w\in W_m\\A_m(w,c)=1}}\frac{\omega_m(w)}{n_m(w;S)+1}.
+R(c;S)=\sum_m\sum_{w\in W_m:\,A_m(w,c)=1}\frac{\omega_m(w)}{n_m(w;S)+1}.
 $$
 
 A stronger minimum extends one locus's unsatisfied duration; it never multiplies its hard-gain vote.
