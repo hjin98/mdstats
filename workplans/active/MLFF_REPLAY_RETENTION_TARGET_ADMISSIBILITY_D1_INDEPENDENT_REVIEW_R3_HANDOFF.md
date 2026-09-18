@@ -6,9 +6,9 @@ workplan_id: MLFF-REPLAY-RETENTION-TARGET-ADMISSIBILITY-REWORK-1
 accepted_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 prior_r2_reviewed_candidate: 2549dee709fb8bb383341ee3aebca7c71973a903
 prior_r2_review_commit: 8bf25f37e74667ff897e938a9b17830ea9fee225
-immutable_d1_r3_candidate: d32536569322cc19722d6842896c9a467f7ef30d
-d1_r3_candidate_blob: 479ff368917baf576d12f553caad571da856ae28
-dependency_trace_blob: 55acec8b806d65d8ceab54cace3e8419b8698800
+immutable_d1_r3_candidate: d761171f3c86c3c79b87a90cfc02ac324c261b1a
+d1_r3_candidate_blob: 612294ec4680db01a18085e13fbfe5dcfa9fb7ed
+dependency_trace_blob: d41a9fa452f9afb3bb2c67a485a04a2c68426289
 highest_review_owner: D1
 d2_gate_state: BLOCKED_PENDING_D1_ACCEPTANCE
 ---
@@ -19,7 +19,7 @@ d2_gate_state: BLOCKED_PENDING_D1_ACCEPTANCE
 
 Perform a fresh Protocol-6.4 D1 review of immutable target:
 
-`d32536569322cc19722d6842896c9a467f7ef30d`
+`d761171f3c86c3c79b87a90cfc02ac324c261b1a`
 
 against accepted current baseline:
 
@@ -27,7 +27,7 @@ against accepted current baseline:
 
 Canonical D1 blob:
 
-`479ff368917baf576d12f553caad571da856ae28`.
+`612294ec4680db01a18085e13fbfe5dcfa9fb7ed`.
 
 The R2 PASS remains evidence for the unchanged replay-warning/hard, checkpoint-universe, target-only ordering, currentness and fresh-production semantics, but it does **not** authorize the post-R2 CV threshold amendment.
 
@@ -92,6 +92,6 @@ Raise SERIOUS CHALLENGE if the `75/75` policy makes CV scientifically incapable 
 
 Return **D1 PASS** only if the new threshold family and the clarification are coherent and all unchanged R2 semantics remain intact.
 
-PASS still requires explicit stakeholder ratification of exact target `d32536569322cc19722d6842896c9a467f7ef30d`.
+PASS still requires explicit stakeholder ratification of exact target `d761171f3c86c3c79b87a90cfc02ac324c261b1a`.
 
 Do not start D2 before D1 PASS plus exact-target ratification.
