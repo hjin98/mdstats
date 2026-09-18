@@ -248,3 +248,21 @@ R4 author repair is complete for the two blockers in Independent Review R3. The 
 The temporary R4 validation workflow has been removed. The next clean commit containing the unchanged D1/D2 kernels, R4 trace, D4 repair/tests, workplan and R4 repair closure may be bound directly as the immutable R4 candidate by a descendant handoff. Do not add a no-op marker merely to obtain another SHA.
 
 The active workplan remains review-open until fresh independent R4 Review returns PASS. Author repair closure does not ratify or promote the candidate. GPU qualification remains deferred and is not an R4 gate.
+
+
+## 12. Independent Review R4 — NO-PASS and R5 repair gate
+
+Independent review of immutable R4 target `86fa8acec3cfc84584bfbd380163545d80de7a27` is recorded in
+`MLFF_D1_D2_SSDP64_INDEPENDENT_REVIEW_R4.md` and returned **NO-PASS** without a Serious Challenge to accepted D1/D2.
+
+R4 closes the D4 executable-evidence blocker: both the focused FP64 regression and full real-owner target-order suite passed in the supported CPU MLFF/test environment, and the tested owner/test blobs are identical to the immutable R4 target.
+
+One blocker remains:
+
+- **R4-B1 — direct dependency trace completeness.** The trace is structurally complete but semantically incomplete under the workplan's direct-edge definition. Definitive witness: `D2.DEF.019` directly concretizes the D1 covered-mass object `D1.DEF.015`, but the trace omits `D2.DEF.019 -> D1.DEF.015`. Additional witnesses include omitted configured-prefix owners from `D1.DEF.023`, omitted role-permission owner `D1.DEF.006` from `D1.DEF.024`, and omitted D1 fold/production-domain owners from `D2.DEF.041`.
+
+### R5 gate
+
+Repair the derived trace at its real representation owner, perform a fresh semantic directness/reverse-impact pass over all 106 objects, and cut a new immutable target. Do not change the accepted/proposed D1/D2 kernels or D4 weighted-quantile implementation merely to close this representation defect unless the audit independently discovers a semantic defect.
+
+Current R4 D4 evidence may remain applicable to an R5 documentation-only descendant only if the D4 owner and both affected test blobs remain identical and no executable dependency/environment assumption changes. GPU qualification remains outside this gate.
