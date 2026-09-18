@@ -390,7 +390,7 @@ checkpoint_selection_policy_digest
 
 Neither may remain in the TRAIN2 training-protocol identity after this revision if they contain only post-training assessment/selection semantics. Preserve genuinely training-bearing method fields. TRUE_DFT replay-monitor/data lineage may remain authenticated as required evaluation evidence without placing warning/hard numbers or target-ordering policy inside the training digest.
 
-A one-time baseline-v3 projection may prove an existing historical method record training-equivalent to the new training identity by comparing every training-bearing field exactly and explicitly excluding only the retired assessment-only parents. This projection belongs in the existing currentness/recovery owner; it is not a general-purpose compatibility translator.
+A one-time projection from the baseline `PostSelectionMethodIdentity` schema v3 may prove an existing historical method record training-equivalent to the new training identity by comparing every training-bearing field exactly and explicitly excluding only the retired assessment-only parents. This projection belongs in the existing currentness/recovery owner; it is not a general-purpose compatibility translator.
 
 ### 5.3 Correct run identity without weakening continuation guards
 
@@ -587,6 +587,18 @@ A run-level warning should summarize when the selected representative exceeds th
 
 Bump the current campaign configuration schema from `mdstats.mlff-campaign-cli.v2` to a new v3 contract for newly generated configuration. Continue to read v2 only through an explicit migration resolver; do not mutate campaign TOML in place.
 
+This is a **three-generation parser contract**, not a rename of the existing constant:
+
+```text
+schema-less / v1 -> historical pre-v2 normalization only
+v2               -> prior modern campaign contract + bounded v2->v3 policy migration
+v3               -> current campaign contract
+```
+
+Implementation must preserve a distinct named v2 schema token after introducing v3. `_load_config()` must accept v1, v2 and v3 explicitly. Every schema discriminator that currently tests `schema == CAMPAIGN_CLI_SCHEMA` must be audited before changing the current token: in particular, `_normalize_target_size_fidelity_config()` must treat **both v2 and v3** as the modern `fidelity_epochs` contract and reserve the historical fixed-`3/10/30` branch for schema-less/v1 only. A v2 file must never become "historical v1" merely because v3 became current.
+
+The generator/`init` path emits v3 only after this reader compatibility is in place.
+
 New v3 generated/current replay fields are:
 
 ```toml
@@ -649,7 +661,8 @@ Under v3:
 - require finite positive values and `warning < hard`;
 - reject booleans, strings, NaN and infinity at the policy boundary;
 - omission and explicit current defaults must yield identical resolved policy identities;
-- generated template, `init` output, shipped example, CLI specification and user guide must converge on the same v3 contract.
+- generated template, `init` output, shipped example, CLI specification and user guide must converge on the same v3 contract;
+- the shipped `[evaluation]` comments must no longer claim that refinement reservation, practical-equivalence/bootstrap, secondary metrics or maturity control **P5** representative selection. Generic EVAL2 configuration may remain only for unaffected consumers with its scope stated accurately.
 
 ## 8. Reuse and migration of existing training/evidence
 
@@ -695,7 +708,7 @@ and the only difference is assessment-policy ancestry that could not alter train
 
 Do not implement this as a broad "ignore method digest" exception. Compare the semantically relevant owners or introduce the minimum accepted split in identity authority so future records no longer require an exception.
 
-For the exact baseline v3 method/run lineage, the migration proof must cover all three old over-bindings:
+For the exact baseline `PostSelectionMethodIdentity` schema-v3 method/run lineage, the migration proof must cover all three old over-bindings:
 
 1. old `PostSelectionMethodIdentity` -> new training identity, excluding only `shared_checkpoint_constraints_digest` and `checkpoint_selection_policy_digest` after proving all training-bearing fields equal;
 2. old full-plan-derived run/checkpoint root -> current training-position identity, proving role/fold membership/seed/horizon and all training-bearing parents equal;
@@ -879,6 +892,9 @@ Also review the post-selection restoration recurrence record that required D1/D2
 55. v2 foundation configuration with generated target `0.030` migrates to production `0.050`; v3 explicit `0.030` remains exactly `0.030`; scratch v2 `0.030` remains unchanged.
 56. v2 replay `30.0` migrates to `50/100`; v2 custom one-number replay fails actionable migration; v3 rejects the retired one-number field and mixed old/new replay authority.
 57. Legacy run-root reuse derives its source locator from authenticated historical plan/run evidence and preserves the sealed legacy topology without rename/copy/symlink.
+58. A v2 campaign containing the modern `fidelity_epochs` tuple loads through the v2-modern parser path after v3 is introduced; it is not routed through schema-less/v1 fixed-`3/10/30` normalization, while the bounded target/replay policy migration still applies.
+59. Config-loader tests cover every schema discriminator affected by changing the current campaign schema token, so v2 compatibility is explicit rather than accidental.
+60. The v3 shipped example and generated config no longer describe bootstrap/refinement/secondary ordering as P5 representative authority.
 
 ### 10.7 Real-run oracle from the observed trajectory
 
@@ -1044,7 +1060,8 @@ Before code edits:
 - bind the complete final-production candidate set in terminal run assessment evidence;
 - prove currentness/recovery can preserve old TRAIN2 without a shadow compatibility subsystem;
 - freeze current evidence/schema evolution boundaries;
-- reconcile v2->v3 target/replay configuration migration without collateral scratch/CV change.
+- reconcile v2->v3 target/replay configuration migration without collateral scratch/CV change;
+- preserve v2 as a distinct prior-modern parser contract across every schema discriminator; do not let a v3 token bump route v2 through historical v1 normalization.
 
 Independent D3 review required if durable architecture changes.
 
@@ -1053,7 +1070,7 @@ Independent D3 review required if durable architecture changes.
 Implement by reduction/rewiring at current owners:
 
 - hard replay-limit policy plus diagnostic-only warning threshold;
-- foundation-production target default and v2->v3 migration;
+- foundation-production target default and v2->v3 migration, including explicit v2 parser compatibility;
 - strict target-minimum representative selection with frozen exact ties;
 - assessment-independent future measurement identity;
 - complete production candidate-set binding and negative-production evidence persistence;
@@ -1119,7 +1136,7 @@ The cycle may close only when all of the following are true:
 14. Every affected historical CV fold is reselected under current policy; changed representatives purchase only required outer evaluation, and any newly current CV verdict is freshly published.
 15. Historical successful or failed final-production trajectories reuse completed TRAIN2; lack of a durably bound old candidate set causes EVAL2 recomputation, never content-store scanning or retraining.
 16. Future final-production terminal evidence binds the complete candidate set for selected and no-admissible outcomes before publication/failure.
-17. Campaign schema v3 carries the new replay fields and mode-aware target default; v2 generated replay `30.0` and foundation target `0.030` migrate by the explicit rules, custom/ambiguous legacy replay values fail closed, and v3 explicit target `0.030` remains configurable.
+17. Campaign schema v3 carries the new replay fields and mode-aware target default; v2 remains a distinct readable prior-modern schema (including its `fidelity_epochs` contract), v2 generated replay `30.0` and foundation target `0.030` migrate by the explicit rules, custom/ambiguous legacy replay values fail closed, and v3 explicit target `0.030` remains configurable.
 18. Warning diagnostics are not hard-decision ancestors; changing only the warning threshold cannot move representative/CV/publication membership.
 19. Current method/policy/evidence lineage remains singular and acyclic; no generic P5 protocol graph, compatibility wrapper, shadow registry or duplicated threshold state is added.
 20. Focused, affected, real-owner and bounded scientific qualification evidence passes on the exact candidate.
