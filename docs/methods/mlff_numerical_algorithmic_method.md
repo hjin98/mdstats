@@ -794,9 +794,9 @@ No absolute value, ratio, percentage, normalization, clipping, epsilon, or round
 
 The replay decision-policy family is `(delta_warn,delta_hard)` in internal `eV/angstrom`. Public values expressed in `meV/angstrom` are first represented as finite binary64 `v_meV` by the accepted configuration parser and converted once using the exactly representable scale denominator `1000`,
 
-$
+$$
 \delta=\operatorname{RN}_{64}\left(\frac{v_{\mathrm{meV}}}{1000}\right).
-$
+$$
 
 The resolved internal values must be finite and positive and must satisfy
 
