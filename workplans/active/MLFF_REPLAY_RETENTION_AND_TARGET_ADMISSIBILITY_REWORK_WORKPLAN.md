@@ -1,14 +1,14 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: active-d1-r3-review-pass-awaiting-stakeholder-ratification
+status: active-d2-renewal
 highest_affected_domain: D1
 branch: design/mlff-replay-retention-target-admissibility-rework
 analysis_baseline_commit: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 implementation_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 protocol_6_4_authority_merge: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 stakeholder_direction_date: 2026-09-18
-review_state: d1-r3-independent-review-pass-awaiting-exact-target-ratification
+review_state: d1-r3-ratified-d2-gate-open
 ---
 
 # MLFF Replay Retention and Target Admissibility Rework Workplan
@@ -1183,42 +1183,25 @@ Confirmed:
 
 Branch opened from exact baseline: `design/mlff-replay-retention-target-admissibility-rework`.
 
-### Gate B - D1 renewal for replay role and production target quality - REVIEW PASS / AWAITING STAKEHOLDER RATIFICATION
+### Gate B - D1 renewal for replay role and production target quality - CLOSED / ACCEPTED
 
-Fresh independent Protocol-6.4 D1 Review R3 of exact immutable target
+Exact immutable D1 R3 candidate:
 
 `d761171f3c86c3c79b87a90cfc02ac324c261b1a`
 
-with canonical D1 blob
+Canonical D1 blob:
 
 `612294ec4680db01a18085e13fbfe5dcfa9fb7ed`
 
-returned:
+Fresh independent Protocol-6.4 D1 Review R3 returned **PASS with no SERIOUS CHALLENGE** at review commit `02ad772ae11d8afb64321de0f22315bf2c2ad705`.
 
-**D1 PASS; no SERIOUS CHALLENGE.**
+On 2026-09-18 the stakeholder explicitly accepted that exact candidate. Ratification record:
 
-Review record:
+- `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D1_R3_RATIFICATION.md`
 
-- `workplans/active/MLFF_REPLAY_RETENTION_TARGET_ADMISSIBILITY_D1_INDEPENDENT_REVIEW_R3.md`
+The reviewed D1 blob is not rewritten by ratification. It is the accepted branch-local D1 parent for Gate C.
 
-The review independently challenged the post-R2 `45/45 -> 75/75 meV/angstrom` CV amendment, historical calibration provenance, same-monitor `tau_CV` versus `tau_prod` ordering, held-out `theta_CV` population/units, CV-authorization-versus-production-success semantics, threshold-specific currentness, alternative outer metrics, and the E:F:S `1:10:1` clarification.
-
-Key disposition:
-
-- historical `45/45` was itself stakeholder calibration rather than a proved physical boundary;
-- `75/75` is therefore a lawful new configurable policy calibration, with increased false-authorization risk explicitly carried as a limitation/reopen condition;
-- CV acceptance authorizes a fresh production attempt but does not guarantee a checkpoint satisfying the tighter `50 meV/angstrom` production gate;
-- `tau_CV` may move checkpoint representative/current CV evidence, while `theta_CV` may move only the outer verdict and dependent production authorization;
-- the `1:10:1` tuple remains the accepted global E/F/S property-loss coefficients; native MACE `UniversalLoss` remains a D2/D4 realization rather than the D1 scientific coordinate;
-- scratch/P3/downstream semantics remain unchanged.
-
-The reconciled workplan also closes the dependent authority impact: after ratification D2/D3/D4 must move to `75/75/50` on the default force-metric path, historical generated `0.045/0.045` must be reassessed/migrated without retraining, alternative outer metrics must not inherit force-unit `0.075`, and obsolete 42-meV production-failure counterexamples must be replaced by a discriminating value such as 60 meV/angstrom.
-
-Gate B is **not yet closed**. Accepted-current D1 remains `main@a759e81...` until the stakeholder explicitly ratifies exact target `d761171f3c86c3c79b87a90cfc02ac324c261b1a`.
-
-Gate C remains blocked until that exact-target ratification.
-
-### Gate C - D2 numerical renewal
+### Gate C - D2 numerical renewal - OPEN
 
 Formally define:
 
