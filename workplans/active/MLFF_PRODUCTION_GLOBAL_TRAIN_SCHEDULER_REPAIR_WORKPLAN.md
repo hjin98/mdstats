@@ -10,13 +10,15 @@ second_reviewed_date: 2026-09-19
 closure_falsification_date: 2026-09-19
 third_reviewed_date: 2026-09-19
 third_review_closure_date: 2026-09-19
-revision: 6
-workplan_review_status: pass-after-third-review-consistency-closure
+fourth_reviewed_date: 2026-09-19
+revision: 7
+workplan_review_status: pass-after-fourth-review-linearization-closure
 reviewed_pre_repair_head: 10c68eb50cb7ee2b5f0bb8d43e35bb250a186d96
 second_reviewed_pre_repair_head: 35fe7c19f60d99a2ae99257496acb2e82c35975d
 closure_falsification_pre_repair_head: 47376b968a62ab05473e370746f79988436bb3e3
 third_reviewed_pre_repair_head: 12959ef0bdc7a9ac9253fafa846d9f7bb4e0bb28
 third_review_closure_pre_repair_head: a8dcbaa774ac4815ce03896e368a630577d20c51
+fourth_review_pre_repair_head: e2b9c6221ba379ef78f8ddbfba0aff3ae814b181
 branch: design/mlff-production-global-train-scheduler-repair
 basis_commit: f341a3f993b931c5e0838e95520b8b4fd41459ae
 highest_affected_domain: D3
@@ -29,9 +31,9 @@ production_gpu_qualification: deferred-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER THIRD REVIEW CONSISTENCY CLOSURE / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER FOURTH REVIEW LINEARIZATION CLOSURE / FROZEN FOR D4. No Serious Challenge is active.**
 
-Revision 6 closes the recovery-normalization gap found by the third independent D3 pass and removes the remaining Revision-4 wording that still treated every unsealed root as scheduler work. It also freezes recovery normalization as a final-production orchestration concern: shared low-level recovery owners may be factored, but public CV selected-size/task-count/progress semantics remain unchanged. The repair remains deliberately narrow: **only actual TRAIN2 continuation/admission is collection-global**. Recovery now distinguishes roots that truly still require trainer work from already-terminal-but-unsealed roots that require only the existing completion/seal transition. The latter are sealed before scheduler sizing and never inflate TRAIN task_count, controller ceilings, progress, or resource-profile compatibility. The same rule covers current post-cutover roots and authenticated historical/legacy roots through their existing recovery owners. EVAL2, per-seed assessment, and final publication remain inside the frozen-size-ordered finalization path. FinalProductionPlan pointers remain per-binding rather than collection-atomic, and the live generation/currentness fence still prevents new old-design TRAIN2 admission after target-size rollover.
+Revision 7 closes the remaining currentness-linearization and preflight-side-effect gaps found by the fourth independent D3 pass. Revision 6's recovery-normalization contract remains intact: only actual TRAIN_REQUIRED work enters the scheduler, and public CV selected-size/task-count/progress semantics remain unchanged. Revision 7 additionally requires a real linearization point between each new production admission and concurrent target-generation transitions, and explicitly preserves independently valid per-binding FinalProductionPlan pointers when later collection recovery normalization fails. The repair remains deliberately narrow: **only actual TRAIN2 continuation/admission is collection-global**. Recovery now distinguishes roots that truly still require trainer work from already-terminal-but-unsealed roots that require only the existing completion/seal transition. The latter are sealed before scheduler sizing and never inflate TRAIN task_count, controller ceilings, progress, or resource-profile compatibility. The same rule covers current post-cutover roots and authenticated historical/legacy roots through their existing recovery owners. EVAL2, per-seed assessment, and final publication remain inside the frozen-size-ordered finalization path. FinalProductionPlan pointers remain per-binding rather than collection-atomic, and the live generation/currentness fence still prevents new old-design TRAIN2 admission after target-size rollover.
 
 No D1/D2 defect was found. No second scheduler, collection publication transaction, new persistent orchestration machinery, or widened evaluation semantics is authorized.
 
@@ -322,6 +324,8 @@ The collection owner uses a two-phase pre-launch planning discipline:
 
 If Phase A fails for any size, launch zero trainers and do not make a new sibling FinalProductionPlan pointer current as part of this invocation. If a concurrent currentness race is detected during Phase B after earlier valid per-binding pointers were already committed, stop before TRAIN2; those earlier pointers remain subject to their own normal currentness and are not rolled back merely to simulate collection atomicity.
 
+Once Phase B has validly committed all per-binding FinalProductionPlan pointers, a later collection recovery-normalization failure likewise does **not** roll those pointers back. A current FinalProductionPlan pointer is planning authority for its own binding, not proof that TRAIN2, EVAL2, assessment, or publication completed. Recovery failure still occurs before the first new TRAIN admission, so it launches zero new trainers, begins no EVAL2, and publishes no new assessment/final-production decision. Any append-only terminal seals already completed by recovery normalization remain durable under D3-8. Do not add a collection transaction merely to erase independently valid plan pointers or completed recovery seals.
+
 Commit-time selected-binding/generation fences remain authoritative again when assessments and final publications are made current.
 
 ### D3-13 - Global TRAIN2 may run ahead; EVAL2/finalization remains fail-fast in frozen size order
@@ -365,23 +369,40 @@ Local seed slots are not globally unique. The collection execution owner must as
 
 Results/state route back through the owning binding/context plus local position (or an equivalent exact owner key). The wave key cannot enter a scientific digest, run-root identity, assessment position, or publication record.
 
-### D3-16 - Revalidate frozen-design currentness before every later TRAIN admission
+### D3-16 - Linearize frozen-design currentness with every new TRAIN admission
 
-The global queue lengthens the interval between initial planning and later task admission. The accepted multi-size contract already requires that once a generation/design becomes stale, no further outer-size work is newly admitted for that retired design. Serial selected-size execution satisfied this naturally because later sizes crossed a fresh owner/currentness boundary. A collection queue must restore that property explicitly.
+The global queue lengthens the interval between initial planning and later task admission. The accepted multi-size contract already requires that once a generation/design becomes stale, no further outer-size work is newly admitted for that retired design. Serial selected-size execution repeatedly crossed currentness owners; a collection queue must preserve that boundary without introducing a long-held campaign lease.
 
-Before the **first** TRAIN2 launch, and again immediately before every subsequent dequeue/submit that would admit a previously unstarted production task, the scheduler owner must re-read the compact current target-size CampaignStore state and verify that the invocation's expected frozen bindings are still current. Reuse the existing target-size currentness projection (`current_target_size_bindings(state)` over the current target-size revision), or a factored helper with exactly that semantics. Do not reconstruct a second currentness rule and do not call the expensive full scientific-context builder merely as a polling mechanism.
+At collection construction, capture the invocation's compact **collection currentness signature** as:
 
-If the generation or expected binding membership is no longer current:
+~~~text
+(expected campaign generation, ordered tuple of expected current binding digests)
+~~~
 
-- admit no further queued TRAIN2 tasks for the retired design;
-- do not begin EVAL2 or publish new assessments/final products for that invocation;
-- let already-admitted workers settle through the existing owned-worker failure/teardown policy without treating stale authority as a scientific rejection;
+The ordered binding tuple comes from the same canonical per-size binding projection that owns the current frozen design. Do **not** bind this signature to the campaign state revision: same-generation diagnostic/observational revisions that preserve the frozen design must not spuriously retire valid production work. Conversely, membership-only checking is insufficient as the collection contract; the queue belongs to the exact frozen ordered design that was authorized.
+
+For current/v2 frozen designs, derive the tuple through `current_target_size_bindings(state)`. Do not invent a second binding formula. Retired/prerework schemas retain their existing compatibility behavior: if they cannot reach current final-production planning/publication under accepted owners, they must fail at that existing boundary rather than acquiring a new scheduler-only currentness interpretation.
+
+Before the **first** TRAIN2 admission and before every later admission of a previously unstarted or demoted/requeued task, establish a real linearization point against target-size generation transitions. A plain read followed by `executor.submit(...)` is not sufficient because `prepare` can commit a new generation between those operations.
+
+The admission fence must reuse the CampaignStore serialization authority already used by target-size transitions (for example, the existing `exclusive_transaction()` plus the canonical head/binding projection, or an exactly equivalent factored owner) so that one total order exists:
+
+1. either the generation/design transition commits first, in which case the task is rejected as stale and is not newly admitted;
+2. or the scheduler admission commits first while the expected collection signature is current, in which case that task is already admitted and may settle under ordinary historical/currentness rules even if rollover commits immediately afterwards.
+
+The **admission commit point** is execution-local and durable state is not required. It must cover the scheduler's successful ownership transition for that task (dequeue/reservation plus successful future submission/active registration, or an equivalent indivisible scheduler transition) while the serialized currentness observation excludes a concurrent generation commit. Hold the CampaignStore serialization only for this short admission transition; never hold it while TRAIN2 runs, while waiting for a worker/future, during telemetry polling, or across the whole wave.
+
+If the serialized currentness check finds a different generation or ordered binding tuple:
+
+- admit no new queued TRAIN2 task for the retired design;
+- route the stale condition through the existing whole-wave terminal abort path, so every already-active owned worker receives the ordinary cancellation signal and is reaped by its real execution/process owner;
+- begin no new EVAL2/finalization admission for that invocation;
 - preserve any authenticated terminal TRAIN2 evidence as historical/restart evidence subject to normal later currentness;
-- fail the invocation with the existing stale/currentness error family.
+- fail with the existing stale/currentness error family, not a scientific rejection.
 
-Revalidate the same compact currentness condition once more after the global TRAIN wave reaches terminality and before the first per-size EVAL2 begins. This closes the case where rollover occurs after the last task was admitted, when no later dequeue exists to observe the change.
+After the global TRAIN wave reaches terminality, perform the same serialized collection-signature check to linearize **admission of the per-size EVAL2/finalization phase**. If rollover committed first, no EVAL2 begins. If finalization admission linearizes first and rollover commits afterwards, already-admitted EVAL2 may finish as ordinary work, but the existing commit-time per-binding pointer/currentness fences remain authoritative and must prevent stale assessments/final products from becoming current. Do not keep the CampaignStore transaction open during EVAL2 merely to prevent a later legitimate generation transition.
 
-This is a transient admission fence, not a new campaign lease. Do not add a long-held global lock that prevents legitimate `prepare`/generation rollover merely to make the scheduler easier to reason about.
+This distinction is intentional: the architecture guarantees a total order at admission boundaries, not an impossible zero-duration race-free interval between a read and arbitrary later computation. No new persistent scheduler-currentness registry, generation lease, or rollback protocol is authorized.
 
 ### Delegated D4 space
 
@@ -451,7 +472,7 @@ A demoted task returns to the existing restartable queue with its original scien
 
 Globalization must work when the initial collection contains any mix of no prior roots, sealed TRAIN2 roots awaiting EVAL2, complete current assessments, stale historical assessment offers, interrupted resumable TRAIN2 roots, terminal-but-unsealed post-cutover roots, terminal-but-unsealed historical roots, historical interrupted continuations, and positions requiring fresh training.
 
-Before scheduling, all of those states pass the D3-7/D3-8 normalization. A retry schedules only positions that still require actual trainer continuation. Terminal-but-unsealed roots are completed/sealed through existing recovery owners with zero trainer launch and disappear from task_count. After the collection TRAIN wave, per-size finalization reuses authenticated sealed roots and any exact reusable measurements through existing owners. Completed sibling TRAIN2 work cannot be invalidated merely because another selected size previously failed.
+Before scheduling, all of those states pass the D3-7/D3-8 normalization. A retry schedules only positions that still require actual trainer continuation. Terminal-but-unsealed roots are completed/sealed through existing recovery owners with zero trainer launch and disappear from task_count. If normalization later fails on another position, already-valid per-binding FinalProductionPlan pointers and already-completed append-only seals remain durable, but no new trainer/EVAL2/assessment/final publication starts. After a successful collection TRAIN wave, per-size finalization reuses authenticated sealed roots and any exact reusable measurements through existing owners. Completed sibling TRAIN2 work cannot be invalidated merely because another selected size previously failed.
 
 ### O5 - Preserve publication barriers/currentness without inventing collection atomicity
 
@@ -643,7 +664,7 @@ Through the real collection owner while another size has runnable fresh TRAIN2 w
 3. an incompatible historical/legacy interrupted continuation;
 4. a corrupt/contradictory historical sealed or partial-proof root.
 
-In every failing case assert zero new sibling trainer launches, no EVAL2 begins, and the authoritative GPU admission baseline/controller is not used to admit work after the failure.
+In every failing case assert zero new sibling trainer launches, no EVAL2 begins, and the authoritative GPU admission baseline/controller is not used to admit work after the failure. When the failure occurs after Phase B, assert that already-valid per-binding FinalProductionPlan pointers remain current if their own binding is still current, while no assessment/final-publication pointer is created merely because planning succeeded. When an earlier normalization step already appended a valid terminal seal, assert that seal remains durable and is not rolled back.
 
 #### A7 - terminal-but-unsealed normalization, mixed restart, and canonical EVAL order
 
@@ -697,6 +718,8 @@ Use a two-size frozen design whose collection barrier initially passes.
 - any earlier sibling plan pointer that validly committed remains governed by its own per-binding currentness and is not rolled back;
 - no collection-level pointer transaction/rollback machinery is introduced.
 
+**Post-Phase-B recovery-failure case:** let all per-binding plan pointers commit, then inject a corrupt later recovery root during collection normalization. Prove zero trainer/EVAL2 launches, no assessment/final publication, independently valid plan pointers remain current for bindings that are still current, and any valid earlier append-only terminal seal remains durable. This is not a collection rollback boundary.
+
 Retain the historical CV-policy currentness/acceptance-ancestry regressions that established the second-line fence.
 
 #### A14 - production EVAL2/finalization stays fail-fast after global TRAIN2
@@ -738,20 +761,24 @@ Through the real production owner, instrument the existing run seam and prove th
 
 Then prove those same roots are consumed by the subsequent per-size finalizer through the existing run/EVAL owners. This is the structural/behavioral guard against accidentally globalizing EVAL2 while repairing TRAIN2 admission.
 
-#### A19 - generation rollover stops new global-queue admission
+#### A19 - generation rollover is linearized against queue and EVAL admission
 
-Start a bounded multi-size production wave with enough tasks that at least one task is active and at least one later task remains queued. After the first task is admitted, atomically roll the target-size campaign to a new prepared generation through the real current-state owner.
+Exercise the real CampaignStore transition owner and the real production scheduler with enough tasks that at least one task is active and at least one later task remains queued.
 
-Prove:
+Cover both orderings at the exact admission boundary:
 
-- before the scheduler admits the next queued task, it re-reads current target-size state through the canonical binding projection and detects the retired design;
-- no queued old-generation task is newly launched after detection;
-- already-admitted owned workers are settled/reaped through existing ownership semantics and any terminal evidence remains non-current historical evidence;
-- no EVAL2, assessment pointer, or final publication from the stale invocation is made current;
-- the invocation fails with typed stale/currentness semantics, not a scientific rejection;
-- no global campaign lock, scheduler-currentness registry, or rollback state is introduced.
+1. **rollover wins** - arrange the new prepared generation transition to commit before the next queued task's admission linearization. Prove the queued old-generation task is never submitted/registered as active, stale currentness routes through whole-wave cancellation/reaping of already-owned workers, and no EVAL2/assessment/final publication begins.
+2. **admission wins** - arrange the scheduler's serialized currentness/admission transition to complete first, then let generation rollover commit immediately afterwards. Prove that already-admitted task may settle under ordinary worker ownership, no *additional* old-generation task is admitted after rollover wins the next boundary, and commit-time currentness prevents stale assessment/final publication from becoming current.
 
-Also cover rollover after the last TRAIN2 task has already been admitted but before global TRAIN terminality: the mandatory pre-EVAL currentness recheck must reject before any EVAL2 begins.
+Use a deterministic race seam/barrier capable of pausing at the currentness/admission boundary; a test that rolls the generation only well before or well after `submit()` does not prove closure of the TOCTOU window.
+
+Also cover the phase boundary after all TRAIN2 tasks are terminal:
+
+- if rollover commits before serialized EVAL/finalization admission, no EVAL2 begins;
+- if EVAL/finalization admission linearizes first and rollover commits afterwards, EVAL may finish but stale assessment/final-publication current-pointer publication must fail through the existing per-binding commit-time fence;
+- no long-held campaign lock, persistent scheduler-currentness registry, or rollback state is introduced.
+
+Finally assert that same-generation state revisions which preserve `(generation, ordered binding digests)` do not spuriously cancel the wave.
 
 ### Structural acceptance
 
@@ -763,7 +790,7 @@ Static/source inspection must establish:
 - all global production position descriptors are enumerated without eagerly creating fresh training materialization, duplicate run/training identities fail closed, and only post-normalization TRAIN_REQUIRED descriptors reach concurrency-plan construction;
 - every sealed production root is authenticated and every durable unsealed current/legacy continuation is normalized before the authoritative TRAIN admission baseline;
 - authenticated terminal-but-unsealed current/legacy roots are sealed through existing owners with zero trainer launch and excluded from task_count/profile compatibility;
-- scheduler admission reuses the canonical CampaignStore target-binding currentness projection before first launch and every later queued-task launch, with a final recheck before EVAL2;
+- scheduler admission uses the canonical CampaignStore binding projection and the existing serialized transition owner to linearize `(generation, ordered binding digests)` against first/later task admission and EVAL-phase admission; a read-then-submit TOCTOU window is not accepted;
 - the global production scheduler ends at sealed TRAIN2 and contains no EVAL2/final-assessment loop;
 - the per-size second-line CV authorization fence still exists before final-plan construction and before first TRAIN launch;
 - no collection-level plan-pointer transaction/rollback authority was added;
@@ -813,7 +840,7 @@ Refactor final-production planning so Phase A constructs/authenticates every per
 
 ### Stage P2 - collection recovery + TRAIN-only scheduler generalization
 
-Make pending tasks self-owning; perform collection-wide current/legacy recovery normalization; seal authenticated terminal-but-unsealed roots without trainer launch; derive TRAIN_REQUIRED positions; prove scheduler-profile compatibility over that reduced set; implement global task-count semantics plus the canonical binding-currentness admission fence; execute one TRAIN-only wave that ends at sealed roots. Run A1-A2, A6-A7, A10, A12, A17-A19 plus existing scheduler/currentness/historical-recovery regressions.
+Make pending tasks self-owning; perform collection-wide current/legacy recovery normalization; seal authenticated terminal-but-unsealed roots without trainer launch; derive TRAIN_REQUIRED positions; prove scheduler-profile compatibility over that reduced set; implement global task-count semantics plus a **serialized, linearizable** canonical collection-currentness admission fence; execute one TRAIN-only wave that ends at sealed roots. Run A1-A2, A6-A7, A10, A12, A17-A19 plus existing scheduler/currentness/historical-recovery regressions.
 
 ### Stage P3 - per-size EVAL/failure/restart closure and CV non-impact
 
@@ -839,7 +866,7 @@ Reopen D3 if:
 - collection-wide TRAIN-only scheduling cannot hand off cleanly to the existing sealed-root/EVAL owners without a second durable scheduler or materially new persisted orchestration state;
 - recovery normalization cannot distinguish terminal-but-unsealed from genuinely incomplete current/legacy trajectories without duplicating or weakening the existing recovery owner;
 - sealing authenticated terminal-but-unsealed state before scheduler sizing would require a new persistent recovery authority rather than factoring the existing completion/topology owner;
-- preserving stale-generation admission semantics would require a new persistent currentness registry or long-held campaign lock rather than a bounded read of existing CampaignStore authority;
+- preserving stale-generation admission semantics cannot be linearized using the existing short-lived CampaignStore serialization authority without a new persistent currentness registry or long-held campaign lock;
 - per-size EVAL2/finalization cannot preserve current fail-fast semantics without changing public/architectural behavior;
 - the current one-resource-domain assumption is false for an accepted campaign configuration.
 
@@ -862,7 +889,7 @@ Implementation is complete only when:
 - all production position descriptors across a fully admitted and second-line-authorized multi-size collection are enumerated without eager fresh materialization, then recovery normalization excludes all already-terminal work before scheduler construction;
 - scheduler/resource ownership is singular, the shared resource-profile assumption is positively established over actual TRAIN_REQUIRED positions, and process teardown/disk/timeout authority is preserved;
 - every existing sealed root and every current/legacy continuation is authenticated before sibling TRAIN admission; terminal-but-unsealed roots seal with zero trainer launch; local slot collisions cannot duplicate a global run;
-- no queued task is newly admitted after the invocation's frozen bindings cease to be current, and currentness is rechecked again before EVAL2;
+- every new TRAIN admission and the EVAL/finalization phase admission has a defined linearization point against target-generation transitions using `(generation, ordered binding digests)`; rollover that wins the boundary admits no stale work, while work admitted first remains subject to ordinary commit-time currentness;
 - the collection scheduler stops at authenticated sealed TRAIN2 roots, and no EVAL2 begins until the entire global TRAIN wave is terminal;
 - per-size EVAL2/assessment/publication then remains frozen-size/seed ordered and fail-fast, independent of scheduler order;
 - public CV selected-size scheduling and semantics remain unchanged despite shared-helper refactoring;
