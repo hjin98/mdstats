@@ -4,6 +4,16 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 ## Current active MLFF work
 
+### Final-production global TRAIN scheduler repair
+
+Branch: `design/mlff-production-global-train-scheduler-repair`
+
+Canonical workplan:
+
+- `workplans/active/MLFF_PRODUCTION_GLOBAL_TRAIN_SCHEDULER_REPAIR_WORKPLAN.md`
+
+The cycle repairs final-production orchestration only. After the existing collection-wide CV admission barrier, every unsealed final-production TRAIN2 position across the frozen selected-size collection must participate in one existing adaptive TRAIN scheduler wave. Per-size planning, scientific identity, restart/currentness, assessment, and publication remain independent. No CV scheduler change, production-seed policy change, second scheduler/resource owner, concurrent EVAL2, or cross-size publication/release rule is authorized. Physical GPU qualification remains deferred to the final complete-release package.
+
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
 Branch: `design/mlff-pi-train-fps-diversity-restoration`
