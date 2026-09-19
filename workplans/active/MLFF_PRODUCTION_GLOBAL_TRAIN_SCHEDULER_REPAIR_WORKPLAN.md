@@ -11,14 +11,16 @@ closure_falsification_date: 2026-09-19
 third_reviewed_date: 2026-09-19
 third_review_closure_date: 2026-09-19
 fourth_reviewed_date: 2026-09-19
-revision: 7
-workplan_review_status: pass-after-fourth-review-linearization-closure
+fourth_review_closure_date: 2026-09-19
+revision: 8
+workplan_review_status: pass-after-fourth-review-consistency-closure
 reviewed_pre_repair_head: 10c68eb50cb7ee2b5f0bb8d43e35bb250a186d96
 second_reviewed_pre_repair_head: 35fe7c19f60d99a2ae99257496acb2e82c35975d
 closure_falsification_pre_repair_head: 47376b968a62ab05473e370746f79988436bb3e3
 third_reviewed_pre_repair_head: 12959ef0bdc7a9ac9253fafa846d9f7bb4e0bb28
 third_review_closure_pre_repair_head: a8dcbaa774ac4815ce03896e368a630577d20c51
 fourth_review_pre_repair_head: e2b9c6221ba379ef78f8ddbfba0aff3ae814b181
+fourth_review_closure_pre_repair_head: d7efcf62c8cc5b29cbd021f9f74cb13fff3f921e
 branch: design/mlff-production-global-train-scheduler-repair
 basis_commit: f341a3f993b931c5e0838e95520b8b4fd41459ae
 highest_affected_domain: D3
@@ -31,9 +33,9 @@ production_gpu_qualification: deferred-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER FOURTH REVIEW LINEARIZATION CLOSURE / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER FOURTH REVIEW CONSISTENCY CLOSURE / FROZEN FOR D4. No Serious Challenge is active.**
 
-Revision 7 closes the remaining currentness-linearization and preflight-side-effect gaps found by the fourth independent D3 pass. Revision 6's recovery-normalization contract remains intact: only actual TRAIN_REQUIRED work enters the scheduler, and public CV selected-size/task-count/progress semantics remain unchanged. Revision 7 additionally requires a real linearization point between each new production admission and concurrent target-generation transitions, and explicitly preserves independently valid per-binding FinalProductionPlan pointers when later collection recovery normalization fails. The repair remains deliberately narrow: **only actual TRAIN2 continuation/admission is collection-global**. Recovery now distinguishes roots that truly still require trainer work from already-terminal-but-unsealed roots that require only the existing completion/seal transition. The latter are sealed before scheduler sizing and never inflate TRAIN task_count, controller ceilings, progress, or resource-profile compatibility. The same rule covers current post-cutover roots and authenticated historical/legacy roots through their existing recovery owners. EVAL2, per-seed assessment, and final publication remain inside the frozen-size-ordered finalization path. FinalProductionPlan pointers remain per-binding rather than collection-atomic, and the live generation/currentness fence still prevents new old-design TRAIN2 admission after target-size rollover.
+Revision 8 is the fourth-review consistency closure. Revision 7 closed the currentness-linearization and preflight-side-effect gaps; Revision 8 removes the last weaker derivative wording so the D4 obligation/capability-transfer sections require the same exact serialized collection-signature admission semantics as D3-16. Revision 6's recovery-normalization contract remains intact: only actual TRAIN_REQUIRED work enters the scheduler, and public CV selected-size/task-count/progress semantics remain unchanged. Revision 7 additionally requires a real linearization point between each new production admission and concurrent target-generation transitions, and explicitly preserves independently valid per-binding FinalProductionPlan pointers when later collection recovery normalization fails. The repair remains deliberately narrow: **only actual TRAIN2 continuation/admission is collection-global**. Recovery now distinguishes roots that truly still require trainer work from already-terminal-but-unsealed roots that require only the existing completion/seal transition. The latter are sealed before scheduler sizing and never inflate TRAIN task_count, controller ceilings, progress, or resource-profile compatibility. The same rule covers current post-cutover roots and authenticated historical/legacy roots through their existing recovery owners. EVAL2, per-seed assessment, and final publication remain inside the frozen-size-ordered finalization path. FinalProductionPlan pointers remain per-binding rather than collection-atomic, and the live generation/currentness fence still prevents new old-design TRAIN2 admission after target-size rollover.
 
 No D1/D2 defect was found. No second scheduler, collection publication transaction, new persistent orchestration machinery, or widened evaluation semantics is authorized.
 
@@ -494,11 +496,25 @@ The scheduler receives the sum, across selected sizes, of required final-seed po
 
 Thus two selected sizes with one seed each naturally provide two independent TRAIN2 positions. If the user configures two final seeds per size, four scientific positions exist; that count comes from the existing production policy, not scheduler invention.
 
-### O7A - Preserve stale-generation admission semantics during the global wave
+### O7A - Preserve stale-generation admission semantics through the D3-16 linearization owner
 
-Factor or reuse the smallest existing binding-currentness owner needed for a cheap scheduler admission check. At minimum it must compare the invocation's expected frozen binding digests/generation against the current target-size CampaignStore revision through the canonical `current_target_size_bindings` projection.
+Factor or reuse the smallest existing currentness owner that can implement D3-16 without a second binding formula. The implementation obligation is the exact collection signature:
 
-Perform this check before first launch, before each later queued-task admission, and after TRAIN terminality before EVAL2. A stale result blocks new admission and later finalization; it is not a reason to introduce a campaign-wide mutex, cancel/rollback valid immutable history, or mutate the target-size state.
+~~~text
+(campaign generation, ordered tuple of current binding digests)
+~~~
+
+derived from the canonical current binding projection. A campaign state-revision change alone is not staleness, and unordered/membership-only comparison is not the collection scheduler contract.
+
+The check and scheduler ownership transition must be **serialized against target-size generation transitions** through the existing CampaignStore transition authority. A helper that merely reads current bindings and returns a boolean for the caller to use later does not satisfy this obligation; it recreates the forbidden read-then-submit TOCTOU window.
+
+Apply the linearized fence at:
+
+- first TRAIN admission;
+- every later admission, including a demoted/requeued task when it is newly readmitted;
+- the post-TRAIN admission of the EVAL2/finalization phase.
+
+On stale detection, route through the existing whole-wave terminal cancellation/reap path. On an admission that linearizes before rollover, treat the task/phase as already admitted and rely on the existing commit-time per-binding publication fences for any later rollover. Hold no CampaignStore transaction across TRAIN2, telemetry waits, EVAL2, or final publication.
 
 ### O8 - Reconcile specification/documentation without rewriting history
 
@@ -567,7 +583,7 @@ Archived workplans are historical/lineage evidence here, not parallel current au
 
 This cycle replaces one mature orchestration concretization, so the following transfer is mandatory rather than implicit:
 
-| Existing capability | Revision-2 disposition |
+| Existing capability | Current disposition |
 | --- | --- |
 | collection-wide CV admission barrier before any production job | PRESERVE at _cv_admission_blockers |
 | per-size second-line CV/current-method authorization before final-plan construction | PRESERVE in extracted per-size planner |
@@ -579,7 +595,7 @@ This cycle replaces one mature orchestration concretization, so the following tr
 | deterministic queue/backoff behavior | PRESERVE with frozen-size/seed queue order and most-recent-admission demotion |
 | per-size serial EVAL2, final assessment/publication and no cross-size committee | PRESERVE after the global TRAIN-only wave |
 | fail-fast production finalization in frozen size order | PRESERVE; later sizes do not begin fresh EVAL2/publication after earlier-size failure |
-| stale-generation/retired-design admission stop | PRESERVE explicitly at global-queue admission and again before EVAL2 using existing CampaignStore binding currentness |
+| stale-generation/retired-design admission stop | PRESERVE through the D3-16 serialized `(generation, ordered binding digests)` linearization at every TRAIN admission and at EVAL/finalization-phase admission; commit-time per-binding fences remain authoritative after an admission wins the race |
 | multi-size terminal lifecycle with no implicit release winner | PRESERVE |
 | CV serial selected-size orchestration | PRESERVE unchanged |
 | production serial selected-size TRAIN scheduling | **RETIRE/SUPERSEDE ONLY THIS CAPABILITY** with one collection-scoped TRAIN wave |
