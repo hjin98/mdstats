@@ -6,9 +6,11 @@ protocol_version: 6.4.0
 status: implementation-ready
 created_date: 2026-09-19
 reviewed_date: 2026-09-19
-revision: 2
-workplan_review_status: pass-after-repair
+second_reviewed_date: 2026-09-19
+revision: 3
+workplan_review_status: pass-after-second-review-repair
 reviewed_pre_repair_head: 10c68eb50cb7ee2b5f0bb8d43e35bb250a186d96
+second_reviewed_pre_repair_head: 35fe7c19f60d99a2ae99257496acb2e82c35975d
 branch: design/mlff-production-global-train-scheduler-repair
 basis_commit: f341a3f993b931c5e0838e95520b8b4fd41459ae
 highest_affected_domain: D3
@@ -21,9 +23,11 @@ production_gpu_qualification: deferred-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER REVIEW REPAIR / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER SECOND REVIEW REPAIR / FROZEN FOR D4. No Serious Challenge is active.**
 
-This Revision 2 closes the bounded design-review gaps found against the accepted multi-size lineage, current P5/TRAIN2 owners, recovery/resource authority, and Protocol 6.4 handoff requirements. The review found no D1/D2 defect and no need for a second scheduler or new persistent orchestration machinery.
+Revision 3 closes the remaining gaps found by a second independent D3 pass against the accepted multi-size lineage and the current P5 sealed-root/TRAIN2/EVAL2 owners. The second pass narrows the change further: **only TRAIN2 admission is collection-global**. EVAL2, per-seed assessment, and final publication remain inside the existing frozen-size-ordered finalization path. It also makes sealed-root integrity part of pre-launch collection recovery and removes an accidental requirement for collection-atomic final-plan pointer publication.
+
+No D1/D2 defect was found. No second scheduler, collection publication transaction, new persistent orchestration machinery, or widened evaluation semantics is authorized.
 
 This cycle is a **stakeholder-authorized bounded D3 reopen of final-production selected-size scheduling**. Accepted multi-size lineage had ultimately frozen serial outer-size orchestration as the current concretization. This workplan intentionally supersedes that one production scheduling choice only; it does not retroactively reinterpret the archived serial design as already-global, and repository presence on this branch does not make the proposed D3 mutation accepted-current before independent falsification and merge through the normal architecture acceptance path.
 
@@ -31,7 +35,7 @@ This cycle repairs final-production orchestration only. The defect is not that t
 
 For a frozen two-size collection with the current one-seed production policy, the implementation presents one task at a time to a scheduler whose truthful task ceiling is one. With two configured final seeds it presents two tasks for the first size and, only after that size is completely assessed and published, another two tasks for the second size. This is structurally work-starving when the one shared CPU/GPU resource envelope could safely admit concurrent production trajectories from different selected sizes.
 
-The repair is to make **all unsealed final-production TRAIN2 positions across the fully admitted frozen collection participate in one existing adaptive TRAIN scheduler wave**, then return each result to its original per-size scientific owner for assessment and publication.
+The repair is to make **all unsealed final-production TRAIN2 positions across the fully admitted frozen collection participate in one existing adaptive TRAIN scheduler wave**. That shared wave ends at authenticated sealed TRAIN2 roots. Only after every scheduler-owned TRAIN2 position is terminal does the command resume the existing frozen-size-ordered finalization path: per-size serial EVAL2, per-seed assessment, and binding-scoped final publication. Later sizes may finish TRAIN2 early, but they do not perform fresh EVAL2 or publish assessments merely because their training finished first.
 
 Cross-validation scheduling is explicitly out of scope and remains unchanged.
 
@@ -114,7 +118,7 @@ After the collection-wide CV admission barrier succeeds, every unsealed final-pr
 
 The implementation MUST NOT create an outer size executor around existing per-size schedulers. It MUST NOT nest one scheduler per selected size beneath another resource owner.
 
-### D3-2 - Planning and publication remain per-size; execution queue is collection-scoped
+### D3-2 - Planning and publication remain per-size; only the TRAIN2 queue is collection-scoped
 
 Scientific planning remains owned per PostSelectionContext:
 
@@ -125,18 +129,21 @@ selected context
   -> final run plans / assessment positions
 ~~~
 
-Only execution-ready positions are flattened:
+Only TRAIN2-ready positions are flattened:
 
 ~~~text
 all per-size production positions
-  -> one TRAIN scheduler population
-  -> one global TRAIN phase
-  -> deterministic EVAL2 completion
-  -> return results to each original per-size owner
-  -> per-size assessment/publication
+  -> collection recovery/integrity classification
+  -> one TRAIN scheduler population for unsealed roots only
+  -> one global TRAIN-only phase ending at sealed TRAIN2 roots
+  -> frozen size N1: serial EVAL2 -> all seed assessments -> final publication
+  -> frozen size N2: serial EVAL2 -> all seed assessments -> final publication
+  -> ...
 ~~~
 
-Flattening must not synthesize a collection-level FinalProductionPlan, run identity, assessment policy, completion record, or publication decision.
+If finalization of N_i fails, N_{i+1} and later sizes do not begin fresh EVAL2 in that invocation. Their already-authenticated sealed TRAIN2 roots remain ordinary reusable evidence.
+
+Flattening must not synthesize a collection-level FinalProductionPlan, run identity, assessment policy, completion record, measurement batch, or publication decision.
 
 ### D3-3 - Scheduler task carries its real owner
 
@@ -177,13 +184,15 @@ The minimum-free-disk reserve remains enforced by MacePostSelectionTrainer per o
 
 This validation is execution-local. Do not persist a new resource-profile authority.
 
-### D3-5 - TRAIN/EVAL phase separation is collection-wide
+### D3-5 - TRAIN/EVAL phase separation is collection-wide; EVAL finalization remains per-size
 
 No fresh EVAL2 work may begin while **any** production TRAIN2 task in the collection wave remains active, queued, demoting, cancelling, or not yet terminal.
 
-After the global TRAIN wave succeeds, EVAL2 executes through the existing continuation/run owner from authenticated TRAIN2 roots. EVAL2 remains serial unless separately redesigned later.
+The collection scheduler owns TRAIN2 only and returns after every required unsealed position has reached the existing authenticated sealed-root boundary. It MUST NOT run EVAL2 as part of the global scheduler wave.
 
-The deterministic EVAL2 traversal order is frozen collection order, then each final plan's required_final_seeds order. Runtime TRAIN completion order must not determine scientific assessment/publication order.
+After successful global TRAIN2, finalization resumes in frozen selected-size order. For one size, EVAL2 traverses that FinalProductionPlan.required_final_seeds order, regardless of whether a root was already sealed at invocation start or became sealed in the global wave. The existing run owner re-authenticates each sealed root before numerical evaluation.
+
+EVAL2 remains serial unless separately redesigned later. Runtime TRAIN completion order, prior-sealed versus newly-trained classification, or global scheduler slot must not determine EVAL2/assessment/publication order.
 
 ### D3-6 - Existing failure and teardown ownership survives globalization
 
@@ -200,26 +209,36 @@ Memory-pressure demotion remains a scheduler resource action, not a scientific f
 
 The scheduler must not infer successful teardown from a cancellation request, future cancellation flag, or elapsed timeout.
 
-### D3-7 - Sealed roots do not consume TRAIN admission capacity
+### D3-7 - Sealed roots do not consume TRAIN admission capacity, but they must authenticate before sibling launch
 
-Before the global concurrency plan is built, authenticate/classify every production position using the existing run-root completion owner.
+Before the global concurrency plan is built, classify every production position through the existing run-root completion owner.
 
-Already sealed TRAIN2 roots:
+For a root reported sealed, classification alone is insufficient. Before any new sibling TRAIN2 child may launch, use the existing read-only sealed-root authentication owner (_authenticate_sealed_training_root(...) or its conforming successor) under the existing run-activity exclusion to prove the completion anchor, materialization, terminal TRAIN2 summary, training trajectory, and reconstructed runtime-plan ancestry. This preflight performs **no EVAL2, checkpoint/provider inference, assessment, or publication**.
 
-- do not enter the TRAIN task count;
-- do not launch a trainer;
-- do not consume maximum_jobs;
-- remain eligible for post-TRAIN EVAL2/reassessment through the existing continuation path.
+An authenticated sealed TRAIN2 root:
+
+- does not enter the TRAIN task count;
+- does not launch a trainer;
+- does not consume maximum_jobs;
+- remains eligible for later per-size EVAL2/reassessment through the existing continuation path.
+
+A sealed root that is corrupt, foreign, stale for the current trajectory/runtime plan, or otherwise fails the existing authentication owner aborts the invocation before any new sibling trainer launch.
 
 Thus task_count means **unsealed TRAIN2 work actually needing scheduler admission**, not total scientific positions.
 
-If all required TRAIN roots are already sealed, no adaptive TRAIN scheduler is constructed merely to report zero work; proceed through deterministic EVAL2/reassessment/publication using existing authenticated state.
+If all required TRAIN roots are already sealed and authenticate, no adaptive TRAIN scheduler is constructed merely to report zero work; proceed directly to frozen-size-ordered finalization.
 
-### D3-8 - Recovery preflight is collection-wide before admission baseline
+### D3-8 - Recovery/integrity preflight is collection-wide before admission baseline
 
-The existing durable-continuation preflight can realize training state and affect CUDA occupancy. Therefore all unsealed production positions across the collection must complete recovery classification/authentication before the authoritative post-preflight GPU baseline and before any new child is admitted.
+Before the authoritative GPU admission baseline and before any new child is admitted, every production position must be classified into exactly one current state:
 
-A foreign/corrupt/incompatible continuation in any pending production position fails the wave before sibling launch. Do not preflight lazily after other sizes have started.
+1. **fresh/unsealed with no durable continuation** - no recovery authentication is needed yet;
+2. **unsealed with durable continuation** - run the existing _prepare_post_selection_run(...) recovery/authentication preflight without launching the trainer;
+3. **sealed terminal TRAIN2** - run the existing read-only sealed-root authentication from D3-7.
+
+Recovery classification may realize training-side state and affect CUDA occupancy. Therefore all applicable preflight operations complete before the authoritative post-preflight GPU sample used by build_training_concurrency_plan().
+
+Any foreign/corrupt/incompatible continuation or sealed root fails the invocation before sibling launch. Do not preflight lazily after other sizes have started. Do not turn this integrity pass into EVAL2.
 
 ### D3-9 - Collection-wide production barrier remains stronger than scheduler readiness
 
@@ -227,19 +246,21 @@ _cv_admission_blockers(contexts) remains ahead of all production planning/execut
 
 The globalization repair must not turn the barrier into per-task filtering.
 
-### D3-10 - Per-size assessment/publication remains authoritative and ordered
+### D3-10 - Per-size EVAL2/assessment/publication remains authoritative and ordered
 
-After all required results exist, each selected context is finalized independently using its current FinalProductionPlan, positions, and evidence.
+After the global TRAIN-only wave succeeds, each selected context is finalized independently in frozen collection order using its current FinalProductionPlan, positions, sealed roots, and evidence.
 
 For each size:
 
-- every required final seed is assessed;
+- EVAL2 visits required final seeds in FinalProductionPlan.required_final_seeds order;
+- every required final seed is assessed before that size's aggregate production verdict is decided;
+- measurements/candidate records are durably published through the existing owner before the corresponding assessment, exactly as today;
 - typed no-admissible outcomes remain durable;
-- a rejected final seed prevents that size's final publication exactly as today;
+- if any required seed has no admissible representative, the size receives no final publication and the invocation fails after preserving the complete per-seed assessment set for that size;
 - no sibling size's evidence can satisfy or alter local completion;
-- publication uses the existing per-binding owner.
+- final publication uses the existing per-binding owner and separately re-authenticates current production authorization.
 
-The implementation may finalize sizes in frozen collection order after the global evaluation phase. It must not make cross-size scheduler arrival order observable in publication semantics.
+If one size fails EVAL2, assessment, currentness, or final publication, later selected sizes do not begin fresh EVAL2/finalization in that invocation. Their already-sealed TRAIN2 roots remain reusable. Cross-size scheduler arrival order is never observable in scientific reduction or publication semantics.
 
 ### D3-11 - Campaign-level progress tells the truth
 
@@ -255,11 +276,11 @@ For two selected sizes with one required production seed each, a fresh run must 
 
 Stage-level campaign status remains one post_selection_final_production stage over the complete requested collection.
 
-### D3-12 - Preserve both production authorization fences
+### D3-12 - Preserve both production authorization fences and per-binding pointer semantics
 
 The collection-wide _cv_admission_blockers(contexts) barrier remains the first production admission fence, but it is not the only one.
 
-Before a per-size FinalProductionPlan is built or made current, the per-size production planner must re-run the existing exact authorization relation:
+Before a per-size FinalProductionPlan is constructed, the per-size production planner must re-run the existing exact authorization relation:
 
 - resolve_current_cv_plan(context);
 - resolve_current_cv_acceptance(context);
@@ -267,21 +288,30 @@ Before a per-size FinalProductionPlan is built or made current, the per-size pro
 
 This is the accepted second-line race/currentness fence formerly inside execute_final_production(context). Splitting planning from execution MUST NOT delete, weaken, or replace it with the earlier collection preflight.
 
-Every selected size's second-line authorization and final-plan/run-position planning must complete successfully **before the first new collection TRAIN2 child launches**. If any size fails this re-check, launch zero new trainers for the invocation. Commit-time selected-binding/generation fences remain authoritative later when pointers/assessments/publications are made current.
+The collection owner uses a two-phase pre-launch planning discipline:
 
-### D3-13 - Global TRAIN/EVAL may run ahead; finalization remains fail-fast in frozen size order
+**Phase A - construct/authenticate without current-pointer side effects.** For every selected size in frozen order, re-run the second-line CV authorization and construct/validate its FinalProductionPlan, run plans, assessment positions, task descriptors, reuse offers, and execution profile in memory (plus immutable content-addressed objects only where the existing owner can publish them without making them current). Phase A must succeed for the whole collection before any new trainer launches.
 
-Globalizing TRAIN2 means a later selected size may already have authenticated TRAIN2/EVAL2 evidence before an earlier size's final-seed assessment is reduced. That execution overlap does not authorize later publication.
+**Phase B - publish through existing per-binding owners.** After all Phase-A bundles pass, publish each binding-scoped FinalProductionPlan/run-plan object and current plan pointer through the existing publication barrier/currentness owner. No collection-wide pointer transaction, rollback protocol, or shadow planned-collection authority is introduced.
 
-After the successful collection TRAIN wave and deterministic serial EVAL2:
+If Phase A fails for any size, launch zero trainers and do not make a new sibling FinalProductionPlan pointer current as part of this invocation. If a concurrent currentness race is detected during Phase B after earlier valid per-binding pointers were already committed, stop before TRAIN2; those earlier pointers remain subject to their own normal currentness and are not rolled back merely to simulate collection atomicity.
+
+Commit-time selected-binding/generation fences remain authoritative again when assessments and final publications are made current.
+
+### D3-13 - Global TRAIN2 may run ahead; EVAL2/finalization remains fail-fast in frozen size order
+
+Globalizing TRAIN2 means a later selected size may already have an authenticated sealed TRAIN2 root before an earlier size's EVAL2/assessment is decided. That execution overlap authorizes no later evaluation or publication.
+
+After the successful collection TRAIN-only wave:
 
 1. finalize selected sizes in frozen collection order;
-2. within a size, reduce required final seeds in FinalProductionPlan.required_final_seeds order;
-3. on the first per-size assessment/publication failure, abort later size finalization for that invocation;
-4. do not create a new final publication for any later selected size after that earlier failure;
-5. preserve already-authenticated sibling TRAIN2 roots and immutable measurement evidence for ordinary reuse on rerun.
+2. for the current size, perform serial EVAL2 for every required final seed in required-seed order;
+3. publish that size's measurements and complete per-seed assessment set through the existing owners;
+4. if any required seed is a typed no-admissible outcome, or EVAL2/currentness/publication otherwise fails, abort before beginning fresh EVAL2 for later sizes;
+5. only a fully accepted size may publish its existing binding-scoped final-production decision;
+6. preserve already-authenticated sibling TRAIN2 roots and any measurement evidence that was already durable before the failure for ordinary reuse on rerun.
 
-Thus the repair increases ready-work execution overlap while preserving the current fail-fast public finalization semantics. It does not invent a campaign-level production reducer or declare a failed size equivalent to a CV rejection.
+This preserves the current policy that all required seeds of one size are assessed before that size fails for a no-admissible member; it does **not** turn the first rejected seed into an intra-size early stop. The repair increases TRAIN2 overlap only and does not invent a campaign-level production reducer.
 
 ### D3-14 - CV scheduling is an explicitly preserved sibling capability
 
@@ -299,13 +329,15 @@ frozen selected sizes in frozen order
 
 Do not flatten CV work across selected sizes, do not change CV queue ordering, and do not alter CV failure/rejection/restart semantics as a side effect of making tasks self-owning.
 
-### D3-15 - Enumerate exact global production identity before scheduler construction
+### D3-15 - Enumerate exact global production identity before scheduler construction without eagerly materializing fresh training
 
-All per-size final plans, required run plans, assessment positions, and production tasks must be materialized/authenticated before constructing the collection concurrency plan.
+All per-size final plans, required run plans, assessment positions, and production task **descriptors** must be constructed/enumerated and authority-validated before constructing the collection concurrency plan.
+
+Enumerated here does **not** mean eagerly creating a fresh PostSelectionMaterialization, fitting a fresh PostSelectionFittedPreparation, opening a model/provider, or launching MACE. Fresh preparation/materialization remains owned by execute_post_selection_run(...) after scheduler admission, exactly as in the current run lifecycle. The pre-launch recovery pass may inspect/authenticate only durable state that already exists.
 
 Local seed slots are not globally unique. The collection execution owner must assign an execution-only wave key and prove before launch that no two tasks resolve to the same run_plan.run_identity or training-trajectory identity. A duplicate means a planning/identity defect and fails closed; the scheduler must never concurrently launch the same logical run twice.
 
-Results route back through the owning binding/context plus local position (or an equivalent exact owner key). The wave key cannot enter a scientific digest, run-root identity, assessment position, or publication record.
+Results/state route back through the owning binding/context plus local position (or an equivalent exact owner key). The wave key cannot enter a scientific digest, run-root identity, assessment position, or publication record.
 
 ### Delegated D4 space
 
@@ -314,12 +346,18 @@ Implementation may choose internal helper names, dataclass names, mapping shape,
 A preferred minimal reduction is:
 
 ~~~text
-prepare one per-size production execution bundle
-  -> collect bundles
-  -> classify sealed vs unsealed positions
-  -> execute unsealed positions once through generalized existing scheduler
-  -> evaluate sealed/trained positions in deterministic order
-  -> finalize each per-size bundle with existing assessment/publication logic
+Phase A: construct/authenticate every per-size production bundle in memory
+  -> validate unique global task identities + compatible execution profile
+Phase B: publish existing per-binding final-plan/run-plan authorities
+  -> collection recovery/integrity preflight
+       sealed roots: read-only sealed-root authentication
+       resumable roots: existing continuation preflight
+       fresh roots: no eager materialization
+  -> one generalized existing scheduler TRAINs only unsealed positions to seal
+  -> frozen-size loop:
+       serial EVAL2 in required seed order
+       publish measurements/assessments
+       publish or fail that size
 ~~~
 
 The implementer may re-shape _PendingPostSelectionRun, _preflight_post_selection_pending_runs, _execute_post_selection_pending_runs, and _run_post_selection_positions so each task owns its context/policy instead of receiving one function-global context.
@@ -332,21 +370,25 @@ Do **not** compensate by adding another executor, queue, scheduler, lease regist
 
 ## 3. Material implementation obligations
 
-### O1 - Extract planning from execution without duplicating production authority
+### O1 - Extract two-phase planning from execution without duplicating production authority
 
 Refactor execute_final_production as needed so the command can construct and authenticate every per-size plan/run position before launching the collection TRAIN wave.
 
 Planning must continue using the exact current owners for CV reauthentication, replay resolution/lineage, common monitor/separation, final-plan construction/validation, final training budget policy, assessment policy digest, reuse offers, run-plan construction, evidence-store publication, and final-plan current-pointer publication.
 
-The extracted per-size planner must preserve the accepted second-line CV authorization guard immediately before final-plan construction/publication. Build/authorize **all** per-size bundles before constructing the global TRAIN scheduler; a later-size planning/currentness failure must not occur after an earlier-size trainer has already launched.
+The extracted per-size planner must preserve the accepted second-line CV authorization guard immediately before final-plan construction. Build/authorize **all** per-size bundles in Phase A before any current-plan publication or collection TRAIN scheduling. Only after Phase A succeeds may Phase B publish the existing binding-scoped plan/run objects and pointers.
 
-Do not copy these calculations into a second collection-specific planner.
+A Phase-B commit-time stale-binding failure stops before TRAIN2 but does not roll back an earlier sibling's independently valid pointer. Do not introduce collection-atomic pointer machinery to erase a legitimate per-binding commit.
+
+Do not copy these calculations into a second collection-specific planner and do not perform fresh training materialization merely to enumerate the collection.
 
 Acceptance: changing only execution width or cross-size queue order produces byte-identical scientific run/position identities to serial execution for the same accepted inputs.
 
-### O2 - Generalize the existing pending-run execution boundary
+### O2 - Generalize the existing pending-run execution boundary as TRAIN-only
 
-The scheduler path currently accepts one context and one budget_policy; that is insufficient for collection work. Rewire it so execution calls execute_post_selection_run with the owning task's context/policy.
+The scheduler path currently accepts one context and one budget_policy; that is insufficient for collection work. Rewire it so TRAIN2 execution calls execute_post_selection_run(..., stop_after_training=True) with the owning task's context/policy and returns only after the owned task reaches the sealed terminal TRAIN2 boundary.
+
+Move/retain EVAL2 outside the global scheduler helper. The generalized scheduler must not return PostSelectionRunResult as the product of the collection TRAIN wave merely by running EVAL2 internally.
 
 All scheduler state maps must key by a wave-global unique slot/key. A local seed index such as slot=0 is not globally unique across sizes and MUST NOT be used directly once positions are flattened.
 
@@ -364,13 +406,13 @@ A demoted task returns to the existing restartable queue with its original scien
 
 Globalization must work when the initial collection contains any mix of no prior roots, sealed TRAIN2 roots awaiting EVAL2, complete current assessments, stale historical assessment offers, interrupted resumable TRAIN2 roots, and positions requiring fresh training.
 
-A retry must schedule only actually unsealed current TRAIN2 work, then evaluate/reassess through existing owners. Completed sibling work cannot be invalidated merely because another selected size previously failed.
+Before scheduling, sealed roots must authenticate read-only and resumable roots must pass existing continuation preflight. A retry schedules only actually unsealed current TRAIN2 work. After the collection TRAIN wave, per-size finalization reuses sealed roots and any exact reusable measurements through existing owners. Completed sibling TRAIN2 work cannot be invalidated merely because another selected size previously failed.
 
-### O5 - Preserve publication barriers/currentness
+### O5 - Preserve publication barriers/currentness without inventing collection atomicity
 
 Every existing publication remains under its binding/campaign-generation barrier and current-pointer/currentness checks. A collection scheduler result is not authority to publish if the owning context became stale before finalization.
 
-No collection-level publication transaction is introduced. If a later per-size finalization fails its currentness/publication check, preserve already immutable evidence and report the real failure.
+No collection-level publication transaction is introduced for plans, assessments, or final products. Phase-B FinalProductionPlan pointer commits remain independently binding-scoped. If one pointer commit or a later per-size finalization fails its currentness/publication check, preserve already committed valid sibling pointers/evidence, stop before the next unauthorized phase as specified above, and report the real failure. Do not roll back immutable objects or current pointers merely to manufacture collection atomicity that the accepted architecture does not define.
 
 ### O6 - Preserve single-size behavior
 
@@ -403,9 +445,9 @@ The present production defect is upstream of the adaptive controller's task popu
 
 If generalization exposes a genuine controller defect independent of task scoping or proves heterogeneous cross-size resource demand cannot be represented by its existing single-profile contract, stop and reopen D3 with evidence rather than bundling an unrelated scheduler-policy change.
 
-### O10 - Preserve public finalization failure behavior
+### O10 - Preserve public EVAL2/finalization failure behavior
 
-The global execution wave may produce reusable evidence for later siblings, but per-size assessment/publication still commits in frozen selected-size order and remains fail-fast. A failed N_i must prevent new final publication of N_j for j > i in that invocation. Do not turn available sibling measurements into implicit permission to complete/publicly succeed the remaining subset.
+The global TRAIN-only wave may produce reusable sealed TRAIN2 roots for later siblings, but EVAL2/assessment/publication still commits in frozen selected-size order and remains fail-fast. A failed N_i must prevent fresh EVAL2 and new final publication of N_j for j > i in that invocation. Do not eagerly evaluate later siblings merely because their TRAIN2 roots are ready, and do not turn any already-durable sibling measurements into implicit permission to complete/publicly succeed the remaining subset.
 
 ### O11 - Preserve CV behavior through shared-helper changes
 
@@ -461,10 +503,10 @@ This cycle replaces one mature orchestration concretization, so the following tr
 | one effective TRAIN resource owner | PRESERVE/EXPAND ready-work population through existing AdaptiveTrainingConcurrency |
 | TRAIN2/EVAL2 accelerator phase separation | PRESERVE, now across the whole production collection wave |
 | per-run process cancellation, termination, reaping, disk/timeout ownership | PRESERVE at MacePostSelectionTrainer/run owner |
-| authenticated sealed-root/restart reuse | PRESERVE; sealed roots never consume fresh TRAIN admission |
+| authenticated sealed-root/restart reuse | PRESERVE; every sealed root authenticates read-only before sibling TRAIN admission and never consumes fresh TRAIN capacity |
 | deterministic queue/backoff behavior | PRESERVE with frozen-size/seed queue order and most-recent-admission demotion |
-| per-size final assessment/publication and no cross-size committee | PRESERVE |
-| fail-fast production finalization in frozen size order | PRESERVE after global execution; later publication stops at first failure |
+| per-size serial EVAL2, final assessment/publication and no cross-size committee | PRESERVE after the global TRAIN-only wave |
+| fail-fast production finalization in frozen size order | PRESERVE; later sizes do not begin fresh EVAL2/publication after earlier-size failure |
 | multi-size terminal lifecycle with no implicit release winner | PRESERVE |
 | CV serial selected-size orchestration | PRESERVE unchanged |
 | production serial selected-size TRAIN scheduling | **RETIRE/SUPERSEDE ONLY THIS CAPABILITY** with one collection-scoped TRAIN wave |
@@ -475,7 +517,7 @@ No capability may be dropped merely because its former location was inside execu
 
 Existing tests for per-size scientific identity, CV barrier semantics, TRAIN2 cancellation/teardown, memory backoff, and restart remain relevant but are insufficient to prove the new collection scheduler scope.
 
-Any old test whose oracle specifically requires serial production size iteration becomes stale by intended D3 change and must be replaced with an oracle for the stronger work-conserving ownership contract, not simply deleted.
+Any old test whose oracle specifically requires serial **production TRAIN2** size iteration becomes stale by intended D3 change and must be split/replaced with an oracle for the stronger work-conserving TRAIN ownership contract, not simply deleted. In particular, tests/test_mlff_target_size_multi_selection.py::test_outer_size_execution_is_serial_and_adds_no_scheduler currently conflates CV and production: retain its CV outer-serial/resource-ownership protection while replacing only the production-TRAIN serialization assertion. Per-size production EVAL2/finalization remains serial and ordered.
 
 No previous GPU performance result is accepted as proof of the new assembled collection scheduler. Target-hardware production qualification remains deferred.
 
@@ -540,13 +582,26 @@ Run the same bounded deterministic campaign with effective training concurrency 
 
 Make one selected size missing/stale/rejected at CV. Assert zero production trainer launches and no newly current subset publication.
 
-#### A6 - preflight-before-launch
+#### A6 - complete recovery/integrity preflight before launch
 
-Install a foreign/corrupt durable continuation for one pending size while another is runnable. Assert collection preflight fails before any new sibling trainer starts.
+Cover both forms through the real collection owner while another size has runnable fresh TRAIN2 work:
 
-#### A7 - sealed-root mixed restart
+1. install a foreign/corrupt durable **unsealed continuation** and prove the existing continuation preflight rejects it;
+2. install a corrupt/foreign/incompatible **sealed TRAIN2 root** and prove the existing read-only sealed-root authentication rejects it.
 
-Provide one sealed TRAIN2 root and one unsealed sibling across different sizes. Assert only the unsealed position enters task_count/TRAIN admission; after the TRAIN wave, both reach the proper EVAL2/reassessment path from their own authenticated roots.
+In both cases assert zero new sibling trainer launches, no EVAL2 begins, and the authoritative GPU admission baseline/controller is not used to admit work after the failure.
+
+#### A7 - sealed-root mixed restart and canonical EVAL order
+
+Provide a mix of already-sealed and unsealed final-seed roots across at least two sizes, including a case where an earlier local seed is already sealed and a later seed requires training.
+
+Assert:
+
+- every pre-sealed root authenticates before new sibling launch;
+- only unsealed positions enter task_count/TRAIN admission;
+- the global scheduler returns after sealing the outstanding TRAIN2 roots and performs no EVAL2;
+- finalization then visits sizes in frozen order and, within each size, visits required seeds in required_final_seeds order regardless of which roots were pre-sealed versus newly trained;
+- no trainer relaunch occurs for valid sealed roots.
 
 #### A8 - failure/cancellation/restart
 
@@ -568,27 +623,36 @@ Run current one-size production acceptance/restart tests through the generalized
 
 For a fresh two-size/one-seed campaign, capture real scheduler output and prove planned/running lines report a two-job global wave. Child progress must still expose correct N_selected and seed/run context.
 
-#### A13 - second-line authorization remains before any launch
+#### A13 - second-line authorization and per-binding plan-publication semantics
 
-Use a two-size frozen design whose collection barrier initially passes. Make a later size stale/inconsistent at the exact per-size CV authorization boundary before its final plan is built. Through real train-production prove:
+Use a two-size frozen design whose collection barrier initially passes.
 
-- the extracted planner re-runs the real CV-plan/acceptance/method guard;
-- zero new trainers launch for either size;
-- no new earlier-size final plan/publication becomes current merely because its own guard passed first;
+**Phase-A case:** make the later size stale/inconsistent at the exact per-size CV authorization boundary before any plan pointer publication. Through real train-production prove:
+
+- the extracted planner re-runs the real CV-plan/acceptance/method guard for every size;
+- Phase A fails before any new FinalProductionPlan pointer is made current for this invocation;
+- zero new trainers launch;
 - existing immutable evidence remains untouched.
 
-Retain the historical CV-policy currentness/acceptance-ancestry regressions that established this fence.
+**Phase-B race case:** after all Phase-A bundles validate, inject a currentness/generation race while sequential binding-scoped FinalProductionPlan pointers are being committed. Prove:
 
-#### A14 - production finalization stays fail-fast after global execution
+- the failing pointer publication aborts before TRAIN2;
+- any earlier sibling plan pointer that validly committed remains governed by its own per-binding currentness and is not rolled back;
+- no collection-level pointer transaction/rollback machinery is introduced.
 
-Create a bounded two-size production wave where both sizes reach authenticated TRAIN2/EVAL2, but the first selected size's final-seed assessment is rejected or otherwise fails at the existing finalization owner.
+Retain the historical CV-policy currentness/acceptance-ancestry regressions that established the second-line fence.
+
+#### A14 - production EVAL2/finalization stays fail-fast after global TRAIN2
+
+Create a bounded two-size production wave where both sizes reach authenticated sealed TRAIN2 roots, but the first selected size's finalization yields at least one typed no-admissible seed outcome (or fails at the existing EVAL2/currentness/publication owner).
 
 Prove:
 
-- the command fails at that first size;
-- the later size gets no new final publication in that invocation;
-- the later size's already-authenticated TRAIN2/measurement evidence remains reusable;
-- rerun does not retrain that valid sibling evidence and may finalize it only after the earlier blocking condition is resolved/current.
+- all required seeds of the first size are evaluated/assessed according to the existing per-size policy before a no-admissible member causes that size to fail;
+- the command fails at that first size and creates no final publication for it;
+- the later size begins no fresh EVAL2 and gets no new assessment/final publication in that invocation;
+- the later size's authenticated sealed TRAIN2 roots, plus any sibling measurement evidence that was already durable before the failure, remain reusable;
+- rerun does not retrain those valid sibling roots and may evaluate/finalize them only after earlier blocking conditions permit the command to reach them.
 
 #### A15 - global identity uniqueness and exact routing
 
@@ -611,6 +675,12 @@ Using two distinct production sizes/horizons through the real planner, inspect t
 
 The negative A10 case remains mandatory. If the positive case shows materially different demand that the existing single-profile controller cannot safely bound, the correct result is D3 reopen, not a passing test with ad-hoc maxima/minima.
 
+#### A18 - global scheduler stops at the sealed TRAIN2 boundary
+
+Through the real production owner, instrument the existing run seam and prove that the collection-wide scheduler invokes tasks with TRAIN-only semantics and returns after all unsealed roots are authenticated terminal/sealed. No EVAL2 provider, candidate assessment, measurement publication, or final-seed assessment is entered from inside that global scheduler wave.
+
+Then prove those same roots are consumed by the subsequent per-size finalizer through the existing run/EVAL owners. This is the structural/behavioral guard against accidentally globalizing EVAL2 while repairing TRAIN2 admission.
+
 ### Structural acceptance
 
 Static/source inspection must establish:
@@ -618,8 +688,11 @@ Static/source inspection must establish:
 - no production outer loop calls a complete per-size execute_final_production(context) that internally creates its own scheduler;
 - no second scheduler/executor/lease manager was added for size concurrency;
 - only one adaptive TRAIN controller is created for one collection production TRAIN wave;
-- all global production tasks are enumerated before concurrency-plan construction and duplicate run/training identities fail closed;
+- all global production task descriptors are enumerated before concurrency-plan construction without eagerly creating fresh training materialization, and duplicate run/training identities fail closed;
+- every sealed production root is authenticated read-only and every durable unsealed continuation is preflighted before the authoritative TRAIN admission baseline;
+- the global production scheduler ends at sealed TRAIN2 and contains no EVAL2/final-assessment loop;
 - the per-size second-line CV authorization fence still exists before final-plan construction and before first TRAIN launch;
+- no collection-level plan-pointer transaction/rollback authority was added;
 - public CV still performs selected-size outer-serial orchestration and has not acquired a collection-global size queue;
 - no wave-global slot/key participates in scientific content digests;
 - historical architecture snapshots are unchanged.
@@ -660,17 +733,17 @@ At closeout, evaluate whether this episode materially extends an existing PEM fa
 
 ## 7. Stages and reuse
 
-### Stage P1 - execution-bundle decomposition and authorization preservation
+### Stage P1 - two-phase execution-bundle decomposition and authorization preservation
 
-Refactor final-production planning/finalization so every per-size plan and position can exist before execution. Preserve the per-size second-line CV guard, enumerate all bundles before launch, add exact global identity/routing checks, and retain one-size scientific identity. Run A3, A5, A11, A13, and A15 plus focused production identity/publication tests.
+Refactor final-production planning so Phase A constructs/authenticates every per-size plan/task descriptor without current-plan pointer side effects or fresh training materialization; validate global identities/profile; then Phase B publishes through existing per-binding owners. Preserve the second-line CV guard and one-size scientific identity. Run A3, A5, A11, A13, and A15 plus focused production identity/publication tests.
 
-### Stage P2 - collection scheduler generalization and resource compatibility
+### Stage P2 - collection recovery + TRAIN-only scheduler generalization
 
-Make pending tasks self-owning; prove scheduler-profile compatibility; flatten only unsealed production positions; implement collection preflight/global task-count semantics; execute one TRAIN wave and deterministic post-TRAIN EVAL2. Run A1-A2, A6-A7, A10, A12, A17 plus existing scheduler regressions.
+Make pending tasks self-owning; prove scheduler-profile compatibility; authenticate sealed roots and durable unsealed continuations collection-wide; flatten only unsealed production positions; implement global task-count semantics; execute one TRAIN-only wave that ends at sealed roots. Run A1-A2, A6-A7, A10, A12, A17-A18 plus existing scheduler regressions.
 
-### Stage P3 - failure/restart/finalization closure and CV non-impact
+### Stage P3 - per-size EVAL/failure/restart closure and CV non-impact
 
-Exercise global cancellation, demotion, sealed-root recovery, currentness/publication races, fail-fast per-size finalization, and retry. Run A8-A9, A14, A16 and affected CV/recovery/storage suites.
+Exercise global TRAIN cancellation/demotion, sealed-root recovery, canonical mixed-root EVAL order, currentness/publication races, fail-fast per-size EVAL/assessment/publication, and retry. Run A8-A9, A14, A16 and affected CV/recovery/storage suites.
 
 ### Stage P4 - documentation and assembled acceptance
 
@@ -689,8 +762,9 @@ Reopen D3 if:
 - selected production contexts genuinely require incompatible simultaneous resource owners that cannot safely share one adaptive controller;
 - N/horizon/batch/materialization differences create materially heterogeneous RAM/VRAM/CPU demand that the existing homogeneous planner/telemetry projection cannot conservatively represent;
 - safe execution would require multiple profile buckets/controllers, a changed training_parallel.py resource model, or another durable scheduler;
-- collection-wide TRAIN/EVAL separation requires a second durable scheduler or materially new persisted orchestration state;
-- per-size finalization cannot preserve current fail-fast semantics without changing public/architectural behavior;
+- collection-wide TRAIN-only scheduling cannot hand off cleanly to the existing sealed-root/EVAL owners without a second durable scheduler or materially new persisted orchestration state;
+- read-only sealed-root authentication before sibling admission proves impossible without performing EVAL2 or mutating accepted state;
+- per-size EVAL2/finalization cannot preserve current fail-fast semantics without changing public/architectural behavior;
 - the current one-resource-domain assumption is false for an accepted campaign configuration.
 
 ### Evidence requiring D2/D1 challenge/reopen
@@ -709,11 +783,11 @@ No current evidence contradicts accepted D1/D2. No Serious Challenge is active.
 
 Implementation is complete only when:
 
-- all production TRAIN2 positions across a fully admitted and second-line-authorized multi-size collection are enumerated before launch and visible to one existing adaptive scheduler wave;
+- all production TRAIN2 task descriptors across a fully admitted and second-line-authorized multi-size collection are enumerated before launch without eager fresh materialization and all unsealed work is visible to one existing adaptive scheduler wave;
 - scheduler/resource ownership is singular, the shared resource-profile assumption is positively established, and process teardown/disk/timeout authority is preserved;
-- local slot collisions cannot duplicate a global run and sealed/restartable work is handled without duplicate training;
-- collection-wide TRAIN/EVAL phase separation survives success, backoff, failure, and interruption;
-- per-size plan/assessment/publication identity is independent of scheduler order and fail-fast finalization remains frozen-size ordered;
+- every existing sealed root and resumable continuation is authenticated before sibling TRAIN admission; local slot collisions cannot duplicate a global run;
+- the collection scheduler stops at authenticated sealed TRAIN2 roots, and no EVAL2 begins until the entire global TRAIN wave is terminal;
+- per-size EVAL2/assessment/publication then remains frozen-size/seed ordered and fail-fast, independent of scheduler order;
 - public CV selected-size scheduling and semantics remain unchanged despite shared-helper refactoring;
 - one-size behavior remains conforming;
 - current D3/D4 documentation explicitly supersedes the accepted serial-production scheduler baseline and matches the repaired execution contract;
