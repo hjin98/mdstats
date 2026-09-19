@@ -8,11 +8,13 @@ created_date: 2026-09-19
 reviewed_date: 2026-09-19
 second_reviewed_date: 2026-09-19
 closure_falsification_date: 2026-09-19
-revision: 4
-workplan_review_status: pass-after-closure-falsification-repair
+third_reviewed_date: 2026-09-19
+revision: 5
+workplan_review_status: pass-after-third-review-repair
 reviewed_pre_repair_head: 10c68eb50cb7ee2b5f0bb8d43e35bb250a186d96
 second_reviewed_pre_repair_head: 35fe7c19f60d99a2ae99257496acb2e82c35975d
 closure_falsification_pre_repair_head: 47376b968a62ab05473e370746f79988436bb3e3
+third_reviewed_pre_repair_head: 12959ef0bdc7a9ac9253fafa846d9f7bb4e0bb28
 branch: design/mlff-production-global-train-scheduler-repair
 basis_commit: f341a3f993b931c5e0838e95520b8b4fd41459ae
 highest_affected_domain: D3
@@ -27,7 +29,7 @@ production_gpu_qualification: deferred-final-release
 
 **PASS AS IMPLEMENTATION WORKPLAN AFTER SECOND REVIEW REPAIR / FROZEN FOR D4. No Serious Challenge is active.**
 
-Revision 4 closes the remaining gaps found by the second independent D3 pass plus its closure falsification. The repair remains deliberately narrow: **only TRAIN2 admission is collection-global**. EVAL2, per-seed assessment, and final publication remain inside the existing frozen-size-ordered finalization path. Sealed-root integrity is part of pre-launch collection recovery; FinalProductionPlan pointers remain per-binding rather than collection-atomic; and a live generation/currentness fence now prevents the global queue from admitting new old-design TRAIN2 work after target-size rollover.
+Revision 5 closes the remaining recovery-normalization gap found by the third independent D3 pass. The repair remains deliberately narrow: **only actual TRAIN2 continuation/admission is collection-global**. Recovery now distinguishes roots that truly still require trainer work from already-terminal-but-unsealed roots that require only the existing completion/seal transition. The latter are sealed before scheduler sizing and never inflate TRAIN task_count, controller ceilings, progress, or resource-profile compatibility. The same rule covers current post-cutover roots and authenticated historical/legacy roots through their existing recovery owners. EVAL2, per-seed assessment, and final publication remain inside the frozen-size-ordered finalization path. FinalProductionPlan pointers remain per-binding rather than collection-atomic, and the live generation/currentness fence still prevents new old-design TRAIN2 admission after target-size rollover.
 
 No D1/D2 defect was found. No second scheduler, collection publication transaction, new persistent orchestration machinery, or widened evaluation semantics is authorized.
 
@@ -162,11 +164,13 @@ The execution item passed to the shared scheduler must carry or resolve, without
 
 The scheduler must never use a single outer context or budget_policy for heterogeneous tasks merely because the current implementation signature does.
 
-### D3-4 - One scheduler-compatible execution profile is proved before launch
+### D3-4 - One scheduler-compatible execution profile is proved over actual TRAIN-required work
 
-Before any production TRAIN2 child is admitted, the collection execution owner must prove that all unsealed production positions can legally share one scheduler resource domain **under the assumptions the existing TrainingConcurrencyPlan/AdaptiveTrainingConcurrency actually make**.
+Before any production TRAIN2 child is admitted, the collection execution owner must first complete the recovery normalization in D3-7/D3-8 and then prove that every position still classified **TRAIN_REQUIRED** can legally share one scheduler resource domain **under the assumptions the existing TrainingConcurrencyPlan/AdaptiveTrainingConcurrency actually make**.
 
-The compatibility proof covers, at minimum:
+Positions that are already sealed, or whose authenticated TRAIN2 continuation is already terminal and is sealed during recovery normalization without a trainer launch, do not participate in the scheduler-profile compatibility proof merely because their roots were unsealed at command entry.
+
+The compatibility proof over TRAIN_REQUIRED positions covers, at minimum:
 
 - effective device/backend and exact GPU telemetry domain;
 - shared method/model/runtime realization and learned-model precision relevant to residency;
@@ -176,11 +180,11 @@ The compatibility proof covers, at minimum:
 - the per-job RAM and VRAM estimate regime consumed by the existing planner;
 - trainer/process-supervision ownership, timeout semantics, and the trainer-local minimum-free-disk reserve owner.
 
-N, exact membership, seed, and H_prod do **not** have to be equal. They remain scientific identities. But the implementation must establish whether changing N or another per-position input materially changes the per-job resource demand assumed by the homogeneous planner. The current code uses one loader-worker count and one configured RAM/VRAM estimate for the whole plan, then learns promotion demand from active jobs; it is therefore forbidden to calibrate on a light position and silently assume that observation bounds a later heavier position unless the existing resource contract makes that inference valid.
+N, exact membership, seed, and H_prod do **not** have to be equal. They remain scientific identities. But the implementation must establish whether changing N or another per-position input materially changes the per-job resource demand assumed by the homogeneous planner. The current code uses one loader-worker count and one configured RAM/VRAM estimate for the whole plan, then learns promotion demand from active jobs; it is therefore forbidden to calibrate on a light TRAIN_REQUIRED position and silently assume that observation bounds a later heavier position unless the existing resource contract makes that inference valid.
 
-The preferred current result is a single compatible profile because all contexts share cfg, method, trainer, device, and execution policy. That expectation is not proof. D4 must provide a bounded real-owner compatibility test over distinct selected sizes/horizons and inspect the actual scheduler inputs.
+The preferred current result is a single compatible profile because all current production contexts share cfg, method, trainer, device, and execution policy. That expectation is not proof. D4 must provide a bounded real-owner compatibility test over distinct selected sizes/horizons and inspect the actual scheduler inputs **after recovery normalization**.
 
-If materially heterogeneous demand cannot be bounded safely by the existing single-controller contract without changing training_parallel.py, inventing per-profile buckets, or running multiple resource schedulers, **reopen D3**. Do not silently choose the first task's values, take ad-hoc minima/maxima, or broaden the controller inside this workplan.
+If materially heterogeneous TRAIN_REQUIRED demand cannot be bounded safely by the existing single-controller contract without changing training_parallel.py, inventing per-profile buckets, or running multiple resource schedulers, **reopen D3**. Do not silently choose the first task's values, take ad-hoc minima/maxima, or broaden the controller inside this workplan.
 
 The minimum-free-disk reserve remains enforced by MacePostSelectionTrainer per owned child. Do not add a disk scheduler. A disk/timeout failure retains the existing whole-wave terminal failure/cancel/reap semantics.
 
@@ -211,36 +215,53 @@ Memory-pressure demotion remains a scheduler resource action, not a scientific f
 
 The scheduler must not infer successful teardown from a cancellation request, future cancellation flag, or elapsed timeout.
 
-### D3-7 - Sealed roots do not consume TRAIN admission capacity, but they must authenticate before sibling launch
+### D3-7 - Normalize terminal training state before scheduler sizing
 
-Before the global concurrency plan is built, classify every production position through the existing run-root completion owner.
+Before the global concurrency plan is built, classify every production position under the existing run-root/recovery owners while holding the existing run-activity exclusion whenever the root is inspected or mutated.
 
-For a root reported sealed, classification alone is insufficient. Before any new sibling TRAIN2 child may launch, use the existing read-only sealed-root authentication owner (_authenticate_sealed_training_root(...) or its conforming successor) under the existing run-activity exclusion to prove the completion anchor, materialization, terminal TRAIN2 summary, training trajectory, and reconstructed runtime-plan ancestry. This preflight performs **no EVAL2, checkpoint/provider inference, assessment, or publication**.
+A position is scheduler work only if authenticated recovery proves that its TRAIN2 trajectory still requires additional trainer execution. Use the execution-local classification **TRAIN_REQUIRED** only for queue construction; do not persist a new state enum or recovery registry.
 
-An authenticated sealed TRAIN2 root:
+A position that already has authenticated terminal TRAIN2 but lacks the current completion/seal proof is **not** TRAIN_REQUIRED. Complete the accepted owner-local seal transition before scheduler sizing:
 
-- does not enter the TRAIN task count;
+- for a post-cutover root, reuse/factor the existing terminal-continuation path that validates the exact materialization, runtime plan, runtime summary, optimizer/RNG/checkpoint ancestry and then calls the existing training-completion/topology owner;
+- for a historical/legacy root, reuse/factor `_authenticate_legacy_training_state(...)`, `_authenticate_post_selection_continuation(...)`, the existing continuation-execution-evidence check, and the accepted append-only historical completion path;
+- launch no trainer for either case;
+- for a historical root, rewrite/copy/rename/symlink no pre-existing byte; only the already-authorized append-only topology/completion proof may be added;
+- publish no EVAL2 result, assessment pointer, final publication, or new currentness authority during this normalization. Existing idempotent content-addressed compatibility evidence may be stored only through its already-accepted historical-reuse owner.
+
+Once sealed, authenticate the root through `_authenticate_sealed_training_root(...)` (which delegates to `_authenticate_legacy_sealed_training_root(...)` for historical roots) or a conforming factored successor. A sealed root:
+
+- does not enter TRAIN task_count;
 - does not launch a trainer;
 - does not consume maximum_jobs;
-- remains eligible for later per-size EVAL2/reassessment through the existing continuation path.
+- remains eligible for later per-size EVAL2/reassessment through the existing run path.
 
-A sealed root that is corrupt, foreign, stale for the current trajectory/runtime plan, or otherwise fails the existing authentication owner aborts the invocation before any new sibling trainer launch.
+A corrupt, foreign, incompatible, or contradictory partial-proof state fails before sibling TRAIN launch.
 
-Thus task_count means **unsealed TRAIN2 work actually needing scheduler admission**, not total scientific positions.
+Thus task_count means **positions that still require real TRAIN2 continuation/trainer ownership after recovery normalization**, not merely roots that happened to be unsealed when the command began.
 
-If all required TRAIN roots are already sealed and authenticate, no adaptive TRAIN scheduler is constructed merely to report zero work; proceed directly to frozen-size-ordered finalization.
+If normalization leaves zero TRAIN_REQUIRED positions, construct no adaptive TRAIN scheduler merely to report zero work; after the required currentness fence, proceed directly to frozen-size-ordered finalization.
 
-### D3-8 - Recovery/integrity preflight is collection-wide before admission baseline
+### D3-8 - Recovery/integrity normalization is collection-wide before admission baseline
 
-Before the authoritative GPU admission baseline and before any new child is admitted, every production position must be classified into exactly one current state:
+Before the authoritative GPU admission baseline and before any new child is admitted, every production position must resolve to one of these execution-local outcomes:
 
-1. **fresh/unsealed with no durable continuation** - no recovery authentication is needed yet;
-2. **unsealed with durable continuation** - run the existing _prepare_post_selection_run(...) recovery/authentication preflight without launching the trainer;
-3. **sealed terminal TRAIN2** - run the existing read-only sealed-root authentication from D3-7.
+1. **post-cutover fresh root, no durable continuation** -> TRAIN_REQUIRED;
+2. **post-cutover authenticated incomplete continuation** -> TRAIN_REQUIRED, preserving its exact restart ancestry;
+3. **post-cutover authenticated terminal continuation, not yet sealed** -> publish only the existing training completion/topology proof, authenticate the resulting sealed root, then exclude it from TRAIN_REQUIRED;
+4. **post-cutover sealed root** -> authenticate read-only, then exclude it from TRAIN_REQUIRED;
+5. **historical/legacy interrupted root** -> prove the existing exact historical-equivalence/runtime/continuation contract; if incomplete, TRAIN_REQUIRED continuation under the historical runtime identity;
+6. **historical/legacy terminal-but-unsealed root** -> prove the same historical contract, append only the already-authorized seal, authenticate the resulting sealed root, then exclude it from TRAIN_REQUIRED;
+7. **historical/legacy sealed root** -> authenticate through the existing historical sealed-root owner and exclude it from TRAIN_REQUIRED;
+8. **foreign/corrupt/incompatible/ambiguous partial state** -> typed failure before any sibling TRAIN launch.
 
-Recovery classification may realize training-side state and affect CUDA occupancy. Therefore all applicable preflight operations complete before the authoritative post-preflight GPU sample used by build_training_concurrency_plan().
+Do not use `_prepare_post_selection_run(...)` as a generic legacy validator: current and historical roots have distinct accepted recovery owners. Factor shared read-only classification only where doing so preserves those semantics exactly.
 
-Any foreign/corrupt/incompatible continuation or sealed root fails the invocation before sibling launch. Do not preflight lazily after other sizes have started. Do not turn this integrity pass into EVAL2.
+Recovery normalization can realize training-side state and may affect CUDA occupancy. Therefore all applicable normalization finishes before the authoritative post-normalization GPU sample used by `build_training_concurrency_plan()`.
+
+Any append-only seal created during normalization is an accepted recovery completion, not a scheduler completion and not scientific assessment. It remains durable even if a later sibling fails preflight; do not roll it back.
+
+Do not preflight lazily after other sizes have started. Do not turn recovery normalization into EVAL2.
 
 ### D3-9 - Collection-wide production barrier remains stronger than scheduler readiness
 
@@ -266,11 +287,12 @@ If one size fails EVAL2, assessment, currentness, or final publication, later se
 
 ### D3-11 - Campaign-level progress tells the truth
 
-The public TRAIN scheduler line for final production must describe the global unsealed TRAIN wave:
+The public TRAIN scheduler line for final production must describe the global **TRAIN_REQUIRED** wave after recovery normalization:
 
-- progress = completed TRAIN roots / global unsealed TRAIN positions;
-- active/queued/failed counts are global to that wave;
-- plan ceiling is computed from that task count and shared resource profile.
+- progress = newly scheduler-completed TRAIN roots / positions that actually required TRAIN2 continuation at scheduler construction;
+- active/queued/failed counts are global to that TRAIN_REQUIRED wave;
+- already-sealed and terminal-but-unsealed roots normalized to sealed state are reported through bounded reuse/recovery diagnostics, not counted as TRAIN jobs;
+- plan ceiling is computed from the TRAIN_REQUIRED task count and shared resource profile.
 
 Per-child TRAIN heartbeats retain their own N_selected, seed/run, and phase context.
 
@@ -333,7 +355,7 @@ Do not flatten CV work across selected sizes, do not change CV queue ordering, a
 
 ### D3-15 - Enumerate exact global production identity before scheduler construction without eagerly materializing fresh training
 
-All per-size final plans, required run plans, assessment positions, and production task **descriptors** must be constructed/enumerated and authority-validated before constructing the collection concurrency plan.
+All per-size final plans, required run plans, assessment positions, and production position **descriptors** must be constructed/enumerated and authority-validated before recovery normalization. Only descriptors that remain TRAIN_REQUIRED after D3-7/D3-8 become scheduler tasks and participate in concurrency-plan construction.
 
 Enumerated here does **not** mean eagerly creating a fresh PostSelectionMaterialization, fitting a fresh PostSelectionFittedPreparation, opening a model/provider, or launching MACE. Fresh preparation/materialization remains owned by execute_post_selection_run(...) after scheduler admission, exactly as in the current run lifecycle. The pre-launch recovery pass may inspect/authenticate only durable state that already exists.
 
@@ -424,9 +446,9 @@ A demoted task returns to the existing restartable queue with its original scien
 
 ### O4 - Preserve exact restart/reuse semantics
 
-Globalization must work when the initial collection contains any mix of no prior roots, sealed TRAIN2 roots awaiting EVAL2, complete current assessments, stale historical assessment offers, interrupted resumable TRAIN2 roots, and positions requiring fresh training.
+Globalization must work when the initial collection contains any mix of no prior roots, sealed TRAIN2 roots awaiting EVAL2, complete current assessments, stale historical assessment offers, interrupted resumable TRAIN2 roots, terminal-but-unsealed post-cutover roots, terminal-but-unsealed historical roots, historical interrupted continuations, and positions requiring fresh training.
 
-Before scheduling, sealed roots must authenticate read-only and resumable roots must pass existing continuation preflight. A retry schedules only actually unsealed current TRAIN2 work. After the collection TRAIN wave, per-size finalization reuses sealed roots and any exact reusable measurements through existing owners. Completed sibling TRAIN2 work cannot be invalidated merely because another selected size previously failed.
+Before scheduling, all of those states pass the D3-7/D3-8 normalization. A retry schedules only positions that still require actual trainer continuation. Terminal-but-unsealed roots are completed/sealed through existing recovery owners with zero trainer launch and disappear from task_count. After the collection TRAIN wave, per-size finalization reuses authenticated sealed roots and any exact reusable measurements through existing owners. Completed sibling TRAIN2 work cannot be invalidated merely because another selected size previously failed.
 
 ### O5 - Preserve publication barriers/currentness without inventing collection atomicity
 
@@ -529,7 +551,7 @@ This cycle replaces one mature orchestration concretization, so the following tr
 | one effective TRAIN resource owner | PRESERVE/EXPAND ready-work population through existing AdaptiveTrainingConcurrency |
 | TRAIN2/EVAL2 accelerator phase separation | PRESERVE, now across the whole production collection wave |
 | per-run process cancellation, termination, reaping, disk/timeout ownership | PRESERVE at MacePostSelectionTrainer/run owner |
-| authenticated sealed-root/restart reuse | PRESERVE; every sealed root authenticates read-only before sibling TRAIN admission and never consumes fresh TRAIN capacity |
+| authenticated sealed-root/restart reuse | PRESERVE; sealed roots authenticate before sibling TRAIN admission, terminal-but-unsealed current/legacy roots normalize to sealed state with zero trainer launch, and only genuinely incomplete trajectories consume TRAIN capacity |
 | deterministic queue/backoff behavior | PRESERVE with frozen-size/seed queue order and most-recent-admission demotion |
 | per-size serial EVAL2, final assessment/publication and no cross-size committee | PRESERVE after the global TRAIN-only wave |
 | fail-fast production finalization in frozen size order | PRESERVE; later sizes do not begin fresh EVAL2/publication after earlier-size failure |
@@ -609,26 +631,36 @@ Run the same bounded deterministic campaign with effective training concurrency 
 
 Make one selected size missing/stale/rejected at CV. Assert zero production trainer launches and no newly current subset publication.
 
-#### A6 - complete recovery/integrity preflight before launch
+#### A6 - complete recovery/integrity normalization before launch
 
-Cover both forms through the real collection owner while another size has runnable fresh TRAIN2 work:
+Through the real collection owner while another size has runnable fresh TRAIN2 work, cover at least:
 
-1. install a foreign/corrupt durable **unsealed continuation** and prove the existing continuation preflight rejects it;
-2. install a corrupt/foreign/incompatible **sealed TRAIN2 root** and prove the existing read-only sealed-root authentication rejects it.
+1. a foreign/corrupt durable post-cutover unsealed continuation;
+2. a corrupt/foreign/incompatible post-cutover sealed root;
+3. an incompatible historical/legacy interrupted continuation;
+4. a corrupt/contradictory historical sealed or partial-proof root.
 
-In both cases assert zero new sibling trainer launches, no EVAL2 begins, and the authoritative GPU admission baseline/controller is not used to admit work after the failure.
+In every failing case assert zero new sibling trainer launches, no EVAL2 begins, and the authoritative GPU admission baseline/controller is not used to admit work after the failure.
 
-#### A7 - sealed-root mixed restart and canonical EVAL order
+#### A7 - terminal-but-unsealed normalization, mixed restart, and canonical EVAL order
 
-Provide a mix of already-sealed and unsealed final-seed roots across at least two sizes, including a case where an earlier local seed is already sealed and a later seed requires training.
+Construct a real production collection containing:
 
-Assert:
+- one valid already-sealed root;
+- one post-cutover root with authenticated terminal TRAIN2 summary but no completion seal;
+- one authenticated historical/legacy terminal-but-unsealed root;
+- one genuinely incomplete/fresh position that still requires TRAIN2.
 
-- every pre-sealed root authenticates before new sibling launch;
-- only unsealed positions enter task_count/TRAIN admission;
-- the global scheduler returns after sealing the outstanding TRAIN2 roots and performs no EVAL2;
-- finalization then visits sizes in frozen order and, within each size, visits required seeds in required_final_seeds order regardless of which roots were pre-sealed versus newly trained;
-- no trainer relaunch occurs for valid sealed roots.
+Prove:
+
+- both terminal-but-unsealed roots are completed/sealed through their existing recovery owners with **zero trainer launch**;
+- the historical root receives only the accepted append-only seal and no pre-existing byte changes;
+- the already-sealed and newly normalized roots do not enter scheduler task_count or resource-profile compatibility;
+- only the genuinely TRAIN_REQUIRED position enters the adaptive scheduler;
+- if every position is sealed/terminal after normalization, no adaptive scheduler is constructed at all;
+- the global scheduler itself performs no EVAL2;
+- finalization later visits sizes in frozen order and required seeds in `required_final_seeds` order regardless of whether a root was initially sealed, normalized-to-sealed, or trained in the wave;
+- valid sealed roots never relaunch a trainer.
 
 #### A8 - failure/cancellation/restart
 
@@ -640,7 +672,7 @@ Force deterministic resource backoff while tasks from different sizes are active
 
 #### A10 - incompatible shared resource profile
 
-Construct two contexts differing in a scheduler-critical execution/resource value through a bounded test seam. Assert fail-closed behavior before any new trainer launches and an error identifying the incompatible dimension.
+Construct two **TRAIN_REQUIRED** contexts differing in a scheduler-critical execution/resource value through a bounded test seam. Assert fail-closed behavior before any new trainer launches and an error identifying the incompatible dimension. Also prove that an incompatible profile attached only to a position normalized to sealed state does not spuriously block the scheduler, because that position never shares the TRAIN resource domain.
 
 #### A11 - single-size regression
 
@@ -698,9 +730,9 @@ Drive the real public multi-size cross-validate path after the shared-helper ref
 
 #### A17 - real resource-profile compatibility, not first-task assumption
 
-Using two distinct production sizes/horizons through the real planner, inspect the exact values fed to the existing concurrency plan and TRAIN2 runtime. Prove that every material per-job scheduler/resource dimension is equal or already conservatively bounded by the existing common estimate contract.
+Using two distinct production sizes/horizons that remain TRAIN_REQUIRED after recovery normalization, inspect the exact values fed to the existing concurrency plan and TRAIN2 runtime. Prove that every material per-job scheduler/resource dimension is equal or already conservatively bounded by the existing common estimate contract.
 
-The negative A10 case remains mandatory. If the positive case shows materially different demand that the existing single-profile controller cannot safely bound, the correct result is D3 reopen, not a passing test with ad-hoc maxima/minima.
+The negative A10 case remains mandatory. If the positive case shows materially different demand among actual TRAIN_REQUIRED positions that the existing single-profile controller cannot safely bound, the correct result is D3 reopen, not a passing test with ad-hoc maxima/minima.
 
 #### A18 - global scheduler stops at the sealed TRAIN2 boundary
 
@@ -730,8 +762,9 @@ Static/source inspection must establish:
 - no production outer loop calls a complete per-size execute_final_production(context) that internally creates its own scheduler;
 - no second scheduler/executor/lease manager was added for size concurrency;
 - only one adaptive TRAIN controller is created for one collection production TRAIN wave;
-- all global production task descriptors are enumerated before concurrency-plan construction without eagerly creating fresh training materialization, and duplicate run/training identities fail closed;
-- every sealed production root is authenticated read-only and every durable unsealed continuation is preflighted before the authoritative TRAIN admission baseline;
+- all global production position descriptors are enumerated without eagerly creating fresh training materialization, duplicate run/training identities fail closed, and only post-normalization TRAIN_REQUIRED descriptors reach concurrency-plan construction;
+- every sealed production root is authenticated and every durable unsealed current/legacy continuation is normalized before the authoritative TRAIN admission baseline;
+- authenticated terminal-but-unsealed current/legacy roots are sealed through existing owners with zero trainer launch and excluded from task_count/profile compatibility;
 - scheduler admission reuses the canonical CampaignStore target-binding currentness projection before first launch and every later queued-task launch, with a final recheck before EVAL2;
 - the global production scheduler ends at sealed TRAIN2 and contains no EVAL2/final-assessment loop;
 - the per-size second-line CV authorization fence still exists before final-plan construction and before first TRAIN launch;
@@ -782,7 +815,7 @@ Refactor final-production planning so Phase A constructs/authenticates every per
 
 ### Stage P2 - collection recovery + TRAIN-only scheduler generalization
 
-Make pending tasks self-owning; prove scheduler-profile compatibility; authenticate sealed roots and durable unsealed continuations collection-wide; flatten only unsealed production positions; implement global task-count semantics plus the canonical binding-currentness admission fence; execute one TRAIN-only wave that ends at sealed roots. Run A1-A2, A6-A7, A10, A12, A17-A19 plus existing scheduler/currentness regressions.
+Make pending tasks self-owning; perform collection-wide current/legacy recovery normalization; seal authenticated terminal-but-unsealed roots without trainer launch; derive TRAIN_REQUIRED positions; prove scheduler-profile compatibility over that reduced set; implement global task-count semantics plus the canonical binding-currentness admission fence; execute one TRAIN-only wave that ends at sealed roots. Run A1-A2, A6-A7, A10, A12, A17-A19 plus existing scheduler/currentness/historical-recovery regressions.
 
 ### Stage P3 - per-size EVAL/failure/restart closure and CV non-impact
 
@@ -806,7 +839,8 @@ Reopen D3 if:
 - N/horizon/batch/materialization differences create materially heterogeneous RAM/VRAM/CPU demand that the existing homogeneous planner/telemetry projection cannot conservatively represent;
 - safe execution would require multiple profile buckets/controllers, a changed training_parallel.py resource model, or another durable scheduler;
 - collection-wide TRAIN-only scheduling cannot hand off cleanly to the existing sealed-root/EVAL owners without a second durable scheduler or materially new persisted orchestration state;
-- read-only sealed-root authentication before sibling admission proves impossible without performing EVAL2 or mutating accepted state;
+- recovery normalization cannot distinguish terminal-but-unsealed from genuinely incomplete current/legacy trajectories without duplicating or weakening the existing recovery owner;
+- sealing authenticated terminal-but-unsealed state before scheduler sizing would require a new persistent recovery authority rather than factoring the existing completion/topology owner;
 - preserving stale-generation admission semantics would require a new persistent currentness registry or long-held campaign lock rather than a bounded read of existing CampaignStore authority;
 - per-size EVAL2/finalization cannot preserve current fail-fast semantics without changing public/architectural behavior;
 - the current one-resource-domain assumption is false for an accepted campaign configuration.
@@ -827,9 +861,9 @@ No current evidence contradicts accepted D1/D2. No Serious Challenge is active.
 
 Implementation is complete only when:
 
-- all production TRAIN2 task descriptors across a fully admitted and second-line-authorized multi-size collection are enumerated before launch without eager fresh materialization and all unsealed work is visible to one existing adaptive scheduler wave;
-- scheduler/resource ownership is singular, the shared resource-profile assumption is positively established, and process teardown/disk/timeout authority is preserved;
-- every existing sealed root and resumable continuation is authenticated before sibling TRAIN admission; local slot collisions cannot duplicate a global run;
+- all production position descriptors across a fully admitted and second-line-authorized multi-size collection are enumerated without eager fresh materialization, then recovery normalization excludes all already-terminal work before scheduler construction;
+- scheduler/resource ownership is singular, the shared resource-profile assumption is positively established over actual TRAIN_REQUIRED positions, and process teardown/disk/timeout authority is preserved;
+- every existing sealed root and every current/legacy continuation is authenticated before sibling TRAIN admission; terminal-but-unsealed roots seal with zero trainer launch; local slot collisions cannot duplicate a global run;
 - no queued task is newly admitted after the invocation's frozen bindings cease to be current, and currentness is rechecked again before EVAL2;
 - the collection scheduler stops at authenticated sealed TRAIN2 roots, and no EVAL2 begins until the entire global TRAIN wave is terminal;
 - per-size EVAL2/assessment/publication then remains frozen-size/seed ordered and fail-fast, independent of scheduler order;
