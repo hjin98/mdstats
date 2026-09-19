@@ -9,12 +9,14 @@ reviewed_date: 2026-09-19
 second_reviewed_date: 2026-09-19
 closure_falsification_date: 2026-09-19
 third_reviewed_date: 2026-09-19
-revision: 5
-workplan_review_status: pass-after-third-review-repair
+third_review_closure_date: 2026-09-19
+revision: 6
+workplan_review_status: pass-after-third-review-consistency-closure
 reviewed_pre_repair_head: 10c68eb50cb7ee2b5f0bb8d43e35bb250a186d96
 second_reviewed_pre_repair_head: 35fe7c19f60d99a2ae99257496acb2e82c35975d
 closure_falsification_pre_repair_head: 47376b968a62ab05473e370746f79988436bb3e3
 third_reviewed_pre_repair_head: 12959ef0bdc7a9ac9253fafa846d9f7bb4e0bb28
+third_review_closure_pre_repair_head: a8dcbaa774ac4815ce03896e368a630577d20c51
 branch: design/mlff-production-global-train-scheduler-repair
 basis_commit: f341a3f993b931c5e0838e95520b8b4fd41459ae
 highest_affected_domain: D3
@@ -27,9 +29,9 @@ production_gpu_qualification: deferred-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER SECOND REVIEW REPAIR / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER THIRD REVIEW CONSISTENCY CLOSURE / FROZEN FOR D4. No Serious Challenge is active.**
 
-Revision 5 closes the remaining recovery-normalization gap found by the third independent D3 pass. The repair remains deliberately narrow: **only actual TRAIN2 continuation/admission is collection-global**. Recovery now distinguishes roots that truly still require trainer work from already-terminal-but-unsealed roots that require only the existing completion/seal transition. The latter are sealed before scheduler sizing and never inflate TRAIN task_count, controller ceilings, progress, or resource-profile compatibility. The same rule covers current post-cutover roots and authenticated historical/legacy roots through their existing recovery owners. EVAL2, per-seed assessment, and final publication remain inside the frozen-size-ordered finalization path. FinalProductionPlan pointers remain per-binding rather than collection-atomic, and the live generation/currentness fence still prevents new old-design TRAIN2 admission after target-size rollover.
+Revision 6 closes the recovery-normalization gap found by the third independent D3 pass and removes the remaining Revision-4 wording that still treated every unsealed root as scheduler work. It also freezes recovery normalization as a final-production orchestration concern: shared low-level recovery owners may be factored, but public CV selected-size/task-count/progress semantics remain unchanged. The repair remains deliberately narrow: **only actual TRAIN2 continuation/admission is collection-global**. Recovery now distinguishes roots that truly still require trainer work from already-terminal-but-unsealed roots that require only the existing completion/seal transition. The latter are sealed before scheduler sizing and never inflate TRAIN task_count, controller ceilings, progress, or resource-profile compatibility. The same rule covers current post-cutover roots and authenticated historical/legacy roots through their existing recovery owners. EVAL2, per-seed assessment, and final publication remain inside the frozen-size-ordered finalization path. FinalProductionPlan pointers remain per-binding rather than collection-atomic, and the live generation/currentness fence still prevents new old-design TRAIN2 admission after target-size rollover.
 
 No D1/D2 defect was found. No second scheduler, collection publication transaction, new persistent orchestration machinery, or widened evaluation semantics is authorized.
 
@@ -39,7 +41,7 @@ This cycle repairs final-production orchestration only. The defect is not that t
 
 For a frozen two-size collection with the current one-seed production policy, the implementation presents one task at a time to a scheduler whose truthful task ceiling is one. With two configured final seeds it presents two tasks for the first size and, only after that size is completely assessed and published, another two tasks for the second size. This is structurally work-starving when the one shared CPU/GPU resource envelope could safely admit concurrent production trajectories from different selected sizes.
 
-The repair is to make **all unsealed final-production TRAIN2 positions across the fully admitted frozen collection participate in one existing adaptive TRAIN scheduler wave**. That shared wave ends at authenticated sealed TRAIN2 roots. Only after every scheduler-owned TRAIN2 position is terminal does the command resume the existing frozen-size-ordered finalization path: per-size serial EVAL2, per-seed assessment, and binding-scoped final publication. Later sizes may finish TRAIN2 early, but they do not perform fresh EVAL2 or publish assessments merely because their training finished first.
+The repair is to make **all final-production positions that remain TRAIN_REQUIRED after collection-wide recovery normalization participate in one existing adaptive TRAIN scheduler wave**. That shared wave ends at authenticated sealed TRAIN2 roots. Only after every scheduler-owned TRAIN2 position is terminal does the command resume the existing frozen-size-ordered finalization path: per-size serial EVAL2, per-seed assessment, and binding-scoped final publication. Later sizes may finish TRAIN2 early, but they do not perform fresh EVAL2 or publish assessments merely because their training finished first.
 
 Cross-validation scheduling is explicitly out of scope and remains unchanged.
 
@@ -47,7 +49,7 @@ Cross-validation scheduling is explicitly out of scope and remains unchanged.
 
 A **production position** is one exact final-production trajectory authorized by one FinalProductionPlan, identified by its selected TargetBinding, optimizer seed, production horizon, method/replay ancestry, and existing run-plan identity.
 
-A **production collection wave** is the execution-local set of all currently required, not-already-sealed production positions across every frozen selected size after the collection-wide CV admission barrier succeeds.
+A **production collection wave** is the execution-local set of all currently required production positions across every frozen selected size after the collection-wide CV admission barrier succeeds. Recovery normalization partitions that set into reusable sealed/terminal state and the TRAIN_REQUIRED subset that alone becomes the scheduler wave.
 
 A **scheduler slot** is execution-local queue identity only. It must be unique within the collection wave and must not enter scientific/numerical identities.
 
@@ -118,7 +120,7 @@ No new public option, environment variable, scheduler configuration key, persist
 
 ### D3-1 - One collection-level TRAIN scheduler owner
 
-After the collection-wide CV admission barrier succeeds, every unsealed final-production position from every selected context enters one scheduler-ready population governed by exactly one call path that constructs one TrainingConcurrencyPlan and one AdaptiveTrainingConcurrency for that production TRAIN wave.
+After the collection-wide CV admission barrier succeeds and production recovery normalization completes, every position still classified TRAIN_REQUIRED across all selected contexts enters one scheduler-ready population governed by exactly one call path that constructs one TrainingConcurrencyPlan and one AdaptiveTrainingConcurrency for that production TRAIN wave.
 
 The implementation MUST NOT create an outer size executor around existing per-size schedulers. It MUST NOT nest one scheduler per selected size beneath another resource owner.
 
@@ -138,7 +140,7 @@ Only TRAIN2-ready positions are flattened:
 ~~~text
 all per-size production positions
   -> collection recovery/integrity classification
-  -> one TRAIN scheduler population for unsealed roots only
+  -> one TRAIN scheduler population for TRAIN_REQUIRED positions only
   -> one global TRAIN-only phase ending at sealed TRAIN2 roots
   -> frozen size N1: serial EVAL2 -> all seed assessments -> final publication
   -> frozen size N2: serial EVAL2 -> all seed assessments -> final publication
@@ -194,7 +196,7 @@ This validation is execution-local. Do not persist a new resource-profile author
 
 No fresh EVAL2 work may begin while **any** production TRAIN2 task in the collection wave remains active, queued, demoting, cancelling, or not yet terminal.
 
-The collection scheduler owns TRAIN2 only and returns after every required unsealed position has reached the existing authenticated sealed-root boundary. It MUST NOT run EVAL2 as part of the global scheduler wave.
+The collection scheduler owns TRAIN2 only and returns after every TRAIN_REQUIRED position has reached the existing authenticated sealed-root boundary. It MUST NOT run EVAL2 as part of the global scheduler wave.
 
 After successful global TRAIN2, finalization resumes in frozen selected-size order. For one size, EVAL2 traverses that FinalProductionPlan.required_final_seeds order, regardless of whether a root was already sealed at invocation start or became sealed in the global wave. The existing run owner re-authenticates each sealed root before numerical evaluation.
 
@@ -217,7 +219,7 @@ The scheduler must not infer successful teardown from a cancellation request, fu
 
 ### D3-7 - Normalize terminal training state before scheduler sizing
 
-Before the global concurrency plan is built, classify every production position under the existing run-root/recovery owners while holding the existing run-activity exclusion whenever the root is inspected or mutated.
+Before the global concurrency plan is built, resolve each production position through the existing root-locator semantics, then hold the existing run-activity exclusion for recovery authentication and for any completion/seal mutation. Ordinary locator resolution need not acquire the lease; no liveness, completion, or reuse conclusion may be drawn from pathname existence alone.
 
 A position is scheduler work only if authenticated recovery proves that its TRAIN2 trajectory still requires additional trainer execution. Use the execution-local classification **TRAIN_REQUIRED** only for queue construction; do not persist a new state enum or recovery registry.
 
@@ -389,13 +391,14 @@ A preferred minimal reduction is:
 
 ~~~text
 Phase A: construct/authenticate every per-size production bundle in memory
-  -> validate unique global task identities + compatible execution profile
+  -> validate unique global scientific/run identities
 Phase B: publish existing per-binding final-plan/run-plan authorities
-  -> collection recovery/integrity preflight
-       sealed roots: read-only sealed-root authentication
-       resumable roots: existing continuation preflight
-       fresh roots: no eager materialization
-  -> one generalized existing scheduler TRAINs only unsealed positions to seal
+  -> production-only collection recovery normalization
+       sealed roots: authenticate
+       terminal-but-unsealed roots: existing owner seals with zero trainer launch
+       incomplete/fresh roots: TRAIN_REQUIRED
+  -> prove one compatible execution profile over TRAIN_REQUIRED only
+  -> one generalized existing scheduler TRAINs only TRAIN_REQUIRED positions to seal
   -> frozen-size loop:
        serial EVAL2 in required seed order
        publish measurements/assessments
@@ -466,7 +469,7 @@ The repair must not special-case multi-size by maintaining two independent produ
 
 The current generated production default is seeds=[1]. This workplan does not change it.
 
-The scheduler receives the sum, across selected sizes, of required final seeds whose current TRAIN2 roots are unsealed.
+The scheduler receives the sum, across selected sizes, of required final-seed positions that remain TRAIN_REQUIRED after recovery normalization. Root unsealedness by itself is not sufficient for scheduler admission.
 
 Thus two selected sizes with one seed each naturally provide two independent TRAIN2 positions. If the user configures two final seeds per size, four scientific positions exist; that count comes from the existing production policy, not scheduler invention.
 
@@ -499,7 +502,7 @@ The global TRAIN-only wave may produce reusable sealed TRAIN2 roots for later si
 
 ### O11 - Preserve CV behavior through shared-helper changes
 
-Any change to _PendingPostSelectionRun, _preflight_post_selection_pending_runs, _execute_post_selection_pending_runs, or _run_post_selection_positions must retain the existing CV call path and semantics. No production-only assumptions may leak into the CV task carrier. Run the real public multi-size CV and scheduler/recovery regressions after the refactor.
+Any change to _PendingPostSelectionRun, _preflight_post_selection_pending_runs, _execute_post_selection_pending_runs, or _run_post_selection_positions must retain the existing CV call path and semantics. The new collection-wide terminal-state normalization is required for **final production orchestration**; factoring a low-level current/legacy recovery classifier/seal primitive is allowed, but do not make public CV adopt a new collection-global pre-scheduler normalization, task-count definition, progress contract, or selected-size queue. No production-only assumptions may leak into the CV task carrier. Run the real public multi-size CV and scheduler/recovery regressions after the refactor.
 
 ## 4. Evidence and dependencies
 
@@ -606,7 +609,7 @@ Re-derive the complete affected surface after implementation.
 
 Through the real train-production owner, with current accepted CV for both sizes and deterministic safe resource telemetry, prove:
 
-- exactly two unsealed TRAIN2 positions enter one production scheduler wave;
+- exactly two fresh TRAIN_REQUIRED positions enter one production scheduler wave;
 - one AdaptiveTrainingConcurrency instance owns that wave;
 - concurrency plan task_count is 2;
 - safe telemetry can promote/hold two simultaneously active trainers;
@@ -644,16 +647,11 @@ In every failing case assert zero new sibling trainer launches, no EVAL2 begins,
 
 #### A7 - terminal-but-unsealed normalization, mixed restart, and canonical EVAL order
 
-Construct a real production collection containing:
-
-- one valid already-sealed root;
-- one post-cutover root with authenticated terminal TRAIN2 summary but no completion seal;
-- one authenticated historical/legacy terminal-but-unsealed root;
-- one genuinely incomplete/fresh position that still requires TRAIN2.
+Cover two real-owner subcases. First, use a multi-size production collection containing one valid already-sealed root, one post-cutover root with authenticated terminal TRAIN2 summary but no completion seal, and at least one genuinely incomplete/fresh sibling that still requires TRAIN2. Second, preserve/extend the existing historical-reuse real-owner fixture for an authenticated historical/legacy terminal-but-unsealed production root; if exact historical ancestry cannot lawfully coexist with the synthetic multi-size fixture, the historical case may remain single-size, but it must pass through the same factored production recovery-normalization owner.
 
 Prove:
 
-- both terminal-but-unsealed roots are completed/sealed through their existing recovery owners with **zero trainer launch**;
+- every terminal-but-unsealed root in the applicable subcase is completed/sealed through its existing recovery owner with **zero trainer launch**;
 - the historical root receives only the accepted append-only seal and no pre-existing byte changes;
 - the already-sealed and newly normalized roots do not enter scheduler task_count or resource-profile compatibility;
 - only the genuinely TRAIN_REQUIRED position enters the adaptive scheduler;
@@ -736,7 +734,7 @@ The negative A10 case remains mandatory. If the positive case shows materially d
 
 #### A18 - global scheduler stops at the sealed TRAIN2 boundary
 
-Through the real production owner, instrument the existing run seam and prove that the collection-wide scheduler invokes tasks with TRAIN-only semantics and returns after all unsealed roots are authenticated terminal/sealed. No EVAL2 provider, candidate assessment, measurement publication, or final-seed assessment is entered from inside that global scheduler wave.
+Through the real production owner, instrument the existing run seam and prove that the collection-wide scheduler invokes only TRAIN_REQUIRED tasks with TRAIN-only semantics and returns after all scheduler-owned positions are authenticated terminal/sealed. No EVAL2 provider, candidate assessment, measurement publication, or final-seed assessment is entered from inside that global scheduler wave.
 
 Then prove those same roots are consumed by the subsequent per-size finalizer through the existing run/EVAL owners. This is the structural/behavioral guard against accidentally globalizing EVAL2 while repairing TRAIN2 admission.
 
@@ -811,7 +809,7 @@ At closeout, evaluate whether this episode materially extends an existing PEM fa
 
 ### Stage P1 - two-phase execution-bundle decomposition and authorization preservation
 
-Refactor final-production planning so Phase A constructs/authenticates every per-size plan/task descriptor without current-plan pointer side effects or fresh training materialization; validate global identities/profile; then Phase B publishes through existing per-binding owners. Preserve the second-line CV guard and one-size scientific identity. Run A3, A5, A11, A13, and A15 plus focused production identity/publication tests.
+Refactor final-production planning so Phase A constructs/authenticates every per-size plan/task descriptor without current-plan pointer side effects or fresh training materialization and validates global scientific/run identities; then Phase B publishes through existing per-binding owners. Resource-profile compatibility is deliberately deferred until Stage P2 recovery normalization has derived the actual TRAIN_REQUIRED set. Preserve the second-line CV guard and one-size scientific identity. Run A3, A5, A11, A13, and A15 plus focused production identity/publication tests.
 
 ### Stage P2 - collection recovery + TRAIN-only scheduler generalization
 
