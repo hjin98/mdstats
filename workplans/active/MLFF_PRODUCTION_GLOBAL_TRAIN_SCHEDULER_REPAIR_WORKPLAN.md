@@ -7,10 +7,12 @@ status: implementation-ready
 created_date: 2026-09-19
 reviewed_date: 2026-09-19
 second_reviewed_date: 2026-09-19
-revision: 3
-workplan_review_status: pass-after-second-review-repair
+closure_falsification_date: 2026-09-19
+revision: 4
+workplan_review_status: pass-after-closure-falsification-repair
 reviewed_pre_repair_head: 10c68eb50cb7ee2b5f0bb8d43e35bb250a186d96
 second_reviewed_pre_repair_head: 35fe7c19f60d99a2ae99257496acb2e82c35975d
+closure_falsification_pre_repair_head: 47376b968a62ab05473e370746f79988436bb3e3
 branch: design/mlff-production-global-train-scheduler-repair
 basis_commit: f341a3f993b931c5e0838e95520b8b4fd41459ae
 highest_affected_domain: D3
@@ -25,7 +27,7 @@ production_gpu_qualification: deferred-final-release
 
 **PASS AS IMPLEMENTATION WORKPLAN AFTER SECOND REVIEW REPAIR / FROZEN FOR D4. No Serious Challenge is active.**
 
-Revision 3 closes the remaining gaps found by a second independent D3 pass against the accepted multi-size lineage and the current P5 sealed-root/TRAIN2/EVAL2 owners. The second pass narrows the change further: **only TRAIN2 admission is collection-global**. EVAL2, per-seed assessment, and final publication remain inside the existing frozen-size-ordered finalization path. It also makes sealed-root integrity part of pre-launch collection recovery and removes an accidental requirement for collection-atomic final-plan pointer publication.
+Revision 4 closes the remaining gaps found by the second independent D3 pass plus its closure falsification. The repair remains deliberately narrow: **only TRAIN2 admission is collection-global**. EVAL2, per-seed assessment, and final publication remain inside the existing frozen-size-ordered finalization path. Sealed-root integrity is part of pre-launch collection recovery; FinalProductionPlan pointers remain per-binding rather than collection-atomic; and a live generation/currentness fence now prevents the global queue from admitting new old-design TRAIN2 work after target-size rollover.
 
 No D1/D2 defect was found. No second scheduler, collection publication transaction, new persistent orchestration machinery, or widened evaluation semantics is authorized.
 
@@ -339,6 +341,24 @@ Local seed slots are not globally unique. The collection execution owner must as
 
 Results/state route back through the owning binding/context plus local position (or an equivalent exact owner key). The wave key cannot enter a scientific digest, run-root identity, assessment position, or publication record.
 
+### D3-16 - Revalidate frozen-design currentness before every later TRAIN admission
+
+The global queue lengthens the interval between initial planning and later task admission. The accepted multi-size contract already requires that once a generation/design becomes stale, no further outer-size work is newly admitted for that retired design. Serial selected-size execution satisfied this naturally because later sizes crossed a fresh owner/currentness boundary. A collection queue must restore that property explicitly.
+
+Before the **first** TRAIN2 launch, and again immediately before every subsequent dequeue/submit that would admit a previously unstarted production task, the scheduler owner must re-read the compact current target-size CampaignStore state and verify that the invocation's expected frozen bindings are still current. Reuse the existing target-size currentness projection (`current_target_size_bindings(state)` over the current target-size revision), or a factored helper with exactly that semantics. Do not reconstruct a second currentness rule and do not call the expensive full scientific-context builder merely as a polling mechanism.
+
+If the generation or expected binding membership is no longer current:
+
+- admit no further queued TRAIN2 tasks for the retired design;
+- do not begin EVAL2 or publish new assessments/final products for that invocation;
+- let already-admitted workers settle through the existing owned-worker failure/teardown policy without treating stale authority as a scientific rejection;
+- preserve any authenticated terminal TRAIN2 evidence as historical/restart evidence subject to normal later currentness;
+- fail the invocation with the existing stale/currentness error family.
+
+Revalidate the same compact currentness condition once more after the global TRAIN wave reaches terminality and before the first per-size EVAL2 begins. This closes the case where rollover occurs after the last task was admitted, when no later dequeue exists to observe the change.
+
+This is a transient admission fence, not a new campaign lease. Do not add a long-held global lock that prevents legitimate `prepare`/generation rollover merely to make the scheduler easier to reason about.
+
 ### Delegated D4 space
 
 Implementation may choose internal helper names, dataclass names, mapping shape, and whether planning/finalization are extracted from execute_final_production into private helpers. The required architecture is behavioral and ownership-based.
@@ -428,6 +448,12 @@ The scheduler receives the sum, across selected sizes, of required final seeds w
 
 Thus two selected sizes with one seed each naturally provide two independent TRAIN2 positions. If the user configures two final seeds per size, four scientific positions exist; that count comes from the existing production policy, not scheduler invention.
 
+### O7A - Preserve stale-generation admission semantics during the global wave
+
+Factor or reuse the smallest existing binding-currentness owner needed for a cheap scheduler admission check. At minimum it must compare the invocation's expected frozen binding digests/generation against the current target-size CampaignStore revision through the canonical `current_target_size_bindings` projection.
+
+Perform this check before first launch, before each later queued-task admission, and after TRAIN terminality before EVAL2. A stale result blocks new admission and later finalization; it is not a reason to introduce a campaign-wide mutex, cancel/rollback valid immutable history, or mutate the target-size state.
+
 ### O8 - Reconcile specification/documentation without rewriting history
 
 Update current documentation so it no longer says final-production outer iteration over sizes is necessarily serial.
@@ -507,6 +533,7 @@ This cycle replaces one mature orchestration concretization, so the following tr
 | deterministic queue/backoff behavior | PRESERVE with frozen-size/seed queue order and most-recent-admission demotion |
 | per-size serial EVAL2, final assessment/publication and no cross-size committee | PRESERVE after the global TRAIN-only wave |
 | fail-fast production finalization in frozen size order | PRESERVE; later sizes do not begin fresh EVAL2/publication after earlier-size failure |
+| stale-generation/retired-design admission stop | PRESERVE explicitly at global-queue admission and again before EVAL2 using existing CampaignStore binding currentness |
 | multi-size terminal lifecycle with no implicit release winner | PRESERVE |
 | CV serial selected-size orchestration | PRESERVE unchanged |
 | production serial selected-size TRAIN scheduling | **RETIRE/SUPERSEDE ONLY THIS CAPABILITY** with one collection-scoped TRAIN wave |
@@ -681,6 +708,21 @@ Through the real production owner, instrument the existing run seam and prove th
 
 Then prove those same roots are consumed by the subsequent per-size finalizer through the existing run/EVAL owners. This is the structural/behavioral guard against accidentally globalizing EVAL2 while repairing TRAIN2 admission.
 
+#### A19 - generation rollover stops new global-queue admission
+
+Start a bounded multi-size production wave with enough tasks that at least one task is active and at least one later task remains queued. After the first task is admitted, atomically roll the target-size campaign to a new prepared generation through the real current-state owner.
+
+Prove:
+
+- before the scheduler admits the next queued task, it re-reads current target-size state through the canonical binding projection and detects the retired design;
+- no queued old-generation task is newly launched after detection;
+- already-admitted owned workers are settled/reaped through existing ownership semantics and any terminal evidence remains non-current historical evidence;
+- no EVAL2, assessment pointer, or final publication from the stale invocation is made current;
+- the invocation fails with typed stale/currentness semantics, not a scientific rejection;
+- no global campaign lock, scheduler-currentness registry, or rollback state is introduced.
+
+Also cover rollover after the last TRAIN2 task has already been admitted but before global TRAIN terminality: the mandatory pre-EVAL currentness recheck must reject before any EVAL2 begins.
+
 ### Structural acceptance
 
 Static/source inspection must establish:
@@ -690,6 +732,7 @@ Static/source inspection must establish:
 - only one adaptive TRAIN controller is created for one collection production TRAIN wave;
 - all global production task descriptors are enumerated before concurrency-plan construction without eagerly creating fresh training materialization, and duplicate run/training identities fail closed;
 - every sealed production root is authenticated read-only and every durable unsealed continuation is preflighted before the authoritative TRAIN admission baseline;
+- scheduler admission reuses the canonical CampaignStore target-binding currentness projection before first launch and every later queued-task launch, with a final recheck before EVAL2;
 - the global production scheduler ends at sealed TRAIN2 and contains no EVAL2/final-assessment loop;
 - the per-size second-line CV authorization fence still exists before final-plan construction and before first TRAIN launch;
 - no collection-level plan-pointer transaction/rollback authority was added;
@@ -739,7 +782,7 @@ Refactor final-production planning so Phase A constructs/authenticates every per
 
 ### Stage P2 - collection recovery + TRAIN-only scheduler generalization
 
-Make pending tasks self-owning; prove scheduler-profile compatibility; authenticate sealed roots and durable unsealed continuations collection-wide; flatten only unsealed production positions; implement global task-count semantics; execute one TRAIN-only wave that ends at sealed roots. Run A1-A2, A6-A7, A10, A12, A17-A18 plus existing scheduler regressions.
+Make pending tasks self-owning; prove scheduler-profile compatibility; authenticate sealed roots and durable unsealed continuations collection-wide; flatten only unsealed production positions; implement global task-count semantics plus the canonical binding-currentness admission fence; execute one TRAIN-only wave that ends at sealed roots. Run A1-A2, A6-A7, A10, A12, A17-A19 plus existing scheduler/currentness regressions.
 
 ### Stage P3 - per-size EVAL/failure/restart closure and CV non-impact
 
@@ -764,6 +807,7 @@ Reopen D3 if:
 - safe execution would require multiple profile buckets/controllers, a changed training_parallel.py resource model, or another durable scheduler;
 - collection-wide TRAIN-only scheduling cannot hand off cleanly to the existing sealed-root/EVAL owners without a second durable scheduler or materially new persisted orchestration state;
 - read-only sealed-root authentication before sibling admission proves impossible without performing EVAL2 or mutating accepted state;
+- preserving stale-generation admission semantics would require a new persistent currentness registry or long-held campaign lock rather than a bounded read of existing CampaignStore authority;
 - per-size EVAL2/finalization cannot preserve current fail-fast semantics without changing public/architectural behavior;
 - the current one-resource-domain assumption is false for an accepted campaign configuration.
 
@@ -786,6 +830,7 @@ Implementation is complete only when:
 - all production TRAIN2 task descriptors across a fully admitted and second-line-authorized multi-size collection are enumerated before launch without eager fresh materialization and all unsealed work is visible to one existing adaptive scheduler wave;
 - scheduler/resource ownership is singular, the shared resource-profile assumption is positively established, and process teardown/disk/timeout authority is preserved;
 - every existing sealed root and resumable continuation is authenticated before sibling TRAIN admission; local slot collisions cannot duplicate a global run;
+- no queued task is newly admitted after the invocation's frozen bindings cease to be current, and currentness is rechecked again before EVAL2;
 - the collection scheduler stops at authenticated sealed TRAIN2 roots, and no EVAL2 begins until the entire global TRAIN wave is terminal;
 - per-size EVAL2/assessment/publication then remains frozen-size/seed ordered and fail-fast, independent of scheduler order;
 - public CV selected-size scheduling and semantics remain unchanged despite shared-helper refactoring;
