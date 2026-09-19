@@ -398,8 +398,10 @@ the all-required-fold/all-required-seed acceptance predicate. Campaign
 cross-validation is accepted only when **every** frozen size is accepted; a
 rejected size stays visibly rejected and is never dropped from the design. The
 size dimension adds no new fold construction, acceptance predicate, cross-size
-reducer, or scheduler: outer iteration over sizes is serial and shares the
-existing effective resource allocation. Missing, stale, or failed fold evidence
+reducer, or scheduler: for `cross-validate`, outer iteration over sizes is
+serial and shares the existing effective resource allocation. That serial outer
+iteration is a statement about this command; it does not govern
+`train-production`, whose production training is collection-scoped below. Missing, stale, or failed fold evidence
 blocks final production while leaving the selected authority unchanged.
 
 ### `train-production`
@@ -420,7 +422,40 @@ complete exact `T_N`, under **its own** frozen production horizon, its own
 accepted cross-validation ancestry, the campaign-common target monitor record
 shared with cross-validation (no target-size M3 parent), production seeds,
 representative selection and committee policy, publishing one binding-scoped
-final-production decision per size. A screen or CV checkpoint is never a
+final-production decision per size.
+
+The command runs that methodology in four collection-ordered phases rather than
+one complete size at a time:
+
+1. every size re-runs its own current-CV-plan/acceptance/method authorization
+   and builds its final plan, run plans and assessment positions in memory;
+   only when all sizes pass does each size publish its own binding-scoped plan
+   objects and current pointer. A per-binding pointer that validly committed is
+   never rolled back because a sibling later fails;
+2. every production position is resolved through its existing current or
+   historical recovery owner. An authenticated terminal-but-unsealed training
+   root is completed and sealed there, with zero trainer launch, and such a
+   seal stays durable; corrupt, foreign, incompatible or contradictory state
+   fails before any trainer starts;
+3. every position that still requires training - across **all** selected sizes -
+   is trained in one bounded TRAIN wave under the one existing adaptive
+   training-concurrency owner, which ends at authenticated sealed TRAIN2 roots.
+   Reported planned/active/queued/completed/failed training work describes that
+   collection-wide set; reused and recovery-sealed roots are reported as reuse,
+   not as training jobs. Execution width, queue position and cross-size
+   interleaving are execution facts and change no scientific identity or result;
+4. only then is each size finalized, in frozen selection order and serially:
+   EVAL2 over its required final seeds in plan order, its complete per-seed
+   assessment set, then its own final publication. Finalization is fail-fast: a
+   size that fails prevents later sizes from beginning fresh evaluation or
+   publication in that invocation, and their sealed training roots remain
+   reusable on a later run.
+
+Newly admitted training work and the evaluation/finalization phase are each
+admitted against the exact frozen design the invocation was authorized for -
+`(campaign generation, ordered current binding digests)` - serialized against
+target-size generation transitions, so a retired design admits no further work.
+A same-generation revision that preserves the frozen design is not staleness. A screen or CV checkpoint is never a
 production parent, and no size may consume another size's membership, horizons,
 evidence, pointers, or publication. Publication rechecks currentness at commit
 time and cannot promote work from a superseded generation. Campaign production

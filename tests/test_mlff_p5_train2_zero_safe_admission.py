@@ -1,7 +1,7 @@
 """Real-owner acceptance for zero-safe TRAIN2 admission and phase ownership.
 
 The P5 admission/supervision owner is
-``campaign_post_selection_runtime._execute_post_selection_pending_runs``, driven
+``campaign_post_selection_runtime._train_post_selection_pending_runs``, driven
 here through the real ``cross-validate`` command. Only MACE numerics are
 substituted, through the shared fixture's two seams below the owner boundary,
 plus bounded deterministic resource facts where the claim *is* resource

@@ -558,7 +558,9 @@ def _legacy_workspace(tmp_path: Path, scenario: str) -> Path:
     return Path(json.loads((workspace / "legacy.json").read_text())["config"])
 
 
-def test_sealed_and_terminal_unsealed_legacy_roots_are_reused_without_byte_mutation(tmp_path):
+def test_sealed_and_terminal_unsealed_legacy_roots_are_reused_without_byte_mutation(
+    tmp_path, capsys
+):
     config = _legacy_workspace(tmp_path, "production_rejected")
     runs = _runs_root(config)
     legacy_roots = sorted(path for path in runs.iterdir() if path.is_dir())
@@ -571,9 +573,17 @@ def test_sealed_and_terminal_unsealed_legacy_roots_are_reused_without_byte_mutat
 
     harness = fx.PostSelectionHarness()
     assert fx.run_cross_validate(config, harness) == 0
+    capsys.readouterr()
     assert fx.run_train_production(config, harness) == 0
+    printed = capsys.readouterr().out
     assert harness.runs == []  # zero TRAIN2 launches: every trajectory reused
     assert harness.evaluations  # historical measurements are not scalar-reused
+    # The terminal-but-unsealed historical root is sealed by production
+    # recovery normalization, through the historical recovery owner and before
+    # any scheduler is sized, so no TRAIN wave is constructed at all.
+    assert "[TRAIN] status=reused; terminal TRAIN2 sealed by recovery" in printed
+    assert "train_required=0" in printed
+    assert "[TRAIN scheduler] status=" not in printed
 
     # No new training root was created under the current trajectory names.
     assert sorted(path.name for path in runs.iterdir() if path.is_dir()) == sorted(before)
@@ -633,3 +643,36 @@ def test_interrupted_legacy_cv_continues_under_historical_identities(tmp_path):
             assert after.get(relative) == value, relative
     _plan, acceptance = _current_cv(config)
     assert acceptance is not None and acceptance.accepted
+
+
+def test_contradictory_historical_partial_proof_fails_before_any_trainer(tmp_path):
+    """A6: a historical root with a terminal record but no valid anchor fails closed.
+
+    Production recovery normalization must classify historical state through
+    the historical recovery owner *before* any current trainer is launched, and
+    an inconsistent partial proof is preserved for diagnosis rather than
+    completed, reused, or retrained around.
+    """
+
+    config = _legacy_workspace(tmp_path, "production_rejected")
+    runs = _runs_root(config)
+    unsealed = [
+        root
+        for root in sorted(path for path in runs.iterdir() if path.is_dir())
+        if runtime.read_post_selection_run_completion(root)[0] is None
+    ]
+    assert len(unsealed) == 1
+    # A pre-cutover terminal assessment record with no valid completion anchor:
+    # the exact contradictory partial-proof state the recovery owner refuses.
+    (unsealed[0] / runtime.RUN_EVIDENCE_FILENAME).write_text(
+        json.dumps({"schema": "pre-cutover"}), encoding="utf-8"
+    )
+    before = _tree(unsealed[0])
+
+    harness = fx.PostSelectionHarness()
+    assert fx.run_cross_validate(config, harness) == 0
+    with pytest.raises(Exception, match="partial proof"):
+        fx.run_train_production(config, harness)
+    assert harness.runs == [], "a trainer launched behind a contradictory root"
+    assert _tree(unsealed[0]) == before, "the preserved diagnostic state was mutated"
+    assert runtime.read_post_selection_run_completion(unsealed[0])[0] is None

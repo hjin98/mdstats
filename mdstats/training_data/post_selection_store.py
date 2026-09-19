@@ -316,6 +316,66 @@ def publish_current_post_selection_pointer(
         )
 
 
+def post_selection_collection_signature(
+    bindings: tuple[PostSelectionBinding, ...],
+) -> tuple[int, tuple[str, ...]]:
+    """``(generation, ordered binding digests)`` of one frozen collection.
+
+    The ordered digests come from the same canonical per-size projection that
+    owns the frozen design, so this is the exact design an invocation was
+    authorized for - not its state revision, and not unordered membership.
+    """
+
+    generations = {int(binding.campaign_generation) for binding in bindings}
+    if len(generations) != 1:
+        raise PostSelectionError(
+            "A post-selection collection must descend from exactly one campaign "
+            f"generation; found {sorted(generations)}."
+        )
+    return generations.pop(), tuple(binding.content_digest for binding in bindings)
+
+
+@contextmanager
+def post_selection_collection_admission(
+    campaign_store: Any, *, signature: tuple[int, tuple[str, ...]]
+) -> Iterator[None]:
+    """Linearize one new admission against target-size generation transitions.
+
+    The comparison happens inside the same ``BEGIN IMMEDIATE`` transaction
+    target-size transitions use, and the caller performs its admission
+    transition inside this block.  Either a transition committed first and the
+    admission is refused as stale, or the admission completed first and a later
+    transition simply finds already-admitted work.  The block must stay short:
+    it is held for one admission, never for the admitted work itself.
+    """
+
+    expected_generation, expected_bindings = signature
+    with campaign_store.exclusive_transaction() as db:
+        revision = _current_campaign_revision(db)
+        observed: tuple[int, tuple[str, ...]] | None = None
+        if revision is not None:
+            state = revision.state
+            observed = (
+                int(state.generation),
+                tuple(item.content_digest for item in current_target_size_bindings(state)),
+            )
+        if observed != (int(expected_generation), tuple(expected_bindings)):
+            raise PostSelectionStaleBindingError(
+                "The frozen target-size design this production invocation was "
+                f"authorized for (generation {expected_generation}, "
+                f"{len(expected_bindings)} ordered size(s)) is no longer current"
+                + (
+                    ""
+                    if observed is None
+                    else f" (current generation {observed[0]} with {len(observed[1])} "
+                    "frozen size(s))"
+                )
+                + ". No further work is admitted for the retired design; completed "
+                "evidence stays available as history."
+            )
+        yield
+
+
 def read_current_post_selection_pointer(
     campaign_store: Any,
     *,
@@ -386,6 +446,8 @@ __all__ = [
     "PUBLICATION_BARRIER_NAME",
     "PostSelectionEvidenceStore",
     "PostSelectionPublicationConflictError",
+    "post_selection_collection_admission",
+    "post_selection_collection_signature",
     "post_selection_publication_barrier",
     "open_post_selection_store",
     "post_selection_root",

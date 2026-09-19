@@ -528,6 +528,58 @@ inherit a training slot. The evaluation/inference controller keeps its own
 accepted serial-floor calibration contract, which these training rules do not
 replace.
 
+### Scope of one post-selection TRAIN wave
+
+The scope of a TRAIN wave differs by role. Cross-validation runs one wave per
+selected size, in frozen size order, exactly as before: its waves are that
+size's fold/seed matrix, and no collection-global CV queue exists.
+
+Final production is collection-scoped. After the collection-wide admission
+barrier, all per-size planning, and collection-wide recovery normalization,
+every production position that still requires trainer execution - across all
+selected sizes - is presented to **one** `TrainingConcurrencyPlan` and **one**
+`AdaptiveTrainingConcurrency` instance. There is no outer size executor, no
+per-size production scheduler nested beneath another resource owner, and no
+second queue, lease registry or retry wrapper around the existing one.
+
+Consequently:
+
+- the task count, controller ceiling, admission baseline, progress fraction and
+  failure accounting describe that collection-wide set of positions that still
+  require training, not the positions of one size and not roots that merely
+  happened to be unsealed when the command started;
+- positions already sealed, or sealed by recovery normalization before sizing,
+  consume no slot, launch no trainer and take no part in the shared-profile
+  proof;
+- if normalization leaves nothing to train, no controller is constructed at all;
+- the wave is TRAIN-only. It ends when every position it owns has reached its
+  authenticated sealed TRAIN2 root, and evaluation begins only afterwards, so
+  no evaluation can hold accelerator residency beside an active trainer of any
+  size;
+- sharing one controller requires one execution/resource profile - effective
+  device/telemetry domain, model/precision realization, batch and loader
+  geometry, CPU/RAM allocation, the per-job RAM/VRAM estimate regime, and the
+  trainer/process-supervision and disk-reserve owners - proved over exactly the
+  positions that will be trained. Selected size, optimizer seed and production
+  horizon are scientific identities and are not scheduler inputs; a
+  scheduler-critical difference the existing single-controller contract cannot
+  represent fails closed before any trainer starts rather than being resolved
+  by taking one position's values or an ad-hoc bound;
+- deterministic queue order is frozen selected-size order and then required
+  final-seed order, and the demotion victim remains the most recently admitted
+  active job, which keeps its exact scientific identity when it is requeued;
+- a wave-global key exists only for scheduler bookkeeping, because local seed
+  slots repeat across sizes. It never enters a run plan, run root, assessment
+  position, digest, or publication, and duplicate scientific run identities fail
+  closed before launch.
+
+Every new admission - and the admission of the post-training
+evaluation/finalization phase - is linearized against target-size generation
+transitions through the existing serialized CampaignStore transition authority,
+using the exact `(campaign generation, ordered current binding digests)` of the
+authorized design. The serialization is held only for that one ownership
+transition, never across training, telemetry waits, evaluation or publication.
+
 For training, the configured `training_gpu_memory_fraction` is the admission
 ceiling *and* the live aggregate **soft** admission/backoff boundary. It is a
 control boundary, not a scientific or execution verdict: crossing it is never by

@@ -36,7 +36,7 @@ import shutil
 import stat
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Deque, Mapping, Sequence
+from typing import Any, Callable, ContextManager, Deque, Mapping, Sequence
 
 from ._common import (
     TrainingDataInputError,
@@ -139,6 +139,8 @@ from .post_selection_store import (
     POINTER_FINAL_PUBLICATION,
     assessment_position_digest,
     open_post_selection_store,
+    post_selection_collection_admission,
+    post_selection_collection_signature,
     post_selection_publication_barrier,
     post_selection_root,
     publish_current_post_selection_pointer,
@@ -2362,8 +2364,15 @@ def _train_post_selection_run(
     progress_callback: Callable[[str], None] | None,
     progress_observer: Callable[[Mapping[str, Any]], None] | None,
     telemetry_ref: Any | None,
-) -> None:
-    """Train one unsealed root to authenticated terminal TRAIN2, then seal it."""
+    launch_trainer: bool = True,
+) -> bool:
+    """Train one unsealed root to authenticated terminal TRAIN2, then seal it.
+
+    ``launch_trainer=False`` is recovery normalization: an authenticated
+    terminal continuation is sealed through exactly this path, while a root
+    that still needs trainer execution is left untouched and reported by the
+    ``False`` return instead of being trained.
+    """
 
     from ._campaign_cli_core import _cfg
 
@@ -2386,6 +2395,11 @@ def _train_post_selection_run(
     preparation = setup.preparation
     runtime_plan = setup.runtime_plan
     continuation_summary = setup.continuation_summary
+    terminal = continuation_summary is not None and (
+        continuation_summary.completed_epochs == runtime_plan.execution_epoch_limit
+    )
+    if not terminal and not launch_trainer:
+        return False
     # Finish any detached scratch left by an earlier interrupted invocation
     # before entering the next canonical transition.  The helper refuses to
     # touch a scratch destination while its canonical namespace is present,
@@ -2444,9 +2458,7 @@ def _train_post_selection_run(
         ),
     )
 
-    if continuation_summary is not None and (
-        continuation_summary.completed_epochs == runtime_plan.execution_epoch_limit
-    ):
+    if terminal:
         # A crash after the last durable epoch but before the seal can reuse
         # the fully authenticated summary without a zero-epoch trainer call.
         summary = continuation_summary
@@ -2541,6 +2553,7 @@ def _train_post_selection_run(
         runtime_plan_digest=runtime_plan.content_digest,
         materialization_digest=materialization.content_digest,
     )
+    return True
 
 
 def _execute_post_selection_run_locked(
@@ -3411,7 +3424,8 @@ def _complete_legacy_training_root(
     progress_callback: Callable[[str], None] | None,
     progress_observer: Callable[[Mapping[str, Any]], None] | None,
     telemetry_ref: Any | None,
-) -> None:
+    launch_trainer: bool = True,
+) -> bool:
     """Continue (if interrupted) and append-only seal one unsealed historical root.
 
     An interrupted historical trajectory continues only under its own
@@ -3420,6 +3434,10 @@ def _complete_legacy_training_root(
     append-only topology manifest + completion anchor under this run-activity
     lease; no pre-existing byte is rewritten, and pre-cutover terminal
     assessment files or an inconsistent partial proof fail closed.
+
+    ``launch_trainer=False`` is recovery normalization: a terminal root is
+    sealed exactly as above, while an interrupted one is only authenticated
+    and reported by the ``False`` return.
     """
 
     if any(
@@ -3457,6 +3475,8 @@ def _complete_legacy_training_root(
         optimizer_policy=optimizer_policy,
     )
     if summary.completed_epochs != runtime_plan.execution_epoch_limit:
+        if not launch_trainer:
+            return False
         _abort_post_selection_run_if_cancelled(cancellation_event, phase="pre-training")
         summary = context.trainer(
             PostSelectionRungRequest(
@@ -3516,6 +3536,7 @@ def _complete_legacy_training_root(
         runtime_plan_digest=runtime_plan.content_digest,
         materialization_digest=view.content_digest,
     )
+    return True
 
 
 def authenticated_run_representative_records(
@@ -4227,15 +4248,41 @@ def certify_closed_post_selection_run_root(
 
 @dataclass(frozen=True, slots=True)
 class _PendingPostSelectionRun:
-    """One exact pending CV/final slot admitted to the shared scheduler."""
+    """One exact pending CV/final position, carrying its own scientific owner.
 
+    ``context`` and ``budget_policy`` are the owning selected size's; ``slot``
+    is the local position inside that size's plan and routes results back to
+    it.  ``key`` is execution-only scheduler bookkeeping that is unique within
+    one TRAIN wave; it never enters a run plan, position, digest, or record.
+    """
+
+    context: PostSelectionContext
+    budget_policy: Any
     slot: int
+    key: int
     run_plan: Any
     training_frame_uids: tuple[str, ...]
     monitor_frame_uids: tuple[str, ...]
     outer_evaluation_frame_uids: tuple[str, ...] | None
     progress_context: Mapping[str, Any]
     reusable: _ReusableMeasurements | None = None
+
+
+def _execute_pending_post_selection_run(
+    task: _PendingPostSelectionRun, **kwargs: Any
+) -> PostSelectionRunResult | None:
+    """Run one pending position through the run owner under its own owner."""
+
+    return execute_post_selection_run(
+        task.context,
+        run_plan=task.run_plan,
+        budget_policy=task.budget_policy,
+        training_frame_uids=task.training_frame_uids,
+        monitor_frame_uids=task.monitor_frame_uids,
+        outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
+        progress_context=task.progress_context,
+        **kwargs,
+    )
 
 
 def _post_selection_training_concurrency_policy(
@@ -4364,14 +4411,12 @@ def _report_post_selection_gpu_occupancy(
 
 
 def _preflight_post_selection_pending_runs(
-    context: PostSelectionContext,
-    *,
     pending: Sequence[_PendingPostSelectionRun],
-    budget_policy: Any,
 ) -> None:
     """Reject durable foreign continuations before any sibling reaches EVAL2."""
 
-    for task in sorted(pending, key=lambda item: int(item.slot)):
+    for task in sorted(pending, key=lambda item: int(item.key)):
+        context = task.context
         root = resolve_post_selection_training_root(context, task.run_plan)
         if root.legacy is not None:
             continue
@@ -4394,7 +4439,7 @@ def _preflight_post_selection_pending_runs(
             _prepare_post_selection_run(
                 context,
                 run_plan=task.run_plan,
-                budget_policy=budget_policy,
+                budget_policy=task.budget_policy,
                 training_frame_uids=task.training_frame_uids,
                 monitor_frame_uids=task.monitor_frame_uids,
                 outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
@@ -4402,31 +4447,128 @@ def _preflight_post_selection_pending_runs(
             )
 
 
-def _execute_post_selection_pending_runs(
-    context: PostSelectionContext,
-    *,
-    pending: Sequence[_PendingPostSelectionRun],
-    budget_policy: Any,
-) -> dict[int, PostSelectionRunResult]:
-    """Run exact pending slots through the existing adaptive controller.
+def _post_selection_scheduler_profile(
+    task: _PendingPostSelectionRun,
+) -> tuple[tuple[str, Any], ...]:
+    """Every per-job fact the single TRAIN controller assumes is shared.
 
-    The caller constructs ``pending`` only after it has materialized every
-    canonical run plan and classified reusable evidence. This function owns
-    admission and supervision, but it never reorders or ranks the returned
-    scientific evidence: callers reduce results by the frozen slot number.
-
-    One scheduler slot corresponds to TRAIN2 ownership only. Post-TRAIN EVAL2
-    runs afterwards through the same run path, so a fold entering EVAL2 can
-    never hold accelerator memory while an independently admitted TRAIN2 child
-    is still active, and the scheduler's VRAM telemetry window describes TRAIN2
-    rather than a mixed TRAIN/EVAL phase.
+    Values are derived through the same owners the scheduler and the TRAIN2
+    run consume.  The optimizer seed and planned horizon are scientific
+    identities and are deliberately absent; the size-independent per-job
+    RAM/VRAM estimates are part of the concurrency policy itself.
     """
 
-    if not pending:
-        return {}
+    from ._campaign_cli_core import _cfg
+
+    context = task.context
+    cfg = context.cfg
+    optimizer = _optimizer_policy_for(
+        context,
+        seed=task.run_plan.optimizer_seed,
+        planned_epochs=task.run_plan.planned_epochs,
+    )
+    acceleration = getattr(optimizer, "acceleration_policy", None)
+    return (
+        ("device", str(context.method_policies.device)),
+        ("optimizer device", str(optimizer.device)),
+        ("learned-model precision", str(optimizer.default_dtype)),
+        ("training method/model realization", context.method.content_digest),
+        ("batch size", (int(optimizer.batch_size), int(optimizer.valid_batch_size))),
+        ("loader workers per job", int(getattr(optimizer, "num_workers", 0))),
+        (
+            "training acceleration",
+            (
+                None if acceleration is None else acceleration.backend.value,
+                getattr(optimizer, "acceleration_realization_digest", None),
+                getattr(optimizer, "resolved_acceleration_kernel_mode", None),
+            ),
+        ),
+        ("replay lineage", task.run_plan.training_trajectory.replay_lineage_digest),
+        (
+            "concurrency policy and per-job RAM/VRAM estimates",
+            _post_selection_training_concurrency_policy(context),
+        ),
+        (
+            "CPU/RAM/GPU allocation",
+            tuple(
+                float(_cfg(cfg, "performance", name, default))
+                for name, default in (
+                    ("cpu_fraction", 0.9),
+                    ("ram_fraction", 0.8),
+                    ("gpu_memory_fraction", 0.9),
+                )
+            ),
+        ),
+        (
+            "progress interval",
+            float(_cfg(cfg, "execution", "training_progress_interval_seconds", 10.0)),
+        ),
+        ("trainer/process-supervision owner", id(context.trainer)),
+    )
+
+
+def _require_one_post_selection_scheduler_profile(
+    pending: Sequence[_PendingPostSelectionRun],
+) -> _PendingPostSelectionRun:
+    """Prove every TRAIN task shares one resource domain; return its exemplar.
+
+    The existing controller plans one loader geometry and one per-job estimate
+    for the whole wave and learns promotion demand from active jobs, so tasks
+    may share it only when those facts are identical.  A difference fails
+    closed before any trainer starts: choosing one task's values, or a min/max
+    over them, would be a different resource model than the controller's.
+    """
+
+    reference = pending[0]
+    expected = _post_selection_scheduler_profile(reference)
+    for task in pending[1:]:
+        observed = _post_selection_scheduler_profile(task)
+        for (dimension, left), (_same, right) in zip(expected, observed):
+            if left != right:
+                raise PostSelectionError(
+                    "Production TRAIN2 positions cannot share one TRAIN scheduler: "
+                    f"their {dimension} differs (N={reference.context.selected.n_selected} "
+                    f"seed={reference.run_plan.optimizer_seed}: {left!r}; "
+                    f"N={task.context.selected.n_selected} "
+                    f"seed={task.run_plan.optimizer_seed}: {right!r}). "
+                    "No trainer was launched."
+                )
+    return reference
+
+
+def _train_post_selection_pending_runs(
+    pending: Sequence[_PendingPostSelectionRun],
+    *,
+    admission_fence: Callable[[], ContextManager[Any]] | None = None,
+) -> tuple[int, ...]:
+    """TRAIN exact pending positions through the one adaptive controller.
+
+    ``pending`` holds only positions that still require trainer execution;
+    recovery classification is the caller's and precedes this call, so the
+    first telemetry observation here is the authoritative admission baseline.
+    Each position runs under its own context and budget policy and ends at
+    its sealed terminal TRAIN2 boundary: nothing here evaluates, assesses, or
+    publishes, so EVAL2 can never hold accelerator memory while a TRAIN2 child
+    admitted by this wave is still active.  The returned keys name the
+    positions this wave trained; callers route and reduce by their own frozen
+    order, never by completion order.
+
+    ``admission_fence`` wraps every ownership transition (dequeue, submit,
+    active registration), including a readmission after demotion.  An
+    exception from it is a terminal wave failure.
+    """
+
+    ordered_pending = tuple(sorted(pending, key=lambda item: int(item.key)))
+    if not ordered_pending:
+        return ()
+    if len({int(task.key) for task in ordered_pending}) != len(ordered_pending):
+        raise PostSelectionExecutionError(
+            "TRAIN scheduler keys must be unique within one wave."
+        )
 
     from collections import deque
     from concurrent.futures import ALL_COMPLETED, FIRST_COMPLETED, ThreadPoolExecutor, wait
+    from contextlib import nullcontext
     import threading
     import time
 
@@ -4441,29 +4583,19 @@ def _execute_post_selection_pending_runs(
         query_gpu_telemetry,
     )
 
-    ordered_pending = tuple(sorted(pending, key=lambda item: int(item.slot)))
+    exemplar = _require_one_post_selection_scheduler_profile(ordered_pending)
+    context = exemplar.context
     device = str(context.method_policies.device)
-    # Bind the admission baseline to the recovery preflight that precedes it.
-    # Recovery classification can realize a CUDA training model, so the two
-    # observations make any parent-side contribution to the baseline visible
-    # instead of silently inflating the envelope TRAIN2 is measured against.
-    _report_post_selection_gpu_occupancy(
-        "pre-recovery-preflight", device, query_gpu_telemetry(device)
-    )
-    _preflight_post_selection_pending_runs(
-        context,
-        pending=ordered_pending,
-        budget_policy=budget_policy,
-    )
     first_policy = _optimizer_policy_for(
         context,
-        seed=ordered_pending[0].run_plan.optimizer_seed,
-        planned_epochs=ordered_pending[0].run_plan.planned_epochs,
+        seed=exemplar.run_plan.optimizer_seed,
+        planned_epochs=exemplar.run_plan.planned_epochs,
     )
     resources = _performance_resources(context.cfg)
     concurrency_policy = _post_selection_training_concurrency_policy(context)
-    # This is both the post-preflight observation and the authoritative TRAIN
-    # admission baseline; they are the same instant by construction.
+    # The caller's recovery classification has already finished, so this is
+    # both the post-recovery observation and the authoritative TRAIN admission
+    # baseline; they are the same instant by construction.
     initial_sample = query_gpu_telemetry(device)
     _report_post_selection_gpu_occupancy(
         "post-recovery-preflight TRAIN admission", device, initial_sample
@@ -4478,7 +4610,7 @@ def _execute_post_selection_pending_runs(
     )
     controller = AdaptiveTrainingConcurrency(concurrency_plan, concurrency_policy)
     telemetry_ref: dict[str, Any] = {"sample": initial_sample}
-    # One cooperative stop signal per admitted slot. Backoff sets exactly one of
+    # One cooperative stop signal per admitted key. Backoff sets exactly one of
     # them; a terminal abort sets every one of them, which *is* the whole-wave
     # cancellation. A single shared event could not express "stop exactly one
     # owned job", and a second parallel mechanism for the wave would only
@@ -4486,7 +4618,7 @@ def _execute_post_selection_pending_runs(
     stop_events: dict[int, threading.Event] = {}
     state_lock = threading.Lock()
     states: dict[int, dict[str, Any]] = {
-        task.slot: {
+        task.key: {
             "completed_updates": 0,
             "completed_epochs": 0,
             "true_epoch": False,
@@ -4507,7 +4639,7 @@ def _execute_post_selection_pending_runs(
     # Insertion-ordered by construction, so the last key is the most recently
     # admitted currently active owned job - the deterministic backoff victim.
     active: dict[Any, _PendingPostSelectionRun] = {}
-    trained_slots: list[int] = []
+    trained_keys: list[int] = []
     last_sample_at = started
     last_report_at: float | None = None
     last_decision_reason = "initial one-job admission"
@@ -4542,7 +4674,7 @@ def _execute_post_selection_pending_runs(
         with state_lock:
             active_count = len(active)
             true_epoch_count = sum(
-                bool(states[task.slot].get("true_epoch"))
+                bool(states[task.key].get("true_epoch"))
                 for task in active.values()
             )
         snapshot = outer_tracker.snapshot(
@@ -4577,9 +4709,9 @@ def _execute_post_selection_pending_runs(
                 f"target_jobs={controller.target_jobs}",
                 f"ceiling={concurrency_plan.maximum_jobs}",
                 f"effective_ceiling={controller.effective_ceiling}",
-                # Counted from actual scheduler ownership: a submitted slot that
+                # Counted from actual scheduler ownership: a submitted key that
                 # already failed is never reported as still queued, and a
-                # demoted slot is queued again rather than counted as failed.
+                # demoted key is queued again rather than counted as failed.
                 f"queued_jobs={len(pending_queue)}",
                 f"completed_jobs={completed_count}",
                 f"failed_jobs={failed_count}",
@@ -4602,37 +4734,35 @@ def _execute_post_selection_pending_runs(
         # A zero target is a truthful resource state, not a value to floor.
         target = max(0, int(controller.target_jobs))
         while pending_queue and len(active) < target:
-            task = pending_queue.popleft()
-            with state_lock:
-                # A restarted slot re-earns its own liveness observations; the
-                # dead attempt's must not be read as current epoch activity.
-                states[task.slot].update({"true_epoch": False, "phase": "launching"})
-            stop_event = threading.Event()
-            stop_events[task.slot] = stop_event
-
-            def observe(
-                observation: Mapping[str, Any],
-                *,
-                slot: int = task.slot,
-            ) -> None:
+            # The whole ownership transition happens inside the fence, so a
+            # concurrent currentness change either precedes it (and nothing is
+            # dequeued) or follows an admission that has fully completed.
+            with admission_fence() if admission_fence is not None else nullcontext():
+                task = pending_queue.popleft()
                 with state_lock:
-                    states[slot].update(dict(observation))
+                    # A restarted key re-earns its own liveness observations;
+                    # the dead attempt's must not be read as current activity.
+                    states[task.key].update({"true_epoch": False, "phase": "launching"})
+                stop_event = threading.Event()
+                stop_events[task.key] = stop_event
 
-            future = executor.submit(
-                execute_post_selection_run,
-                context,
-                run_plan=task.run_plan,
-                budget_policy=budget_policy,
-                training_frame_uids=task.training_frame_uids,
-                monitor_frame_uids=task.monitor_frame_uids,
-                outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
-                progress_context=task.progress_context,
-                cancellation_event=stop_event,
-                progress_observer=observe,
-                telemetry_ref=telemetry_ref,
-                stop_after_training=True,
-            )
-            active[future] = task
+                def observe(
+                    observation: Mapping[str, Any],
+                    *,
+                    key: int = task.key,
+                ) -> None:
+                    with state_lock:
+                        states[key].update(dict(observation))
+
+                future = executor.submit(
+                    _execute_pending_post_selection_run,
+                    task,
+                    cancellation_event=stop_event,
+                    progress_observer=observe,
+                    telemetry_ref=telemetry_ref,
+                    stop_after_training=True,
+                )
+                active[future] = task
 
     def demote_most_recently_admitted(pre_sample: Any) -> None:
         """Retract one prior admission and prove its resource lifetime is gone.
@@ -4640,9 +4770,9 @@ def _execute_post_selection_pending_runs(
         Reverse-most-recent-promotion: ``active`` is insertion-ordered by
         admission, so the last key is the victim. A resource demotion is not a
         scientific failure - the task returns to the pending/restartable queue
-        with its frozen slot identity and resumes later through the existing
-        checkpoint/continuation authority - so it never increments the failed
-        count and never publishes partial evidence.
+        with its frozen scientific owner and wave key and resumes later through
+        the existing checkpoint/continuation authority - so it never increments
+        the failed count and never publishes partial evidence.
 
         What makes an outcome a demotion is the execution owner's explicit
         cancellation result, never this scheduler's intent: a victim that
@@ -4675,20 +4805,20 @@ def _execute_post_selection_pending_runs(
         last_decision_reason = (
             f"backoff {before}->{before - 1}: aggregate VRAM {used_text} remained "
             f"above the soft training envelope; demoting most recently admitted "
-            f"slot={victim.slot}"
+            f"slot={victim.key}"
         )
         print(
-            f"[TRAIN scheduler] backoff {before}->{before - 1}; slot={victim.slot}; "
+            f"[TRAIN scheduler] backoff {before}->{before - 1}; slot={victim.key}; "
             f"pre-demotion VRAM={used_text}; "
             f"effective_ceiling={controller.effective_ceiling}",
             flush=True,
         )
-        stop_events[victim.slot].set()
+        stop_events[victim.key].set()
         wait((victim_future,), return_when=ALL_COMPLETED)
         active.pop(victim_future, None)
-        stop_events.pop(victim.slot, None)
+        stop_events.pop(victim.key, None)
         with state_lock:
-            states[victim.slot].update({"true_epoch": False, "phase": "demoted"})
+            states[victim.key].update({"true_epoch": False, "phase": "demoted"})
         error = victim_future.exception()
         if error is not None and not isinstance(error, PostSelectionCancelledError):
             # Asking a job to stop is not evidence that it raised *because* it
@@ -4702,9 +4832,9 @@ def _execute_post_selection_pending_runs(
             raise error
         if error is None:
             # The worker reached its authenticated TRAIN2 summary before it
-            # observed the stop. That slot is genuinely done; requeueing it
+            # observed the stop. That key is genuinely done; requeueing it
             # would duplicate completed work.
-            trained_slots.append(victim.slot)
+            trained_keys.append(victim.key)
             completed_count += 1
             outcome = "completed before stopping"
         else:
@@ -4713,65 +4843,13 @@ def _execute_post_selection_pending_runs(
         post_sample = query_gpu_telemetry(device)
         telemetry_ref["sample"] = post_sample
         _report_post_selection_gpu_occupancy(
-            f"post-demotion slot={victim.slot} teardown", device, post_sample
+            f"post-demotion slot={victim.key} teardown", device, post_sample
         )
         print(
-            f"[TRAIN scheduler] slot={victim.slot} worker teardown observed; "
+            f"[TRAIN scheduler] slot={victim.key} worker teardown observed; "
             f"{outcome}",
             flush=True,
         )
-
-    def complete_eval2_for_trained_slots() -> dict[int, PostSelectionRunResult]:
-        """Finish every authenticated TRAIN2 slot through the same run path.
-
-        Every TRAIN2 child has exited and released the device before this runs.
-        The authenticated TRAIN2 summary lets the existing continuation logic
-        skip retraining, so no second scheduler, lease, or handoff record is
-        involved, and each run reaches its own durable publication boundary in
-        frozen slot order. This runs only after the whole TRAIN wave succeeded:
-        a failed wave raises before any post-TRAIN evaluation begins.
-        """
-
-        completed: dict[int, PostSelectionRunResult] = {}
-        if not trained_slots:
-            return completed
-        _report_post_selection_gpu_occupancy(
-            "post-TRAIN EVAL2 entry", device, query_gpu_telemetry(device)
-        )
-        by_slot = {int(task.slot): task for task in ordered_pending}
-        ordered_slots = sorted(trained_slots)
-        for index, slot in enumerate(ordered_slots):
-            task = by_slot[slot]
-            print(
-                f"[EVAL2 serial] status=running; "
-                f"progress={format_progress_fraction(index, len(ordered_slots))}; "
-                f"unit=training-run; slot={slot}",
-                flush=True,
-            )
-            result = execute_post_selection_run(
-                context,
-                run_plan=task.run_plan,
-                budget_policy=budget_policy,
-                training_frame_uids=task.training_frame_uids,
-                monitor_frame_uids=task.monitor_frame_uids,
-                outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
-                progress_context=task.progress_context,
-                telemetry_ref=telemetry_ref,
-                reusable=task.reusable,
-            )
-            if result is None:
-                raise PostSelectionExecutionError(
-                    "Post-TRAIN EVAL2 returned no bound evidence for slot "
-                    f"{slot}; the authenticated TRAIN2 continuation is unusable."
-                )
-            completed[slot] = result
-        print(
-            f"[EVAL2 serial] status=completed; "
-            f"progress={format_progress_fraction(len(ordered_slots), len(ordered_slots))}; "
-            "unit=training-run",
-            flush=True,
-        )
-        return completed
 
     executor = ThreadPoolExecutor(
         max_workers=max(1, int(concurrency_plan.maximum_jobs)),
@@ -4787,7 +4865,7 @@ def _execute_post_selection_pending_runs(
                 and pending_queue
                 and int(controller.target_jobs) < 1
             ):
-                # Pending work with an idle queue and no feasible slot is a
+                # Pending work with an idle queue and no feasible key is a
                 # terminal resource state; busy-waiting would hide it.
                 raise TrainingAdmissionBlockedError(
                     f"{len(pending_queue)} pending TRAIN2 job(s) "
@@ -4807,10 +4885,10 @@ def _execute_post_selection_pending_runs(
             first_failure: BaseException | None = None
             for future in done:
                 task = active.pop(future)
-                stop_events.pop(task.slot, None)
+                stop_events.pop(task.key, None)
                 try:
                     future.result()
-                    trained_slots.append(task.slot)
+                    trained_keys.append(task.key)
                     completed_count += 1
                 except BaseException as exc:
                     failed_count += 1
@@ -4826,7 +4904,7 @@ def _execute_post_selection_pending_runs(
                 with state_lock:
                     active_count = len(active)
                     true_epoch_count = sum(
-                        bool(states[task.slot].get("true_epoch"))
+                        bool(states[task.key].get("true_epoch"))
                         for task in active.values()
                     )
                 decision = controller.observe(
@@ -4892,7 +4970,7 @@ def _execute_post_selection_pending_runs(
         # ordinary continuation path instead of a same-invocation sibling EVAL2.
         raise
     executor.shutdown(wait=True, cancel_futures=True)
-    return complete_eval2_for_trained_slots()
+    return tuple(trained_keys)
 
 
 def _offered_measurements(
@@ -4930,43 +5008,74 @@ def _reusable(offers: dict[str, dict[str, Any]]) -> _ReusableMeasurements:
 
 
 def _run_post_selection_positions(
-    context: PostSelectionContext,
-    *,
     pending: Sequence[_PendingPostSelectionRun],
-    budget_policy: Any,
 ) -> dict[int, PostSelectionRunResult]:
-    """TRAIN only unsealed positions; evaluate every position from its sealed root.
+    """One selected size's CV wave: TRAIN unsealed positions, then serial EVAL2.
 
     A position whose training root is already sealed (a completed trajectory,
     a policy-only reassessment, or an authenticated historical root) never
-    enters the TRAIN scheduler and never launches a trainer.
+    enters the TRAIN scheduler and never launches a trainer.  Every TRAIN2
+    child has exited and released the device before post-TRAIN EVAL2 begins,
+    and a failed TRAIN wave raises before any evaluation.  Results are keyed
+    by local slot.
     """
+
+    from .progress_timing import format_progress_fraction
+    from .training_parallel import query_gpu_telemetry
 
     sealed: list[_PendingPostSelectionRun] = []
     training: list[_PendingPostSelectionRun] = []
     for task in pending:
-        root = resolve_post_selection_training_root(context, task.run_plan)
+        root = resolve_post_selection_training_root(task.context, task.run_plan)
         completion, _why = read_post_selection_run_completion(root.path)
         (sealed if completion is not None else training).append(task)
-    results = _execute_post_selection_pending_runs(
-        context, pending=training, budget_policy=budget_policy
-    )
+    results: dict[int, PostSelectionRunResult] = {}
+    if training:
+        device = str(training[0].context.method_policies.device)
+        # Bind the admission baseline to the recovery preflight that precedes
+        # it. Recovery classification can realize a CUDA training model, so the
+        # two observations make any parent-side contribution to the baseline
+        # visible instead of silently inflating the TRAIN2 envelope.
+        _report_post_selection_gpu_occupancy(
+            "pre-recovery-preflight", device, query_gpu_telemetry(device)
+        )
+        _preflight_post_selection_pending_runs(training)
+        trained = _train_post_selection_pending_runs(training)
+        by_key = {int(task.key): task for task in training}
+        ordered_keys = sorted(trained)
+        if ordered_keys:
+            _report_post_selection_gpu_occupancy(
+                "post-TRAIN EVAL2 entry", device, query_gpu_telemetry(device)
+            )
+        for index, key in enumerate(ordered_keys):
+            task = by_key[key]
+            print(
+                f"[EVAL2 serial] status=running; "
+                f"progress={format_progress_fraction(index, len(ordered_keys))}; "
+                f"unit=training-run; slot={task.slot}",
+                flush=True,
+            )
+            result = _execute_pending_post_selection_run(task, reusable=task.reusable)
+            if result is None:
+                raise PostSelectionExecutionError(
+                    "Post-TRAIN EVAL2 returned no bound evidence for slot "
+                    f"{task.slot}; the authenticated TRAIN2 continuation is unusable."
+                )
+            results[task.slot] = result
+        if ordered_keys:
+            print(
+                f"[EVAL2 serial] status=completed; "
+                f"progress={format_progress_fraction(len(ordered_keys), len(ordered_keys))}; "
+                "unit=training-run",
+                flush=True,
+            )
     for task in sorted(sealed, key=lambda item: int(item.slot)):
         print(
             "[TRAIN] status=reused; sealed training root; "
             + "; ".join(f"{key}={value}" for key, value in task.progress_context.items()),
             flush=True,
         )
-        result = execute_post_selection_run(
-            context,
-            run_plan=task.run_plan,
-            budget_policy=budget_policy,
-            training_frame_uids=task.training_frame_uids,
-            monitor_frame_uids=task.monitor_frame_uids,
-            outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
-            progress_context=task.progress_context,
-            reusable=task.reusable,
-        )
+        result = _execute_pending_post_selection_run(task, reusable=task.reusable)
         if result is None:
             raise PostSelectionExecutionError(
                 f"Sealed position slot {task.slot} produced no evaluated result."
@@ -5128,7 +5237,10 @@ def execute_post_selection_cross_validation(
                 )
         pending.append(
             _PendingPostSelectionRun(
+                context=context,
+                budget_policy=budget_policy,
                 slot=slot,
+                key=slot,
                 run_plan=run_plan,
                 training_frame_uids=tuple(fold.training_frame_uids),
                 monitor_frame_uids=tuple(common_monitor.selected_identities),
@@ -5145,9 +5257,7 @@ def execute_post_selection_cross_validation(
             )
         )
 
-    results = _run_post_selection_positions(
-        context, pending=pending, budget_policy=budget_policy
-    )
+    results = _run_post_selection_positions(pending)
     acceptances: list[CvFoldAcceptance] = []
     for slot in range(total_runs):
         run_plan, position = positions[slot]
@@ -5324,20 +5434,35 @@ def _previous_final_assessments(context: PostSelectionContext) -> tuple[Any, ...
     return tuple(found)
 
 
-def execute_final_production(
-    context: PostSelectionContext,
-) -> tuple[
-    FinalProductionPlan,
-    tuple[PostSelectionRunEvidence, ...],
-    "FinalProductionPublicationDecision",
-]:
-    """Authorize, run (or reuse), assess, and publish full-``T_selected`` production.
+@dataclass(frozen=True, slots=True)
+class _FinalProductionBundle:
+    """One selected size's authorized production plan and its positions.
 
-    Current accepted CV is re-authenticated before anything else: a missing,
-    stale, historical or rejected CV blocks production - including the reuse
-    of historically produced final bytes.  Each seed is assessed at its own
-    position (final hard policy + D2.DEF.059A only); every candidate and the
-    typed outcome are durably published before any failure is reported.
+    It is built in memory (Phase A) and published through the size's own
+    binding-scoped owner (Phase B).  ``tasks`` is in
+    ``FinalProductionPlan.required_final_seeds`` order, which is also the
+    finalization order; ``positions`` holds the matching assessment positions.
+    """
+
+    context: PostSelectionContext
+    final_plan: FinalProductionPlan
+    common_monitor: Any
+    monitor_separation: Any
+    policy_digest: str
+    tasks: tuple[_PendingPostSelectionRun, ...]
+    positions: tuple[str, ...]
+
+
+def _plan_final_production(
+    context: PostSelectionContext, *, first_key: int
+) -> _FinalProductionBundle:
+    """Phase A: authorize and construct one size's production without side effects.
+
+    Current accepted CV is re-authenticated before anything else - the
+    second-line fence behind the collection barrier: a missing, stale,
+    historical or rejected CV blocks production, including the reuse of
+    historically produced final bytes.  Nothing here publishes, makes a
+    pointer current, or materializes training state.
     """
 
     selected = context.selected
@@ -5391,21 +5516,6 @@ def execute_final_production(
         replay_lineage_digest=replay_lineage_digest,
     )
     store = context.evidence_store
-    with post_selection_publication_barrier(
-        context.paths, selected.binding.campaign_generation
-    ):
-        store.put(context.method)
-        store.put(context.production_policy)
-        store.put(common_monitor)
-        store.put(monitor_separation)
-        store.put(final_plan)
-        publish_current_post_selection_pointer(
-            context.store,
-            binding=selected.binding,
-            kind=POINTER_FINAL_PLAN,
-            content_digest=final_plan.content_digest,
-        )
-
     budget_policy = final_production_training_budget_policy(
         context.method, context.production_policy
     )
@@ -5414,16 +5524,14 @@ def execute_final_production(
             context.method_policies, context.production_policy
         )
     )
-    pending: list[_PendingPostSelectionRun] = []
-    positions: dict[int, tuple[Any, str]] = {}
+    tasks: list[_PendingPostSelectionRun] = []
+    positions: list[str] = []
     required_seeds = tuple(final_plan.required_final_seeds)
     total_runs = len(required_seeds)
     for slot, seed in enumerate(required_seeds):
         run_plan = build_final_production_run_plan(final_plan, optimizer_seed=seed)
-        store.put(run_plan)
-        store.put(run_plan.training_trajectory)
         position = _final_position(context, run_plan, policy_digest)
-        positions[slot] = (run_plan, position)
+        positions.append(position)
         offers: dict[str, dict[str, Any]] = {"candidates": {}, "outer": {}}
         sources = list(previous)
         current = resolve_current_post_selection_record(
@@ -5441,9 +5549,12 @@ def execute_final_production(
                 _offered_measurements(
                     store, candidate_record_digests=item.candidate_record_digests, into=offers
                 )
-        pending.append(
+        tasks.append(
             _PendingPostSelectionRun(
+                context=context,
+                budget_policy=budget_policy,
                 slot=slot,
+                key=first_key + slot,
                 run_plan=run_plan,
                 training_frame_uids=tuple(selected.selected_membership),
                 monitor_frame_uids=tuple(common_monitor.selected_identities),
@@ -5458,14 +5569,233 @@ def execute_final_production(
                 reusable=_reusable(offers),
             )
         )
-
-    results = _run_post_selection_positions(
-        context, pending=pending, budget_policy=budget_policy
+    return _FinalProductionBundle(
+        context=context,
+        final_plan=final_plan,
+        common_monitor=common_monitor,
+        monitor_separation=monitor_separation,
+        policy_digest=policy_digest,
+        tasks=tuple(tasks),
+        positions=tuple(positions),
     )
+
+
+def _require_unique_production_identities(
+    bundles: Sequence[_FinalProductionBundle],
+) -> None:
+    """Fail closed before any launch if two positions would share one run.
+
+    Local seed slots repeat across sizes by construction; only the exact
+    scientific run and training-trajectory identities may distinguish them.
+    """
+
+    for attribute in ("run_identity", "training_trajectory_identity"):
+        seen: dict[str, str] = {}
+        for bundle in bundles:
+            for task in bundle.tasks:
+                value = str(getattr(task.run_plan, attribute))
+                owner = (
+                    f"N={bundle.context.selected.n_selected} "
+                    f"seed={task.run_plan.optimizer_seed}"
+                )
+                if value in seen:
+                    raise PostSelectionExecutionError(
+                        f"Final-production positions {seen[value]} and {owner} resolve "
+                        f"to the same {attribute.replace('_', ' ')} {value[:12]}...; "
+                        "a planning/identity defect, so no trainer was launched."
+                    )
+                seen[value] = owner
+
+
+def _publish_final_production_plan(bundle: _FinalProductionBundle) -> None:
+    """Phase B: publish one size's plan through its own binding-scoped owner."""
+
+    context = bundle.context
+    store = context.evidence_store
+    with post_selection_publication_barrier(
+        context.paths, context.selected.binding.campaign_generation
+    ):
+        store.put(context.method)
+        store.put(context.production_policy)
+        store.put(bundle.common_monitor)
+        store.put(bundle.monitor_separation)
+        store.put(bundle.final_plan)
+        publish_current_post_selection_pointer(
+            context.store,
+            binding=context.selected.binding,
+            kind=POINTER_FINAL_PLAN,
+            content_digest=bundle.final_plan.content_digest,
+        )
+    for task in bundle.tasks:
+        store.put(task.run_plan)
+        store.put(task.run_plan.training_trajectory)
+
+
+def _normalize_final_production_recovery(
+    tasks: Sequence[_PendingPostSelectionRun],
+) -> tuple[_PendingPostSelectionRun, ...]:
+    """Resolve every production position to sealed state or ``TRAIN_REQUIRED``.
+
+    Runs before the TRAIN admission baseline and before any child starts.
+    Durable state is classified under the run-activity lease through its own
+    owner: a post-cutover root through the execution owner's terminal
+    continuation path, a historical root through the historical recovery
+    owner.  An authenticated terminal-but-unsealed root is sealed exactly as
+    those owners seal it, with no trainer launch; every sealed root is then
+    authenticated read-only.  Only positions that still need trainer
+    execution are returned.  Seals made here are recovery completions and stay
+    durable whatever happens later; nothing is evaluated or published.
+    """
+
+    required: list[_PendingPostSelectionRun] = []
+    resolved_roots: dict[Path, str] = {}
+    for task in sorted(tasks, key=lambda item: int(item.key)):
+        context = task.context
+        root = resolve_post_selection_training_root(context, task.run_plan)
+        owner = f"N={context.selected.n_selected} seed={task.run_plan.optimizer_seed}"
+        path_key = root.path.absolute()
+        if path_key in resolved_roots:
+            raise PostSelectionExecutionError(
+                f"Final-production positions {resolved_roots[path_key]} and {owner} "
+                "resolve to the same training root; no trainer was launched."
+            )
+        resolved_roots[path_key] = owner
+        description = "; ".join(
+            f"{key}={value}" for key, value in task.progress_context.items()
+        )
+        if root.legacy is None and not (root.path.is_dir() and any(root.path.iterdir())):
+            required.append(task)
+            continue
+        with post_selection_run_activity_lease(root.path):
+            completion, _why = read_post_selection_run_completion(root.path)
+            recovered = completion is None
+            if completion is None:
+                arguments: dict[str, Any] = dict(
+                    run_plan=task.run_plan,
+                    budget_policy=task.budget_policy,
+                    progress_context=task.progress_context,
+                    cancellation_event=None,
+                    progress_callback=None,
+                    progress_observer=None,
+                    telemetry_ref=None,
+                    launch_trainer=False,
+                )
+                if root.legacy is not None:
+                    sealed_now = _complete_legacy_training_root(
+                        context, root=root, **arguments
+                    )
+                else:
+                    sealed_now = _train_post_selection_run(
+                        context,
+                        training_frame_uids=task.training_frame_uids,
+                        monitor_frame_uids=task.monitor_frame_uids,
+                        outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
+                        run_root=root.path,
+                        **arguments,
+                    )
+                if not sealed_now:
+                    required.append(task)
+                    continue
+                completion, why = read_post_selection_run_completion(root.path)
+                if completion is None:
+                    raise PostSelectionExecutionError(
+                        f"Training root {root.identity[:12]}... is not sealed after "
+                        f"terminal recovery normalization: {why}"
+                    )
+            _authenticate_sealed_training_root(
+                context,
+                run_plan=task.run_plan,
+                budget_policy=task.budget_policy,
+                root=root,
+                completion=completion,
+            )
+        print(
+            "[TRAIN] status=reused; "
+            + (
+                "terminal TRAIN2 sealed by recovery; "
+                if recovered
+                else "sealed training root; "
+            )
+            + description,
+            flush=True,
+        )
+    return tuple(required)
+
+
+def _train_final_production_collection(
+    bundles: Sequence[_FinalProductionBundle],
+    *,
+    signature: tuple[int, tuple[str, ...]],
+) -> tuple[int, ...]:
+    """Normalize recovery, then TRAIN every ``TRAIN_REQUIRED`` position in one wave.
+
+    One scheduler owns every selected size's remaining TRAIN2 work; every
+    admission, including readmission after demotion, is linearized against
+    target-size generation transitions through the canonical collection
+    signature.
+    """
+
+    from .training_parallel import query_gpu_telemetry
+
+    tasks = tuple(task for bundle in bundles for task in bundle.tasks)
+    devices = dict.fromkeys(str(task.context.method_policies.device) for task in tasks)
+    for device in devices:
+        # Recovery normalization can realize training-side state, so the
+        # admission baseline is observed only after it has finished.
+        _report_post_selection_gpu_occupancy(
+            "pre-recovery-preflight", device, query_gpu_telemetry(device)
+        )
+    required = _normalize_final_production_recovery(tasks)
+    print(
+        f"[TRAIN] production recovery: positions={len(tasks)}; "
+        f"train_required={len(required)}; sealed={len(tasks) - len(required)}",
+        flush=True,
+    )
+    store = bundles[0].context.store
+    return _train_post_selection_pending_runs(
+        required,
+        admission_fence=lambda: post_selection_collection_admission(
+            store, signature=signature
+        ),
+    )
+
+
+def _finalize_final_production(
+    bundle: _FinalProductionBundle,
+) -> tuple[tuple[PostSelectionRunEvidence, ...], "FinalProductionPublicationDecision"]:
+    """Serial EVAL2, per-seed assessment, then final publication of one size.
+
+    Every required seed is evaluated from its sealed root in
+    ``required_final_seeds`` order and assessed at its own position (final
+    hard policy + D2.DEF.059A only); every candidate and the typed outcome are
+    durably published before any failure is reported.
+    """
+
+    from .progress_timing import format_progress_fraction
+
+    context = bundle.context
+    selected = context.selected
+    store = context.evidence_store
+    total_runs = len(bundle.tasks)
+    results: list[PostSelectionRunResult] = []
+    for index, task in enumerate(bundle.tasks):
+        print(
+            f"[EVAL2 serial] status=running; "
+            f"progress={format_progress_fraction(index, total_runs)}; "
+            f"unit=training-run; N_selected={selected.n_selected}; "
+            f"seed={task.run_plan.optimizer_seed}",
+            flush=True,
+        )
+        result = _execute_pending_post_selection_run(task, reusable=task.reusable)
+        if result is None:
+            raise PostSelectionExecutionError(
+                f"Sealed production position N={selected.n_selected} seed "
+                f"{task.run_plan.optimizer_seed} produced no evaluated result."
+            )
+        results.append(result)
     evidence: list[PostSelectionRunEvidence] = []
-    for slot in range(total_runs):
-        run_plan, position = positions[slot]
-        result = results[slot]
+    for task, position, result in zip(bundle.tasks, bundle.positions, results):
+        run_plan = task.run_plan
         publish_post_selection_run_measurements(context, result)
         representative = result.representative
         reasons = tuple(
@@ -5473,7 +5803,7 @@ def execute_final_production(
         )
         assessment = PostSelectionRunEvidence(
             selected_binding_digest=selected.binding.content_digest,
-            assessment_position_policy_digest=policy_digest,
+            assessment_position_policy_digest=bundle.policy_digest,
             training_trajectory_identity=run_plan.training_trajectory_identity,
             training_root_identity=result.training_root_identity,
             optimizer_seed=run_plan.optimizer_seed,
@@ -5532,9 +5862,9 @@ def execute_final_production(
     # Deciding which of the completed seeds constitute the released product is
     # the last pre-qualification act, and it belongs here: every input it uses
     # already exists, and no downstream release evidence does yet.
-    completion = FinalProductionCompletion(plan=final_plan, runs=tuple(evidence))
+    completion = FinalProductionCompletion(plan=bundle.final_plan, runs=tuple(evidence))
     decision = publish_final_production_publication(context, context.store, completion)
-    return final_plan, tuple(evidence), decision
+    return tuple(evidence), decision
 
 
 def resolve_current_final_production_plan(
@@ -5895,6 +6225,15 @@ def execute_current_train_production(args: Any) -> int:
     starts.  Evidence already published by an earlier attempt keeps whatever
     currentness its own identity earns; what the barrier prevents is admitting
     new work that would present a partial experiment as a whole one.
+
+    After the barrier every size is planned in memory under its own second-line
+    CV authorization (Phase A) and then published through its own binding
+    (Phase B).  Recovery is normalized across the collection, and every
+    position still requiring TRAIN2 shares one bounded TRAIN wave.  Only once
+    that wave is terminal are sizes finalized - serial EVAL2, per-seed
+    assessment, publication - one at a time in frozen order, stopping at the
+    first size that fails.  Plan pointers and recovery seals are per binding
+    and per root; nothing here is rolled back to imitate collection atomicity.
     """
 
     from ._campaign_cli_core import (
@@ -5905,6 +6244,7 @@ def execute_current_train_production(args: Any) -> int:
         _ok,
         _print_header,
     )
+    from .training_parallel import query_gpu_telemetry
 
     cfg, paths = _load_config(args.config)
     store = CampaignStore(paths.state_db)
@@ -5917,9 +6257,8 @@ def execute_current_train_production(args: Any) -> int:
         inference_evaluator=getattr(args, "_external_inference_evaluator", None),
     )
     sizes = [context.selected.n_selected for context in contexts]
-    blockers = _cv_admission_blockers(contexts)
-    if blockers:
-        detail = "; ".join(blockers)
+
+    def fail(detail: str) -> None:
         _mark_stage(
             store,
             paths,
@@ -5927,6 +6266,11 @@ def execute_current_train_production(args: Any) -> int:
             StageState.FAILED,
             detail,
         )
+
+    blockers = _cv_admission_blockers(contexts)
+    if blockers:
+        detail = "; ".join(blockers)
+        fail(detail)
         raise PostSelectionError(
             "Final production is not admitted: the frozen design requests selected "
             f"sizes {sizes}, and {detail}. No production run was started for any "
@@ -5940,19 +6284,55 @@ def execute_current_train_production(args: Any) -> int:
         StageState.RUNNING,
         f"producing selected sizes {sizes}",
     )
-    published: list[str] = []
+    # Capture the exact design this invocation is authorized for before any
+    # plan is built; every later admission is linearized against it.
+    signature = post_selection_collection_signature(
+        tuple(context.selected.binding for context in contexts)
+    )
+    bundles: list[_FinalProductionBundle] = []
     for context in contexts:
-        n_selected = context.selected.n_selected
+        first_key = sum(len(bundle.tasks) for bundle in bundles)
         try:
-            final_plan, evidence, decision = execute_final_production(context)
+            bundles.append(_plan_final_production(context, first_key=first_key))
         except Exception as exc:
-            _mark_stage(
-                store,
-                paths,
-                "post_selection_final_production",
-                StageState.FAILED,
-                f"N={n_selected}: {exc}",
-            )
+            fail(f"N={context.selected.n_selected}: {exc}")
+            raise
+    try:
+        _require_unique_production_identities(bundles)
+    except Exception as exc:
+        fail(str(exc))
+        raise
+    for bundle in bundles:
+        try:
+            _publish_final_production_plan(bundle)
+        except Exception as exc:
+            fail(f"N={bundle.context.selected.n_selected}: {exc}")
+            raise
+    try:
+        _train_final_production_collection(bundles, signature=signature)
+        # Admission of the finalization phase is linearized exactly like a
+        # TRAIN admission; later rollover is refused by the commit-time
+        # per-binding fences of every assessment and publication.
+        with post_selection_collection_admission(store, signature=signature):
+            pass
+    except Exception as exc:
+        fail(f"production TRAIN2 collection wave: {exc}")
+        raise
+    devices = dict.fromkeys(
+        str(bundle.context.method_policies.device) for bundle in bundles
+    )
+    for device in devices:
+        _report_post_selection_gpu_occupancy(
+            "post-TRAIN EVAL2 entry", device, query_gpu_telemetry(device)
+        )
+    published: list[str] = []
+    for bundle in bundles:
+        n_selected = bundle.context.selected.n_selected
+        final_plan = bundle.final_plan
+        try:
+            evidence, decision = _finalize_final_production(bundle)
+        except Exception as exc:
+            fail(f"N={n_selected}: {exc}")
             raise
         _ok(
             f"N={n_selected}: trained {len(evidence)} fresh production run(s) on "
@@ -5992,7 +6372,6 @@ __all__ = [
     "build_post_selection_contexts",
     "execute_current_cross_validate",
     "execute_current_train_production",
-    "execute_final_production",
     "execute_post_selection_cross_validation",
     "execute_post_selection_run",
     "resolve_current_cv_acceptance",
