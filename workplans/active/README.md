@@ -12,7 +12,7 @@ Canonical workplan:
 
 - `workplans/active/MLFF_PRODUCTION_GLOBAL_TRAIN_SCHEDULER_REPAIR_WORKPLAN.md`
 
-The cycle repairs final-production orchestration only. After the existing collection-wide CV admission barrier, every unsealed final-production TRAIN2 position across the frozen selected-size collection must participate in one existing adaptive TRAIN scheduler wave. Per-size planning, scientific identity, restart/currentness, assessment, and publication remain independent. No CV scheduler change, production-seed policy change, second scheduler/resource owner, concurrent EVAL2, or cross-size publication/release rule is authorized. Physical GPU qualification remains deferred to the final complete-release package.
+This is a stakeholder-authorized **bounded D3 reopen of final-production selected-size scheduling**: it supersedes the accepted serial production-size concretization only. After the existing collection-wide CV barrier and preserved per-size second-line authorization/planning fences, every compatible unsealed final-production TRAIN2 position across the frozen collection enters one existing adaptive TRAIN scheduler wave. Per-size scientific identity, restart/currentness, fail-fast assessment/publication, and the multi-size no-winner boundary remain independent; public CV selected-size orchestration stays unchanged. No production-seed policy change, second scheduler/resource owner, concurrent EVAL2, or cross-size publication/release rule is authorized. Physical GPU qualification remains deferred to the final complete-release package.
 
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
