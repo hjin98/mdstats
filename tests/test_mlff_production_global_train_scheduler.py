@@ -547,6 +547,162 @@ def test_terminal_but_unsealed_roots_seal_before_the_wave_is_sized(
     assert "train_required=0; sealed=4" in reprinted
 
 
+# --- R1: every classification is owned by the run-activity lease ------------
+
+
+def _publish_plans_without_recovery(
+    config: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Drive the real command through Phase A/B and stop before recovery.
+
+    Afterwards every per-binding FinalProductionPlan pointer is current and no
+    production run root exists yet, which is exactly the state in which a
+    locator-time observation of an absent root is tempting and wrong.
+    """
+
+    real = runtime._train_final_production_collection
+
+    def stop(*_args, **_kwargs):
+        raise PostSelectionError("bounded stop before recovery normalization")
+
+    monkeypatch.setattr(runtime, "_train_final_production_collection", stop)
+    with pytest.raises(PostSelectionError, match="bounded stop"):
+        fx.run_train_production(config, fx.PostSelectionHarness())
+    monkeypatch.setattr(runtime, "_train_final_production_collection", real)
+
+
+def test_recovery_classifies_positions_only_under_the_run_activity_lease(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """R1: a competing owner that wins the lease owns the classification.
+
+    The position's root is absent when this invocation resolves its locator -
+    the one observation the normalization pass may legitimately make outside
+    the lease.  A second owner then acquires the *existing* run-activity lease
+    for that exact root and drives the position to an authenticated sealed
+    TRAIN2 root through the real run owner.  Normalization blocks at the
+    ownership boundary and, once it holds the lease, must classify from the
+    authoritative post-transition state: the position is reusable, not
+    ``TRAIN_REQUIRED``.
+
+    No new lease, liveness registry, PID/mtime inference or collection lock is
+    involved; the only exclusion used is the one the run owner already holds.
+    """
+
+    config = _two_size_campaign(tmp_path)
+    _bind_bounded_device(monkeypatch)
+    _publish_plans_without_recovery(config, monkeypatch)
+
+    roots = _production_run_roots(config)
+    assert len(roots) == 2
+    contested = roots[0]
+    assert not contested.exists(), "the contested root must start out absent"
+
+    at_boundary = threading.Event()
+    lease_held = threading.Event()
+    failures: list[BaseException] = []
+    winner = fx.PostSelectionHarness()
+    main = threading.current_thread()
+    real_lease = runtime.post_selection_run_activity_lease
+
+    def win_the_position() -> None:
+        """Take the lease first, then create and seal the root under it.
+
+        The root is deliberately still absent when the lease is taken: that is
+        the only construction in which a pre-lease pathname observation and the
+        authoritative lease-owned state disagree.
+        """
+
+        cfg, paths = cli._load_config(config)
+        store = CampaignStore(paths.state_db)
+        try:
+            contexts = runtime.build_post_selection_contexts(
+                cfg,
+                paths,
+                store,
+                trainer=winner.train,
+                inference_evaluator=winner.evaluate,
+                admit=True,
+            )
+            task = runtime._plan_final_production(contexts[0], first_key=0).tasks[0]
+            root = runtime.resolve_post_selection_training_root(
+                task.context, task.run_plan
+            )
+            assert root.path == contested and not root.path.exists()
+            with real_lease(root.path):
+                lease_held.set()
+                # Bounded: if normalization never asks for this lease it has
+                # already classified the position without ownership, which the
+                # assertions below then report.
+                at_boundary.wait(45.0)
+                root.path.mkdir(parents=True, exist_ok=True)
+                runtime._execute_post_selection_run_locked(
+                    task.context,
+                    run_plan=task.run_plan,
+                    budget_policy=task.budget_policy,
+                    training_frame_uids=task.training_frame_uids,
+                    monitor_frame_uids=task.monitor_frame_uids,
+                    outer_evaluation_frame_uids=task.outer_evaluation_frame_uids,
+                    root=root,
+                    progress_context=task.progress_context,
+                    stop_after_training=True,
+                )
+        except BaseException as exc:  # surfaced by the main thread
+            failures.append(exc)
+        finally:
+            lease_held.set()
+            store.close()
+
+    def observed_lease(run_root):
+        # Only this invocation's own normalization pass is observed; the
+        # competing owner and the scheduler's workers run on other threads.
+        if threading.current_thread() is main and Path(run_root) == contested:
+            at_boundary.set()
+        return real_lease(run_root)
+
+    monkeypatch.setattr(runtime, "post_selection_run_activity_lease", observed_lease)
+
+    thread = threading.Thread(target=win_the_position, name="competing-p5-owner")
+    thread.start()
+    try:
+        assert lease_held.wait(180.0), "the competing owner never took the lease"
+        assert not failures, failures
+        assert not contested.exists(), "the contested root must still be absent"
+
+        capsys.readouterr()
+        spy = _SchedulerSpy(monkeypatch)
+        harness = _ConcurrentProductionHarness(expected_width=1)
+        assert fx.run_train_production(config, harness) == 0
+        printed = capsys.readouterr().out
+    finally:
+        thread.join(300.0)
+    assert not thread.is_alive()
+    assert not failures, failures
+
+    # The classification boundary was actually reached, and the winning owner
+    # is the only one that ever trained the contested position.
+    assert at_boundary.is_set(), (
+        "recovery normalization never asked for the run-activity lease of a root "
+        "it observed as absent; it classified the position before owning it"
+    )
+    assert winner.runs == [contested.name], winner.runs
+    assert runtime.read_post_selection_run_completion(contested)[0] is not None
+
+    # The contested position was classified reusable from the post-transition
+    # state: no trainer request, no task-count inflation, no duplicate run.
+    assert contested.name not in harness.runs
+    assert len(harness.runs) == 1 and len(set(harness.runs)) == 1
+    assert [item["task_count"] for item in spy.plans] == [1]
+    assert len(spy.controllers) == 1
+    assert "train_required=1; sealed=1" in printed
+    planned = _scheduler_lines(printed, "planned")
+    assert planned and "progress=0/1" in planned[0], planned
+
+    # Both sizes still finalize through their own publication owner.
+    for context in _contexts(config)[2]:
+        assert resolve_current_final_production_publication(context) is not None
+
+
 # --- A6 / A13: integrity normalization and plan-pointer semantics -----------
 
 
@@ -854,6 +1010,165 @@ def test_wave_failure_cancels_every_owned_task_and_starts_no_eval(
         assert resolve_current_final_production_publication(context) is not None
 
 
+# --- R5: a sealed cross-size sibling survives a later wave failure ----------
+
+
+#: Two owned slots exactly, so the wave's admission order is deterministic:
+#: one position runs alone and seals, two more are then owned simultaneously,
+#: and the fourth can only be admitted if a slot is released.
+_TWO_SLOT_CONTROL = _FAST_CONTROL.replace(
+    "maximum_parallel_training_jobs = 4", "maximum_parallel_training_jobs = 2"
+)
+
+
+class _SealOneThenFailAnother(fx.PostSelectionHarness):
+    """Seal the first position, then fail a later one while a sibling is live."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.lock = threading.Lock()
+        self.order: list[str] = []
+        self.stopped: list[str] = []
+        self.admitted_after_failure: list[str] = []
+        self.active = 0
+        self.max_active = 0
+        self.failed_at: float | None = None
+        self.sealed_before_failure = 0
+        #: Roots already sealed when the wave began (the CV roots), so only
+        #: seals produced by this production wave are counted.
+        self.baseline: set[str] | None = None
+
+    @staticmethod
+    def _sealed_roots(request) -> list[str]:
+        runs_root = request.materialization_directory.parent.parent
+        return sorted(
+            root.name
+            for root in runs_root.iterdir()
+            if root.is_dir() and (root / "run-completion.json").is_file()
+        )
+
+    def train(self, request):
+        identity = str(request.run_plan.run_identity)
+        with self.lock:
+            self.order.append(identity)
+            ordinal = len(self.order)
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+            if self.failed_at is not None:
+                self.admitted_after_failure.append(identity)
+        try:
+            if self.baseline is None:
+                self.baseline = set(self._sealed_roots(request))
+            if ordinal == 1:
+                # The real run owner trains this position to its authenticated
+                # terminal TRAIN2 root and publishes the existing completion
+                # seal when this returns.
+                return super().train(request)
+            if request.progress_observer is not None:
+                request.progress_observer({"true_epoch": True, "phase": "training"})
+            deadline = time.monotonic() + 180.0
+            if ordinal == 2:
+                # Fail only once a sibling seal is durable *and* another owned
+                # position is genuinely active beside this one.
+                while True:
+                    assert time.monotonic() < deadline, "the wave never settled"
+                    sealed = set(self._sealed_roots(request)) - (self.baseline or set())
+                    with self.lock:
+                        beside = self.active >= 2
+                    if sealed and beside:
+                        with self.lock:
+                            self.sealed_before_failure = len(sealed)
+                            self.failed_at = time.monotonic()
+                        raise RuntimeError("bounded TRAIN2 child failure")
+                    time.sleep(0.01)
+            stop = request.cancellation_event
+            assert stop is not None
+            while not stop.is_set():
+                assert time.monotonic() < deadline, "the sibling was never signalled"
+                time.sleep(0.01)
+            with self.lock:
+                self.stopped.append(identity)
+            raise PostSelectionCancelledError(
+                "Post-selection MACE training was cancelled."
+            )
+        finally:
+            with self.lock:
+                self.active -= 1
+
+
+def test_a_sealed_sibling_survives_a_later_wave_failure_and_is_not_retrained(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """R5/A8: completed TRAIN2 evidence is durable across a failed wave.
+
+    One cross-size production position reaches an authenticated sealed TRAIN2
+    root through the existing completion/topology owner.  Only then does a
+    second, still-active position fail while a third is owned and a fourth is
+    queued.  The failure must stop admission, cancel and reap the owned
+    sibling, and begin no EVAL2 - and the retry must reuse the sealed sibling
+    with zero trainer relaunch, scheduling only the outstanding
+    ``TRAIN_REQUIRED`` positions.
+    """
+
+    config = _two_size_campaign(
+        tmp_path, production_seeds="[5, 6]", control=_TWO_SLOT_CONTROL
+    )
+    _bind_bounded_device(monkeypatch)
+    harness = _SealOneThenFailAnother()
+    capsys.readouterr()
+    with pytest.raises(RuntimeError, match="bounded TRAIN2 child failure"):
+        fx.run_train_production(config, harness)
+    printed = capsys.readouterr().out
+
+    # One sibling was already sealed when the failure happened, one sibling was
+    # active and was signalled and reaped, and nothing further was admitted.
+    assert harness.sealed_before_failure == 1
+    assert harness.max_active == 2
+    assert len(harness.order) == 3, harness.order
+    assert harness.stopped == [harness.order[2]], harness.stopped
+    assert harness.admitted_after_failure == []
+    assert harness.evaluations == [], "EVAL2 began after a failed TRAIN wave"
+    failed = _scheduler_lines(printed, "failed")
+    assert failed and "failed_jobs=1" in failed[-1], failed
+
+    sealed_roots = [
+        root
+        for root in _production_run_roots(config)
+        if runtime.read_post_selection_run_completion(root)[0] is not None
+    ]
+    assert [root.name for root in sealed_roots] == [harness.order[0]]
+    _cfg, _paths, contexts = _contexts(config)
+    for context in contexts:
+        assert resolve_current_final_production_publication(context) is None
+
+    # The retry authenticates and reuses the sealed sibling; only genuinely
+    # outstanding positions re-enter the scheduler's task count.
+    capsys.readouterr()
+    spy = _SchedulerSpy(monkeypatch)
+    retry = _ConcurrentProductionHarness(expected_width=2)
+    assert fx.run_train_production(config, retry) == 0
+    reprinted = capsys.readouterr().out
+
+    assert harness.order[0] not in retry.runs, "a sealed sibling was retrained"
+    assert len(retry.runs) == 3 and len(set(retry.runs)) == 3
+    assert [item["task_count"] for item in spy.plans] == [3]
+    assert len(spy.controllers) == 1
+    assert "train_required=3; sealed=1" in reprinted
+    planned = _scheduler_lines(reprinted, "planned")
+    assert planned and "progress=0/3" in planned[0], planned
+
+    # Frozen-order finalization then completes for the whole collection.
+    order = [
+        int(line.split("N_selected=")[1].split(";")[0])
+        for line in reprinted.splitlines()
+        if line.startswith("[EVAL2 serial] status=running") and "N_selected=" in line
+    ]
+    assert order == [FIRST_SIZE, FIRST_SIZE, SECOND_SIZE, SECOND_SIZE]
+    for context in _contexts(config)[2]:
+        decision = resolve_current_final_production_publication(context)
+        assert decision is not None and len(decision.seed_evidence) == 2
+
+
 # --- A9: cross-size memory demotion keeps scientific identity ---------------
 
 
@@ -980,6 +1295,216 @@ def test_an_incompatible_profile_on_a_sealed_position_does_not_block_the_wave(
     assert fx.run_train_production(config, harness) == 0
     assert [item["task_count"] for item in spy.plans] == [2]
     assert set(harness.runs).isdisjoint(interrupted)
+
+
+# --- A17 / R2: the shared resource demand is proved, dimension by dimension --
+
+
+_MIB = 1024 ** 2
+
+
+def test_distinct_production_sizes_and_horizons_make_one_resource_demand(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A17: what changing ``N`` and ``H_prod`` does, and does not, change.
+
+    Two positions that both remain ``TRAIN_REQUIRED`` after recovery
+    normalization differ in every scientific input the single-controller
+    contract is suspected of depending on: selected size (and therefore exact
+    training membership and materialized dataset), and frozen production
+    horizon.  The claim is not that their configuration objects compare equal -
+    that would be the assumption, not the proof - but that the per-job resource
+    demand the existing planner and the existing TRAIN2 runtime actually
+    realize is invariant under those inputs, dimension by dimension:
+
+    * **device/VRAM geometry** - device, backend, learned precision, model and
+      runtime realization, replay lineage and the batch/validation-batch
+      geometry that determines device residency are equal, so no
+      dataset-wide or horizon-wide device-resident state exists beside the
+      common batch/model geometry.  The operative live bound is the aggregate
+      VRAM/utilization envelope, which is observed from telemetry and is
+      likewise not a function of ``N``.
+    * **CPU/threading** - loader-worker count and the plan's derived native
+      thread geometry come from one configuration and one task count.
+    * **host RAM** - the one per-job quantity that does scale with ``N`` is the
+      materialized training set the trainer reads.  The planner represents it
+      by one configured size-independent per-job estimate, which must cover the
+      largest admitted position; the mixed-size wave therefore plans exactly
+      the envelope the largest size's own wave of the same width already had.
+    * **horizon** - ``H_prod`` reaches the runtime only as the epoch budget and
+      execution epoch limit, i.e. as work *duration*, leaving every resident
+      quantity untouched.
+    """
+
+    config = _two_size_campaign(tmp_path)
+    _bind_bounded_device(monkeypatch)
+    spy = _SchedulerSpy(monkeypatch)
+    scheduled: list = []
+    real_wave = runtime._train_post_selection_pending_runs
+
+    def observed(pending, **kwargs):
+        scheduled.extend(pending)
+        return real_wave(pending, **kwargs)
+
+    monkeypatch.setattr(runtime, "_train_post_selection_pending_runs", observed)
+    harness = _ConcurrentProductionHarness(expected_width=2)
+    assert fx.run_train_production(config, harness) == 0
+
+    # The two positions that actually shared the TRAIN resource domain.
+    assert len(scheduled) == 2
+    small, large = sorted(
+        scheduled, key=lambda task: int(task.context.selected.n_selected)
+    )
+    assert int(small.context.selected.n_selected) == FIRST_SIZE
+    assert int(large.context.selected.n_selected) == SECOND_SIZE
+    assert int(small.run_plan.planned_epochs) == FIRST_HORIZON
+    assert int(large.run_plan.planned_epochs) == SECOND_HORIZON
+    assert len(small.training_frame_uids) < len(large.training_frame_uids)
+
+    # (a) Every dimension the one controller assumes is shared, proved equal
+    # over exactly those two positions - and the proof covers the dimensions
+    # A17 names, not an arbitrary subset.
+    small_profile = dict(runtime._post_selection_scheduler_profile(small))
+    large_profile = dict(runtime._post_selection_scheduler_profile(large))
+    assert small_profile == large_profile
+    assert set(small_profile) == {
+        "device",
+        "optimizer device",
+        "learned-model precision",
+        "training method/model realization",
+        "batch size",
+        "loader workers per job",
+        "training acceleration",
+        "replay lineage",
+        "concurrency policy and per-job RAM/VRAM estimates",
+        "CPU/RAM/GPU allocation",
+        "progress interval",
+        "trainer/process-supervision owner",
+    }
+
+    # (b) The exact optimizer realization each position trained under: the
+    # device-resident geometry is a function of configuration only, never of
+    # membership size or horizon.
+    def optimizer(task):
+        return runtime._optimizer_policy_for(
+            task.context,
+            seed=task.run_plan.optimizer_seed,
+            planned_epochs=task.run_plan.planned_epochs,
+        )
+
+    light, heavy = optimizer(small), optimizer(large)
+    for field in ("device", "default_dtype", "batch_size", "valid_batch_size"):
+        assert getattr(light, field) == getattr(heavy, field), field
+    assert int(getattr(light, "num_workers", 0)) == int(getattr(heavy, "num_workers", 0))
+
+    # (c) What the TRAIN2 runtime really received.  Removing the epoch budget,
+    # the per-epoch structure count and the execution epoch limit leaves two
+    # byte-identical runtime plans, so ``N`` and ``H_prod`` reach the runtime
+    # only as work duration and epoch size.
+    by_size = {
+        int(request.materialization.target_train_artifact.configuration_count): request
+        for request in harness.requests
+    }
+    assert sorted(by_size) == [FIRST_SIZE, SECOND_SIZE]
+    light_request, heavy_request = by_size[FIRST_SIZE], by_size[SECOND_SIZE]
+    assert int(light_request.plan.execution_epoch_limit) == FIRST_HORIZON
+    assert int(heavy_request.plan.execution_epoch_limit) == SECOND_HORIZON
+    assert int(light_request.plan.structures_per_epoch) < int(
+        heavy_request.plan.structures_per_epoch
+    )
+    # ``optimizer_policy_digest`` is horizon-derived (the LR schedule spans the
+    # frozen epoch budget) and is a scientific identity, not a resource fact:
+    # every resource-relevant field of that same policy was proved equal in (b).
+    assert light_request.plan.optimizer_policy_digest != (
+        heavy_request.plan.optimizer_policy_digest
+    )
+    duration_only = {
+        "budget_policy",
+        "structures_per_epoch",
+        "execution_epoch_limit",
+        "optimizer_policy_digest",
+    }
+    assert {
+        key: value
+        for key, value in light_request.plan.to_dict().items()
+        if key not in duration_only | {"content_digest"}
+    } == {
+        key: value
+        for key, value in heavy_request.plan.to_dict().items()
+        if key not in duration_only | {"content_digest"}
+    }
+    # The epoch budgets differ only in the frozen horizon itself.
+    light_budget = light_request.plan.budget_policy.to_dict()
+    heavy_budget = heavy_request.plan.budget_policy.to_dict()
+    assert light_budget["planned_epochs"] != heavy_budget["planned_epochs"]
+    horizon_derived = {"planned_epochs", "content_digest", "policy_digest"}
+    assert {
+        k: v for k, v in light_budget.items() if k not in horizon_derived
+    } == {k: v for k, v in heavy_budget.items() if k not in horizon_derived}
+
+    # (d) The one per-job quantity that genuinely scales with ``N`` is the
+    # host-resident materialized training set, and the configured per-job RAM
+    # estimate the planner uses covers the larger admitted position.
+    def dataset_bytes(request) -> int:
+        transport = request.materialization_directory / "target_train.extxyz"
+        assert transport.is_file()
+        return transport.stat().st_size
+
+    assert dataset_bytes(light_request) < dataset_bytes(heavy_request)
+    plan = spy.plans[0]["plan"]
+    assert dataset_bytes(heavy_request) <= plan.estimated_ram_bytes_per_job
+
+    # (e) The planner's demand model saw the shared profile and the task count
+    # and nothing else; ``N``, membership, seed and horizon are not among its
+    # inputs at all.
+    inputs = {key: value for key, value in spy.plans[0].items() if key != "plan"}
+    assert set(inputs) == {
+        "task_count",
+        "device",
+        "loader_workers_per_job",
+        "resources",
+        "policy",
+        "gpu_sample",
+    }
+    assert inputs["task_count"] == 2
+    for task in (small, large):
+        assert inputs["policy"] == runtime._post_selection_training_concurrency_policy(
+            task.context
+        )
+        assert inputs["device"] == str(task.context.method_policies.device)
+        assert inputs["loader_workers_per_job"] == int(
+            getattr(optimizer(task), "num_workers", 0)
+        )
+    # The per-job RAM/VRAM reservations are the configured size-independent
+    # values, not anything derived from a task.
+    assert plan.estimated_ram_bytes_per_job == int(
+        inputs["policy"].estimated_ram_mib_per_job * _MIB
+    )
+    assert plan.estimated_gpu_bytes_per_job == int(
+        inputs["policy"].estimated_gpu_memory_mib_per_job * _MIB
+    )
+    # The VRAM admission envelope is observed aggregate telemetry times the
+    # configured fraction: a live device bound, independent of ``N``.
+    assert plan.gpu_memory_observation == "telemetry"
+    assert plan.baseline_gpu_used_bytes == int(inputs["gpu_sample"].used_bytes)
+    assert plan.gpu_memory_budget_bytes == int(
+        int(inputs["gpu_sample"].total_bytes) * inputs["policy"].gpu_memory_fraction
+    )
+
+    # (f) The decisive conservatism check: the heterogeneous two-size wave
+    # plans exactly the envelope the *larger* size's own two-position wave
+    # would already have had under the accepted per-size baseline.  Sharing one
+    # controller across sizes therefore reserves no less per job than the
+    # accepted homogeneous contract already did.
+    homogeneous = training_parallel.build_training_concurrency_plan(
+        task_count=2,
+        device=str(large.context.method_policies.device),
+        loader_workers_per_job=int(getattr(heavy, "num_workers", 0)),
+        resources=inputs["resources"],
+        policy=runtime._post_selection_training_concurrency_policy(large.context),
+        gpu_sample=inputs["gpu_sample"],
+    )
+    assert homogeneous == plan
 
 
 # --- A15: duplicate global identity fails closed ---------------------------
@@ -1292,17 +1817,110 @@ def test_a_same_generation_revision_does_not_cancel_the_wave(
 # --- A4: execution width is not a scientific input --------------------------
 
 
-def test_serial_and_concurrent_widths_produce_identical_governed_identities(
+def _prepared_ancestry(config: Path) -> list[dict]:
+    """The frozen design and accepted CV ancestry a campaign enters production with."""
+
+    _cfg, _paths, contexts = _contexts(config)
+    ancestry = []
+    for context in contexts:
+        acceptance = runtime.resolve_current_cv_acceptance(context)
+        plan = runtime.resolve_current_cv_plan(context)
+        assert acceptance is not None and acceptance.accepted and plan is not None
+        ancestry.append(
+            {
+                "n_selected": int(context.selected.n_selected),
+                "binding": context.selected.binding.content_digest,
+                "method": context.method.content_digest,
+                "cv_plan": plan.content_digest,
+                "cv_acceptance": acceptance.content_digest,
+            }
+        )
+    return ancestry
+
+
+def test_fresh_serial_and_fresh_concurrent_production_agree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A4: width changes queueing only.
+    """A4: two isolated, identically prepared campaigns, two execution widths.
 
-    The first invocation runs the whole collection strictly serially; the
-    second re-plans, re-authenticates and re-finalizes the same collection
-    with a wider effective width.  Every governed identity available to the
-    deterministic double - final plans, run/trajectory identities, assessment
-    positions, seed assessments and per-size publications - must be identical,
-    and the wider invocation must not retrain a single root.
+    Campaign A executes fresh production at effective width exactly 1.
+    Campaign B executes *fresh* production through the same real collection
+    scheduler at a width that genuinely admits overlapping TRAIN2 jobs - the
+    bounded child in B blocks until the wave really owns two simultaneous
+    trainers, so the concurrency is executed rather than merely configured.
+
+    Neither arm reuses the other's evidence: both train every position from
+    nothing.  After canonical ordering (frozen selected-size order, then
+    ``required_final_seeds`` order) every governed scientific identity and
+    every piece of deterministic evidence must agree, while the width itself
+    appears nowhere in them.
+    """
+
+    import shutil
+
+    # Both campaigns are built, independently and from nothing, at the *same*
+    # absolute workspace path, one after the other.  Run-local materialization
+    # records legitimately carry their own absolute output directory, so this
+    # keeps the comparison an exact identity comparison rather than one that
+    # has to normalize workspace location away.
+    arena = tmp_path / "arena"
+    arena.mkdir()
+    _bind_bounded_device(monkeypatch)
+
+    config_a = _two_size_campaign(arena, production_seeds="[5, 6]")
+    ancestry = _prepared_ancestry(config_a)
+    fx.rewrite_config(
+        config_a,
+        "maximum_parallel_training_jobs = 4",
+        "maximum_parallel_training_jobs = 1",
+    )
+    serial_spy = _SchedulerSpy(monkeypatch)
+    serial = fx.PostSelectionHarness()
+    assert fx.run_train_production(config_a, serial) == 0
+    assert [item["plan"].maximum_jobs for item in serial_spy.plans] == [1]
+    assert len(serial.runs) == 4, "the serial arm must execute fresh production"
+    serial_identities = _governed_identities(config_a)
+
+    shutil.move(str(arena), str(tmp_path / "serial-arm"))
+    arena.mkdir()
+    config_b = _two_size_campaign(arena, production_seeds="[5, 6]")
+    assert config_b == config_a
+    # Identically prepared: same frozen bindings, memberships, horizons and
+    # accepted CV ancestry, established independently in each campaign.
+    assert _prepared_ancestry(config_b) == ancestry
+
+    wide_spy = _SchedulerSpy(monkeypatch)
+    wide = _ConcurrentProductionHarness(expected_width=2)
+    assert fx.run_train_production(config_b, wide) == 0
+    assert len(wide.runs) == 4, "the concurrent arm must execute fresh production"
+    assert len(wide_spy.plans) == 1 and len(wide_spy.controllers) == 1
+    assert wide_spy.plans[0]["plan"].maximum_jobs > 1
+    assert wide.max_active >= 2
+
+    # The concurrent arm really overlapped two fresh TRAIN2 jobs in the one
+    # collection wave, rather than draining a queue one position at a time.
+    overlaps = [
+        (left[0], right[0])
+        for index, left in enumerate(wide.windows)
+        for right in wide.windows[index + 1 :]
+        if left[1] < right[2] and right[1] < left[2]
+    ]
+    assert overlaps, wide.windows
+
+    # Width, queue order and timing are execution-only: every governed
+    # identity and every deterministic evidence item agrees after canonical
+    # ordering (frozen size order, then required-seed order), and the differing
+    # width appears in none of them.
+    assert _governed_identities(config_b) == serial_identities
+
+
+def test_reusing_sealed_roots_across_a_width_change_retrains_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Completed evidence survives an execution-only width change.
+
+    This is a reuse/restart property, not the serial/concurrent equivalence
+    proof: the second invocation legitimately launches no trainer at all.
     """
 
     config = _two_size_campaign(tmp_path, production_seeds="[5, 6]")
@@ -1349,6 +1967,10 @@ def _governed_identities(config: Path) -> list[dict]:
                     "trajectory": run_plan.training_trajectory_identity,
                     "assessment": assessment.content_digest,
                     "root": assessment.training_root_identity,
+                    # The complete deterministic evidence the bounded trainer
+                    # seam produced: selected checkpoint, measurements, policy
+                    # ancestry and the training materialization it bound.
+                    "evidence": assessment.to_dict(),
                 }
             )
         collected.append(
@@ -1356,6 +1978,7 @@ def _governed_identities(config: Path) -> list[dict]:
                 "binding": context.selected.binding.content_digest,
                 "final_plan": plan.content_digest,
                 "publication": decision.content_digest,
+                "decision": decision.to_dict(),
                 "seeds": seeds,
             }
         )

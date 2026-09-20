@@ -5637,14 +5637,27 @@ def _normalize_final_production_recovery(
     """Resolve every production position to sealed state or ``TRAIN_REQUIRED``.
 
     Runs before the TRAIN admission baseline and before any child starts.
-    Durable state is classified under the run-activity lease through its own
-    owner: a post-cutover root through the execution owner's terminal
-    continuation path, a historical root through the historical recovery
-    owner.  An authenticated terminal-but-unsealed root is sealed exactly as
-    those owners seal it, with no trainer launch; every sealed root is then
-    authenticated read-only.  Only positions that still need trainer
-    execution are returned.  Seals made here are recovery completions and stay
-    durable whatever happens later; nothing is evaluated or published.
+
+    Resolving *where* a position's bytes live is a locator question and needs
+    no exclusion.  Deciding *what* those bytes mean - fresh, incomplete,
+    terminal-but-unsealed, sealed, foreign, reusable, or ``TRAIN_REQUIRED`` -
+    is a classification question, and every such decision is taken while this
+    position's existing run-activity lease is held.  A locator-time
+    observation of an absent or empty root is therefore never a conclusion:
+    another owner holding the same lease may be creating, continuing, or
+    sealing that exact root, and only the post-lease observation is
+    authoritative.  Nothing is inferred from PID, mtime, or pathname, and no
+    new lease, registry, or collection lock exists.
+
+    Classification runs through the position's own owner: a post-cutover root
+    through the execution owner's terminal continuation path, a historical
+    root through the historical recovery owner.  An authenticated
+    terminal-but-unsealed root is sealed exactly as those owners seal it, with
+    no trainer launch; every sealed root is then authenticated read-only.
+    Only positions that still need trainer execution are returned.  The lease
+    is released before scheduler admission, so it is never held across the
+    wave.  Seals made here are recovery completions and stay durable whatever
+    happens later; nothing is evaluated or published.
     """
 
     required: list[_PendingPostSelectionRun] = []
@@ -5663,10 +5676,15 @@ def _normalize_final_production_recovery(
         description = "; ".join(
             f"{key}={value}" for key, value in task.progress_context.items()
         )
-        if root.legacy is None and not (root.path.is_dir() and any(root.path.iterdir())):
-            required.append(task)
-            continue
         with post_selection_run_activity_lease(root.path):
+            if root.legacy is None and not (
+                root.path.is_dir() and any(root.path.iterdir())
+            ):
+                # Authoritative under the lease: no durable trajectory exists
+                # and no other owner is mid-transition, so this position
+                # genuinely still requires trainer execution.
+                required.append(task)
+                continue
             completion, _why = read_post_selection_run_completion(root.path)
             recovered = completion is None
             if completion is None:
