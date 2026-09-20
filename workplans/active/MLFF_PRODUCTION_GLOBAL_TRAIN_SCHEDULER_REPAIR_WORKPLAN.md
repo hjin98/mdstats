@@ -17,6 +17,8 @@ workplan_review_status: pass-after-fourth-review-consistency-closure
 implementation_review_status: no-pass-d4-reopened
 implementation_reviewed_head: f7d4925e08fe3e013b4a35a71a29d6fed8c8c2be
 implementation_review_date: 2026-09-20
+d4_repair_head: 0462f56f6bfb22ea254a28683a62937b6aad2740
+d4_repair_evidence_date: 2026-09-20
 reviewed_pre_repair_head: 10c68eb50cb7ee2b5f0bb8d43e35bb250a186d96
 second_reviewed_pre_repair_head: 35fe7c19f60d99a2ae99257496acb2e82c35975d
 closure_falsification_pre_repair_head: 47376b968a62ab05473e370746f79988436bb3e3
@@ -1081,3 +1083,353 @@ A subsequent independent Review may return PASS only if all of the following hol
 - R6 records executable realization of the focused and affected regression on the same repaired SHA;
 - no repair introduces a second scheduler/resource/currentness/recovery owner or mutates D1/D2 semantics;
 - the final candidate still satisfies Sections 1-9, including exact collection-signature admission linearization, TRAIN/EVAL phase separation, frozen-order fail-fast finalization, CV non-impact, and deferred physical GPU qualification.
+
+## 11. D4 repair and executable evidence — 2026-09-20
+
+### 11.0 Status
+
+The Section 10 repair contract R1-R6 is implemented and its acceptance executed.
+**This workplan stays open for independent Review.** Nothing here closes the
+cycle, accepts the Revision 8 D3 candidate as accepted-current, or claims
+physical GPU qualification.
+
+**Repaired candidate SHA: `0462f56f6bfb22ea254a28683a62937b6aad2740`.**
+
+Every executable result below was produced from that exact tree. This evidence
+subsection is published in a later commit that changes no executable file; the
+`mdstats/` and `tests/` trees of that commit are identical to
+`0462f56f`, which `git diff 0462f56f -- mdstats tests` confirms as empty.
+
+### 11.1 R1 - recovery classification is owned by the run-activity lease
+
+**Owner:** `campaign_post_selection_runtime.py::_normalize_final_production_recovery`.
+
+The pre-lease shortcut that appended a position to `TRAIN_REQUIRED` from
+`root.path.is_dir() and any(root.path.iterdir())` is gone. The freshness
+decision now happens inside the `post_selection_run_activity_lease(root.path)`
+block the pass already held for every other classification, so no root is
+classified fresh, incomplete, terminal, sealed, corrupt, reusable or
+`TRAIN_REQUIRED` from mutable pathname state before ownership. Locator
+resolution still happens outside the lease, the lease is still released before
+scheduler admission, and the change adds no lease, liveness registry,
+PID/mtime inference or collection lock. The whole source change is one moved
+block plus its docstring.
+
+**Acceptance.**
+`tests/test_mlff_production_global_train_scheduler.py::test_recovery_classifies_positions_only_under_the_run_activity_lease`
+drives the real `train-production` owner. Phase A/B publish both per-binding
+plan pointers and stop before recovery, so the contested root is genuinely
+absent. A competing owner then takes the *existing* run-activity lease for
+that exact root while it is still absent, waits until normalization has
+reached the ownership boundary, and drives the position to an authenticated
+sealed TRAIN2 root through the real run owner (`_execute_post_selection_run_locked`,
+`stop_after_training=True`). After normalization obtains the lease it observes
+the authoritative post-transition state: the position is excluded from
+`TRAIN_REQUIRED`, requests no trainer, produces no duplicate run, and the wave
+is sized `task_count=1` with `train_required=1; sealed=1`.
+
+The test is discriminating, not merely passing. Re-running it against the
+pre-repair shortcut on an otherwise identical tree fails with
+`assert [2] == [1]`: the pre-lease observation inflates the wave to two
+positions and requests a trainer for a root another owner already owns.
+Corrupt/foreign fail-closed-before-sibling-launch coverage is retained
+unchanged (`test_corrupt_continuation_fails_before_any_sibling_trainer`,
+`test_corrupt_sealed_root_fails_before_any_sibling_trainer`).
+
+### 11.2 R2 - A17 closed positively; the one-controller resource assumption is not falsified
+
+**Owner:** `_post_selection_scheduler_profile`, `_require_one_post_selection_scheduler_profile`,
+the TRAIN2 runtime/materialization request path, and `build_training_concurrency_plan`.
+`training_parallel.py` is unchanged.
+
+`tests/test_mlff_production_global_train_scheduler.py::test_distinct_production_sizes_and_horizons_make_one_resource_demand`
+takes the two positions that actually remain `TRAIN_REQUIRED` after recovery
+normalization and that differ in *both* suspected inputs: selected size (and
+therefore exact training membership and materialized dataset) and frozen
+production horizon. It captures the exact values entering TRAIN2 and the
+concurrency plan at the real owner seam and closes the proof dimension by
+dimension.
+
+* **VRAM / device residency.** Device, optimizer device, learned-model
+  precision, training method/model realization, replay lineage and the
+  batch/validation-batch geometry are equal across the two positions. Those
+  are the only quantities that determine device residency in the realized
+  runtime; the runtime plans the two positions receive are byte-identical once
+  the epoch budget, per-epoch structure count and execution epoch limit are
+  removed. No dataset-wide or horizon-wide device-resident state exists beside
+  the common batch/model geometry. The live bound is additionally
+  size-independent by construction: the plan's VRAM admission envelope is
+  `observed aggregate telemetry total x configured fraction` with the observed
+  aggregate used bytes as baseline, and promotion/backoff continue to run off
+  that aggregate observation rather than off any per-task estimate.
+* **CPU / threading.** Loader workers per job are equal, and the plan's
+  `cpu_threads_per_job` is derived from the one CPU budget, the one loader
+  geometry and the task count. `N` and `H_prod` are not inputs.
+* **Host RAM.** This is the one per-job quantity that genuinely scales with
+  `N`: the materialized training transport the trainer reads. The test shows
+  it strictly larger for the larger selected size, and shows the planner
+  representing it by one configured, size-independent per-job estimate
+  (`estimated_training_ram_mib_per_job`), with the larger position's realized
+  materialization inside that estimate.
+* **Horizon.** `H_prod` reaches the runtime only through the epoch budget and
+  the execution epoch limit; the budget policies differ only in
+  `planned_epochs` and its derived digest. It changes work duration, not
+  simultaneous resident demand.
+
+**The decisive check.** `build_training_concurrency_plan` is called with exactly
+`(task_count, device, loader_workers_per_job, resources, policy, gpu_sample)`.
+The test asserts that set of inputs is complete, that the policy equals the one
+each context derives, and then rebuilds the plan from the *larger* position's
+context alone at the same task count: the resulting `TrainingConcurrencyPlan`
+is equal to the plan the heterogeneous two-size wave actually used. The
+collection wave therefore reserves per job exactly what the largest selected
+size's own homogeneous wave of the same width already reserved under the
+accepted per-size baseline. Globalization introduces no new per-job resource
+demand, and the per-job estimate's adequacy for the production regime remains
+the same pre-existing operator configuration obligation it already was for the
+largest size.
+
+Equality of `TrainingConcurrencyPolicy`, device or loader-worker settings is
+*not* offered as the proof; it is the fail-closed guard that A10 exercises
+(`test_incompatible_execution_profile_fails_before_any_trainer`,
+`test_an_incompatible_profile_on_a_sealed_position_does_not_block_the_wave`),
+and both remain green.
+
+**Result: no material heterogeneity was found that the existing homogeneous
+controller cannot represent. No D3 reopen is raised, and no resource bucket,
+second controller, weighted promotion or second scheduler was introduced.**
+
+**Regime limitation, stated explicitly.** The executed positions are the
+fixture ladder's CV-feasible sizes (`N=8`, `H_prod=2` versus `N=16`,
+`H_prod=3`), not `N=512` versus `N=8192`. The claim those positions establish
+is *functional independence*: any dependence of a scheduler or runtime input on
+`N` or `H_prod` would manifest between any two distinct values, and none does -
+the only quantity that varies is the host-resident training transport, exactly
+as derived. The magnitude question that a `512` versus `8192` run would answer
+is per-job host-RAM *sufficiency*, and the final check above shows that this
+magnitude question is unchanged by this cycle: the mixed wave's envelope is the
+largest size's own accepted envelope. Physical production-scale VRAM/throughput
+qualification remains deferred to the final release package and is not claimed
+here.
+
+### 11.3 R3 - genuine fresh-serial versus fresh-concurrent equivalence
+
+`test_serial_and_concurrent_widths_produce_identical_governed_identities` was
+retired as the A4 oracle. It is retained, renamed
+`test_reusing_sealed_roots_across_a_width_change_retrains_nothing`, and
+labelled as the reuse/restart property it actually proves.
+
+The new A4 is
+`test_fresh_serial_and_fresh_concurrent_production_agree`. It builds two
+isolated campaigns, each from nothing, and asserts they are identically
+prepared by comparing the frozen binding, method, current CV plan and current
+CV acceptance digests of every selected size. Campaign A runs fresh production
+at effective width exactly 1 (`plan.maximum_jobs == 1`). Campaign B runs fresh
+production at an admissible width greater than 1 and must genuinely overlap:
+the bounded child blocks until the wave owns two simultaneous trainers, the
+test asserts `max_active >= 2`, and it additionally asserts that at least two
+trainer windows overlap in time. Both arms train all four positions; neither
+reuses the other's evidence.
+
+The two campaigns are built one after another at the *same* absolute workspace
+path, the first being moved aside in between. That was a deliberate design
+decision after a measurement: run-local materialization records legitimately
+carry their own absolute `output_directory`, so two campaigns at different
+paths differ in `materialization_digest` *at equal width*. Reusing one path
+keeps A4 an exact identity comparison instead of one that must normalize
+workspace location away.
+
+Compared after canonical ordering (frozen selected-size order, then
+`required_final_seeds` order): FinalProductionPlan identities, run and
+training-trajectory identities, training-root identities, the complete
+per-seed assessment payloads (selected checkpoint, measurements, policy
+ancestry and the bound materialization) and the per-binding final publication
+payloads. All equal. The width setting appears in none of them.
+
+### 11.4 R4 - incompatible interrupted historical continuation
+
+`tests/test_mlff_p5_replay_target_real_owner.py::test_incompatible_interrupted_historical_continuation_stops_the_collection`.
+
+A new legacy-workspace scenario, `two_size_production_interrupted`, builds a
+genuine pre-cutover workspace with the baseline commit's own code: a frozen
+**two-size** design, cross-validated by the baseline, whose first frozen size's
+production TRAIN2 is interrupted mid-trajectory. Because the baseline's own
+production orchestration is serial across sizes, the later size never reaches
+production at all, so its position is fresh and runnable under current code.
+
+The interrupted historical root is then made incompatible with current
+authority: its persisted realized-preparation ancestry no longer matches what
+the current training method reproduces, while the record stays internally
+self-consistent, so the failure is the training-equivalence fence and not a
+malformed-record rejection.
+
+Driven through the real public `train-production` collection owner, the test
+proves:
+
+* rejection with "not training-equivalent", raised by recovery normalization;
+* `harness.runs == []` - zero trainer invocations for every sibling position,
+  including the other selected size's fresh runnable one;
+* no EVAL2 call after the failure, and no `[TRAIN scheduler]` line at all, so
+  no scheduler was sized;
+* both independently valid Phase-B per-binding FinalProductionPlan pointers
+  remain current - recovery failure is not a collection rollback;
+* no final-production publication for either size;
+* every historical byte preserved: no root added, renamed or removed, no
+  pre-existing byte rewritten apart from the incompatibility the test itself
+  injected, no completion anchor appended, and no partial reseal.
+
+### 11.5 R5 - a sealed cross-size sibling survives a later wave failure
+
+`tests/test_mlff_production_global_train_scheduler.py::test_a_sealed_sibling_survives_a_later_wave_failure_and_is_not_retrained`.
+
+Four production positions across two selected sizes, with the owned-slot
+ceiling set to two so the admission order is deterministic. The bounded
+trainer makes the ordering explicit rather than probable: the first admitted
+position runs alone and is sealed by the existing completion/topology owner;
+the second fails only once it observes that a sibling seal is durable *and*
+that another owned position is genuinely active beside it.
+
+On failure the test proves no EVAL2 began, nothing further was admitted
+(`admitted_after_failure == []`), the still-active owned sibling was signalled
+and reaped before the command returned, exactly one production root is sealed,
+and neither size published.
+
+On retry from the same workspace with healthy execution, the sealed sibling
+launches no trainer, the three outstanding positions re-enter the scheduler
+(`task_count == 3`, `train_required=3; sealed=1`, `progress=0/3`), and normal
+frozen-order finalization completes both sizes. No production retry state and
+no scheduler-specific completion registry were added; the durable TRAIN2
+completion/root authority is the only one used.
+
+### 11.6 Preserved invariants and affected-surface inspection
+
+The complete source change is a single moved block in
+`_normalize_final_production_recovery` plus its docstring; everything else in
+this cycle is test and non-executable documentation (11.10). Nothing else in
+`mdstats/` changed, so the repair widened no architecture. Re-verified on the repaired tree:
+
+* exactly one collection-global TRAIN-only adaptive scheduler; one controller
+  and one plan construction site (structural test, green);
+* CV selected-size orchestration unchanged (A16, green);
+* no EVAL2 while scheduler-owned TRAIN2 work is active (A18, green);
+* finalization frozen-size ordered and fail-fast (A14, green);
+* FinalProductionPlan ownership per binding, no collection-atomic rollback
+  (A13, and R4 above);
+* `(campaign generation, ordered binding digests)` admission linearization at
+  every TRAIN admission and at finalization admission (A19, green);
+* global scheduler `key` absent from scientific identity (structural test);
+* deterministic queue/backoff behavior (A9, green);
+* sealed roots read-only; terminal-but-unsealed roots sealed only by the
+  existing completion/topology owner (A7, green);
+* no second scheduler, outer executor, resource controller, currentness
+  registry, recovery registry, cross-size reducer or duplicate persistence
+  authority;
+* no D1/D2 semantic change.
+
+### 11.7 R6 - executed evidence
+
+Environment: conda env `mace`, CPU only, `pytest -p no:randomly`, xdist where
+noted. No GPU was used or claimed; the device facts in the scheduler suite are
+the existing bounded deterministic telemetry substitution below the P5 owner
+boundary.
+
+| Command (all `-p no:randomly`) | Result |
+| --- | --- |
+| `python -m compileall mdstats tests` | clean, exit 0 |
+| `pytest -q tests/test_mlff_production_global_train_scheduler.py -n 8` | **26 passed** (93s) |
+| `pytest -q tests/test_mlff_p5_replay_target_real_owner.py -n 8` | **11 passed** (83s) |
+| `pytest -q tests/test_mlff_p5_train2_memory_backoff.py tests/test_mlff_p5_train2_zero_safe_admission.py -n 8` | 26 passed, **2 failed** - both pre-existing, see 11.8 |
+| `pytest -q tests/test_mlff_target_size_multi_size_integration.py tests/test_mlff_target_size_multi_selection.py -n 8` | **47 passed** (77s) |
+| `pytest -q tests/test_mlff_target_size_p5e_production_and_restart.py -n 8` | **27 passed** (127s) |
+| `pytest -q tests/test_mlff_replay_mace_p5_execution_recovery.py -n 8` | **6 passed** (49s) |
+| `pytest -q tests/test_mlff_campaign_currentness_races.py tests/test_mlff_campaign_assembled_lifecycle.py -n 8` | **5 passed** (61s) |
+| `pytest -q tests/test_mlff_storage_reset_integration.py -n 8` | **167 passed** (1465s) |
+| `pytest -q tests/test_mlff_*.py -n 16` (complete affected MLFF campaign/training-data CPU regression, 229 files) | 2825 passed, 15 skipped, **184 failed** - all pre-existing, see 11.8 |
+
+Both test files this repair touched are fully green, individually and inside
+the complete sweep. No skip in any focused suite hid an acceptance claim.
+
+### 11.8 Failure attribution - no new failure was introduced
+
+The repository carries a large pre-existing CPU failure population on this
+branch, so the affected sweep is reported as a **failure-set diff against the
+reviewed entry-point commit**, not as a raw count.
+
+| Arm | Result |
+| --- | --- |
+| repaired `0462f56f` (main checkout) | 184 failed, 2825 passed, 15 skipped |
+| entry-point `c4309145` (clean worktree, identical command) | 182 failed, 2819 passed, 18 skipped |
+
+Set difference of the failing node ids:
+
+* **failures present only in the repaired arm: 2**
+* **failures fixed relative to the entry point: 0**
+
+Both apparent extras are
+`tests/test_mlff_target_size_p6_p5a6_compatibility.py::test_p6_reopens_the_preserved_p5a6_workspace_through_real_owners`
+and `::test_corrupted_final_production_plan_m3_is_rejected_by_p2_oracle`, and
+they are an artefact of *where* the two arms ran, not of the change. Those
+tests are `skipif`-guarded on `qualification/p6-p5a6-compat/workspace/`, which
+is gitignored and therefore exists only in the main checkout: the baseline
+worktree skipped them (hence its 3 extra skips) while the repaired arm executed
+them. Running that file in the **same** main checkout with the entry-point
+revision of `campaign_post_selection_runtime.py` restored reproduces both
+failures identically (`2 failed, 2 passed`). They are pre-existing and
+unrelated to this repair.
+
+**Net effect of the repair on the affected regression: zero new failures, zero
+regressions.**
+
+The two focused failures in
+`tests/test_mlff_p5_train2_zero_safe_admission.py` -
+`test_idle_transient_cuda_admission_blocking_missing_to_missing_fails_explicitly`
+and `test_idle_transient_cuda_admission_blocking_waits_rather_than_spins_unsafe_to_safe` -
+were likewise reproduced at `c4309145` with identical assertion signatures
+(`scheduler must wait on poll interval while idle and admission blocked`, and a
+`TrainingResourceObservabilityError` raised while one owned job is active).
+They concern idle-poll/telemetry-observability behaviour in
+`training_parallel.py`, which this repair does not touch.
+
+No failure in either arm references
+`docs/specs/training_data/mlff_post_selection_p5_spec.md` or
+`docs/arch_manuals/mlff_training_data/60_execution_performance.md`. The large
+`*_specification.py` failure families assert content of the *retired* assembled
+architecture document and are outside this cycle's surface.
+
+### 11.9 Production qualification
+
+**Still deferred.** Everything above is deterministic CPU real-owner evidence.
+No physical GPU throughput or VRAM qualification was performed or is claimed,
+and R2 is explicitly *not* labelled as such: it is owner/resource-contract
+evidence. Target-hardware qualification remains part of the final release
+package under standing project direction, and no iterative GPU qualification
+was requested from the stakeholder during this repair.
+
+### 11.10 Documentation impact
+
+Two current documents were reconciled with the repaired behaviour, both
+non-executable:
+
+* `docs/specs/training_data/mlff_post_selection_p5_spec.md` - the D4 normative
+  rule that locator resolution needs no exclusion while every classification of
+  a production root is taken under that position's existing run-activity lease
+  (committed with the repair in `0462f56f`);
+* `docs/arch_manuals/mlff_training_data/60_execution_performance.md` - the same
+  ownership statement as a D3 bullet in the collection TRAIN-wave section
+  (committed with this evidence record).
+
+PDF regeneration follows the repository's existing automated documentation
+build path and is not performed by hand here.
+
+### 11.11 Open risk and handoff
+
+* The pre-existing branch failure population (182 failures at the entry point)
+  is untouched by this cycle and remains a separate concern; this workplan does
+  not adopt it.
+* R2's regime limitation is stated in 11.2 and is deliberately not hidden: the
+  functional-independence claim is executed, the production-scale magnitude
+  question is shown to be unchanged by globalization, and physical
+  qualification stays deferred.
+* **This workplan remains open.** Section 10.8's closure condition is for an
+  independent Review to evaluate against `0462f56f`; nothing here self-closes
+  it or declares the D3 candidate accepted-current.

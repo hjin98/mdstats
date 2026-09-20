@@ -551,6 +551,15 @@ Consequently:
 - positions already sealed, or sealed by recovery normalization before sizing,
   consume no slot, launch no trainer and take no part in the shared-profile
   proof;
+- resolving a position's root locator needs no exclusion, but every
+  classification of what that root *means* - fresh, incomplete,
+  terminal-but-unsealed, sealed, foreign, reusable or still requiring training -
+  is taken while that position's existing run-activity lease is held. A
+  locator-time observation of an absent or empty root is never a conclusion,
+  because a concurrent owner holding the same lease may be creating, continuing
+  or sealing exactly that root. The lease is the one the run owner already has:
+  no second lease, liveness registry, PID/mtime inference or collection-wide
+  lock exists, and it is released before scheduler admission;
 - if normalization leaves nothing to train, no controller is constructed at all;
 - the wave is TRAIN-only. It ends when every position it owns has reached its
   authenticated sealed TRAIN2 root, and evaluation begins only afterwards, so
