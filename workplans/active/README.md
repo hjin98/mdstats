@@ -4,6 +4,16 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 ## Current active MLFF work
 
+### Final-production model publication + lightweight MH-1 integration
+
+Branch: `design/mlff-final-production-model-publication-mh1-integration`
+
+Canonical workplan:
+
+- `workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`
+
+Revision 2 is **PASS AS WORKPLAN / D3->D4 handoff ready**. It keeps the existing P5 checkpoint/member decision authority unchanged, adds an explicit subordinate full-MACE `.model` publication under the existing `workspace/models` owner, requires publication-only reclosure of already-completed campaigns with zero TRAIN2/EVAL2, preserves P7 checkpoint reconstruction as the independent reference while deployment consumes the P5 full model, and performs only lightweight MH-1 compatibility checks. Real MH-1 campaign/GPU qualification remains deferred to the stakeholder's upcoming actual run.
+
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
 Branch: `design/mlff-pi-train-fps-diversity-restoration`

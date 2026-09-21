@@ -2,9 +2,11 @@
 kind: implementation-workplan
 workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
-status: active-proposed
+status: active-reviewed
 created_date: 2026-09-21
-revision: 1
+revision: 2
+reviewed_date: 2026-09-21
+workplan_review_status: pass-after-current-implementation-review
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -16,7 +18,7 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 ## 0. Disposition
 
-**ACTIVE / PROPOSED FOR IMPLEMENTATION REVIEW.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER CURRENT-IMPLEMENTATION REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
 
 This cycle closes two adjacent product-readiness gaps without changing D1 scientific or D2 numerical authority:
 
@@ -140,7 +142,10 @@ ordered published members:
     representative_checkpoint_sha256
     model_relative_path
     model_sha256
-    portable model-state / architecture identity sufficient for exact verification
+    evaluation_model_state (live/EMA as already owned by the trajectory/runtime)
+    model_execution_architecture_digest (existing canonical architecture owner)
+    model_relative_path (relative to CampaignPaths.models)
+    model_sha256
 serialization/exporter identity
 ```
 
@@ -189,6 +194,10 @@ models/
 For an all-qualified committee every published member gets its own model.
 
 Exact punctuation/basenames are delegated D4, but the operator must be able to identify generation, selected N, and member without decoding run hashes.
+
+Durable model paths MUST be relative to `CampaignPaths.models`. Reject absolute paths, `..` traversal, symlink substitution, wrong-kind nodes, or any path that escapes the campaign model root. Workspace relocation must not change scientific/product identity.
+
+The sibling `publication.json` is an operator-facing projection of the canonical P5 records. It MUST NOT become a second currentness or selection authority and may be rebuilt from authenticated owner state.
 
 Do not write selected product files into sealed trainer run roots.
 
@@ -264,10 +273,13 @@ decision digest
 member digest
 member identity
 representative checkpoint SHA
+evaluation model state (existing live/EMA authority)
 target head
-portable model state / architecture identity
+existing canonical execution-architecture digest
 serialized model SHA
 ```
+
+Do not invent a second persistent canonical tensor/state digest merely for this feature. The source checkpoint/runtime already own exact numerical-state authentication. During materialization, compare the reconstructed provider model to the post-save reloaded model through exact state-key/shape/dtype/value equivalence (or an already-existing canonical state-hash owner if one is directly reusable); persist only identities that already have a current owner plus the serialized product SHA.
 
 ### D3-5 — Crash-safe publication
 
@@ -277,26 +289,55 @@ The P5 publication barrier already coordinates object/current-pointer publicatio
 
 A crash must never make a partial model appear current.
 
-### D3-6 — Publication ordering
+### D3-6 — Publication ordering and visibility
 
-Preferred logical order:
+The current implementation publishes the P5 decision and predecessor-reclosure pointers inside `publish_final_production_publication()`. That ordering must be refactored narrowly so a **fresh** product cannot become publicly COMPLETE while its selected full model is still absent.
+
+Required logical ordering for fresh publication:
 
 ```text
-1. resolve/reproduce current FinalProductionPublicationDecision
-2. materialize/verify every selected full model
-3. persist immutable FinalProductionModelPublication
-4. publish subordinate current pointer
-5. only then report the size's final production publication complete
+1. decide/reproduce FinalProductionPublicationDecision in memory
+2. materialize + reload + verify every selected full model
+3. persist decision object, predecessor-reclosure object, and model-publication object
+4. under the existing P5 publication barrier, publish:
+       a. subordinate model-publication pointer
+       b. predecessor-reclosure pointer
+       c. FINAL_PUBLICATION pointer LAST
+5. report the size complete
 ```
 
-The existing scientific decision remains reproducible independently.
+Putting `FINAL_PUBLICATION` last gives the existing public decision pointer its natural commit-marker role: an observer may temporarily see a subordinate product pointer that does not yet match a current decision and must ignore it, but it must never see a newly current decision and infer completion before the required model publication is current.
 
-The exact pointer update order relative to the existing P5 decision/reclosure pointers may be adjusted in D4 only if the assembled state machine preserves:
+For **legacy/current v3 decisions that already predate this feature**, the existing final-publication pointer remains valid scientific selection evidence. Lifecycle observation deliberately reports such a decision as product-reclosure WAITING until the subordinate product record exists. Reclosure adds only the subordinate product pointer and never rewrites/reranks the decision.
 
-- no materialized model can become current without the exact decision;
-- no command reports product publication complete without all required models;
-- restart can recover from every interruption point;
-- P7 never observes a model-product record bound to a different decision.
+The implementation MAY factor the current `decide_final_production_publication()` and pointer-writing path to achieve this, but must not create a second publication transaction/lock subsystem.
+
+### D3-6A — Recovery classification before expensive work
+
+Current `execute_current_train_production()` plans every selected size, normalizes TRAIN recovery, and later enters serial EVAL2/finalization. For an already-complete valid decision, using that ordinary route merely to create a `.model` can needlessly revisit EVAL2 machinery.
+
+After the collection-wide CV/currentness barrier and before new TRAIN/EVAL admission, classify each selected size:
+
+```text
+PRODUCT_COMPLETE
+    current decision + current authenticated model publication
+
+PRODUCT_RECLOSURE
+    current decision + current completion + missing/stale model publication
+
+PRODUCTION_REQUIRED
+    no current final decision
+```
+
+Rules:
+
+- `PRODUCT_COMPLETE`: verify/reuse product state; admit no TRAIN2/EVAL2.
+- `PRODUCT_RECLOSURE`: authenticate the existing decision/checkpoint(s), materialize product only; admit no TRAIN2/EVAL2.
+- `PRODUCTION_REQUIRED`: proceed through the existing final-plan/global-TRAIN/serial-EVAL2/publication machinery.
+- The existing collection-wide CV barrier and collection-signature admission/currentness fences still govern any new production work.
+- A mixed collection may reclose/verify completed sizes while only `PRODUCTION_REQUIRED` positions enter the existing TRAIN wave. This must not create a second scheduler or change frozen-size finalization order for genuinely new work.
+
+This is the required mechanism behind the “zero unnecessary EVAL2” acceptance claim.
 
 ## 9. Existing completed campaign reclosure
 
@@ -371,7 +412,7 @@ Status MUST NOT:
 - rerun selection;
 - choose between sizes.
 
-Use durable product-record data.
+Use durable product-record data. The normal observational projection should validate the record/binding/decision relation and cheaply require each advertised product path to be a confined regular non-symlink file. It need not SHA-256 rehash every large model on every `status` call; consequential consumers and `train-production` reclosure perform full byte authentication. Missing/wrong-kind product files are BLOCKED/WAITING as appropriate, never COMPLETE.
 
 ## 11. Multi-size behavior
 
@@ -390,22 +431,43 @@ Preserve the current multi-size terminal/qualification boundary:
 - every size can have a complete P5 `.model` publication;
 - P7 qualification remains unavailable when current authority supplies no release-product choice across sizes.
 
-## 12. P7 consumption
+## 12. P7 consumption and independence
 
 P7 remains downstream and cannot alter P5 membership.
 
-Reconcile P7 so its deployment source is the authenticated P5 full model artifact rather than requiring the operator-facing product to remain an internal TRAIN2 checkpoint.
+Current P7 has two materially different consumers and they must remain independent:
 
-P7 must still retain and authenticate representative checkpoint ancestry.
+1. `member_provider(...)` reconstructs the selected representative from the authenticated TRAIN2 checkpoint. **Keep this checkpoint-based reference path.** It is the independent in-framework reference used to detect serialization/deployment drift.
+2. `_build_deployment_artifact(...)` currently passes `checkpoint_path_for_member(...)` into the MACE deployment exporter even though the exporter contract is a full MACE model path. **Change this deployment-source path to the authenticated P5 full `.model`.**
 
-Before downstream deployment, verify that the full model record binds:
+Therefore the target architecture is:
 
 ```text
-exact decision
-exact member
-exact checkpoint SHA
+selected checkpoint
+   -> existing authenticated member_provider
+   -> reference predictions
+
+same selected checkpoint
+   -> P5 full .model publication
+   -> P7 deployment exporter
+   -> deployed/ML-IAP artifact
+
+reference predictions <-> deployed predictions
+```
+
+This preserves a discriminating deployment-parity oracle. Do not make `member_provider` load the same serialized `.model` used by deployment, because a serialization defect could then become common-mode and escape parity testing.
+
+The P7 read-only publication view may be extended with subordinate product path/SHA fields, but its member ordering and decision/member digest must still reproduce the existing P5 decision exactly.
+
+Before deployment, verify:
+
+```text
+exact current decision
+exact member/member order
+exact representative checkpoint ancestry
 exact target head
-exact product model SHA/state identity
+confined regular P5 model path
+exact P5 model SHA
 ```
 
 Do not duplicate P5 selection logic inside P7.
@@ -416,11 +478,13 @@ Do not duplicate P5 selection logic inside P7.
 
 Reuse that owner.
 
-Update storage integration only as necessary so:
+Current storage already reports the entire `paths.models` root as current, restart-required, `DURABLE_SCIENTIFIC_EVIDENCE`, with open-container semantics. Do not add per-file storage machinery merely to restate that protection.
 
-- current published products remain protected;
-- the new P5 product record/pointer dependency is visible where storage protection needs it;
+Update storage integration only if implementation changes what the existing owner can truthfully certify. Preserve:
+
+- current published products remain protected by the existing models-root owner;
 - unexpected descendants remain conservatively retained under the existing container semantics;
+- model-publication P5 records remain under the existing post-selection evidence owner;
 - no new cleanup/archive authority is introduced.
 
 Do not introduce another model root.
@@ -635,13 +699,16 @@ Acceptance:
 - output prints usable paths;
 - no cross-size choice.
 
-### Stage D — existing-campaign reclosure
+### Stage D — existing-campaign reclosure and recovery classification
+
+Implement the `PRODUCT_COMPLETE / PRODUCT_RECLOSURE / PRODUCTION_REQUIRED` classification before expensive production execution.
 
 Acceptance:
 
 - current old decision + missing model -> publication-only materialization;
 - zero TRAIN2 jobs;
-- zero unnecessary EVAL2;
+- zero EVAL2 for PRODUCT_RECLOSURE;
+- mixed-size collections send only PRODUCTION_REQUIRED trajectories into the existing global TRAIN wave;
 - repeated invocation verifies/reuses;
 - corrupted existing product fails closed.
 
@@ -659,9 +726,11 @@ Acceptance:
 Acceptance:
 
 - P7 resolves exact product record;
-- authenticates model bytes/state/head/decision ancestry;
+- checkpoint-based `member_provider` remains the independent reference path;
+- deployment exporter source changes from raw checkpoint path to authenticated P5 full model path;
 - member order unchanged;
-- wrong/mutated product fails before downstream execution.
+- wrong/mutated product fails before downstream execution;
+- a deliberately corrupted serialized model is detected even when the source checkpoint still authenticates.
 
 ### Stage G — lightweight MH-1 audit/regression
 
@@ -699,7 +768,7 @@ Acceptance:
 | wrong decision/member binding | fail closed |
 | missing selected checkpoint | fail closed |
 | status | observational and reports product path |
-| P7 | consumes exact P5 model publication without reranking |
+| P7 reference/deployment split | checkpoint provider remains reference; deployment consumes exact P5 model publication |
 | MH-1 explicit `omat_pbe` | preserved through current path |
 | MH-1 omitted/invalid head | fail closed |
 | MPA-0 regression | remains supported with `default` head |
@@ -783,3 +852,62 @@ P5 decision
 is complete and restart-safe, and the current MH-1 path has passed the bounded compatibility audit/regression with no clear unresolved issue.
 
 Long real MH-1 campaign qualification remains intentionally deferred to the stakeholder's actual upcoming campaign.
+
+
+## 27. Current-implementation review closure (Revision 2)
+
+Review basis: `237448b449b6f8042de5f239e5fefdfd54e3b2c3`.
+
+### R2-F1 — Decision schema must not absorb serialized artifact identity — CLOSED
+
+Current `FinalProductionPublicationDecision` v3 already owns the pre-qualification scientific/member decision, and `resolve_current_final_production_publication()` replays that decision exactly. Embedding the later serialized `.model` into this object would conflate selection with representation and make legacy reclosure awkward. Revision 2 freezes the subordinate-record design instead.
+
+### R2-F2 — Fresh publication pointer ordering was under-specified — CLOSED
+
+Current `publish_final_production_publication()` stores the decision/reclosure and publishes the final pointer before any full selected model exists. Revision 2 now requires the final-publication pointer to be the last current-pointer commit for fresh publication, after model materialization and subordinate product pointer publication.
+
+### R2-F3 — Existing-campaign reclosure needed an explicit pre-EVAL fast path — CLOSED
+
+Current `execute_current_train_production()` ordinarily plans the whole collection and later calls serial `_finalize_final_production()`. Merely saying “zero unnecessary EVAL2” did not identify the owning control-flow change. Revision 2 adds the explicit three-state recovery classification before new TRAIN/EVAL admission.
+
+### R2-F4 — P7 full-model consumption could destroy the deployment-parity oracle — CLOSED
+
+Current P7 `member_provider` authenticates/reconstructs the selected checkpoint, while deployment currently sources `checkpoint_path_for_member()`. Revision 1 said broadly that P7 should consume the full model; that was too coarse. Revision 2 keeps the checkpoint provider as the independent reference and changes only deployment-export source to the P5 full model.
+
+### R2-F5 — Proposed persistent “portable model-state digest” lacked a current owner — CLOSED
+
+Current code has canonical execution-architecture identity and authenticated TRAIN2 live/EMA/checkpoint state ownership, but no need was established for another durable tensor-state identity. Revision 2 removes that invention: publication persists existing state/architecture lineage plus model-file SHA, while materialization acceptance proves exact pre/post serialization state equivalence.
+
+### R2-F6 — Product path trust/relocation rules were incomplete — CLOSED
+
+Revision 2 now requires model-root-relative paths, confinement beneath `CampaignPaths.models`, regular non-symlink files, and no absolute/`..` traversal. Absolute workspace paths remain outside durable identity.
+
+### R2-F7 — Status integrity cost needed a bounded rule — CLOSED
+
+Current `status` is explicitly observational and must stay cheap/pure. Revision 2 requires record/currentness/path-kind validation in normal status but reserves full large-model SHA authentication for consequential/reclosure/P7 consumers.
+
+### R2-F8 — Storage work was over-broad — CLOSED
+
+Current storage already protects the whole `paths.models` root as current durable scientific evidence. Revision 2 no longer requires a new per-model storage dependency graph unless implementation changes the existing owner's truthful coverage.
+
+### R2-F9 — MH-1 evidence boundary — CLOSED
+
+Current source still explicitly supports `mace_mh_1 / omat_pbe`; historical real-model coverage exists but predates later P5 changes. The stakeholder explicitly defers real qualification to the upcoming campaign. Revision 2 therefore requires only source audit, current affected regressions, and cheap real-model smoke when readily available. Missing long/GPU MH-1 evidence is not a blocker.
+
+## 28. Workplan review verdict
+
+**PASS AS WORKPLAN / D3->D4 HANDOFF READY.**
+
+No Serious Challenge to D1/D2 is active. The plan now matches the current implementation's actual ownership boundaries:
+
+```text
+P5 decision remains checkpoint/member authority
+P5 subordinate record owns usable full-model representation
+train-production owns explicit completion/reclosure
+campaign lifecycle owns read-only operator projection
+P7 checkpoint provider remains the independent reference
+P7 deployment consumes the P5 model product
+CampaignPaths.models remains the durable model root
+```
+
+Implementation must preserve the recently accepted global production TRAIN scheduler: no publication change may reintroduce per-size TRAIN schedulers or disturb the collection-wide admission/currentness fences.
