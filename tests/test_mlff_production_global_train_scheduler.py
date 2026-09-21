@@ -4,9 +4,10 @@ Everything here is driven through the real public ``train-production`` command
 (and the real ``cross-validate`` that must precede it).  Only MACE numerics and
 the device telemetry probe are substituted, strictly below the P5 owner
 boundary, and the telemetry substitution is bounded and deterministic because
-the claim *is* resource-admission semantics.  No GPU qualification is claimed:
-the campaign stays scientifically CPU-configured and the synthetic device facts
-exist only to exercise the existing adaptive admission branch.
+the claim is scheduler resource-policy semantics, not production resource
+adequacy.  No GPU qualification is claimed: the campaign stays scientifically
+CPU-configured and the synthetic device facts exist only to exercise the
+existing adaptive admission branch.
 
 The governed propositions are:
 
@@ -1299,7 +1300,7 @@ def test_an_incompatible_profile_on_a_sealed_position_does_not_block_the_wave(
     assert set(harness.runs).isdisjoint(interrupted)
 
 
-# --- A17 / R2: the shared resource demand is proved, dimension by dimension --
+# --- A17 / R2: one common resource-policy owner, not production qualification
 
 
 _MIB = 1024 ** 2
@@ -1308,16 +1309,15 @@ _MIB = 1024 ** 2
 def test_distinct_production_sizes_and_horizons_make_one_resource_demand(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A17: what changing ``N`` and ``H_prod`` does, and does not, change.
+    """A17 structural check: what ``N`` and ``H_prod`` enter the shared wave.
 
     Two positions that both remain ``TRAIN_REQUIRED`` after recovery
     normalization differ in every scientific input the single-controller
     contract is suspected of depending on: selected size (and therefore exact
     training membership and materialized dataset), and frozen production
-    horizon.  The claim is not that their configuration objects compare equal -
-    that would be the assumption, not the proof - but that the per-job resource
-    demand the existing planner and the existing TRAIN2 runtime actually
-    realize is invariant under those inputs, dimension by dimension:
+    horizon.  This test checks the common policy/plan interface and the actual
+    runtime inputs; it does not qualify empirical production RAM/VRAM
+    adequacy.
 
     * **device/VRAM geometry** - device, backend, learned precision, model and
       runtime realization, replay lineage and the batch/validation-batch
@@ -1328,11 +1328,10 @@ def test_distinct_production_sizes_and_horizons_make_one_resource_demand(
       likewise not a function of ``N``.
     * **CPU/threading** - loader-worker count and the plan's derived native
       thread geometry come from one configuration and one task count.
-    * **host RAM** - the one per-job quantity that does scale with ``N`` is the
-      materialized training set the trainer reads.  The planner represents it
-      by one configured size-independent per-job estimate, which must cover the
-      largest admitted position; the mixed-size wave therefore plans exactly
-      the envelope the largest size's own wave of the same width already had.
+    * **host RAM** - the materialized training transport grows with ``N``.  Its
+      serialized size is retained below only as descriptive transport evidence;
+      it is not treated as a resident-memory bound or a production
+      qualification.
     * **horizon** - ``H_prod`` reaches the runtime only as the epoch budget and
       execution epoch limit, i.e. as work *duration*, leaving every resident
       quantity untouched.
@@ -1449,9 +1448,9 @@ def test_distinct_production_sizes_and_horizons_make_one_resource_demand(
     # training set.  The serialized transport below is *descriptive transport
     # evidence only*: a serialized byte count is not a bound on the resident
     # memory of the real MACE process, and this test does not treat it as one.
-    # The admissible host-RAM bound is the externally measured real-child peak
-    # resident memory recorded in ``_MEASURED_PRODUCTION_DEMAND`` and closed by
-    # ``test_lighter_first_admission_bounds_the_heavier_next_production_task``.
+    # The measured real-child rows are intentionally not applied to this fast
+    # fixture's policy.  They remain bounded observations for the separate
+    # counterfactual predicate test and for actual-run qualification.
     def transport_bytes(request) -> int:
         transport = request.materialization_directory / "target_train.extxyz"
         assert transport.is_file()
@@ -1497,11 +1496,10 @@ def test_distinct_production_sizes_and_horizons_make_one_resource_demand(
         int(inputs["gpu_sample"].total_bytes) * inputs["policy"].gpu_memory_fraction
     )
 
-    # (f) The decisive conservatism check: the heterogeneous two-size wave
-    # plans exactly the envelope the *larger* size's own two-position wave
-    # would already have had under the accepted per-size baseline.  Sharing one
-    # controller across sizes therefore reserves no less per job than the
-    # accepted homogeneous contract already did.
+    # (f) Rebuilding from the larger task's *resolved wave policy* reproduces
+    # the captured plan.  This is a structural common-policy relation only;
+    # it is not a claim that the configured estimate is empirically adequate
+    # for production-scale workloads.
     homogeneous = training_parallel.build_training_concurrency_plan(
         task_count=2,
         device=str(large.context.method_policies.device),
@@ -1513,17 +1511,18 @@ def test_distinct_production_sizes_and_horizons_make_one_resource_demand(
     assert homogeneous == plan
 
 
-# --- A17 / R2A+R2B+R2C: the measured resource bound of the heaviest task ----
+# --- A17 / R2A+R2B+R2C: bounded observations and a negative counterfactual --
 
 
 @dataclasses.dataclass(frozen=True)
 class _MeasuredTrainingDemand:
     """One externally measured peak resource demand of a real TRAIN2 child.
 
-    These are *not* synthetic numbers and they are not derived from serialized
-    transport size.  Each row is the peak resident host memory and peak device
-    memory of one real ``mdstats-mace-train`` child - the exact P5/MACE child
-    boundary ``post_selection_execution`` spawns - driven over a materially
+    These are bounded observations, not a universal production-adequacy
+    qualification and not values derived from serialized transport size. Each
+    row is the peak resident host memory and peak device memory of one real
+    ``mdstats-mace-train`` child - the exact P5/MACE child boundary
+    ``post_selection_execution`` spawns - driven over a materially
     representative TRAIN_REQUIRED production membership of the live LTA
     campaign, sampled externally from ``/proc/<pid>/status`` and confirmed by
     the kernel ``VmHWM`` high-water mark so no excursion between samples can be
@@ -1531,8 +1530,9 @@ class _MeasuredTrainingDemand:
     ``workplans/active/MLFF_PRODUCTION_GLOBAL_TRAIN_SCHEDULER_REPAIR_WORKPLAN.md``.
 
     The measurement host's device is not the production target device, so these
-    rows are a resource *bound* for the D4 admission contract, not a physical
-    GPU qualification; final target-hardware qualification stays deferred.
+    rows are bounded development observations for the D4 admission discussion,
+    not a physical GPU qualification or universal production bound; final
+    target-hardware qualification stays deferred.
     """
 
     label: str
@@ -1599,12 +1599,13 @@ def _shipped_execution_default(key: str) -> float:
 
 
 def _production_default_policy() -> training_parallel.TrainingConcurrencyPolicy:
-    """The per-job estimate regime production actually runs under.
+    """The shipped-default policy used only by the negative counterfactual.
 
     Three owners publish it - the ``TrainingConcurrencyPolicy`` dataclass
     defaults, the generated campaign template, and the runtime resolver's
-    fallbacks - and A17 is only meaningful if they agree, so that is asserted
-    here rather than assumed.
+    fallbacks - and the counterfactual is only meaningful if they agree.  This
+    helper is not an oracle for the real wave, whose fixture explicitly uses
+    ``_FAST_CONTROL``.
     """
 
     policy = training_parallel.TrainingConcurrencyPolicy()
@@ -1633,14 +1634,16 @@ def _a17_next_admission_verdict(
     heavier: _MeasuredTrainingDemand,
     resources,
 ) -> _A17Verdict:
-    """Judge one proposed next admission against an independent heavier bound.
+    """Judge a counterfactual admission against an independent heavier bound.
 
     ``controller_estimate_bytes`` is read back from the *real* controller (it is
     the ``memory_estimate`` that ``AdaptiveTrainingConcurrency.observe``
     computes as ``max(stable observed per job, configured per-job estimate)``);
     nothing here re-implements that relation.  What this function adds is the
-    question the controller cannot ask for itself: does that estimate bound the
-    independently measured demand of the task that is about to be admitted?
+    question the controller cannot ask for itself: would that estimate bound
+    the independently measured demand of the task that is about to be admitted?
+    This helper is evidence about predicate discrimination only, not about the
+    actual fast-control production wave or universal production adequacy.
     """
 
     reasons: list[str] = []
@@ -1680,22 +1683,23 @@ def _a17_next_admission_verdict(
     )
 
 
-def _calibrate_light_then_estimate(
-    plan, policy, *, light: _MeasuredTrainingDemand, utilization_percent: float = 40.0
+def _calibrate_observed_device_then_estimate(
+    plan,
+    policy,
+    *,
+    observed_device_bytes: int,
+    utilization_percent: float = 40.0,
 ) -> tuple[object, object]:
-    """Run the real controller through one lighter task's calibration window.
+    """Run the real controller through one bounded calibration window.
 
-    The controller is the production one; the samples are the aggregate device
-    telemetry a single owned job whose measured peak is ``light`` would
-    actually produce on top of the plan's own observed baseline.  The
-    utilization level is an ordinary non-saturating value: GPU utilization is
-    not the quantity A17 is about, and a saturating one would stop the
-    promotion before the memory decision under review is ever taken.
+    The caller supplies a bounded control observation so this helper exercises
+    the existing promotion relation.  It is not a resource-qualification
+    harness and does not establish a task's empirical RAM/VRAM demand.
     """
 
     controller = training_parallel.AdaptiveTrainingConcurrency(plan, policy)
     baseline = int(plan.baseline_gpu_used_bytes or 0)
-    aggregate = baseline + int(light.peak_device_bytes)
+    aggregate = baseline + int(observed_device_bytes)
     start = 1_000.0
     decision = None
     step = float(policy.monitor_interval_seconds)
@@ -1721,31 +1725,28 @@ def _calibrate_light_then_estimate(
 def test_lighter_first_admission_bounds_the_heavier_next_production_task(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A17/R2C: lighter task calibrates first, heavier task is the next admission.
+    """A17 structural check: lighter first, heavier next, one resolved policy.
 
-    The decisive risk the single-controller contract carries is ordering: the
-    lighter production position supplies the first stable telemetry window, and
-    the promotion that window authorizes admits the *heavier* position next.
-    The controller never learns which task that is, so the acceptance has to
-    show the reservation it derives bounds the heavier task's own measured
-    demand.
+    The development gate is that the real production wave has one resolved
+    resource policy/plan and that its existing controller can promote from a
+    common observation relation without learning selected-size or task
+    identity.  This deliberately does not judge empirical production RAM/VRAM
+    adequacy: the fixture's ``_FAST_CONTROL`` policy is the policy under test,
+    and the long measured resource observations remain bounded evidence for
+    actual-run qualification.
 
-    Two independent facts are joined here, and neither substitutes for the
-    other:
+    Two independent structural facts are joined here, and neither substitutes
+    for the other:
 
     * the **ordering and sharing** facts come from the real wave below - which
       position is admitted first, that the next admission is the heavier one,
       and that both are planned by one ``TrainingConcurrencyPlan`` built from
       one policy;
-    * the **magnitudes** come from ``_MEASURED_PRODUCTION_DEMAND``, the real
-      ``mdstats-mace-train`` child peaks over the actual production
-      memberships, judged against the estimate regime production actually runs
-      (``_production_default_policy``) rather than the fixture's deliberately
-      tiny fast-control value.
+    * the **promotion** fact comes from the captured wave plan/policy and the
+      existing ``AdaptiveTrainingConcurrency`` relation.
 
-    Synthetic telemetry appears only as the *light* task's observed occupancy,
-    which is what the promotion relation legitimately consumes; it is never
-    offered as the heavier task's bound.
+    The independently measured resource rows are intentionally not used as a
+    positive judgment about this fast fixture's wave.
     """
 
     config = _two_size_campaign(tmp_path)
@@ -1771,70 +1772,48 @@ def test_lighter_first_admission_bounds_the_heavier_next_production_task(
     wave_policy = spy.plans[0]["policy"]
     assert int(wave_plan.task_count) == 2
 
-    # (2) The estimate regime under review is the production one, published
-    # consistently by every configuration owner.
-    policy = _production_default_policy()
-    assert (
-        _MEASURED_LIGHT.configurations < _MEASURED_HEAVY.configurations
-    ), "the measured rows must actually differ in N"
-    # Per-configuration geometry - the only residency-relevant task variable -
-    # is common to both memberships because the whole prepared frame pool has
-    # one structure size; N buys more configurations, never larger ones.
-    assert (
-        _MEASURED_LIGHT.atoms_per_configuration
-        == _MEASURED_HEAVY.atoms_per_configuration
+    # (2) The wave consumed the campaign's resolved policy, including the
+    # deliberately small fast-test RAM reservation.  This prevents a default
+    # policy/plan constructed outside the wave from becoming its oracle.
+    wave_contexts = _contexts(config)[2]
+    assert all(
+        runtime._post_selection_training_concurrency_policy(context) == wave_policy
+        for context in wave_contexts
     )
-    assert (
-        _MEASURED_LIGHT.max_edges_per_configuration
-        == _MEASURED_HEAVY.max_edges_per_configuration
-    )
+    assert float(wave_policy.estimated_ram_mib_per_job) == 512.0
+    assert wave_plan.estimated_ram_bytes_per_job == 512 * _MIB
+    assert wave_plan.gpu_memory_observation == "telemetry"
+    assert set(spy.plans[0]) == {
+        "task_count",
+        "device",
+        "loader_workers_per_job",
+        "resources",
+        "policy",
+        "gpu_sample",
+        "plan",
+    }
 
-    plan = training_parallel.build_training_concurrency_plan(
-        task_count=2,
-        device="cuda:0",
-        loader_workers_per_job=int(wave_plan.loader_workers_per_job),
-        resources=_resources(),
-        policy=policy,
-        gpu_sample=_safe_sample(),
-    )
-    assert plan.gpu_memory_observation == "telemetry"
-    assert int(plan.maximum_jobs) >= 2, plan.summary()
-
-    # (3) Drive the *real* controller through the lighter task's calibration
-    # window and read back the exact estimate it promotes on.
-    controller, decision = _calibrate_light_then_estimate(
-        plan, policy, light=_MEASURED_LIGHT
+    # (3) Drive the existing controller with a bounded control observation and
+    # read back the exact estimate it promotes on.  The observation is only a
+    # control input; it is not a measured bound for either production task.
+    observed_device_bytes = int(wave_plan.estimated_gpu_bytes_per_job) + _GIB
+    controller, decision = _calibrate_observed_device_then_estimate(
+        wave_plan,
+        wave_policy,
+        observed_device_bytes=observed_device_bytes,
     )
     assert decision is not None
     assert int(decision.target_jobs) == 2, decision.reason
     estimate = int(decision.observed_bytes_per_job)
     # This is the promotion relation itself, not a re-derivation of it: the
     # controller's own estimate equals max(stable observed per job, configured).
-    stable_per_job = int(_MEASURED_LIGHT.peak_device_bytes)
+    stable_per_job = observed_device_bytes
     assert estimate == max(
-        stable_per_job, int(plan.estimated_gpu_bytes_per_job)
+        stable_per_job, int(wave_plan.estimated_gpu_bytes_per_job)
     )
 
-    # (4) The heavier task's independently measured bound is inside it, and the
-    # aggregate device/host budgets still hold after the proposed admission.
-    verdict = _a17_next_admission_verdict(
-        plan=plan,
-        policy=policy,
-        controller_estimate_bytes=estimate,
-        heavier=_MEASURED_HEAVY,
-        resources=_resources(),
-    )
-    assert verdict.closed, verdict.reasons
-    assert verdict.predicted_device_bytes == int(decision.predicted_bytes_at_target)
-    assert verdict.predicted_device_bytes < int(plan.gpu_memory_budget_bytes)
-
-    # (5) The wave really did consume one common estimate regime: the plan the
-    # heterogeneous wave used is the plan its own policy produces, and swapping
-    # in the production policy changes only the estimates, never the shape of
-    # the contract.
-    assert wave_policy == runtime._post_selection_training_concurrency_policy(
-        _contexts(config)[2][0]
-    )
+    # (4) The wave really did consume one common estimate regime.  No selected
+    # size, seed, membership, or horizon appears in the controller inputs.
     assert int(wave_plan.estimated_ram_bytes_per_job) == int(
         wave_policy.estimated_ram_mib_per_job * _MIB
     )
@@ -1843,7 +1822,7 @@ def test_lighter_first_admission_bounds_the_heavier_next_production_task(
 def test_a17_is_not_closable_when_a_heavier_task_exceeds_the_common_estimate(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A17/R2C negative: the discriminator is the bound, not the plan.
+    """A17/R2C negative: predicate discrimination is the bound, not the plan.
 
     Nothing about the policy, the plan or the telemetry changes here.  Only the
     heavier task's independently established demand does, and that alone must
@@ -1853,7 +1832,9 @@ def test_a17_is_not_closable_when_a_heavier_task_exceeds_the_common_estimate(
     common synthetic telemetry trace are all held fixed across the two cases.
 
     No production OOM is manufactured: the counterfactual stops at the
-    compatibility/evidence boundary, which is where the claim lives.
+    compatibility/evidence boundary.  This does not qualify the real wave,
+    whose fixture deliberately uses ``_FAST_CONTROL`` rather than the shipped
+    defaults.
     """
 
     policy = _production_default_policy()
@@ -1865,8 +1846,10 @@ def test_a17_is_not_closable_when_a_heavier_task_exceeds_the_common_estimate(
         policy=policy,
         gpu_sample=_safe_sample(),
     )
-    controller, decision = _calibrate_light_then_estimate(
-        plan, policy, light=_MEASURED_LIGHT
+    controller, decision = _calibrate_observed_device_then_estimate(
+        plan,
+        policy,
+        observed_device_bytes=int(_MEASURED_LIGHT.peak_device_bytes),
     )
     estimate = int(decision.observed_bytes_per_job)
 

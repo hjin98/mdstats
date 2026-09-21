@@ -1745,52 +1745,49 @@ Two new acceptances in
 `tests/test_mlff_production_global_train_scheduler.py`.
 
 `test_lighter_first_admission_bounds_the_heavier_next_production_task` drives
-the real `train-production` wave and then joins two independent facts:
+the real `train-production` wave and now remains a structural acceptance of two
+independent facts:
 
 * **ordering and sharing, from the real wave** — the lighter position
   (`FIRST_SIZE`) is the first admission and the heavier (`SECOND_SIZE`) is the
   next one, because deterministic queueing follows frozen size order; exactly
   one `TrainingConcurrencyPlan` and one `AdaptiveTrainingConcurrency` are
   constructed for `task_count == 2`;
-* **magnitudes, from `_MEASURED_PRODUCTION_DEMAND`** — the real-child peaks of
-  13.1, judged against the estimate regime production actually runs. That regime
-  is read from the shipped configuration owner via `cli._config_template`, and
-  the test asserts the dataclass defaults and the template agree, so the
-  acceptance cannot drift from the value production uses.
+* **resolved policy and promotion, from the real wave and existing controller**
+  — both positions consume the captured wave policy, including the fixture's
+  deliberately small `_FAST_CONTROL` RAM reservation, and the controller's
+  promotion estimate is read from that captured plan/policy using its existing
+  common estimate relation.
 
-It then drives the **real** controller through the lighter task's calibration
-window and reads the promotion estimate back off the real decision rather than
-re-implementing it, checking that it equals
-`max(stable observed per job, configured estimated_gpu_bytes_per_job)`, that
-`target_jobs` really advanced to 2, and that
-`verdict.predicted_device_bytes == decision.predicted_bytes_at_target`. The
-acceptance predicate `_a17_next_admission_verdict` then asks the question the
-controller cannot ask itself: does that reservation bound the *heavier* task's
-independently measured demand, on both axes, with the aggregate device and host
-budgets still holding after the proposed admission?
+It then drives an existing `AdaptiveTrainingConcurrency` instance with a
+bounded control observation and reads the promotion estimate back from the
+decision, checking that it equals
+`max(stable observed per job, configured estimated_gpu_bytes_per_job)` and that
+`target_jobs` advances to 2. No selected size, seed, membership, horizon, or
+separately constructed shipped-default policy enters this positive judgment.
+This is development-time structural/resource-policy evidence only; it does not
+judge empirical production RAM/VRAM adequacy.
 
-The acceptance identifies, explicitly: the lighter active task (N=512 regime,
-6,152 MiB device / 7,003 MiB host), the heavier pending task (N=8192 regime,
-5,154 MiB device / 9,912 MiB host), the common estimate the controller uses
-(8,192 MiB device, 16,384 MiB host), and the aggregate budget after admission
-(17.2 GiB projected at two jobs, from a 0.4 GiB observed baseline plus
-`2 x 8192 MiB x 1.05`, against the 21.6 GiB envelope).
+The Section 13.1/13.2 real-child measurements remain bounded observations from
+their exact measured regime. They are not joined to the `_FAST_CONTROL` wave by
+this deterministic test and do not constitute universal or production-scale
+qualification.
 
 `test_a17_is_not_closable_when_a_heavier_task_exceeds_the_common_estimate` is
-the negative case. It holds the policy, the plan and the telemetry trace
-**fixed** and varies only the heavier task's established bound, once per resource
-axis, and proves the same acceptance predicate reports A17 open with the right
-reason. It asserts the plan is byte-identical across all three judgements, so
-neither `TrainingConcurrencyPolicy` equality, `TrainingConcurrencyPlan` equality
-nor the common synthetic telemetry could have been the discriminator. No
+retained only as a negative/counterfactual predicate check. It holds the
+shipped-default policy, plan and telemetry trace **fixed** and varies only the
+heavier task's established bound, once per resource axis, proving that the
+predicate reports A17 open with the right reason. It is not evidence about the
+actual `_FAST_CONTROL` wave and does not prove production adequacy. No
 production OOM is manufactured: the counterfactual stops at the
 compatibility/evidence boundary.
 
-**The positive acceptance is discriminating, not tautological.** Re-running it
-with the pre-repair defaults restored on an otherwise identical tree fails with
-`N=8192 production membership needs 9.68 GiB of resident host memory but the
-common per-job RAM estimate is 8.00 GiB`. The estimate repair of 13.1 is
-therefore necessary for A17, not cosmetic.
+The positive structural acceptance is discriminating against a separately
+resolved policy/plan oracle: its assertions fail if the real wave does not
+consume the campaign's captured configuration or if task-specific values enter
+the common controller inputs. The measured magnitude observations remain
+available for actual-run qualification rather than being used to manufacture a
+development-time production-adequacy pass.
 
 ### 13.4 R2D — the D3 reopen threshold is not met
 
@@ -2125,3 +2122,57 @@ The scheduler repair may close without additional long resource qualification wh
 - production-scale RAM/VRAM adequacy and final target-hardware qualification are visibly deferred to actual runs.
 
 Under this stakeholder-authorized evidence scope, absence of additional long qualification is **not a D4 blocker**. A future actual-run failure remains new admissible evidence and may reopen D4 or D3 according to its owning cause.
+
+### 14.7 D4 evidence-oracle cleanup — 2026-09-21
+
+The narrow remaining oracle defect is repaired in
+`tests/test_mlff_production_global_train_scheduler.py`.
+`test_lighter_first_admission_bounds_the_heavier_next_production_task` now
+judges only the real wave's captured `wave_policy` and `wave_plan`: one common
+policy/plan is constructed for the collection, both positions consume the
+campaign-resolved configuration (including the deliberately small
+`_FAST_CONTROL` RAM reservation), lighter-first/heavier-next ordering does not
+introduce task-specific policy, and the existing controller's promotion
+relation is exercised without selected-size/task identity. It no longer builds
+a shipped-default plan or uses it as a positive judgment about the real wave.
+
+The separately constructed shipped-default policy remains only in
+`test_a17_is_not_closable_when_a_heavier_task_exceeds_the_common_estimate`,
+whose claim is explicitly limited to discrimination of the negative acceptance
+predicate. The Section 13 real-child RAM/VRAM rows remain bounded observations
+from their exact measured regime; they are not production-scale qualification.
+Actual production runs remain the RAM/VRAM adequacy boundary, and target-GPU
+qualification remains deferred to final release qualification. Explicit
+campaign resource values remain authoritative and are not migrated or silently
+reinterpreted.
+
+Candidate/evidence identity for this uncommitted cleanup:
+
+- base candidate Git SHA: `add583eff7fe4a4cca11b634a1c23f0784493d65`;
+- edited test blob SHA: `6b75e30c69f8b1bba0793b019b0d898c65a8f42a`;
+- edited-test working-tree diff SHA-256: `3535d6bb1fcd0c20b3861a991fff4ee9db67b28729390f6f085cb5d4ad3dc9ce`.
+
+No commit is created by this cleanup; the base SHA plus the recorded working-tree
+identity is the exact candidate state available for independent Review.
+
+Focused evidence on that candidate, using the `mace` environment and
+`-p no:randomly`:
+
+The four suite runs below followed the behavioral oracle cleanup. The final
+test-blob change after those suite runs was wording-only (module/docstring
+scope clarification); `compileall` and both A17 nodes were rerun on the final
+blob, and the suite results remain applicable because no executable assertion,
+fixture, or runtime path changed.
+
+| Command | Result |
+| --- | --- |
+| `conda run -n mace python -m compileall mdstats tests` | clean, exit 0 |
+| `conda run -n mace python -m pytest -q -p no:randomly tests/test_mlff_production_global_train_scheduler.py::test_lighter_first_admission_bounds_the_heavier_next_production_task tests/test_mlff_production_global_train_scheduler.py::test_a17_is_not_closable_when_a_heavier_task_exceeds_the_common_estimate` | **2 passed** (18.84s) |
+| `conda run -n mace python -m pytest -q -p no:randomly tests/test_mlff_production_global_train_scheduler.py` | **28 passed** (396.15s) |
+| `conda run -n mace python -m pytest -q -p no:randomly tests/test_mlff_p5_train2_zero_safe_admission.py` | **16 passed** (276.74s) |
+| `conda run -n mace python -m pytest -q -p no:randomly tests/test_mlff_p5_train2_memory_backoff.py` | **12 passed** (164.96s) |
+| `conda run -n mace python -m pytest -q -p no:randomly tests/test_mlff_training_parallel_scheduler.py` | **39 passed** (4.79s) |
+
+No additional long resource qualification, target-production GPU run, or
+iterative stakeholder GPU qualification was executed. This workplan remains
+open for independent Review and is not self-closed.
