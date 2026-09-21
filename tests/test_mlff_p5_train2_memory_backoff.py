@@ -69,6 +69,12 @@ _FAST_CONTROL = "\n".join(
         # whatever else the machine is doing; pin the per-job reservation so the
         # planned ceiling is decided by the VRAM semantics under test.
         "estimated_training_ram_mib_per_job = 512.0",
+        # The claim here is the VRAM envelope/backoff/occupancy-attribution
+        # semantics at a chosen owned concurrency, not the magnitude of the
+        # shipped per-job device reservation. Pin it so these scenarios keep
+        # exercising the transition they were built for when that shipped
+        # reservation moves.
+        "estimated_training_vram_mib_per_job = 6144.0",
     )
 )
 
