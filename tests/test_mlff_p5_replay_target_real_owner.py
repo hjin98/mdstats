@@ -472,15 +472,65 @@ def test_root_dependent_eval2_excludes_storage_mutation_without_lock_inversion(
 _LEGACY_BUILDER = '''
 import json, os
 from pathlib import Path
+from unittest.mock import patch
 import tests._mlff_post_selection_fixture as fx
 import tests.test_mlff_target_size_p4d_runtime_cutover as p4d
+
+
+class _NoBoundaryTraining:
+    def __call__(self, request):
+        raise AssertionError("size selection may not train a candidate here")
+
+
+def _two_size_baseline_campaign(out):
+    """A frozen two-size baseline design, cross-validated by the baseline code."""
+
+    with patch.object(p4d, "_CONFIG", fx.fixture_config_text()):
+        config, _workspace = p4d._fixture_campaign(out)
+    assert p4d._run(config, "prepare") == 0
+    for size, horizon in ((8, 2), (16, 3)):
+        assert (
+            p4d._run(
+                config, "select-target-size", str(size), "--horizon", str(horizon),
+                _external_boundary_trainer=_NoBoundaryTraining(),
+                _external_inference_evaluator=_NoBoundaryTraining(),
+            )
+            == 0
+        )
+    return config
 
 
 def test_build_legacy_p5_workspace(tmp_path):
     out = Path(os.environ["MDSTATS_LEGACY_P5_WORKSPACE"])
     scenario = os.environ["MDSTATS_LEGACY_P5_SCENARIO"]
-    config, _workspace = fx.build_selected_campaign(out)
     harness = fx.PostSelectionHarness()
+    if scenario == "two_size_production_interrupted":
+        # The baseline code's own serial outer-size production: the first
+        # frozen size's production TRAIN2 is interrupted mid-trajectory, so the
+        # later size never reaches production at all.
+        config = _two_size_baseline_campaign(out)
+        assert fx.run_cross_validate(config, harness) == 0
+        calls = []
+
+        def train(request):
+            calls.append(request)
+            return fx.train_like_mace(
+                request, stop_after_epoch=0, fail_after_persist=True
+            )
+
+        try:
+            p4d._run(config, "train-production", _external_post_selection_trainer=train,
+                     _external_inference_evaluator=harness.evaluate)
+        except AssertionError:
+            pass
+        else:
+            raise AssertionError("baseline production was expected to be interrupted")
+        assert len(calls) == 1
+        (out / "legacy.json").write_text(
+            json.dumps({"config": str(config)}), encoding="utf-8"
+        )
+        return
+    config, _workspace = fx.build_selected_campaign(out)
     if scenario == "cv_interrupted":
         calls = []
 
@@ -558,7 +608,9 @@ def _legacy_workspace(tmp_path: Path, scenario: str) -> Path:
     return Path(json.loads((workspace / "legacy.json").read_text())["config"])
 
 
-def test_sealed_and_terminal_unsealed_legacy_roots_are_reused_without_byte_mutation(tmp_path):
+def test_sealed_and_terminal_unsealed_legacy_roots_are_reused_without_byte_mutation(
+    tmp_path, capsys
+):
     config = _legacy_workspace(tmp_path, "production_rejected")
     runs = _runs_root(config)
     legacy_roots = sorted(path for path in runs.iterdir() if path.is_dir())
@@ -571,9 +623,17 @@ def test_sealed_and_terminal_unsealed_legacy_roots_are_reused_without_byte_mutat
 
     harness = fx.PostSelectionHarness()
     assert fx.run_cross_validate(config, harness) == 0
+    capsys.readouterr()
     assert fx.run_train_production(config, harness) == 0
+    printed = capsys.readouterr().out
     assert harness.runs == []  # zero TRAIN2 launches: every trajectory reused
     assert harness.evaluations  # historical measurements are not scalar-reused
+    # The terminal-but-unsealed historical root is sealed by production
+    # recovery normalization, through the historical recovery owner and before
+    # any scheduler is sized, so no TRAIN wave is constructed at all.
+    assert "[TRAIN] status=reused; terminal TRAIN2 sealed by recovery" in printed
+    assert "train_required=0" in printed
+    assert "[TRAIN scheduler] status=" not in printed
 
     # No new training root was created under the current trajectory names.
     assert sorted(path.name for path in runs.iterdir() if path.is_dir()) == sorted(before)
@@ -633,3 +693,151 @@ def test_interrupted_legacy_cv_continues_under_historical_identities(tmp_path):
             assert after.get(relative) == value, relative
     _plan, acceptance = _current_cv(config)
     assert acceptance is not None and acceptance.accepted
+
+
+def _current_final_plan_pointers(config: Path) -> list[str | None]:
+    """The current per-binding FinalProductionPlan pointer of every selected size."""
+
+    from mdstats.training_data.post_selection_store import (
+        POINTER_FINAL_PLAN,
+        read_current_post_selection_pointer,
+    )
+
+    contexts, store = _contexts(config)
+    try:
+        return [
+            read_current_post_selection_pointer(
+                store, binding=context.selected.binding, kind=POINTER_FINAL_PLAN
+            )
+            for context in contexts
+        ]
+    finally:
+        store.close()
+
+
+def test_incompatible_interrupted_historical_continuation_stops_the_collection(
+    tmp_path, capsys
+):
+    """R4/A6(3): an incompatible historical continuation fails before any sibling.
+
+    The workspace is a genuine baseline (pre-cutover) two-size campaign whose
+    first frozen size's production TRAIN2 was interrupted mid-trajectory, so
+    the later size never reached production at all.  The interrupted historical
+    root is then made incompatible with current authority: its persisted
+    realized preparation ancestry is no longer the one the current training
+    method reproduces, while the record stays self-consistent enough to reach
+    the historical authentication owner.
+
+    Driven through the real public ``train-production`` collection owner, the
+    incompatible continuation must be rejected by recovery normalization
+    *before* the fresh, runnable sibling position of the other selected size is
+    admitted to the TRAIN wave.  Independently valid Phase-B FinalProductionPlan
+    pointers stay current - recovery failure is not a collection rollback - and
+    every historical byte is preserved for retry and investigation.
+    """
+
+    from mdstats.training_data._common import digest
+    from mdstats.training_data.train2_runtime import TRAIN2_RUNTIME_SUMMARY_FILENAME
+
+    config = _legacy_workspace(tmp_path, "two_size_production_interrupted")
+    runs = _runs_root(config)
+    legacy_roots = sorted(path for path in runs.iterdir() if path.is_dir())
+    interrupted = [
+        root
+        for root in legacy_roots
+        if not (root / "fold-acceptance.json").is_file()
+        and runtime.read_post_selection_run_completion(root)[0] is None
+    ]
+    assert len(interrupted) == 1, [root.name for root in legacy_roots]
+    historical = interrupted[0]
+    assert (historical / "checkpoints" / TRAIN2_RUNTIME_SUMMARY_FILENAME).is_file()
+
+    # Make the persisted ancestry incompatible with current authority while
+    # keeping the record internally self-consistent, so the failure is the
+    # training-equivalence fence and not a malformed-record rejection.
+    record = historical / "materialization" / "materialization.json"
+    payload = json.loads(record.read_text(encoding="utf-8"))
+    payload["preparation_digest"] = "0" * 64
+    payload["content_digest"] = digest(
+        {key: value for key, value in payload.items() if key != "content_digest"}
+    )
+    record.write_text(json.dumps(payload), encoding="utf-8")
+    before = {root.name: _tree(root) for root in legacy_roots}
+
+    harness = fx.PostSelectionHarness()
+    assert fx.run_cross_validate(config, harness) == 0
+    assert harness.runs == [], "the baseline CV ancestry must be reused as-is"
+    evaluations_before = len(harness.evaluations)
+    capsys.readouterr()
+    with pytest.raises(Exception) as failure:
+        fx.run_train_production(config, harness)
+    printed = capsys.readouterr().out
+    assert "training-equivalent" in str(failure.value), failure.value
+
+    # Zero trainer invocations anywhere in the collection, including the fresh
+    # runnable sibling of the other selected size, and no scheduler was sized.
+    assert harness.runs == [], "a sibling trainer launched behind a rejected root"
+    assert len(harness.evaluations) == evaluations_before, (
+        "EVAL2 began after a recovery failure"
+    )
+    assert "[TRAIN scheduler] status=" not in printed
+    assert "train_required=" not in printed
+
+    # Phase B had already published both independently valid per-binding plan
+    # pointers; recovery failure is not a collection rollback.
+    pointers = _current_final_plan_pointers(config)
+    assert len(pointers) == 2 and all(pointers), pointers
+
+    # Nothing was published, and every historical byte is preserved.
+    contexts, store = _contexts(config)
+    try:
+        for context in contexts:
+            assert runtime.resolve_current_final_production_publication(context) is None
+    finally:
+        store.close()
+    assert sorted(path.name for path in runs.iterdir() if path.is_dir()) == sorted(before)
+    after = _tree(historical)
+    for relative, value in before[historical.name].items():
+        if relative.startswith("materialization/materialization.json"):
+            continue  # the deliberate incompatibility this test injected
+        assert after.get(relative) == value, relative
+    assert set(after) - set(before[historical.name]) <= {
+        ".materialization.json.lock"
+    }, set(after) - set(before[historical.name])
+    assert runtime.read_post_selection_run_completion(historical)[0] is None
+    for root in legacy_roots:
+        if root != historical:
+            assert _tree(root) == before[root.name], root.name
+
+
+def test_contradictory_historical_partial_proof_fails_before_any_trainer(tmp_path):
+    """A6: a historical root with a terminal record but no valid anchor fails closed.
+
+    Production recovery normalization must classify historical state through
+    the historical recovery owner *before* any current trainer is launched, and
+    an inconsistent partial proof is preserved for diagnosis rather than
+    completed, reused, or retrained around.
+    """
+
+    config = _legacy_workspace(tmp_path, "production_rejected")
+    runs = _runs_root(config)
+    unsealed = [
+        root
+        for root in sorted(path for path in runs.iterdir() if path.is_dir())
+        if runtime.read_post_selection_run_completion(root)[0] is None
+    ]
+    assert len(unsealed) == 1
+    # A pre-cutover terminal assessment record with no valid completion anchor:
+    # the exact contradictory partial-proof state the recovery owner refuses.
+    (unsealed[0] / runtime.RUN_EVIDENCE_FILENAME).write_text(
+        json.dumps({"schema": "pre-cutover"}), encoding="utf-8"
+    )
+    before = _tree(unsealed[0])
+
+    harness = fx.PostSelectionHarness()
+    assert fx.run_cross_validate(config, harness) == 0
+    with pytest.raises(Exception, match="partial proof"):
+        fx.run_train_production(config, harness)
+    assert harness.runs == [], "a trainer launched behind a contradictory root"
+    assert _tree(unsealed[0]) == before, "the preserved diagnostic state was mutated"
+    assert runtime.read_post_selection_run_completion(unsealed[0])[0] is None

@@ -1261,11 +1261,17 @@ def test_no_current_surface_retains_the_scalar_selection_authority():
 
 
 def test_outer_size_execution_is_serial_and_adds_no_scheduler():
-    """Structural: the size loop is an ordinary iteration, not a new runtime.
+    """Structural: the size dimension is an ordinary iteration, not a new runtime.
 
-    Serial outer iteration is the whole point of the resource rule: every size
-    runs inside the one effective allocation the existing fold/seed/MACE/library
-    concurrency already owns, so nothing new can assume it owns the machine.
+    Every size runs inside the one effective allocation the existing
+    fold/seed/MACE/library concurrency already owns, so nothing new can assume
+    it owns the machine.  Cross-validation keeps its outer-serial selected-size
+    orchestration outright.  Final production now presents all of its remaining
+    TRAIN2 positions to that one existing scheduler instead of building a fresh
+    one per size (see
+    ``test_mlff_production_global_train_scheduler``), which is a wider task
+    population for the same single resource owner - the command itself still
+    adds no executor, pool, or second scheduler.
     """
 
     import ast
@@ -1306,9 +1312,11 @@ def test_outer_size_execution_is_serial_and_adds_no_scheduler():
         assert any(isinstance(child, ast.For) for child in ast.walk(node)), name
 
     # The shared adaptive scheduler is intentionally imported by this module
-    # and owned below the outer size loop.  The entrypoint-level AST checks
-    # above are the structural contract: selected sizes do not acquire a
-    # second scheduler or submit work concurrently with one another.
+    # and owned below the command entrypoints.  The entrypoint-level AST checks
+    # above are the structural contract: no selected size acquires a second
+    # scheduler, and CV additionally keeps its per-size wave, which
+    # ``test_cross_validation_keeps_its_outer_serial_selected_size_wave`` in the
+    # production-scheduler suite establishes behaviourally.
 
 
 # --- R1/R2: manual selection efficiency and view decoupling -----------------

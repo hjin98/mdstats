@@ -30,6 +30,13 @@ The proposed method restores the final mature multi-view semantics under current
 
 ## Recently closed MLFF work
 
+The final-production global TRAIN scheduler repair on branch `design/mlff-production-global-train-scheduler-repair` closed **PASS** under Protocol 6.4 at reviewed candidate `62d42da57f948f70bbd50ec338435c3a82b22d49`. Final production now normalizes recovery collection-wide, executes only remaining TRAIN_REQUIRED positions through one existing adaptive TRAIN scheduler wave, and retains serial/fail-fast EVAL2/assessment/publication in frozen selected-size order. Exact CampaignStore collection-signature admission linearization, authenticated restart/reuse, and zero-safe/backoff semantics remain intact. Production-scale RAM/VRAM adequacy is deferred to actual runs and target-hardware GPU qualification to the final release package.
+
+Final closure record:
+
+- `workplans/archive/MLFF_PRODUCTION_GLOBAL_TRAIN_SCHEDULER_REPAIR_WORKPLAN.md`.
+
+
 The replay-retention / target-admissibility rework on branch `design/mlff-replay-retention-target-admissibility-rework` closed **PASS** under Protocol 6.4. Final D4 Review accepted executable candidate `042b84b74d0b109dd576b725eafe6359629a55ea` with evidence-only binding descendant `51db5d33723fad862b803b2487ea448cb876ec06`, with no Serious Challenge to accepted D1/D2/D3 authority. Final affected CPU evidence records 656 passing tests, including all 167 storage-integration tests. Production-scale GPU qualification remains deferred to the final complete-release package.
 
 Final closure record:

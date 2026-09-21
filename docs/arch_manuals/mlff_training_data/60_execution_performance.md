@@ -518,7 +518,14 @@ Current aggregate occupancy counts regardless of which process owns it, a
 configured minimum concurrency is subordinate to current feasibility, and a
 positive configured job count is a maximum cap rather than launch permission.
 Pending training work with an idle queue and no feasible slot resolves to an
-explicit resource failure, not a launch or a wait. Device availability and
+explicit resource failure, not a launch. That terminal state is reached only
+after the idle observation has survived one normal poll interval and the fresh
+control observation taken across it: a single unsafe or blind sample can be
+transient, and with nothing owned running only a new observation can change the
+decision, so the scheduler waits at its ordinary cadence rather than rechecking
+in a tight loop or ending the wave on the first idle sample. An unsafe or blind
+observation that clears within that interval recovers and admits pending work
+normally. Device availability and
 memory observability are separate facts, and absent a trustworthy current memory
 observation automatic training admission is blocked. Memory safety is evaluated
 on every trustworthy sample independently of optimizer/epoch calibration
@@ -527,6 +534,77 @@ A training slot owns training lifetime alone; post-training evaluation must not
 inherit a training slot. The evaluation/inference controller keeps its own
 accepted serial-floor calibration contract, which these training rules do not
 replace.
+
+### Scope of one post-selection TRAIN wave
+
+The scope of a TRAIN wave differs by role. Cross-validation runs one wave per
+selected size, in frozen size order, exactly as before: its waves are that
+size's fold/seed matrix, and no collection-global CV queue exists.
+
+Final production is collection-scoped. After the collection-wide admission
+barrier, all per-size planning, and collection-wide recovery normalization,
+every production position that still requires trainer execution - across all
+selected sizes - is presented to **one** `TrainingConcurrencyPlan` and **one**
+`AdaptiveTrainingConcurrency` instance. There is no outer size executor, no
+per-size production scheduler nested beneath another resource owner, and no
+second queue, lease registry or retry wrapper around the existing one.
+
+Consequently:
+
+- the task count, controller ceiling, admission baseline, progress fraction and
+  failure accounting describe that collection-wide set of positions that still
+  require training, not the positions of one size and not roots that merely
+  happened to be unsealed when the command started;
+- positions already sealed, or sealed by recovery normalization before sizing,
+  consume no slot, launch no trainer and take no part in the shared-profile
+  proof;
+- resolving a position's root locator needs no exclusion, but every
+  classification of what that root *means* - fresh, incomplete,
+  terminal-but-unsealed, sealed, foreign, reusable or still requiring training -
+  is taken while that position's existing run-activity lease is held. A
+  locator-time observation of an absent or empty root is never a conclusion,
+  because a concurrent owner holding the same lease may be creating, continuing
+  or sealing exactly that root. The lease is the one the run owner already has:
+  no second lease, liveness registry, PID/mtime inference or collection-wide
+  lock exists, and it is released before scheduler admission;
+- if normalization leaves nothing to train, no controller is constructed at all;
+- the wave is TRAIN-only. It ends when every position it owns has reached its
+  authenticated sealed TRAIN2 root, and evaluation begins only afterwards, so
+  no evaluation can hold accelerator residency beside an active trainer of any
+  size;
+- sharing one controller requires one execution/resource profile - effective
+  device/telemetry domain, model/precision realization, batch and loader
+  geometry, CPU/RAM allocation, the per-job RAM/VRAM estimate regime, and the
+  trainer/process-supervision and disk-reserve owners - proved over exactly the
+  positions that will be trained. Selected size, optimizer seed and production
+  horizon are scientific identities and are not scheduler inputs; a
+  scheduler-critical difference the existing single-controller contract cannot
+  represent fails closed before any trainer starts rather than being resolved
+  by taking one position's values or an ad-hoc bound. The per-job RAM/VRAM
+  estimates are *common* bounds, and they are only admissible while they
+  conservatively cover the heaviest task the wave can admit. Device residency
+  is model, optimizer and EMA state plus one training or validation batch and
+  its graph tensors, so it is a function of the batch/geometry envelope and not
+  of the configuration count or the production horizon; resident host memory
+  does scale with the configuration count, so the host estimate must cover the
+  largest size on the configured ladder. Because both remain single common
+  bounds, one controller still represents every production task; a task that
+  could not be covered by a common bound would be an architectural question,
+  not a configuration one;
+- deterministic queue order is frozen selected-size order and then required
+  final-seed order, and the demotion victim remains the most recently admitted
+  active job, which keeps its exact scientific identity when it is requeued;
+- a wave-global key exists only for scheduler bookkeeping, because local seed
+  slots repeat across sizes. It never enters a run plan, run root, assessment
+  position, digest, or publication, and duplicate scientific run identities fail
+  closed before launch.
+
+Every new admission - and the admission of the post-training
+evaluation/finalization phase - is linearized against target-size generation
+transitions through the existing serialized CampaignStore transition authority,
+using the exact `(campaign generation, ordered current binding digests)` of the
+authorized design. The serialization is held only for that one ownership
+transition, never across training, telemetry waits, evaluation or publication.
 
 For training, the configured `training_gpu_memory_fraction` is the admission
 ceiling *and* the live aggregate **soft** admission/backoff boundary. It is a

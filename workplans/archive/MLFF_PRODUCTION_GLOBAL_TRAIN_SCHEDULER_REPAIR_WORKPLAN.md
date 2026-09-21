@@ -1,0 +1,2223 @@
+
+---
+kind: implementation-workplan
+workplan_id: MLFF-PRODUCTION-GLOBAL-TRAIN-SCHEDULER-REPAIR
+protocol_version: 6.4.0
+status: closed-pass
+created_date: 2026-09-19
+reviewed_date: 2026-09-19
+second_reviewed_date: 2026-09-19
+closure_falsification_date: 2026-09-19
+third_reviewed_date: 2026-09-19
+third_review_closure_date: 2026-09-19
+fourth_reviewed_date: 2026-09-19
+fourth_review_closure_date: 2026-09-19
+revision: 8
+workplan_review_status: pass-after-fourth-review-consistency-closure
+implementation_review_status: no-pass-d4-reopened
+implementation_reviewed_head: f7d4925e08fe3e013b4a35a71a29d6fed8c8c2be
+implementation_review_date: 2026-09-20
+second_implementation_review_status: no-pass-d4-r2-resource-proof-reopened
+second_implementation_reviewed_head: 07e506df4c0f58758c5364e8b1bb05ff32a8df68
+second_implementation_review_date: 2026-09-20
+d4_repair_head: 0462f56f6bfb22ea254a28683a62937b6aad2740
+d4_repair_evidence_date: 2026-09-20
+second_d4_repair_head: 94f9bf5488071aff7ad4b42033f32364b758ffdd
+second_d4_repair_evidence_date: 2026-09-20
+second_d4_repair_review_status: stakeholder-scope-reconciled
+final_implementation_review_status: pass
+final_implementation_reviewed_head: 62d42da57f948f70bbd50ec338435c3a82b22d49
+final_implementation_review_date: 2026-09-21
+closed_date: 2026-09-21
+stakeholder_deferred_resource_qualification: actual-production-runs
+stakeholder_deferred_resource_qualification_date: 2026-09-21
+reviewed_pre_repair_head: 10c68eb50cb7ee2b5f0bb8d43e35bb250a186d96
+second_reviewed_pre_repair_head: 35fe7c19f60d99a2ae99257496acb2e82c35975d
+closure_falsification_pre_repair_head: 47376b968a62ab05473e370746f79988436bb3e3
+third_reviewed_pre_repair_head: 12959ef0bdc7a9ac9253fafa846d9f7bb4e0bb28
+third_review_closure_pre_repair_head: a8dcbaa774ac4815ce03896e368a630577d20c51
+fourth_review_pre_repair_head: e2b9c6221ba379ef78f8ddbfba0aff3ae814b181
+fourth_review_closure_pre_repair_head: d7efcf62c8cc5b29cbd021f9f74cb13fff3f921e
+branch: design/mlff-production-global-train-scheduler-repair
+basis_commit: f341a3f993b931c5e0838e95520b8b4fd41459ae
+highest_affected_domain: D3
+authority_state: independent-review-pass-awaiting-integration
+d1_d2_change: false
+production_gpu_qualification: deferred-final-release
+---
+
+# MLFF production global TRAIN scheduler repair - D3 -> D4 implementation workplan
+
+## 0. Disposition
+
+**PASS AS IMPLEMENTATION WORKPLAN AFTER FOURTH REVIEW CONSISTENCY CLOSURE / FROZEN FOR D4. No Serious Challenge is active.**
+
+Revision 8 is the fourth-review consistency closure. Revision 7 closed the currentness-linearization and preflight-side-effect gaps; Revision 8 removes the last weaker derivative wording so the D4 obligation/capability-transfer sections require the same exact serialized collection-signature admission semantics as D3-16. Revision 6's recovery-normalization contract remains intact: only actual TRAIN_REQUIRED work enters the scheduler, and public CV selected-size/task-count/progress semantics remain unchanged. Revision 7 additionally requires a real linearization point between each new production admission and concurrent target-generation transitions, and explicitly preserves independently valid per-binding FinalProductionPlan pointers when later collection recovery normalization fails. The repair remains deliberately narrow: **only actual TRAIN2 continuation/admission is collection-global**. Recovery now distinguishes roots that truly still require trainer work from already-terminal-but-unsealed roots that require only the existing completion/seal transition. The latter are sealed before scheduler sizing and never inflate TRAIN task_count, controller ceilings, progress, or resource-profile compatibility. The same rule covers current post-cutover roots and authenticated historical/legacy roots through their existing recovery owners. EVAL2, per-seed assessment, and final publication remain inside the frozen-size-ordered finalization path. FinalProductionPlan pointers remain per-binding rather than collection-atomic, and the live generation/currentness fence still prevents new old-design TRAIN2 admission after target-size rollover.
+
+No D1/D2 defect was found. No second scheduler, collection publication transaction, new persistent orchestration machinery, or widened evaluation semantics is authorized.
+
+This cycle is a **stakeholder-authorized bounded D3 reopen of final-production selected-size scheduling**. Accepted multi-size lineage had ultimately frozen serial outer-size orchestration as the current concretization. This workplan intentionally supersedes that one production scheduling choice only; it does not retroactively reinterpret the archived serial design as already-global, and repository presence on this branch does not make the proposed D3 mutation accepted-current before independent falsification and merge through the normal architecture acceptance path.
+
+This cycle repairs final-production orchestration only. The defect is not that the adaptive TRAIN2 controller cannot promote concurrent work. The defect is that train-production authenticates the frozen collection as one experiment, then serializes selected sizes outside the existing scheduler and constructs a fresh scheduler for each size. The scheduler therefore sees only the seeds of the current size, not all independently ready final-production trajectories.
+
+For a frozen two-size collection with the current one-seed production policy, the implementation presents one task at a time to a scheduler whose truthful task ceiling is one. With two configured final seeds it presents two tasks for the first size and, only after that size is completely assessed and published, another two tasks for the second size. This is structurally work-starving when the one shared CPU/GPU resource envelope could safely admit concurrent production trajectories from different selected sizes.
+
+The repair is to make **all final-production positions that remain TRAIN_REQUIRED after collection-wide recovery normalization participate in one existing adaptive TRAIN scheduler wave**. That shared wave ends at authenticated sealed TRAIN2 roots. Only after every scheduler-owned TRAIN2 position is terminal does the command resume the existing frozen-size-ordered finalization path: per-size serial EVAL2, per-seed assessment, and binding-scoped final publication. Later sizes may finish TRAIN2 early, but they do not perform fresh EVAL2 or publish assessments merely because their training finished first.
+
+Cross-validation scheduling is explicitly out of scope and remains unchanged.
+
+## Background and terminology
+
+A **production position** is one exact final-production trajectory authorized by one FinalProductionPlan, identified by its selected TargetBinding, optimizer seed, production horizon, method/replay ancestry, and existing run-plan identity.
+
+A **production collection wave** is the execution-local set of all currently required production positions across every frozen selected size after the collection-wide CV admission barrier succeeds. Recovery normalization partitions that set into reusable sealed/terminal state and the TRAIN_REQUIRED subset that alone becomes the scheduler wave.
+
+A **scheduler slot** is execution-local queue identity only. It must be unique within the collection wave and must not enter scientific/numerical identities.
+
+A **scheduler-compatible execution profile** is the set of runtime/resource facts that must either be equal or be conservatively represented by the existing single-controller planning contract for positions to share one AdaptiveTrainingConcurrency instance. It includes effective device/backend and telemetry domain, training precision/runtime realization, canonical execution concurrency policy, effective CPU/RAM allocation, loader-worker and inner-thread geometry, batch/model realization relevant to residency, the applicable per-job RAM/VRAM estimate regime, and the existing trainer/process-supervision and disk-reserve owners. Scientific inputs such as N, exact target membership, optimizer seed, production horizon, and accepted CV ancestry remain distinct identities; however, their *resource consequences* are not assumed irrelevant and must be checked where they can change scheduler demand.
+
+## 1. Outcome and authority
+
+### Protected stakeholder/product outcome
+
+After train-production has authenticated the entire frozen multi-size design and every selected size has current accepted CV ancestry, all independent production TRAIN2 positions that are ready to run must be visible to the **one existing bounded TRAIN scheduler**. Idle admissible capacity must not be withheld merely because another ready trajectory belongs to a later selected size.
+
+The change must preserve exact per-size scientific identity, assessment, publication, restart, failure, and currentness semantics.
+
+### Accepted D3 architecture being concretized/revised
+
+Current D3 already establishes:
+
+- one frozen ordered selected-size collection over one prepared generation;
+- independent CV and production descendants under each size's own TargetBinding;
+- a collection-wide final-production admission barrier;
+- no cross-size final-publication committee or release winner;
+- completed sibling evidence remains reusable across retries;
+- one effective resource allocation must own post-selection MACE concurrency;
+- TRAIN2 and EVAL2 are phase-separated so EVAL2 never shares accelerator residency with an active scheduler-owned TRAIN2 process;
+- process outcome, cancellation completion, and accelerator teardown remain owned by the TRAIN2/run owner rather than inferred by the scheduler.
+
+The original multi-size workplan permitted bounded overlap through the existing scheduler as an implementation option, but the later accepted closure lineage froze **serial outer-size orchestration/resource ownership** as the selected current concretization. In particular, the multi-size implementation review and next-round closure retained serial selected-size orchestration, and later P5 recovery acceptance continued to treat serial selected-size orchestration as a structural oracle. Those accepted choices are not erased by the current Architecture Manual being less explicit.
+
+The stakeholder direction for this cycle therefore reopens D3 narrowly: **final-production TRAIN2 scheduling across selected sizes becomes collection-scoped and work-conserving under the one existing adaptive scheduler**. Cross-validation selected-size orchestration remains serial and all non-conflicting multi-size architecture remains accepted.
+
+Current canonical architecture/specification must be strengthened to represent this new accepted candidate if implementation and independent review pass. The Architecture Manual currently states the per-size descendant and collection-wide barrier invariants but is under-specified about final-production size scheduling; the CLI specification still states serial outer iteration. Both must be reconciled before the D3 change can become accepted-current.
+
+### Applicable D1/D2 constraints
+
+This is a D3/D4 execution repair. It MUST NOT change:
+
+- selected sizes or frozen order;
+- exact T_N membership;
+- CV fold construction, CV seeds, CV acceptance, or CV scheduler behavior;
+- production seed policy or default seed count;
+- optimizer-seed identity;
+- per-size production horizon;
+- training method, optimizer, objective, replay exposure/admissibility, precision, architecture, or checkpoint policy;
+- final-seed assessment policy;
+- representative selection;
+- per-size publication decision or product identity;
+- the absence of a cross-size reducer/committee/release-selection rule.
+
+Execution width, queue position, task completion order, and cross-size interleaving remain non-scientific execution facts.
+
+### Stable D4 contracts/specification
+
+Preserve the existing public train-production command, configuration surface, FinalProductionPlan, production run-plan identities, run roots, assessment-position identities, publication records, current pointers, and restart artifacts.
+
+No new public option, environment variable, scheduler configuration key, persistence schema, database table, GPU lease manager, retry subsystem, or cross-size scientific record is authorized.
+
+### Explicit non-goals
+
+- No CV scheduler change.
+- No production seed-count change.
+- No adaptive promotion/backoff redesign in training_parallel.py unless implementation proves a separate coherent defect; such a finding reopens scope.
+- No concurrent EVAL2.
+- No cross-size publication aggregation.
+- No release qualification rule for multi-size experiments.
+- No production-scale GPU qualification during this cycle; standing project policy defers that to the final complete-release qualification package.
+
+## 2. Cycle decisions and delegated D4 space
+
+### D3-1 - One collection-level TRAIN scheduler owner
+
+After the collection-wide CV admission barrier succeeds and production recovery normalization completes, every position still classified TRAIN_REQUIRED across all selected contexts enters one scheduler-ready population governed by exactly one call path that constructs one TrainingConcurrencyPlan and one AdaptiveTrainingConcurrency for that production TRAIN wave.
+
+The implementation MUST NOT create an outer size executor around existing per-size schedulers. It MUST NOT nest one scheduler per selected size beneath another resource owner.
+
+### D3-2 - Planning and publication remain per-size; only the TRAIN2 queue is collection-scoped
+
+Scientific planning remains owned per PostSelectionContext:
+
+~~~text
+selected context
+  -> current accepted CV ancestry
+  -> FinalProductionPlan
+  -> final run plans / assessment positions
+~~~
+
+Only TRAIN2-ready positions are flattened:
+
+~~~text
+all per-size production positions
+  -> collection recovery/integrity classification
+  -> one TRAIN scheduler population for TRAIN_REQUIRED positions only
+  -> one global TRAIN-only phase ending at sealed TRAIN2 roots
+  -> frozen size N1: serial EVAL2 -> all seed assessments -> final publication
+  -> frozen size N2: serial EVAL2 -> all seed assessments -> final publication
+  -> ...
+~~~
+
+If finalization of N_i fails, N_{i+1} and later sizes do not begin fresh EVAL2 in that invocation. Their already-authenticated sealed TRAIN2 roots remain ordinary reusable evidence.
+
+Flattening must not synthesize a collection-level FinalProductionPlan, run identity, assessment policy, completion record, measurement batch, or publication decision.
+
+### D3-3 - Scheduler task carries its real owner
+
+The execution item passed to the shared scheduler must carry or resolve, without ambiguity:
+
+- owning PostSelectionContext;
+- owning training budget policy;
+- run plan;
+- exact training/monitor/outer-evaluation memberships;
+- progress context;
+- reusable measurement offers;
+- local per-size position identity/slot needed for deterministic reduction;
+- one wave-global execution slot/key used only for scheduler bookkeeping.
+
+The scheduler must never use a single outer context or budget_policy for heterogeneous tasks merely because the current implementation signature does.
+
+### D3-4 - One scheduler-compatible execution profile is proved over actual TRAIN-required work
+
+Before any production TRAIN2 child is admitted, the collection execution owner must first complete the recovery normalization in D3-7/D3-8 and then prove that every position still classified **TRAIN_REQUIRED** can legally share one scheduler resource domain **under the assumptions the existing TrainingConcurrencyPlan/AdaptiveTrainingConcurrency actually make**.
+
+Positions that are already sealed, or whose authenticated TRAIN2 continuation is already terminal and is sealed during recovery normalization without a trainer launch, do not participate in the scheduler-profile compatibility proof merely because their roots were unsealed at command entry.
+
+The compatibility proof over TRAIN_REQUIRED positions covers, at minimum:
+
+- effective device/backend and exact GPU telemetry domain;
+- shared method/model/runtime realization and learned-model precision relevant to residency;
+- canonical execution parallel-training policy and effective CPU/RAM allocation;
+- loader-worker count plus any inner native-thread/nested-runtime geometry that contributes to per-job CPU demand;
+- batch/model/materialization geometry when it changes host or device memory demand;
+- the per-job RAM and VRAM estimate regime consumed by the existing planner;
+- trainer/process-supervision ownership, timeout semantics, and the trainer-local minimum-free-disk reserve owner.
+
+N, exact membership, seed, and H_prod do **not** have to be equal. They remain scientific identities. But the implementation must establish whether changing N or another per-position input materially changes the per-job resource demand assumed by the homogeneous planner. The current code uses one loader-worker count and one configured RAM/VRAM estimate for the whole plan, then learns promotion demand from active jobs; it is therefore forbidden to calibrate on a light TRAIN_REQUIRED position and silently assume that observation bounds a later heavier position unless the existing resource contract makes that inference valid.
+
+The preferred current result is a single compatible profile because all current production contexts share cfg, method, trainer, device, and execution policy. That expectation is not proof. D4 must provide a bounded real-owner compatibility test over distinct selected sizes/horizons and inspect the actual scheduler inputs **after recovery normalization**.
+
+If materially heterogeneous TRAIN_REQUIRED demand cannot be bounded safely by the existing single-controller contract without changing training_parallel.py, inventing per-profile buckets, or running multiple resource schedulers, **reopen D3**. Do not silently choose the first task's values, take ad-hoc minima/maxima, or broaden the controller inside this workplan.
+
+The minimum-free-disk reserve remains enforced by MacePostSelectionTrainer per owned child. Do not add a disk scheduler. A disk/timeout failure retains the existing whole-wave terminal failure/cancel/reap semantics.
+
+This validation is execution-local. Do not persist a new resource-profile authority.
+
+### D3-5 - TRAIN/EVAL phase separation is collection-wide; EVAL finalization remains per-size
+
+No fresh EVAL2 work may begin while **any** production TRAIN2 task in the collection wave remains active, queued, demoting, cancelling, or not yet terminal.
+
+The collection scheduler owns TRAIN2 only and returns after every TRAIN_REQUIRED position has reached the existing authenticated sealed-root boundary. It MUST NOT run EVAL2 as part of the global scheduler wave.
+
+After successful global TRAIN2, finalization resumes in frozen selected-size order. For one size, EVAL2 traverses that FinalProductionPlan.required_final_seeds order, regardless of whether a root was already sealed at invocation start or became sealed in the global wave. The existing run owner re-authenticates each sealed root before numerical evaluation.
+
+EVAL2 remains serial unless separately redesigned later. Runtime TRAIN completion order, prior-sealed versus newly-trained classification, or global scheduler slot must not determine EVAL2/assessment/publication order.
+
+### D3-6 - Existing failure and teardown ownership survives globalization
+
+A terminal TRAIN-wave failure or user interruption:
+
+1. stops new admission;
+2. signals every scheduler-owned active task through the existing per-run cancellation event;
+3. waits for the execution/process owner to return and reap its child;
+4. begins no EVAL2 in that failed invocation;
+5. preserves every authenticated TRAIN2 completion already durably published;
+6. relies on ordinary restart/currentness on a later healthy invocation.
+
+Memory-pressure demotion remains a scheduler resource action, not a scientific failure. The demoted position retains exact run identity and returns to the same pending population.
+
+The scheduler must not infer successful teardown from a cancellation request, future cancellation flag, or elapsed timeout.
+
+### D3-7 - Normalize terminal training state before scheduler sizing
+
+Before the global concurrency plan is built, resolve each production position through the existing root-locator semantics, then hold the existing run-activity exclusion for recovery authentication and for any completion/seal mutation. Ordinary locator resolution need not acquire the lease; no liveness, completion, or reuse conclusion may be drawn from pathname existence alone.
+
+A position is scheduler work only if authenticated recovery proves that its TRAIN2 trajectory still requires additional trainer execution. Use the execution-local classification **TRAIN_REQUIRED** only for queue construction; do not persist a new state enum or recovery registry.
+
+A position that already has authenticated terminal TRAIN2 but lacks the current completion/seal proof is **not** TRAIN_REQUIRED. Complete the accepted owner-local seal transition before scheduler sizing:
+
+- for a post-cutover root, reuse/factor the existing terminal-continuation path that validates the exact materialization, runtime plan, runtime summary, optimizer/RNG/checkpoint ancestry and then calls the existing training-completion/topology owner;
+- for a historical/legacy root, reuse/factor `_authenticate_legacy_training_state(...)`, `_authenticate_post_selection_continuation(...)`, the existing continuation-execution-evidence check, and the accepted append-only historical completion path;
+- launch no trainer for either case;
+- for a historical root, rewrite/copy/rename/symlink no pre-existing byte; only the already-authorized append-only topology/completion proof may be added;
+- publish no EVAL2 result, assessment pointer, final publication, or new currentness authority during this normalization. Existing idempotent content-addressed compatibility evidence may be stored only through its already-accepted historical-reuse owner.
+
+Once sealed, authenticate the root through `_authenticate_sealed_training_root(...)` (which delegates to `_authenticate_legacy_sealed_training_root(...)` for historical roots) or a conforming factored successor. A sealed root:
+
+- does not enter TRAIN task_count;
+- does not launch a trainer;
+- does not consume maximum_jobs;
+- remains eligible for later per-size EVAL2/reassessment through the existing run path.
+
+A corrupt, foreign, incompatible, or contradictory partial-proof state fails before sibling TRAIN launch.
+
+Thus task_count means **positions that still require real TRAIN2 continuation/trainer ownership after recovery normalization**, not merely roots that happened to be unsealed when the command began.
+
+If normalization leaves zero TRAIN_REQUIRED positions, construct no adaptive TRAIN scheduler merely to report zero work; after the required currentness fence, proceed directly to frozen-size-ordered finalization.
+
+### D3-8 - Recovery/integrity normalization is collection-wide before admission baseline
+
+Before the authoritative GPU admission baseline and before any new child is admitted, every production position must resolve to one of these execution-local outcomes:
+
+1. **post-cutover fresh root, no durable continuation** -> TRAIN_REQUIRED;
+2. **post-cutover authenticated incomplete continuation** -> TRAIN_REQUIRED, preserving its exact restart ancestry;
+3. **post-cutover authenticated terminal continuation, not yet sealed** -> publish only the existing training completion/topology proof, authenticate the resulting sealed root, then exclude it from TRAIN_REQUIRED;
+4. **post-cutover sealed root** -> authenticate read-only, then exclude it from TRAIN_REQUIRED;
+5. **historical/legacy interrupted root** -> prove the existing exact historical-equivalence/runtime/continuation contract; if incomplete, TRAIN_REQUIRED continuation under the historical runtime identity;
+6. **historical/legacy terminal-but-unsealed root** -> prove the same historical contract, append only the already-authorized seal, authenticate the resulting sealed root, then exclude it from TRAIN_REQUIRED;
+7. **historical/legacy sealed root** -> authenticate through the existing historical sealed-root owner and exclude it from TRAIN_REQUIRED;
+8. **foreign/corrupt/incompatible/ambiguous partial state** -> typed failure before any sibling TRAIN launch.
+
+Do not use `_prepare_post_selection_run(...)` as a generic legacy validator: current and historical roots have distinct accepted recovery owners. Factor shared read-only classification only where doing so preserves those semantics exactly.
+
+Recovery normalization can realize training-side state and may affect CUDA occupancy. Therefore all applicable normalization finishes before the authoritative post-normalization GPU sample used by `build_training_concurrency_plan()`.
+
+Any append-only seal created during normalization is an accepted recovery completion, not a scheduler completion and not scientific assessment. It remains durable even if a later sibling fails preflight; do not roll it back.
+
+Do not preflight lazily after other sizes have started. Do not turn recovery normalization into EVAL2.
+
+### D3-9 - Collection-wide production barrier remains stronger than scheduler readiness
+
+_cv_admission_blockers(contexts) remains ahead of all production planning/execution that could start new training. If one selected size lacks current accepted CV ancestry, the command launches zero production trainers for every size.
+
+The globalization repair must not turn the barrier into per-task filtering.
+
+### D3-10 - Per-size EVAL2/assessment/publication remains authoritative and ordered
+
+After the global TRAIN-only wave succeeds, each selected context is finalized independently in frozen collection order using its current FinalProductionPlan, positions, sealed roots, and evidence.
+
+For each size:
+
+- EVAL2 visits required final seeds in FinalProductionPlan.required_final_seeds order;
+- every required final seed is assessed before that size's aggregate production verdict is decided;
+- measurements/candidate records are durably published through the existing owner before the corresponding assessment, exactly as today;
+- typed no-admissible outcomes remain durable;
+- if any required seed has no admissible representative, the size receives no final publication and the invocation fails after preserving the complete per-seed assessment set for that size;
+- no sibling size's evidence can satisfy or alter local completion;
+- final publication uses the existing per-binding owner and separately re-authenticates current production authorization.
+
+If one size fails EVAL2, assessment, currentness, or final publication, later selected sizes do not begin fresh EVAL2/finalization in that invocation. Their already-sealed TRAIN2 roots remain reusable. Cross-size scheduler arrival order is never observable in scientific reduction or publication semantics.
+
+### D3-11 - Campaign-level progress tells the truth
+
+The public TRAIN scheduler line for final production must describe the global **TRAIN_REQUIRED** wave after recovery normalization:
+
+- progress = newly scheduler-completed TRAIN roots / positions that actually required TRAIN2 continuation at scheduler construction;
+- active/queued/failed counts are global to that TRAIN_REQUIRED wave;
+- already-sealed and terminal-but-unsealed roots normalized to sealed state are reported through bounded reuse/recovery diagnostics, not counted as TRAIN jobs;
+- plan ceiling is computed from the TRAIN_REQUIRED task count and shared resource profile.
+
+Per-child TRAIN heartbeats retain their own N_selected, seed/run, and phase context.
+
+For two selected sizes with one required production seed each, a fresh run must initially expose two scheduler positions, not an isolated 0/1 wave followed by a second unrelated 0/1 wave.
+
+Stage-level campaign status remains one post_selection_final_production stage over the complete requested collection.
+
+### D3-12 - Preserve both production authorization fences and per-binding pointer semantics
+
+The collection-wide _cv_admission_blockers(contexts) barrier remains the first production admission fence, but it is not the only one.
+
+Before a per-size FinalProductionPlan is constructed, the per-size production planner must re-run the existing exact authorization relation:
+
+- resolve_current_cv_plan(context);
+- resolve_current_cv_acceptance(context);
+- require_cv_acceptance_for_method(...) against the current method and selected binding.
+
+This is the accepted second-line race/currentness fence formerly inside execute_final_production(context). Splitting planning from execution MUST NOT delete, weaken, or replace it with the earlier collection preflight.
+
+The collection owner uses a two-phase pre-launch planning discipline:
+
+**Phase A - construct/authenticate without current-pointer side effects.** For every selected size in frozen order, re-run the second-line CV authorization and construct/validate its FinalProductionPlan, run plans, assessment positions, task descriptors, reuse offers, and execution profile in memory (plus immutable content-addressed objects only where the existing owner can publish them without making them current). Phase A must succeed for the whole collection before any new trainer launches.
+
+**Phase B - publish through existing per-binding owners.** After all Phase-A bundles pass, publish each binding-scoped FinalProductionPlan/run-plan object and current plan pointer through the existing publication barrier/currentness owner. No collection-wide pointer transaction, rollback protocol, or shadow planned-collection authority is introduced.
+
+If Phase A fails for any size, launch zero trainers and do not make a new sibling FinalProductionPlan pointer current as part of this invocation. If a concurrent currentness race is detected during Phase B after earlier valid per-binding pointers were already committed, stop before TRAIN2; those earlier pointers remain subject to their own normal currentness and are not rolled back merely to simulate collection atomicity.
+
+Once Phase B has validly committed all per-binding FinalProductionPlan pointers, a later collection recovery-normalization failure likewise does **not** roll those pointers back. A current FinalProductionPlan pointer is planning authority for its own binding, not proof that TRAIN2, EVAL2, assessment, or publication completed. Recovery failure still occurs before the first new TRAIN admission, so it launches zero new trainers, begins no EVAL2, and publishes no new assessment/final-production decision. Any append-only terminal seals already completed by recovery normalization remain durable under D3-8. Do not add a collection transaction merely to erase independently valid plan pointers or completed recovery seals.
+
+Commit-time selected-binding/generation fences remain authoritative again when assessments and final publications are made current.
+
+### D3-13 - Global TRAIN2 may run ahead; EVAL2/finalization remains fail-fast in frozen size order
+
+Globalizing TRAIN2 means a later selected size may already have an authenticated sealed TRAIN2 root before an earlier size's EVAL2/assessment is decided. That execution overlap authorizes no later evaluation or publication.
+
+After the successful collection TRAIN-only wave:
+
+1. finalize selected sizes in frozen collection order;
+2. for the current size, perform serial EVAL2 for every required final seed in required-seed order;
+3. publish that size's measurements and complete per-seed assessment set through the existing owners;
+4. if any required seed is a typed no-admissible outcome, or EVAL2/currentness/publication otherwise fails, abort before beginning fresh EVAL2 for later sizes;
+5. only a fully accepted size may publish its existing binding-scoped final-production decision;
+6. preserve already-authenticated sibling TRAIN2 roots and any measurement evidence that was already durable before the failure for ordinary reuse on rerun.
+
+This preserves the current policy that all required seeds of one size are assessed before that size fails for a no-admissible member; it does **not** turn the first rejected seed into an intra-size early stop. The repair increases TRAIN2 overlap only and does not invent a campaign-level production reducer.
+
+### D3-14 - CV scheduling is an explicitly preserved sibling capability
+
+The shared private pending-run/scheduler helpers serve both CV and final production. Refactoring them is therefore an affected surface even though CV architecture is not being changed.
+
+The current public CV control shape remains:
+
+~~~text
+frozen selected sizes in frozen order
+  -> one size at a time
+  -> that size's existing fold/seed TRAIN scheduler wave
+  -> serial post-TRAIN EVAL2
+  -> per-size CV verdict
+~~~
+
+Do not flatten CV work across selected sizes, do not change CV queue ordering, and do not alter CV failure/rejection/restart semantics as a side effect of making tasks self-owning.
+
+### D3-15 - Enumerate exact global production identity before scheduler construction without eagerly materializing fresh training
+
+All per-size final plans, required run plans, assessment positions, and production position **descriptors** must be constructed/enumerated and authority-validated before recovery normalization. Only descriptors that remain TRAIN_REQUIRED after D3-7/D3-8 become scheduler tasks and participate in concurrency-plan construction.
+
+Enumerated here does **not** mean eagerly creating a fresh PostSelectionMaterialization, fitting a fresh PostSelectionFittedPreparation, opening a model/provider, or launching MACE. Fresh preparation/materialization remains owned by execute_post_selection_run(...) after scheduler admission, exactly as in the current run lifecycle. The pre-launch recovery pass may inspect/authenticate only durable state that already exists.
+
+Local seed slots are not globally unique. The collection execution owner must assign an execution-only wave key and prove before launch that no two tasks resolve to the same run_plan.run_identity or training-trajectory identity. A duplicate means a planning/identity defect and fails closed; the scheduler must never concurrently launch the same logical run twice.
+
+Results/state route back through the owning binding/context plus local position (or an equivalent exact owner key). The wave key cannot enter a scientific digest, run-root identity, assessment position, or publication record.
+
+### D3-16 - Linearize frozen-design currentness with every new TRAIN admission
+
+The global queue lengthens the interval between initial planning and later task admission. The accepted multi-size contract already requires that once a generation/design becomes stale, no further outer-size work is newly admitted for that retired design. Serial selected-size execution repeatedly crossed currentness owners; a collection queue must preserve that boundary without introducing a long-held campaign lease.
+
+At collection construction, capture the invocation's compact **collection currentness signature** as:
+
+~~~text
+(expected campaign generation, ordered tuple of expected current binding digests)
+~~~
+
+The ordered binding tuple comes from the same canonical per-size binding projection that owns the current frozen design. Do **not** bind this signature to the campaign state revision: same-generation diagnostic/observational revisions that preserve the frozen design must not spuriously retire valid production work. Conversely, membership-only checking is insufficient as the collection contract; the queue belongs to the exact frozen ordered design that was authorized.
+
+For current/v2 frozen designs, derive the tuple through `current_target_size_bindings(state)`. Do not invent a second binding formula. Retired/prerework schemas retain their existing compatibility behavior: if they cannot reach current final-production planning/publication under accepted owners, they must fail at that existing boundary rather than acquiring a new scheduler-only currentness interpretation.
+
+Before the **first** TRAIN2 admission and before every later admission of a previously unstarted or demoted/requeued task, establish a real linearization point against target-size generation transitions. A plain read followed by `executor.submit(...)` is not sufficient because `prepare` can commit a new generation between those operations.
+
+The admission fence must reuse the CampaignStore serialization authority already used by target-size transitions (for example, the existing `exclusive_transaction()` plus the canonical head/binding projection, or an exactly equivalent factored owner) so that one total order exists:
+
+1. either the generation/design transition commits first, in which case the task is rejected as stale and is not newly admitted;
+2. or the scheduler admission commits first while the expected collection signature is current, in which case that task is already admitted and may settle under ordinary historical/currentness rules even if rollover commits immediately afterwards.
+
+The **admission commit point** is execution-local and durable state is not required. It must cover the scheduler's successful ownership transition for that task (dequeue/reservation plus successful future submission/active registration, or an equivalent indivisible scheduler transition) while the serialized currentness observation excludes a concurrent generation commit. Hold the CampaignStore serialization only for this short admission transition; never hold it while TRAIN2 runs, while waiting for a worker/future, during telemetry polling, or across the whole wave.
+
+If the serialized currentness check finds a different generation or ordered binding tuple:
+
+- admit no new queued TRAIN2 task for the retired design;
+- route the stale condition through the existing whole-wave terminal abort path, so every already-active owned worker receives the ordinary cancellation signal and is reaped by its real execution/process owner;
+- begin no new EVAL2/finalization admission for that invocation;
+- preserve any authenticated terminal TRAIN2 evidence as historical/restart evidence subject to normal later currentness;
+- fail with the existing stale/currentness error family, not a scientific rejection.
+
+After the global TRAIN wave reaches terminality, perform the same serialized collection-signature check to linearize **admission of the per-size EVAL2/finalization phase**. If rollover committed first, no EVAL2 begins. If finalization admission linearizes first and rollover commits afterwards, already-admitted EVAL2 may finish as ordinary work, but the existing commit-time per-binding pointer/currentness fences remain authoritative and must prevent stale assessments/final products from becoming current. Do not keep the CampaignStore transaction open during EVAL2 merely to prevent a later legitimate generation transition.
+
+This distinction is intentional: the architecture guarantees a total order at admission boundaries, not an impossible zero-duration race-free interval between a read and arbitrary later computation. No new persistent scheduler-currentness registry, generation lease, or rollback protocol is authorized.
+
+### Delegated D4 space
+
+Implementation may choose internal helper names, dataclass names, mapping shape, and whether planning/finalization are extracted from execute_final_production into private helpers. The required architecture is behavioral and ownership-based.
+
+A preferred minimal reduction is:
+
+~~~text
+Phase A: construct/authenticate every per-size production bundle in memory
+  -> validate unique global scientific/run identities
+Phase B: publish existing per-binding final-plan/run-plan authorities
+  -> production-only collection recovery normalization
+       sealed roots: authenticate
+       terminal-but-unsealed roots: existing owner seals with zero trainer launch
+       incomplete/fresh roots: TRAIN_REQUIRED
+  -> prove one compatible execution profile over TRAIN_REQUIRED only
+  -> one generalized existing scheduler TRAINs only TRAIN_REQUIRED positions to seal
+  -> frozen-size loop:
+       serial EVAL2 in required seed order
+       publish measurements/assessments
+       publish or fail that size
+~~~
+
+The implementer may re-shape _PendingPostSelectionRun, _preflight_post_selection_pending_runs, _execute_post_selection_pending_runs, and _run_post_selection_positions so each task owns its context/policy instead of receiving one function-global context.
+
+### Simplification target
+
+Remove the final-production outer serialization in execute_current_train_production as the owner of resource scheduling.
+
+Do **not** compensate by adding another executor, queue, scheduler, lease registry, or retry wrapper. Rewire the existing scheduler boundary so it receives all authorized ready production work.
+
+## 3. Material implementation obligations
+
+### O1 - Extract two-phase planning from execution without duplicating production authority
+
+Refactor execute_final_production as needed so the command can construct and authenticate every per-size plan/run position before launching the collection TRAIN wave.
+
+Planning must continue using the exact current owners for CV reauthentication, replay resolution/lineage, common monitor/separation, final-plan construction/validation, final training budget policy, assessment policy digest, reuse offers, run-plan construction, evidence-store publication, and final-plan current-pointer publication.
+
+The extracted per-size planner must preserve the accepted second-line CV authorization guard immediately before final-plan construction. Build/authorize **all** per-size bundles in Phase A before any current-plan publication or collection TRAIN scheduling. Only after Phase A succeeds may Phase B publish the existing binding-scoped plan/run objects and pointers.
+
+A Phase-B commit-time stale-binding failure stops before TRAIN2 but does not roll back an earlier sibling's independently valid pointer. Do not introduce collection-atomic pointer machinery to erase a legitimate per-binding commit.
+
+Do not copy these calculations into a second collection-specific planner and do not perform fresh training materialization merely to enumerate the collection.
+
+Acceptance: changing only execution width or cross-size queue order produces byte-identical scientific run/position identities to serial execution for the same accepted inputs.
+
+### O2 - Generalize the existing pending-run execution boundary as TRAIN-only
+
+The scheduler path currently accepts one context and one budget_policy; that is insufficient for collection work. Rewire it so TRAIN2 execution calls execute_post_selection_run(..., stop_after_training=True) with the owning task's context/policy and returns only after the owned task reaches the sealed terminal TRAIN2 boundary.
+
+Move/retain EVAL2 outside the global scheduler helper. The generalized scheduler must not return PostSelectionRunResult as the product of the collection TRAIN wave merely by running EVAL2 internally.
+
+All scheduler state maps must key by a wave-global unique slot/key. A local seed index such as slot=0 is not globally unique across sizes and MUST NOT be used directly once positions are flattened.
+
+The global slot/key is execution-only and MUST NOT be hashed into run plans, assessment positions, evidence, or publication.
+
+### O3 - Preserve deterministic resource backoff
+
+Insertion order of active tasks currently defines the deterministic most-recently-admitted backoff victim. Preserve deterministic behavior after globalization.
+
+Fresh queue order is frozen selected-size order, then FinalProductionPlan.required_final_seeds order.
+
+A demoted task returns to the existing restartable queue with its original scientific owner and wave identity. Do not substitute smallest/largest N or seed ranking as backoff policy.
+
+### O4 - Preserve exact restart/reuse semantics
+
+Globalization must work when the initial collection contains any mix of no prior roots, sealed TRAIN2 roots awaiting EVAL2, complete current assessments, stale historical assessment offers, interrupted resumable TRAIN2 roots, terminal-but-unsealed post-cutover roots, terminal-but-unsealed historical roots, historical interrupted continuations, and positions requiring fresh training.
+
+Before scheduling, all of those states pass the D3-7/D3-8 normalization. A retry schedules only positions that still require actual trainer continuation. Terminal-but-unsealed roots are completed/sealed through existing recovery owners with zero trainer launch and disappear from task_count. If normalization later fails on another position, already-valid per-binding FinalProductionPlan pointers and already-completed append-only seals remain durable, but no new trainer/EVAL2/assessment/final publication starts. After a successful collection TRAIN wave, per-size finalization reuses authenticated sealed roots and any exact reusable measurements through existing owners. Completed sibling TRAIN2 work cannot be invalidated merely because another selected size previously failed.
+
+### O5 - Preserve publication barriers/currentness without inventing collection atomicity
+
+Every existing publication remains under its binding/campaign-generation barrier and current-pointer/currentness checks. A collection scheduler result is not authority to publish if the owning context became stale before finalization.
+
+No collection-level publication transaction is introduced for plans, assessments, or final products. Phase-B FinalProductionPlan pointer commits remain independently binding-scoped. If one pointer commit or a later per-size finalization fails its currentness/publication check, preserve already committed valid sibling pointers/evidence, stop before the next unauthorized phase as specified above, and report the real failure. Do not roll back immutable objects or current pointers merely to manufacture collection atomicity that the accepted architecture does not define.
+
+### O6 - Preserve single-size behavior
+
+For one selected size, the generalized path must remain behaviorally equivalent to the current production path: same plans/identities, task population, adaptive-controller semantics, TRAIN/EVAL separation, assessment/publication, and failure/restart semantics.
+
+The repair must not special-case multi-size by maintaining two independent production implementations.
+
+### O7 - Do not promote seed policy into scheduler policy
+
+The current generated production default is seeds=[1]. This workplan does not change it.
+
+The scheduler receives the sum, across selected sizes, of required final-seed positions that remain TRAIN_REQUIRED after recovery normalization. Root unsealedness by itself is not sufficient for scheduler admission.
+
+Thus two selected sizes with one seed each naturally provide two independent TRAIN2 positions. If the user configures two final seeds per size, four scientific positions exist; that count comes from the existing production policy, not scheduler invention.
+
+### O7A - Preserve stale-generation admission semantics through the D3-16 linearization owner
+
+Factor or reuse the smallest existing currentness owner that can implement D3-16 without a second binding formula. The implementation obligation is the exact collection signature:
+
+~~~text
+(campaign generation, ordered tuple of current binding digests)
+~~~
+
+derived from the canonical current binding projection. A campaign state-revision change alone is not staleness, and unordered/membership-only comparison is not the collection scheduler contract.
+
+The check and scheduler ownership transition must be **serialized against target-size generation transitions** through the existing CampaignStore transition authority. A helper that merely reads current bindings and returns a boolean for the caller to use later does not satisfy this obligation; it recreates the forbidden read-then-submit TOCTOU window.
+
+Apply the linearized fence at:
+
+- first TRAIN admission;
+- every later admission, including a demoted/requeued task when it is newly readmitted;
+- the post-TRAIN admission of the EVAL2/finalization phase.
+
+On stale detection, route through the existing whole-wave terminal cancellation/reap path. On an admission that linearizes before rollover, treat the task/phase as already admitted and rely on the existing commit-time per-binding publication fences for any later rollover. Hold no CampaignStore transaction across TRAIN2, telemetry waits, EVAL2, or final publication.
+
+### O8 - Reconcile specification/documentation without rewriting history
+
+Update current documentation so it no longer says final-production outer iteration over sizes is necessarily serial.
+
+Current architecture/specification must distinguish:
+
+- CV: unchanged current orchestration;
+- production: collection-wide barrier followed by one bounded collection TRAIN wave, then per-size evaluation/assessment/publication.
+
+Do not edit historical snapshots to make history look different. The archived predecessor workplan remains historical evidence that serial production was once an accepted concretization and that bounded overlap through the existing scheduler was already permitted.
+
+### O9 - Keep training_parallel.py stable unless separately falsified
+
+The present production defect is upstream of the adaptive controller's task population. Do not alter promotion thresholds, monotone backoff, stabilization windows, GPU budget formulas, or requested/min/max concurrency merely to make the multi-size test pass.
+
+If generalization exposes a genuine controller defect independent of task scoping or proves heterogeneous cross-size resource demand cannot be represented by its existing single-profile contract, stop and reopen D3 with evidence rather than bundling an unrelated scheduler-policy change.
+
+### O10 - Preserve public EVAL2/finalization failure behavior
+
+The global TRAIN-only wave may produce reusable sealed TRAIN2 roots for later siblings, but EVAL2/assessment/publication still commits in frozen selected-size order and remains fail-fast. A failed N_i must prevent fresh EVAL2 and new final publication of N_j for j > i in that invocation. Do not eagerly evaluate later siblings merely because their TRAIN2 roots are ready, and do not turn any already-durable sibling measurements into implicit permission to complete/publicly succeed the remaining subset.
+
+### O11 - Preserve CV behavior through shared-helper changes
+
+Any change to _PendingPostSelectionRun, _preflight_post_selection_pending_runs, _execute_post_selection_pending_runs, or _run_post_selection_positions must retain the existing CV call path and semantics. The new collection-wide terminal-state normalization is required for **final production orchestration**; factoring a low-level current/legacy recovery classifier/seal primitive is allowed, but do not make public CV adopt a new collection-global pre-scheduler normalization, task-count definition, progress contract, or selected-size queue. No production-only assumptions may leak into the CV task carrier. Run the real public multi-size CV and scheduler/recovery regressions after the refactor.
+
+## 4. Evidence and dependencies
+
+### Historical Applicability Set (HAS)
+
+Decision basis:
+
+~~~yaml
+pem_basis:
+  repository_state: hjin98/mdstats@f341a3f993b931c5e0838e95520b8b4fd41459ae
+  published_pem: hjin98/mdstats@f341a3f993b931c5e0838e95520b8b4fd41459ae:PROJECT-ENGINEERING-MEMORY.md
+  pem_declared_reconciled_through: 4eabe2ae9783c7ff92f3a1093c37502a01380812
+  coverage: PARTIAL
+candidate_overlay: NONE at workplan creation
+~~~
+
+Material current PEM entries:
+
+- FF-004: scheduler policy must not infer process outcome/teardown or live accelerator residency outside the process/resource owner.
+- FF-002: restartable TRAIN2 state must remain authenticated at the exact durable boundary.
+- SP-001: prefer rewiring the real owner over additive duplicated machinery.
+- SP-003: authenticated completed run evidence remains reusable across restart and sibling failure.
+- SP-004: real-owner integration is required for orchestration claims.
+
+Because the published PEM is partial and declares reconciliation only through 4eabe2ae, absence of a later family is not evidence of no relevant history. This workplan additionally binds direct bounded intake of:
+
+- workplans/archive/MLFF_TARGET_SIZE_MULTI_SELECTION_AND_PER_SIZE_HORIZON_WORKPLAN.md, especially R4/R6;
+- workplans/archive/MLFF_TARGET_SIZE_MULTI_SELECTION_AND_PER_SIZE_HORIZON_IMPLEMENTATION_REVIEW_REOPEN.md, including the mandatory second-line per-size production authorization fence;
+- workplans/archive/MLFF_TARGET_SIZE_MULTI_SELECTION_NEXT_ROUND_REPAIR_WORKPLAN.md, which records the accepted serial outer-size concretization this cycle now reopens narrowly;
+- workplans/archive/MLFF_REPLAY_MACE_EXECUTION_MEMBERSHIP_IDENTITY_REPAIR_SCHEDULER_ARCHITECTURE_AMENDMENT.md, historical evidence that one adaptive scheduler can own bounded multi-size/multi-member final-production work while preserving exact identities;
+- workplans/archive/MLFF_REPLAY_MACE_P5_EXECUTION_RECOVERY_CONSOLIDATED_WORKPLAN.md, including serial selected-size orchestration as a now-stale structural oracle and retained recovery semantics;
+- workplans/archive/MLFF_P5_TRAIN2_CUDA_LIFETIME_AND_ZERO_SAFE_ADMISSION_*.md;
+- workplans/archive/MLFF_P5_TRAIN2_MEMORY_PRESSURE_BACKOFF_AND_TERMINAL_INFEASIBILITY_*.md;
+- current campaign_post_selection_runtime.py;
+- current training_parallel.py;
+- current multi-size integration and P5 execution/recovery tests.
+
+Archived workplans are historical/lineage evidence here, not parallel current authority. Their applicable capabilities and constraints must be reconciled into current Architecture Manual/specification before this D3 candidate becomes accepted-current.
+
+### Capability-transfer map
+
+This cycle replaces one mature orchestration concretization, so the following transfer is mandatory rather than implicit:
+
+| Existing capability | Current disposition |
+| --- | --- |
+| collection-wide CV admission barrier before any production job | PRESERVE at _cv_admission_blockers |
+| per-size second-line CV/current-method authorization before final-plan construction | PRESERVE in extracted per-size planner |
+| exact per-size FinalProductionPlan/run/assessment identities | PRESERVE through existing owners |
+| one effective TRAIN resource owner | PRESERVE/EXPAND ready-work population through existing AdaptiveTrainingConcurrency |
+| TRAIN2/EVAL2 accelerator phase separation | PRESERVE, now across the whole production collection wave |
+| per-run process cancellation, termination, reaping, disk/timeout ownership | PRESERVE at MacePostSelectionTrainer/run owner |
+| authenticated sealed-root/restart reuse | PRESERVE; sealed roots authenticate before sibling TRAIN admission, terminal-but-unsealed current/legacy roots normalize to sealed state with zero trainer launch, and only genuinely incomplete trajectories consume TRAIN capacity |
+| deterministic queue/backoff behavior | PRESERVE with frozen-size/seed queue order and most-recent-admission demotion |
+| per-size serial EVAL2, final assessment/publication and no cross-size committee | PRESERVE after the global TRAIN-only wave |
+| fail-fast production finalization in frozen size order | PRESERVE; later sizes do not begin fresh EVAL2/publication after earlier-size failure |
+| stale-generation/retired-design admission stop | PRESERVE through the D3-16 serialized `(generation, ordered binding digests)` linearization at every TRAIN admission and at EVAL/finalization-phase admission; commit-time per-binding fences remain authoritative after an admission wins the race |
+| multi-size terminal lifecycle with no implicit release winner | PRESERVE |
+| CV serial selected-size orchestration | PRESERVE unchanged |
+| production serial selected-size TRAIN scheduling | **RETIRE/SUPERSEDE ONLY THIS CAPABILITY** with one collection-scoped TRAIN wave |
+
+No capability may be dropped merely because its former location was inside execute_final_production(context).
+
+### Evidence applicability
+
+Existing tests for per-size scientific identity, CV barrier semantics, TRAIN2 cancellation/teardown, memory backoff, and restart remain relevant but are insufficient to prove the new collection scheduler scope.
+
+Any old test whose oracle specifically requires serial **production TRAIN2** size iteration becomes stale by intended D3 change and must be split/replaced with an oracle for the stronger work-conserving TRAIN ownership contract, not simply deleted. In particular, tests/test_mlff_target_size_multi_selection.py::test_outer_size_execution_is_serial_and_adds_no_scheduler currently conflates CV and production: retain its CV outer-serial/resource-ownership protection while replacing only the production-TRAIN serialization assertion. Per-size production EVAL2/finalization remains serial and ordered.
+
+No previous GPU performance result is accepted as proof of the new assembled collection scheduler. Target-hardware production qualification remains deferred.
+
+## 5. Affected surface and acceptance
+
+### Expected affected source surface
+
+Primary:
+
+- mdstats/training_data/campaign_post_selection_runtime.py
+
+Expected unchanged semantic owner:
+
+- mdstats/training_data/training_parallel.py
+
+Current documentation/specification:
+
+- docs/arch_manuals/mlff_training_data/50_target_size_selection.md
+- docs/arch_manuals/mlff_training_data/60_execution_performance.md
+- docs/specs/training_data/mlff_data9b3_campaign_cli_spec.md
+- docs/specs/training_data/mlff_post_selection_p5_spec.md if final affected-surface review finds its scheduler/execution wording materially incomplete
+
+The assembled architecture manual is derived from the canonical chapter sources; regenerate it through the repository's normal documentation build path rather than hand-maintaining a divergent duplicate.
+
+Tests expected to require addition/reconciliation include:
+
+- tests/test_mlff_target_size_multi_size_integration.py
+- tests/test_mlff_replay_mace_p5_execution_recovery.py
+- tests/test_mlff_p5_train2_zero_safe_admission.py
+- relevant P5 production/restart and downstream-integration suites discovered from the final diff.
+
+Re-derive the complete affected surface after implementation.
+
+### Required focused acceptance
+
+#### A1 - two sizes, one production seed each, global admission
+
+Through the real train-production owner, with current accepted CV for both sizes and deterministic safe resource telemetry, prove:
+
+- exactly two fresh TRAIN_REQUIRED positions enter one production scheduler wave;
+- one AdaptiveTrainingConcurrency instance owns that wave;
+- concurrency plan task_count is 2;
+- safe telemetry can promote/hold two simultaneously active trainers;
+- each trainer receives its own exact selected membership and horizon;
+- both sizes finalize through their own publication owner.
+
+A helper-level queue unit test is insufficient.
+
+#### A2 - two sizes, two seeds each
+
+With two configured final seeds per size, prove four production positions are present in one wave and bounded concurrency drains that global queue without duplicate run identities or schedule-order-dependent reduction.
+
+#### A3 - heterogeneous horizons
+
+Give selected sizes different frozen H_prod. Each run must receive the exact horizon from its own plan.
+
+#### A4 - serial/concurrent semantic equivalence
+
+Run the same bounded deterministic campaign with effective training concurrency one and greater than one. Require equality of scheduler-independent governed identities/results available to the deterministic test double: final plans, run-plan/training-trajectory identities, assessment positions, seed assessments, and per-size final completion/publication identities.
+
+#### A5 - collection CV barrier
+
+Make one selected size missing/stale/rejected at CV. Assert zero production trainer launches and no newly current subset publication.
+
+#### A6 - complete recovery/integrity normalization before launch
+
+Through the real collection owner while another size has runnable fresh TRAIN2 work, cover at least:
+
+1. a foreign/corrupt durable post-cutover unsealed continuation;
+2. a corrupt/foreign/incompatible post-cutover sealed root;
+3. an incompatible historical/legacy interrupted continuation;
+4. a corrupt/contradictory historical sealed or partial-proof root.
+
+In every failing case assert zero new sibling trainer launches, no EVAL2 begins, and the authoritative GPU admission baseline/controller is not used to admit work after the failure. When the failure occurs after Phase B, assert that already-valid per-binding FinalProductionPlan pointers remain current if their own binding is still current, while no assessment/final-publication pointer is created merely because planning succeeded. When an earlier normalization step already appended a valid terminal seal, assert that seal remains durable and is not rolled back.
+
+#### A7 - terminal-but-unsealed normalization, mixed restart, and canonical EVAL order
+
+Cover two real-owner subcases. First, use a multi-size production collection containing one valid already-sealed root, one post-cutover root with authenticated terminal TRAIN2 summary but no completion seal, and at least one genuinely incomplete/fresh sibling that still requires TRAIN2. Second, preserve/extend the existing historical-reuse real-owner fixture for an authenticated historical/legacy terminal-but-unsealed production root; if exact historical ancestry cannot lawfully coexist with the synthetic multi-size fixture, the historical case may remain single-size, but it must pass through the same factored production recovery-normalization owner.
+
+Prove:
+
+- every terminal-but-unsealed root in the applicable subcase is completed/sealed through its existing recovery owner with **zero trainer launch**;
+- the historical root receives only the accepted append-only seal and no pre-existing byte changes;
+- the already-sealed and newly normalized roots do not enter scheduler task_count or resource-profile compatibility;
+- only the genuinely TRAIN_REQUIRED position enters the adaptive scheduler;
+- if every position is sealed/terminal after normalization, no adaptive scheduler is constructed at all;
+- the global scheduler itself performs no EVAL2;
+- finalization later visits sizes in frozen order and required seeds in `required_final_seeds` order regardless of whether a root was initially sealed, normalized-to-sealed, or trained in the wave;
+- valid sealed roots never relaunch a trainer.
+
+#### A8 - failure/cancellation/restart
+
+Inject a real-owner TRAIN2 child failure after at least two cross-size tasks have been admitted. Assert no further admission, all active owned tasks are signalled/reaped, no EVAL2 starts, no orphan child remains, authenticated completed TRAIN2 state survives, and the next invocation schedules only outstanding work.
+
+#### A9 - memory demotion identity
+
+Force deterministic resource backoff while tasks from different sizes are active. Prove the most-recently-admitted task is the victim, execution owner returns cancellation verdict, task is requeued with unchanged scientific identity, and completed work is not duplicated.
+
+#### A10 - incompatible shared resource profile
+
+Construct two **TRAIN_REQUIRED** contexts differing in a scheduler-critical execution/resource value through a bounded test seam. Assert fail-closed behavior before any new trainer launches and an error identifying the incompatible dimension. Also prove that an incompatible profile attached only to a position normalized to sealed state does not spuriously block the scheduler, because that position never shares the TRAIN resource domain.
+
+#### A11 - single-size regression
+
+Run current one-size production acceptance/restart tests through the generalized path. No alternate implementation branch may remain.
+
+#### A12 - truthful progress
+
+For a fresh two-size/one-seed campaign, capture real scheduler output and prove planned/running lines report a two-job global wave. Child progress must still expose correct N_selected and seed/run context.
+
+#### A13 - second-line authorization and per-binding plan-publication semantics
+
+Use a two-size frozen design whose collection barrier initially passes.
+
+**Phase-A case:** make the later size stale/inconsistent at the exact per-size CV authorization boundary before any plan pointer publication. Through real train-production prove:
+
+- the extracted planner re-runs the real CV-plan/acceptance/method guard for every size;
+- Phase A fails before any new FinalProductionPlan pointer is made current for this invocation;
+- zero new trainers launch;
+- existing immutable evidence remains untouched.
+
+**Phase-B race case:** after all Phase-A bundles validate, inject a currentness/generation race while sequential binding-scoped FinalProductionPlan pointers are being committed. Prove:
+
+- the failing pointer publication aborts before TRAIN2;
+- any earlier sibling plan pointer that validly committed remains governed by its own per-binding currentness and is not rolled back;
+- no collection-level pointer transaction/rollback machinery is introduced.
+
+**Post-Phase-B recovery-failure case:** let all per-binding plan pointers commit, then inject a corrupt later recovery root during collection normalization. Prove zero trainer/EVAL2 launches, no assessment/final publication, independently valid plan pointers remain current for bindings that are still current, and any valid earlier append-only terminal seal remains durable. This is not a collection rollback boundary.
+
+Retain the historical CV-policy currentness/acceptance-ancestry regressions that established the second-line fence.
+
+#### A14 - production EVAL2/finalization stays fail-fast after global TRAIN2
+
+Create a bounded two-size production wave where both sizes reach authenticated sealed TRAIN2 roots, but the first selected size's finalization yields at least one typed no-admissible seed outcome (or fails at the existing EVAL2/currentness/publication owner).
+
+Prove:
+
+- all required seeds of the first size are evaluated/assessed according to the existing per-size policy before a no-admissible member causes that size to fail;
+- the command fails at that first size and creates no final publication for it;
+- the later size begins no fresh EVAL2 and gets no new assessment/final publication in that invocation;
+- the later size's authenticated sealed TRAIN2 roots, plus any sibling measurement evidence that was already durable before the failure, remain reusable;
+- rerun does not retrain those valid sibling roots and may evaluate/finalize them only after earlier blocking conditions permit the command to reach them.
+
+#### A15 - global identity uniqueness and exact routing
+
+For a real two-size/two-seed plan, prove four distinct scientific run/training-trajectory identities are enumerated before scheduler construction even though each size has local slots 0/1. Prove result routing returns each outcome to its owning binding and assessment position.
+
+Add a bounded negative seam showing a duplicate global run/training identity fails before trainer launch rather than starting two workers on one run root.
+
+#### A16 - CV non-impact
+
+Drive the real public multi-size cross-validate path after the shared-helper refactor and prove:
+
+- selected sizes remain outer-serial in frozen order;
+- each size retains its existing internal fold/seed scheduler semantics;
+- CV rejection/failure/restart behavior and canonical reduction order are unchanged;
+- no cross-size CV global queue or second scheduler is introduced.
+
+#### A17 - real resource-profile compatibility, not first-task assumption
+
+Using two distinct production sizes/horizons that remain TRAIN_REQUIRED after recovery normalization, inspect the exact values fed to the existing concurrency plan and TRAIN2 runtime. Prove that every material per-job scheduler/resource dimension is equal or already conservatively bounded by the existing common estimate contract.
+
+The negative A10 case remains mandatory. If the positive case shows materially different demand among actual TRAIN_REQUIRED positions that the existing single-profile controller cannot safely bound, the correct result is D3 reopen, not a passing test with ad-hoc maxima/minima.
+
+#### A18 - global scheduler stops at the sealed TRAIN2 boundary
+
+Through the real production owner, instrument the existing run seam and prove that the collection-wide scheduler invokes only TRAIN_REQUIRED tasks with TRAIN-only semantics and returns after all scheduler-owned positions are authenticated terminal/sealed. No EVAL2 provider, candidate assessment, measurement publication, or final-seed assessment is entered from inside that global scheduler wave.
+
+Then prove those same roots are consumed by the subsequent per-size finalizer through the existing run/EVAL owners. This is the structural/behavioral guard against accidentally globalizing EVAL2 while repairing TRAIN2 admission.
+
+#### A19 - generation rollover is linearized against queue and EVAL admission
+
+Exercise the real CampaignStore transition owner and the real production scheduler with enough tasks that at least one task is active and at least one later task remains queued.
+
+Cover both orderings at the exact admission boundary:
+
+1. **rollover wins** - arrange the new prepared generation transition to commit before the next queued task's admission linearization. Prove the queued old-generation task is never submitted/registered as active, stale currentness routes through whole-wave cancellation/reaping of already-owned workers, and no EVAL2/assessment/final publication begins.
+2. **admission wins** - arrange the scheduler's serialized currentness/admission transition to complete first, then let generation rollover commit immediately afterwards. Prove that already-admitted task may settle under ordinary worker ownership, no *additional* old-generation task is admitted after rollover wins the next boundary, and commit-time currentness prevents stale assessment/final publication from becoming current.
+
+Use a deterministic race seam/barrier capable of pausing at the currentness/admission boundary; a test that rolls the generation only well before or well after `submit()` does not prove closure of the TOCTOU window.
+
+Also cover the phase boundary after all TRAIN2 tasks are terminal:
+
+- if rollover commits before serialized EVAL/finalization admission, no EVAL2 begins;
+- if EVAL/finalization admission linearizes first and rollover commits afterwards, EVAL may finish but stale assessment/final-publication current-pointer publication must fail through the existing per-binding commit-time fence;
+- no long-held campaign lock, persistent scheduler-currentness registry, or rollback state is introduced.
+
+Finally assert that same-generation state revisions which preserve `(generation, ordered binding digests)` do not spuriously cancel the wave.
+
+### Structural acceptance
+
+Static/source inspection must establish:
+
+- no production outer loop calls a complete per-size execute_final_production(context) that internally creates its own scheduler;
+- no second scheduler/executor/lease manager was added for size concurrency;
+- only one adaptive TRAIN controller is created for one collection production TRAIN wave;
+- all global production position descriptors are enumerated without eagerly creating fresh training materialization, duplicate run/training identities fail closed, and only post-normalization TRAIN_REQUIRED descriptors reach concurrency-plan construction;
+- every sealed production root is authenticated and every durable unsealed current/legacy continuation is normalized before the authoritative TRAIN admission baseline;
+- authenticated terminal-but-unsealed current/legacy roots are sealed through existing owners with zero trainer launch and excluded from task_count/profile compatibility;
+- scheduler admission uses the canonical CampaignStore binding projection and the existing serialized transition owner to linearize `(generation, ordered binding digests)` against first/later task admission and EVAL-phase admission; a read-then-submit TOCTOU window is not accepted;
+- the global production scheduler ends at sealed TRAIN2 and contains no EVAL2/final-assessment loop;
+- the per-size second-line CV authorization fence still exists before final-plan construction and before first TRAIN launch;
+- no collection-level plan-pointer transaction/rollback authority was added;
+- public CV still performs selected-size outer-serial orchestration and has not acquired a collection-global size queue;
+- no wave-global slot/key participates in scientific content digests;
+- historical architecture snapshots are unchanged.
+
+### Affected regression
+
+At minimum run focused suites covering multi-size target integration, the historical multi-size CV-currentness/production-barrier regressions, public multi-size CV behavior, P5 production/restart, zero-safe admission and memory backoff, replay/MACE P5 execution recovery, final-production assessment/publication, campaign lifecycle/status/advance around multi-size completion, and storage/currentness tests whose production roots/pointers are touched.
+
+Then run complete affected MLFF campaign/training-data regression after all executable edits. If impact cannot be bounded confidently, run the repository's full available CPU test suite.
+
+### Production qualification
+
+**Deferred.** Functional CPU/deterministic real-owner acceptance is required now. Physical GPU throughput/VRAM qualification remains deferred to the final release package per standing project direction.
+
+## 6. Authority/documentation/history impact
+
+### D3 Architecture Manual
+
+Update current target-size control-plane architecture to state that the previously accepted serial selected-size production scheduling is superseded: after the collection-wide production barrier and all per-size second-line authorization/planning complete, final-production TRAIN2 positions across selected sizes share one bounded scheduler resource allocation. Preserve per-size scientific descendant ownership, fail-fast finalization, and no cross-size reducer/publication.
+
+Also reconcile the execution/performance chapter because it owns shared resource/concurrency architecture. The current Architecture Manual's silence on the exact production size-scheduler scope is under-specification, not evidence that the serial baseline lacked authority.
+
+This branch carries a proposed D3 overlay only. The durable D3 correction becomes accepted-current only after implementation evidence, independent falsification/conformance review, canonical documentation reconciliation, and normal integration/merge acceptance.
+
+### D4 specification
+
+Update the CLI specification sentence that currently says the size dimension has serial outer iteration. It may remain true for current CV orchestration, but must no longer imply production serialization.
+
+### D1/D2
+
+No mutation. If implementation requires changing seed sets, horizon meaning, optimizer ordering, checkpoint acceptance, replay policy, or cross-size result reduction, stop and route the earliest upstream owner.
+
+### Semantic history / PEM
+
+Do not rewrite archived workplans or historical architecture snapshots.
+
+At closeout, evaluate whether this episode materially extends an existing PEM family/pattern. Do not manufacture a new recurrence without accepted-repair chronology/evidence.
+
+## 7. Stages and reuse
+
+### Stage P1 - two-phase execution-bundle decomposition and authorization preservation
+
+Refactor final-production planning so Phase A constructs/authenticates every per-size plan/task descriptor without current-plan pointer side effects or fresh training materialization and validates global scientific/run identities; then Phase B publishes through existing per-binding owners. Resource-profile compatibility is deliberately deferred until Stage P2 recovery normalization has derived the actual TRAIN_REQUIRED set. Preserve the second-line CV guard and one-size scientific identity. Run A3, A5, A11, A13, and A15 plus focused production identity/publication tests.
+
+### Stage P2 - collection recovery + TRAIN-only scheduler generalization
+
+Make pending tasks self-owning; perform collection-wide current/legacy recovery normalization; seal authenticated terminal-but-unsealed roots without trainer launch; derive TRAIN_REQUIRED positions; prove scheduler-profile compatibility over that reduced set; implement global task-count semantics plus a **serialized, linearizable** canonical collection-currentness admission fence; execute one TRAIN-only wave that ends at sealed roots. Run A1-A2, A6-A7, A10, A12, A17-A19 plus existing scheduler/currentness/historical-recovery regressions.
+
+### Stage P3 - per-size EVAL/failure/restart closure and CV non-impact
+
+Exercise global TRAIN cancellation/demotion, sealed-root recovery, canonical mixed-root EVAL order, currentness/publication races, fail-fast per-size EVAL/assessment/publication, and retry. Run A8-A9, A14, A16 and affected CV/recovery/storage suites.
+
+### Stage P4 - documentation and assembled acceptance
+
+Reconcile Architecture Manual execution chapters and current specifications, re-derive final affected surface, run A4 plus complete affected regression, inspect capability-transfer/absence/ownership conditions, and prepare independent Review handoff.
+
+## 8. Reopen / Challenge triggers
+
+### D4-local blockers
+
+Keep within D4 when implementation can satisfy this workplan by restructuring private task carriers/helpers while preserving frozen ownership and semantics.
+
+### Evidence requiring D3 reopen
+
+Reopen D3 if:
+
+- selected production contexts genuinely require incompatible simultaneous resource owners that cannot safely share one adaptive controller;
+- N/horizon/batch/materialization differences create materially heterogeneous RAM/VRAM/CPU demand that the existing homogeneous planner/telemetry projection cannot conservatively represent;
+- safe execution would require multiple profile buckets/controllers, a changed training_parallel.py resource model, or another durable scheduler;
+- collection-wide TRAIN-only scheduling cannot hand off cleanly to the existing sealed-root/EVAL owners without a second durable scheduler or materially new persisted orchestration state;
+- recovery normalization cannot distinguish terminal-but-unsealed from genuinely incomplete current/legacy trajectories without duplicating or weakening the existing recovery owner;
+- sealing authenticated terminal-but-unsealed state before scheduler sizing would require a new persistent recovery authority rather than factoring the existing completion/topology owner;
+- preserving stale-generation admission semantics cannot be linearized using the existing short-lived CampaignStore serialization authority without a new persistent currentness registry or long-held campaign lock;
+- per-size EVAL2/finalization cannot preserve current fail-fast semantics without changing public/architectural behavior;
+- the current one-resource-domain assumption is false for an accepted campaign configuration.
+
+### Evidence requiring D2/D1 challenge/reopen
+
+Route upstream if concurrency/interleaving alters governed training semantics that D2 treats as execution-invariant, or if a cross-size result/seed/horizon rule becomes necessary.
+
+### Structural complexity trigger
+
+If implementation starts adding wrappers that retain the old per-size scheduler and synchronize a new collection scheduler around it, stop. Replace/consolidate the old boundary instead.
+
+### Serious Challenge status
+
+No current evidence contradicts accepted D1/D2. No Serious Challenge is active.
+
+## 9. Final handoff
+
+Implementation is complete only when:
+
+- all production position descriptors across a fully admitted and second-line-authorized multi-size collection are enumerated without eager fresh materialization, then recovery normalization excludes all already-terminal work before scheduler construction;
+- scheduler/resource ownership is singular, the shared resource-profile assumption is positively established over actual TRAIN_REQUIRED positions, and process teardown/disk/timeout authority is preserved;
+- every existing sealed root and every current/legacy continuation is authenticated before sibling TRAIN admission; terminal-but-unsealed roots seal with zero trainer launch; local slot collisions cannot duplicate a global run;
+- every new TRAIN admission and the EVAL/finalization phase admission has a defined linearization point against target-generation transitions using `(generation, ordered binding digests)`; rollover that wins the boundary admits no stale work, while work admitted first remains subject to ordinary commit-time currentness;
+- the collection scheduler stops at authenticated sealed TRAIN2 roots, and no EVAL2 begins until the entire global TRAIN wave is terminal;
+- per-size EVAL2/assessment/publication then remains frozen-size/seed ordered and fail-fast, independent of scheduler order;
+- public CV selected-size scheduling and semantics remain unchanged despite shared-helper refactoring;
+- one-size behavior remains conforming;
+- current D3/D4 documentation explicitly supersedes the accepted serial-production scheduler baseline and matches the repaired execution contract;
+- all required focused and affected regression is green or explicitly unavailable/blocking;
+- final affected surface, evidence applicability, and PEM/history impact are reconciled;
+- no physical GPU qualification is falsely claimed.
+
+Independent Review must reconstruct the real owner chain and attempt to falsify the global-scheduler claim. A test that merely calls a new helper with four synthetic tasks cannot close the workplan if the public train-production command can still serialize selected sizes before reaching that helper.
+
+
+## 10. Independent implementation Review reopen — 2026-09-20
+
+### 10.1 Review disposition and scope
+
+**NO-PASS at reviewed head `f7d4925e08fe3e013b4a35a71a29d6fed8c8c2be`. No Serious Challenge to D3 is active.**
+
+The collection-global TRAIN restructuring is directionally conformant: one TRAIN-only adaptive controller owns the production collection wave; EVAL2 remains outside that wave; FinalProductionPlan publication remains binding-scoped; finalization remains frozen-size ordered and fail-fast; execution-only scheduler keys remain outside scientific identity; `training_parallel.py` remains unchanged; and the exact collection signature is checked inside the existing CampaignStore serialization authority before each new TRAIN admission and before finalization admission.
+
+The implementation is reopened at D4 for the six obligations below. These are **repairs and evidence closure against the already frozen Revision 8 D3 contract**. Do not reinterpret this section as authorization for a second scheduler, profile buckets, a new lease/currentness registry, a cross-size reducer, widened EVAL behavior, or a change to D1/D2. If R2 demonstrates that the existing one-controller resource model cannot safely represent the actual heterogeneous production workloads, stop D4 and reopen D3 under Section 8 rather than hiding the mismatch with local machinery.
+
+### 10.2 R1 — classify every production root under the existing run-activity owner
+
+**Owning surface:** `mdstats/training_data/campaign_post_selection_runtime.py::_normalize_final_production_recovery`, using the existing `post_selection_run_activity_lease(...)` and existing current/legacy recovery/authentication owners.
+
+The current implementation may resolve a root locator before taking the run lease, but it SHALL NOT classify the position as fresh, incomplete, terminal-unsealed, sealed, corrupt, foreign, reusable, or TRAIN_REQUIRED from pathname existence, directory emptiness, or any other mutable root observation before the lease.
+
+Repair the current shortcut equivalent to:
+
+```python
+if root.legacy is None and not (root.path.is_dir() and any(root.path.iterdir())):
+    required.append(task)
+    continue
+```
+
+so that the order is:
+
+1. resolve the current/historical root locator without mutation;
+2. acquire the existing run-activity lease for that resolved root;
+3. while holding that lease, authenticate/classify all state relevant to TRAIN_REQUIRED versus reusable/sealable/fail-closed;
+4. seal a terminal-but-unsealed root only through the already accepted completion/topology owner and keep it out of scheduler `task_count`;
+5. append a genuinely fresh/incomplete position to TRAIN_REQUIRED only from that lease-owned classification;
+6. release the run lease before any long-running scheduler admission or trainer execution.
+
+Do not hold the run lease across the global scheduler wave, add an outer collection lease, add a liveness registry, infer ownership from PID/mtime/pathname, or weaken sealed-root read-only behavior.
+
+**R1 acceptance:** add a deterministic race test at the real normalization owner. Arrange another invocation/owner to acquire the same run-activity lease and transition the position while normalization is blocked at the ownership boundary. After normalization obtains the lease, it must observe the authoritative post-transition state rather than an earlier empty/nonexistent-path observation. At minimum prove that a position completed/sealed by the winning owner is not counted as TRAIN_REQUIRED and does not cause a trainer request, scheduler task-count inflation, or duplicate run. Also preserve corrupt/foreign fail-closed-before-sibling-launch coverage.
+
+### 10.3 R2 — close A17 with a real resource-compatibility proof, not profile-name equality
+
+**Owning surfaces:** `_post_selection_scheduler_profile`, `_require_one_post_selection_scheduler_profile`, the TRAIN2 runtime/materialization request path, and the existing `TrainingConcurrencyPolicy`/`TrainingConcurrencyPlan` contract. `training_parallel.py` remains frozen unless this investigation triggers a D3 reopen.
+
+The implementation must establish the resource consequences of distinct TRAIN_REQUIRED production sizes/horizons. Equality of configuration-derived profile fields is insufficient by itself.
+
+Use at least two positions that both remain TRAIN_REQUIRED after normalization and differ materially in production workload. Prefer the actual selected-size regime `N=512` versus `N=8192` with their frozen `H_prod`; a smaller synthetic case is acceptable only if it is demonstrably discriminating for every resource dimension being proved.
+
+For those positions, capture or derive at the existing real-owner/test seam the exact values entering TRAIN2 and the concurrency plan, including at least:
+
+- device/backend/telemetry domain and learned/default precision;
+- model/runtime realization and replay lineage affecting residency;
+- batch and validation batch geometry;
+- loader-worker/native-thread geometry and effective CPU allocation;
+- structures/examples per epoch and any materialized dataset size that remains resident during training;
+- production horizon and whether it changes simultaneous resident state versus only total work duration;
+- configured per-job RAM and VRAM estimate regime;
+- timeout/process-supervision and minimum-disk owners.
+
+Then close the proof dimension by dimension:
+
+- **VRAM:** establish from the actual trainer/runtime realization that changing `N` or `H_prod` does not create dataset-wide/device-resident state beyond the common batch/model/runtime geometry, or establish a conservative existing per-job VRAM bound valid for the largest admitted task.
+- **RAM:** if host-resident materialization/dataset state scales with `N`, establish a conservative bound for the largest admitted task and prove the existing per-job RAM estimate used by the planner covers it. Do not treat the estimate merely being equal across tasks as proof that it is sufficient.
+- **CPU/threading:** prove effective per-job thread/worker geometry is common or already conservatively represented by the one plan.
+- **duration/horizon:** prove horizon affects work duration only unless evidence shows it changes simultaneous per-job resident demand.
+
+A test that merely asserts `device == "cuda:0"`, equal loader-worker counts, or equality of `TrainingConcurrencyPolicy` objects does not satisfy A17.
+
+If this investigation finds material per-job demand heterogeneity that cannot be bounded safely by the existing homogeneous controller/estimate contract, **stop and reopen D3**. Do not create per-size buckets, multiple controllers, task-weighted promotion, or a second resource model as a D4 workaround.
+
+### 10.4 R3 — replace the non-discriminating A4 serial/concurrent equivalence test
+
+**Owning test:** `tests/test_mlff_production_global_train_scheduler.py::test_serial_and_concurrent_widths_produce_identical_governed_identities` or its renamed replacement.
+
+The current test runs the width-1 campaign to completion and then reruns the already completed workspace at a wider setting, where the second arm launches no trainer. That proves completed evidence is reusable across an execution-only width change; it does **not** prove a fresh serial execution and a fresh concurrent execution derive identical governed scientific identities/evidence.
+
+Replace or supplement it with two isolated but identically prepared pre-production campaign states:
+
+1. freeze the same selected bindings/memberships/horizons and establish the same accepted CV ancestry in both;
+2. run final production in campaign A with effective scheduler width exactly 1;
+3. run final production in campaign B with an admissible width greater than 1;
+4. prove campaign B actually executes fresh concurrent TRAIN2 work — at least two trainer requests must overlap/be simultaneously admitted through the real collection scheduler, not merely be reusable sealed roots;
+5. compare the governed outputs after canonical ordering while excluding execution-only telemetry/order/timing:
+   - FinalProductionPlan identities;
+   - TrainingTrajectoryIdentity/run identities;
+   - assessment-position identities/policy ancestry;
+   - selected checkpoint/measurement evidence under the deterministic bounded trainer seam;
+   - per-seed assessments;
+   - final per-binding publication decisions.
+
+The width setting itself must not enter any scientific/numerical identity. Keep the existing reuse-across-width test if useful, but do not count it as A4.
+
+### 10.5 R4 — add the missing incompatible historical interrupted-continuation normalization case
+
+**Owning surfaces:** `_normalize_final_production_recovery`, `_complete_legacy_training_root(..., launch_trainer=False)`, and the existing historical training-equivalence/authentication owner.
+
+Construct a multi-size production collection in which one production position resolves to an **interrupted historical/legacy continuation** whose persisted historical training ancestry is syntactically valid enough to reach authentication but is incompatible with the current authorized training trajectory/runtime continuation. Keep at least one sibling position otherwise fresh and runnable.
+
+Invoke the real public `train-production` owner and prove:
+
+- collection Phase A/Phase B behavior remains consistent with Revision 8; independently valid per-binding FinalProductionPlan pointers published before recovery failure are not rolled back;
+- normalization rejects the incompatible historical continuation before construction/admission of sibling TRAIN work;
+- **zero new trainer invocations** occur for every sibling position;
+- no EVAL2/final-assessment/final-publication work begins;
+- the incompatible historical root is not rewritten, copied, renamed, relabeled current, or partially resealed;
+- diagnostic/historical bytes remain intact for retry/investigation.
+
+Do not satisfy this with a direct unit call to the historical helper only; the acceptance boundary is the assembled production collection owner.
+
+### 10.6 R5 — make A8 prove completed sibling preservation across a failed global wave
+
+**Owning test:** the global-wave failure/restart acceptance in `tests/test_mlff_production_global_train_scheduler.py`.
+
+The existing failure test cancels/fails all work and then legitimately reruns all positions. It does not prove the required case where one cross-size sibling has already reached authenticated sealed TRAIN2 before another sibling fails.
+
+Add a deterministic real-owner test with at least two production positions from different selected sizes:
+
+1. admit the global TRAIN wave through the normal scheduler;
+2. force one position to reach terminal TRAIN2 and publish its existing completion/topology seal;
+3. only after that seal is durable, make another active/admitted position fail;
+4. prove no new EVAL2 starts, no further queued work is admitted after failure, and all still-active owned siblings are cancelled/reaped before the scheduler returns/raises;
+5. retry from the same workspace with healthy execution;
+6. prove recovery authenticates and reuses the already sealed sibling with **zero trainer relaunch for that position**;
+7. prove only outstanding TRAIN_REQUIRED work re-enters `task_count`/the scheduler, then normal frozen-order finalization completes.
+
+Use barriers/events in the bounded test trainer to make the completion-before-failure ordering deterministic. Do not add production retry state or a scheduler-specific completion registry.
+
+### 10.7 R6 — execute and record evidence after the executable repair
+
+Test source is an evidence specification, not evidence realization. After R1-R5 are implemented, record a fresh implementation-evidence subsection in this workplan or a repository-native evidence artifact that names the exact repaired commit SHA and exact commands/results. Do not close against results from `f7d4925e08fe3e013b4a35a71a29d6fed8c8c2be` or another pre-repair tree.
+
+At minimum run, on the same repaired SHA:
+
+```text
+python -m compileall mdstats tests
+python -m pytest -q tests/test_mlff_production_global_train_scheduler.py
+python -m pytest -q tests/test_mlff_p5_replay_target_real_owner.py
+python -m pytest -q tests/test_mlff_p5_train2_memory_backoff.py tests/test_mlff_p5_train2_zero_safe_admission.py
+python -m pytest -q tests/test_mlff_target_size_multi_size_integration.py tests/test_mlff_target_size_multi_selection.py
+python -m pytest -q tests/test_mlff_target_size_p5e_production_and_restart.py
+python -m pytest -q tests/test_mlff_replay_mace_p5_execution_recovery.py
+python -m pytest -q tests/test_mlff_campaign_currentness_races.py tests/test_mlff_campaign_assembled_lifecycle.py
+python -m pytest -q tests/test_mlff_storage_reset_integration.py
+```
+
+Also rerun every additional test file directly touched by the repaired implementation or invalidated by the changed recovery/admission behavior. Then run the complete affected MLFF campaign/training-data CPU regression. If the impact boundary cannot be defended narrowly, run the repository's full available CPU test suite.
+
+The evidence record must state pass/fail/skip counts, identify any unavailable environment-dependent checks, and distinguish those from actual failures. A docs-only GitHub Actions success does not close executable acceptance.
+
+Physical production GPU throughput/VRAM qualification remains deferred to the final release package under standing project direction. R2 is still required now as deterministic owner/resource-contract evidence; do not falsely label it physical GPU qualification.
+
+### 10.8 Re-review closure condition
+
+A subsequent independent Review may return PASS only if all of the following hold on one exact candidate SHA:
+
+- R1 removes every pre-lease liveness/completion/TRAIN_REQUIRED inference and the race acceptance passes;
+- R2 positively closes A17, or D3 has been explicitly reopened because the one-controller resource assumption was falsified;
+- R3 executes both fresh width-1 and genuinely concurrent width>1 production paths and establishes governed-output equivalence;
+- R4 rejects an incompatible interrupted historical continuation before any sibling trainer launch while preserving valid Phase-B pointer semantics and historical bytes;
+- R5 demonstrates sealed completed-sibling reuse after a later global-wave failure;
+- R6 records executable realization of the focused and affected regression on the same repaired SHA;
+- no repair introduces a second scheduler/resource/currentness/recovery owner or mutates D1/D2 semantics;
+- the final candidate still satisfies Sections 1-9, including exact collection-signature admission linearization, TRAIN/EVAL phase separation, frozen-order fail-fast finalization, CV non-impact, and deferred physical GPU qualification.
+
+## 11. D4 repair and executable evidence — 2026-09-20
+
+### 11.0 Status
+
+The Section 10 repair contract R1-R6 is implemented and its acceptance executed.
+**This workplan stays open for independent Review.** Nothing here closes the
+cycle, accepts the Revision 8 D3 candidate as accepted-current, or claims
+physical GPU qualification.
+
+**Repaired candidate SHA: `0462f56f6bfb22ea254a28683a62937b6aad2740`.**
+
+Every executable result below was produced from that exact tree. This evidence
+subsection is published in a later commit that changes no executable file; the
+`mdstats/` and `tests/` trees of that commit are identical to
+`0462f56f`, which `git diff 0462f56f -- mdstats tests` confirms as empty.
+
+### 11.1 R1 - recovery classification is owned by the run-activity lease
+
+**Owner:** `campaign_post_selection_runtime.py::_normalize_final_production_recovery`.
+
+The pre-lease shortcut that appended a position to `TRAIN_REQUIRED` from
+`root.path.is_dir() and any(root.path.iterdir())` is gone. The freshness
+decision now happens inside the `post_selection_run_activity_lease(root.path)`
+block the pass already held for every other classification, so no root is
+classified fresh, incomplete, terminal, sealed, corrupt, reusable or
+`TRAIN_REQUIRED` from mutable pathname state before ownership. Locator
+resolution still happens outside the lease, the lease is still released before
+scheduler admission, and the change adds no lease, liveness registry,
+PID/mtime inference or collection lock. The whole source change is one moved
+block plus its docstring.
+
+**Acceptance.**
+`tests/test_mlff_production_global_train_scheduler.py::test_recovery_classifies_positions_only_under_the_run_activity_lease`
+drives the real `train-production` owner. Phase A/B publish both per-binding
+plan pointers and stop before recovery, so the contested root is genuinely
+absent. A competing owner then takes the *existing* run-activity lease for
+that exact root while it is still absent, waits until normalization has
+reached the ownership boundary, and drives the position to an authenticated
+sealed TRAIN2 root through the real run owner (`_execute_post_selection_run_locked`,
+`stop_after_training=True`). After normalization obtains the lease it observes
+the authoritative post-transition state: the position is excluded from
+`TRAIN_REQUIRED`, requests no trainer, produces no duplicate run, and the wave
+is sized `task_count=1` with `train_required=1; sealed=1`.
+
+The test is discriminating, not merely passing. Re-running it against the
+pre-repair shortcut on an otherwise identical tree fails with
+`assert [2] == [1]`: the pre-lease observation inflates the wave to two
+positions and requests a trainer for a root another owner already owns.
+Corrupt/foreign fail-closed-before-sibling-launch coverage is retained
+unchanged (`test_corrupt_continuation_fails_before_any_sibling_trainer`,
+`test_corrupt_sealed_root_fails_before_any_sibling_trainer`).
+
+### 11.2 R2 - A17 closed positively; the one-controller resource assumption is not falsified
+
+**Owner:** `_post_selection_scheduler_profile`, `_require_one_post_selection_scheduler_profile`,
+the TRAIN2 runtime/materialization request path, and `build_training_concurrency_plan`.
+`training_parallel.py` is unchanged.
+
+`tests/test_mlff_production_global_train_scheduler.py::test_distinct_production_sizes_and_horizons_make_one_resource_demand`
+takes the two positions that actually remain `TRAIN_REQUIRED` after recovery
+normalization and that differ in *both* suspected inputs: selected size (and
+therefore exact training membership and materialized dataset) and frozen
+production horizon. It captures the exact values entering TRAIN2 and the
+concurrency plan at the real owner seam and closes the proof dimension by
+dimension.
+
+* **VRAM / device residency.** Device, optimizer device, learned-model
+  precision, training method/model realization, replay lineage and the
+  batch/validation-batch geometry are equal across the two positions. Those
+  are the only quantities that determine device residency in the realized
+  runtime; the runtime plans the two positions receive are byte-identical once
+  the epoch budget, per-epoch structure count and execution epoch limit are
+  removed. No dataset-wide or horizon-wide device-resident state exists beside
+  the common batch/model geometry. The live bound is additionally
+  size-independent by construction: the plan's VRAM admission envelope is
+  `observed aggregate telemetry total x configured fraction` with the observed
+  aggregate used bytes as baseline, and promotion/backoff continue to run off
+  that aggregate observation rather than off any per-task estimate.
+* **CPU / threading.** Loader workers per job are equal, and the plan's
+  `cpu_threads_per_job` is derived from the one CPU budget, the one loader
+  geometry and the task count. `N` and `H_prod` are not inputs.
+* **Host RAM.** This is the one per-job quantity that genuinely scales with
+  `N`: the materialized training transport the trainer reads. The test shows
+  it strictly larger for the larger selected size, and shows the planner
+  representing it by one configured, size-independent per-job estimate
+  (`estimated_training_ram_mib_per_job`), with the larger position's realized
+  materialization inside that estimate.
+* **Horizon.** `H_prod` reaches the runtime only through the epoch budget and
+  the execution epoch limit; the budget policies differ only in
+  `planned_epochs` and its derived digest. It changes work duration, not
+  simultaneous resident demand.
+
+**The decisive check.** `build_training_concurrency_plan` is called with exactly
+`(task_count, device, loader_workers_per_job, resources, policy, gpu_sample)`.
+The test asserts that set of inputs is complete, that the policy equals the one
+each context derives, and then rebuilds the plan from the *larger* position's
+context alone at the same task count: the resulting `TrainingConcurrencyPlan`
+is equal to the plan the heterogeneous two-size wave actually used. The
+collection wave therefore reserves per job exactly what the largest selected
+size's own homogeneous wave of the same width already reserved under the
+accepted per-size baseline. Globalization introduces no new per-job resource
+demand, and the per-job estimate's adequacy for the production regime remains
+the same pre-existing operator configuration obligation it already was for the
+largest size.
+
+Equality of `TrainingConcurrencyPolicy`, device or loader-worker settings is
+*not* offered as the proof; it is the fail-closed guard that A10 exercises
+(`test_incompatible_execution_profile_fails_before_any_trainer`,
+`test_an_incompatible_profile_on_a_sealed_position_does_not_block_the_wave`),
+and both remain green.
+
+**Result: no material heterogeneity was found that the existing homogeneous
+controller cannot represent. No D3 reopen is raised, and no resource bucket,
+second controller, weighted promotion or second scheduler was introduced.**
+
+**Regime limitation, stated explicitly.** The executed positions are the
+fixture ladder's CV-feasible sizes (`N=8`, `H_prod=2` versus `N=16`,
+`H_prod=3`), not `N=512` versus `N=8192`. The claim those positions establish
+is *functional independence*: any dependence of a scheduler or runtime input on
+`N` or `H_prod` would manifest between any two distinct values, and none does -
+the only quantity that varies is the host-resident training transport, exactly
+as derived. The magnitude question that a `512` versus `8192` run would answer
+is per-job host-RAM *sufficiency*, and the final check above shows that this
+magnitude question is unchanged by this cycle: the mixed wave's envelope is the
+largest size's own accepted envelope. Physical production-scale VRAM/throughput
+qualification remains deferred to the final release package and is not claimed
+here.
+
+### 11.3 R3 - genuine fresh-serial versus fresh-concurrent equivalence
+
+`test_serial_and_concurrent_widths_produce_identical_governed_identities` was
+retired as the A4 oracle. It is retained, renamed
+`test_reusing_sealed_roots_across_a_width_change_retrains_nothing`, and
+labelled as the reuse/restart property it actually proves.
+
+The new A4 is
+`test_fresh_serial_and_fresh_concurrent_production_agree`. It builds two
+isolated campaigns, each from nothing, and asserts they are identically
+prepared by comparing the frozen binding, method, current CV plan and current
+CV acceptance digests of every selected size. Campaign A runs fresh production
+at effective width exactly 1 (`plan.maximum_jobs == 1`). Campaign B runs fresh
+production at an admissible width greater than 1 and must genuinely overlap:
+the bounded child blocks until the wave owns two simultaneous trainers, the
+test asserts `max_active >= 2`, and it additionally asserts that at least two
+trainer windows overlap in time. Both arms train all four positions; neither
+reuses the other's evidence.
+
+The two campaigns are built one after another at the *same* absolute workspace
+path, the first being moved aside in between. That was a deliberate design
+decision after a measurement: run-local materialization records legitimately
+carry their own absolute `output_directory`, so two campaigns at different
+paths differ in `materialization_digest` *at equal width*. Reusing one path
+keeps A4 an exact identity comparison instead of one that must normalize
+workspace location away.
+
+Compared after canonical ordering (frozen selected-size order, then
+`required_final_seeds` order): FinalProductionPlan identities, run and
+training-trajectory identities, training-root identities, the complete
+per-seed assessment payloads (selected checkpoint, measurements, policy
+ancestry and the bound materialization) and the per-binding final publication
+payloads. All equal. The width setting appears in none of them.
+
+### 11.4 R4 - incompatible interrupted historical continuation
+
+`tests/test_mlff_p5_replay_target_real_owner.py::test_incompatible_interrupted_historical_continuation_stops_the_collection`.
+
+A new legacy-workspace scenario, `two_size_production_interrupted`, builds a
+genuine pre-cutover workspace with the baseline commit's own code: a frozen
+**two-size** design, cross-validated by the baseline, whose first frozen size's
+production TRAIN2 is interrupted mid-trajectory. Because the baseline's own
+production orchestration is serial across sizes, the later size never reaches
+production at all, so its position is fresh and runnable under current code.
+
+The interrupted historical root is then made incompatible with current
+authority: its persisted realized-preparation ancestry no longer matches what
+the current training method reproduces, while the record stays internally
+self-consistent, so the failure is the training-equivalence fence and not a
+malformed-record rejection.
+
+Driven through the real public `train-production` collection owner, the test
+proves:
+
+* rejection with "not training-equivalent", raised by recovery normalization;
+* `harness.runs == []` - zero trainer invocations for every sibling position,
+  including the other selected size's fresh runnable one;
+* no EVAL2 call after the failure, and no `[TRAIN scheduler]` line at all, so
+  no scheduler was sized;
+* both independently valid Phase-B per-binding FinalProductionPlan pointers
+  remain current - recovery failure is not a collection rollback;
+* no final-production publication for either size;
+* every historical byte preserved: no root added, renamed or removed, no
+  pre-existing byte rewritten apart from the incompatibility the test itself
+  injected, no completion anchor appended, and no partial reseal.
+
+### 11.5 R5 - a sealed cross-size sibling survives a later wave failure
+
+`tests/test_mlff_production_global_train_scheduler.py::test_a_sealed_sibling_survives_a_later_wave_failure_and_is_not_retrained`.
+
+Four production positions across two selected sizes, with the owned-slot
+ceiling set to two so the admission order is deterministic. The bounded
+trainer makes the ordering explicit rather than probable: the first admitted
+position runs alone and is sealed by the existing completion/topology owner;
+the second fails only once it observes that a sibling seal is durable *and*
+that another owned position is genuinely active beside it.
+
+On failure the test proves no EVAL2 began, nothing further was admitted
+(`admitted_after_failure == []`), the still-active owned sibling was signalled
+and reaped before the command returned, exactly one production root is sealed,
+and neither size published.
+
+On retry from the same workspace with healthy execution, the sealed sibling
+launches no trainer, the three outstanding positions re-enter the scheduler
+(`task_count == 3`, `train_required=3; sealed=1`, `progress=0/3`), and normal
+frozen-order finalization completes both sizes. No production retry state and
+no scheduler-specific completion registry were added; the durable TRAIN2
+completion/root authority is the only one used.
+
+### 11.6 Preserved invariants and affected-surface inspection
+
+The complete source change is a single moved block in
+`_normalize_final_production_recovery` plus its docstring; everything else in
+this cycle is test and non-executable documentation (11.10). Nothing else in
+`mdstats/` changed, so the repair widened no architecture. Re-verified on the repaired tree:
+
+* exactly one collection-global TRAIN-only adaptive scheduler; one controller
+  and one plan construction site (structural test, green);
+* CV selected-size orchestration unchanged (A16, green);
+* no EVAL2 while scheduler-owned TRAIN2 work is active (A18, green);
+* finalization frozen-size ordered and fail-fast (A14, green);
+* FinalProductionPlan ownership per binding, no collection-atomic rollback
+  (A13, and R4 above);
+* `(campaign generation, ordered binding digests)` admission linearization at
+  every TRAIN admission and at finalization admission (A19, green);
+* global scheduler `key` absent from scientific identity (structural test);
+* deterministic queue/backoff behavior (A9, green);
+* sealed roots read-only; terminal-but-unsealed roots sealed only by the
+  existing completion/topology owner (A7, green);
+* no second scheduler, outer executor, resource controller, currentness
+  registry, recovery registry, cross-size reducer or duplicate persistence
+  authority;
+* no D1/D2 semantic change.
+
+### 11.7 R6 - executed evidence
+
+Environment: conda env `mace`, CPU only, `pytest -p no:randomly`, xdist where
+noted. No GPU was used or claimed; the device facts in the scheduler suite are
+the existing bounded deterministic telemetry substitution below the P5 owner
+boundary.
+
+| Command (all `-p no:randomly`) | Result |
+| --- | --- |
+| `python -m compileall mdstats tests` | clean, exit 0 |
+| `pytest -q tests/test_mlff_production_global_train_scheduler.py -n 8` | **26 passed** (93s) |
+| `pytest -q tests/test_mlff_p5_replay_target_real_owner.py -n 8` | **11 passed** (83s) |
+| `pytest -q tests/test_mlff_p5_train2_memory_backoff.py tests/test_mlff_p5_train2_zero_safe_admission.py -n 8` | 26 passed, **2 failed** - both pre-existing, see 11.8 |
+| `pytest -q tests/test_mlff_target_size_multi_size_integration.py tests/test_mlff_target_size_multi_selection.py -n 8` | **47 passed** (77s) |
+| `pytest -q tests/test_mlff_target_size_p5e_production_and_restart.py -n 8` | **27 passed** (127s) |
+| `pytest -q tests/test_mlff_replay_mace_p5_execution_recovery.py -n 8` | **6 passed** (49s) |
+| `pytest -q tests/test_mlff_campaign_currentness_races.py tests/test_mlff_campaign_assembled_lifecycle.py -n 8` | **5 passed** (61s) |
+| `pytest -q tests/test_mlff_storage_reset_integration.py -n 8` | **167 passed** (1465s) |
+| `pytest -q tests/test_mlff_*.py -n 16` (complete affected MLFF campaign/training-data CPU regression, 229 files) | 2825 passed, 15 skipped, **184 failed** - all pre-existing, see 11.8 |
+
+Both test files this repair touched are fully green, individually and inside
+the complete sweep. No skip in any focused suite hid an acceptance claim.
+
+### 11.8 Failure attribution - no new failure was introduced
+
+The repository carries a large pre-existing CPU failure population on this
+branch, so the affected sweep is reported as a **failure-set diff against the
+reviewed entry-point commit**, not as a raw count.
+
+| Arm | Result |
+| --- | --- |
+| repaired `0462f56f` (main checkout) | 184 failed, 2825 passed, 15 skipped |
+| entry-point `c4309145` (clean worktree, identical command) | 182 failed, 2819 passed, 18 skipped |
+
+Set difference of the failing node ids:
+
+* **failures present only in the repaired arm: 2**
+* **failures fixed relative to the entry point: 0**
+
+Both apparent extras are
+`tests/test_mlff_target_size_p6_p5a6_compatibility.py::test_p6_reopens_the_preserved_p5a6_workspace_through_real_owners`
+and `::test_corrupted_final_production_plan_m3_is_rejected_by_p2_oracle`, and
+they are an artefact of *where* the two arms ran, not of the change. Those
+tests are `skipif`-guarded on `qualification/p6-p5a6-compat/workspace/`, which
+is gitignored and therefore exists only in the main checkout: the baseline
+worktree skipped them (hence its 3 extra skips) while the repaired arm executed
+them. Running that file in the **same** main checkout with the entry-point
+revision of `campaign_post_selection_runtime.py` restored reproduces both
+failures identically (`2 failed, 2 passed`). They are pre-existing and
+unrelated to this repair.
+
+**Net effect of the repair on the affected regression: zero new failures, zero
+regressions.**
+
+The two focused failures in
+`tests/test_mlff_p5_train2_zero_safe_admission.py` -
+`test_idle_transient_cuda_admission_blocking_missing_to_missing_fails_explicitly`
+and `test_idle_transient_cuda_admission_blocking_waits_rather_than_spins_unsafe_to_safe` -
+were likewise reproduced at `c4309145` with identical assertion signatures
+(`scheduler must wait on poll interval while idle and admission blocked`, and a
+`TrainingResourceObservabilityError` raised while one owned job is active).
+They concern idle-poll/telemetry-observability behaviour in
+`training_parallel.py`, which this repair does not touch.
+
+No failure in either arm references
+`docs/specs/training_data/mlff_post_selection_p5_spec.md` or
+`docs/arch_manuals/mlff_training_data/60_execution_performance.md`. The large
+`*_specification.py` failure families assert content of the *retired* assembled
+architecture document and are outside this cycle's surface.
+
+### 11.9 Production qualification
+
+**Still deferred.** Everything above is deterministic CPU real-owner evidence.
+No physical GPU throughput or VRAM qualification was performed or is claimed,
+and R2 is explicitly *not* labelled as such: it is owner/resource-contract
+evidence. Target-hardware qualification remains part of the final release
+package under standing project direction, and no iterative GPU qualification
+was requested from the stakeholder during this repair.
+
+### 11.10 Documentation impact
+
+Two current documents were reconciled with the repaired behaviour, both
+non-executable:
+
+* `docs/specs/training_data/mlff_post_selection_p5_spec.md` - the D4 normative
+  rule that locator resolution needs no exclusion while every classification of
+  a production root is taken under that position's existing run-activity lease
+  (committed with the repair in `0462f56f`);
+* `docs/arch_manuals/mlff_training_data/60_execution_performance.md` - the same
+  ownership statement as a D3 bullet in the collection TRAIN-wave section
+  (committed with this evidence record).
+
+PDF regeneration follows the repository's existing automated documentation
+build path and is not performed by hand here.
+
+### 11.11 Open risk and handoff
+
+* The pre-existing branch failure population (182 failures at the entry point)
+  is untouched by this cycle and remains a separate concern; this workplan does
+  not adopt it.
+* R2's regime limitation is stated in 11.2 and is deliberately not hidden: the
+  functional-independence claim is executed, the production-scale magnitude
+  question is shown to be unchanged by globalization, and physical
+  qualification stays deferred.
+* **This workplan remains open.** Section 10.8's closure condition is for an
+  independent Review to evaluate against `0462f56f`; nothing here self-closes
+  it or declares the D3 candidate accepted-current.
+
+
+## 12. Second independent implementation Review reopen — 2026-09-20
+
+### 12.1 Review disposition
+
+**NO-PASS at reviewed head `07e506df4c0f58758c5364e8b1bb05ff32a8df68`. No Serious Challenge to D3 is active.**
+
+R1, R3, R4 and R5 from Section 10 are materially closed and SHALL be preserved. The run-lease recovery repair is correct and discriminated by a real race; the fresh serial-versus-concurrent A4 oracle now executes both widths; the incompatible historical continuation fails through the public collection owner before sibling launch; and completed TRAIN2 sibling evidence survives a later wave failure and is excluded from retry task_count.
+
+The remaining blocker is **R2/A17 resource compatibility**. Section 11.2 overstates closure. The present oracle compares the serialized `target_train.extxyz` byte count with the configured per-job RAM reservation and uses synthetic, task-independent GPU telemetry. Those facts do not establish that the real trainer's peak resident host memory or device memory is conservatively bounded for the largest admitted production task. Rebuilding an identical `TrainingConcurrencyPlan` from the larger context proves only that both paths consume the same configured estimate; it does not prove that the estimate bounds the larger task.
+
+There is also an evidence-applicability obligation around the two failing zero-safe-admission regressions in Section 11.8. Their pre-existence proves this branch did not introduce them, but does not make them inapplicable to a candidate that now relies on the same shared TRAIN scheduler.
+
+The repairs below are D4-local unless R2B/R2C falsify the existing one-controller architecture. Do not add per-size scheduler buckets, a second controller, a task-specific persistent resource model, or another admission registry.
+
+### 12.2 R2A — replace the EXTXYZ-size proxy with the real host-memory quantity
+
+**Current invalid oracle:** `target_train.extxyz.stat().st_size <= plan.estimated_ram_bytes_per_job`.
+
+A serialized transport size is not a conservative bound on the MACE process's resident memory after parsing, graph construction, Python/ASE object creation, tensor conversion, loader state, caches, batches, optimizer state or framework overhead. Remove that assertion as the A17 RAM proof. It may remain as descriptive transport evidence only.
+
+Close host RAM by one of these two admissible evidence routes, preferring the first when the real MACE runtime is available in the development environment:
+
+1. **Real-child peak route.**
+   - Drive the existing P5 materialization/runtime owner with materially representative TRAIN_REQUIRED production memberships, preferably the actual `N=512` and `N=8192` regimes and their frozen production horizons.
+   - Use the existing MACE child/process boundary; do not add production scheduler state solely for measurement.
+   - Measure the trainer child's **peak resident host memory** over the interval that includes input parsing/dataset construction and at least one true training epoch. If loader workers or other owned descendants exist, include their simultaneously resident contribution rather than measuring the parent alone.
+   - Prefer a kernel/runtime high-water observation such as process high-water RSS/PSS or an equivalent process-tree peak over a sparse polling sample that can miss the peak.
+   - Record the exact MACE version, model/method realization, dtype, batch/valid-batch, loader worker count, replay mode, selected membership size, structure/atom-count geometry and horizon.
+   - Prove the common `estimated_training_ram_mib_per_job` used by the actual concurrency plan is >= the conservatively interpreted peak for the heaviest admissible task.
+
+2. **Static conservative-bound route.**
+   - If the real child cannot be executed, derive a conservative bound from the exact in-memory representation actually constructed by the pinned MACE/runtime path, including every dataset-wide object that coexists, loader duplication where applicable and fixed framework/model overhead.
+   - The derivation must be tied to the actual pinned realization and the largest relevant membership/geometry, not to file size.
+   - State all assumptions and prove the configured common per-job RAM estimate exceeds the resulting bound.
+
+If the existing configured/default common RAM estimate is too small but **one single conservative common bound** safely covers every task under the existing controller, repair the existing estimate/default/configuration owner and its documentation/tests rather than introducing per-size estimates. If no practical single bound exists under the one-controller contract, stop and reopen D3.
+
+### 12.3 R2B — prove the device-residency dependence from the actual MACE realization
+
+Physical target-GPU qualification remains deferred, but the D4 resource contract still requires a truthful answer to whether `N`, membership geometry or `H_prod` can make one later task materially heavier than the task used to calibrate promotion.
+
+Inspect the pinned MACE/TRAIN2 realization and establish, with exact source/runtime ownership, which objects are device resident simultaneously:
+
+- model parameters and buffers;
+- optimizer state;
+- EMA state if applicable;
+- training/validation batch tensors and graph/neighborhood tensors;
+- any replay-head/device-resident state;
+- any dataset-wide or cache state that is moved to the device;
+- temporary tensors whose size is controlled by batch geometry.
+
+For each item, state its scaling variables. The proof must distinguish:
+
+- **number of configurations `N`** from
+- **per-configuration geometry** such as atom count and graph/edge count from
+- **batch/valid-batch size** from
+- **epoch horizon `H_prod`**.
+
+Then inspect the actual memberships used by the two production positions and establish the maximum per-sample/batch geometry relevant to device residency. Equal batch size alone is insufficient if a later membership can contain larger structures or denser graphs.
+
+An acceptable non-GPU closure is a source/runtime proof that:
+1. no dataset-wide state scales onto the device with total `N` or horizon;
+2. all task-varying device state is bounded by a common batch-geometry envelope already represented by the accepted training realization; and
+3. the configured per-job VRAM estimate has an admissible conservative warrant for that envelope, either from an applicable existing qualification/telemetry record or from a defensible static bound.
+
+Synthetic telemetry that reports the same 0.4 GiB for every task is useful for scheduler-control tests but **cannot** establish this bound.
+
+If no admissible warrant exists for the configured VRAM estimate before final physical qualification, preserve the distinction explicitly: do not claim the estimate is validated. The implementer must still prove that globalization does not introduce an unrepresented task-dependent increase in device demand. If that cannot be proved without task-specific resource knowledge, trigger the D3 reopen below.
+
+### 12.4 R2C — exercise the order-sensitive promotion counterexample
+
+Add a discriminating A17 acceptance that orders a lighter production task before the heaviest task.
+
+The test/evidence must reconstruct the exact promotion decision used by `AdaptiveTrainingConcurrency`:
+
+```text
+memory_estimate =
+    max(stable observed memory/job from currently active work,
+        configured estimated_gpu_bytes_per_job)
+```
+
+and show why admitting the heavier next task is safe under the established common bound.
+
+At minimum:
+
+1. identify the light task that supplies the first stable telemetry window;
+2. identify the heavier pending task and its independently established RAM/VRAM bound;
+3. prove the common configured estimate used by the controller is conservative for that heavier task, or prove an equivalent stronger invariant already encoded by the accepted resource contract;
+4. show the candidate admission remains within the aggregate VRAM and host-RAM budgets with the configured growth/headroom policy;
+5. include a negative/counterfactual fixture in which the heavier task's bound exceeds the common estimate and prove the candidate is **not** allowed to report A17 closed. The negative case may stop at the compatibility/evidence boundary; do not manufacture a production OOM.
+
+Do not use equality of the two `TrainingConcurrencyPolicy` objects, equality of the resulting `TrainingConcurrencyPlan`, or a common synthetic telemetry trace as the discriminator. Those are consequences of the assumption under review.
+
+### 12.5 R2D — explicit D3-reopen threshold
+
+Remain in D4 only if all TRAIN_REQUIRED production tasks can be represented safely by **one common execution/resource profile and one conservative per-job estimate regime** consumed by the existing `TrainingConcurrencyPlan` / `AdaptiveTrainingConcurrency`.
+
+Raise a **Serious Challenge / D3 reopen** if evidence shows any of the following:
+
+- safe admission requires knowing the selected size or task identity inside the controller;
+- different tasks require materially different per-job RAM/VRAM reservations that cannot be represented by one conservative common bound without making the accepted scheduler unusable;
+- safe promotion requires per-task weighted demand, resource buckets, multiple controllers, or task-aware scheduling;
+- the pinned runtime can retain dataset-wide device state scaling materially with `N` in a way the homogeneous controller does not model;
+- a task's admissible device demand depends materially on membership geometry that the current shared profile cannot bound.
+
+Do **not** implement those mechanisms inside D4. Stop with the falsifying evidence and return to Software Design.
+
+### 12.6 R6A — resolve the two zero-safe-admission failures by applicability, not chronology
+
+The following required regression specifications failed in Section 11.7:
+
+- `test_idle_transient_cuda_admission_blocking_missing_to_missing_fails_explicitly`;
+- `test_idle_transient_cuda_admission_blocking_waits_rather_than_spins_unsafe_to_safe`.
+
+First rerun these two node IDs **serially, without xdist**, on the exact current executable candidate and on the Section-10 entry-point candidate. The original Section 10.7 commands did not require `-n 8`, and scheduler timing/idle-poll semantics are themselves the oracle here.
+
+Then classify them:
+
+**If the tests are stale or their oracle is wrong:** demonstrate the conflict against the current accepted scheduler authority, replace/repair the oracle with a stronger one, and record why the old expectation is inapplicable. Merely observing that the failure predates this branch is insufficient.
+
+**If the tests remain valid and reproducibly fail:** treat that as an independently falsified D4 defect in the shared `training_parallel` / scheduler loop now consumed by production. Repair the smallest existing owner while preserving current D3. In particular preserve these required semantics:
+
+- pending work with an idle scheduler and a transient unsafe/blind observation must not spin or launch through the block;
+- control observations are separated by the normal poll cadence rather than an immediate tight-loop recheck;
+- unsafe -> safe may recover and admit pending work;
+- bounded missing -> missing resolves to the existing typed zero-safe/observability failure without launching a second job;
+- while an owned child is legitimately active, one transient blind observation is tolerated according to the current controller contract; do not prematurely escalate it to a terminal observability failure;
+- cancellation/reaping, memory-backoff and currentness semantics remain unchanged.
+
+This is authorization to correct an **independently demonstrated existing D4 defect**, not to redesign the scheduler. Do not add another timer, monitor thread, telemetry daemon or retry state machine. Prefer reordering/correcting the existing idle-loop observation/admission transition.
+
+After any executable scheduler repair, rerun every scheduler/backoff/zero-safe/currentness/global-production regression affected by that edit.
+
+### 12.7 Required final evidence for the next Review
+
+After the last executable edit, record one exact candidate SHA and execute, without hiding timing-sensitive failures behind parallel test execution:
+
+```text
+python -m compileall mdstats tests
+python -m pytest -q tests/test_mlff_production_global_train_scheduler.py
+python -m pytest -q tests/test_mlff_p5_train2_memory_backoff.py
+python -m pytest -q tests/test_mlff_p5_train2_zero_safe_admission.py
+python -m pytest -q tests/test_mlff_training_parallel_scheduler.py
+python -m pytest -q tests/test_mlff_p5_replay_target_real_owner.py
+python -m pytest -q tests/test_mlff_target_size_multi_size_integration.py tests/test_mlff_target_size_multi_selection.py
+python -m pytest -q tests/test_mlff_target_size_p5e_production_and_restart.py
+python -m pytest -q tests/test_mlff_replay_mace_p5_execution_recovery.py
+python -m pytest -q tests/test_mlff_campaign_currentness_races.py tests/test_mlff_campaign_assembled_lifecycle.py
+python -m pytest -q tests/test_mlff_storage_reset_integration.py
+```
+
+Then run the complete affected MLFF campaign/training-data CPU regression. xdist may be used as an additional throughput run only after the authoritative serial focused suites above are green; it does not replace them for timing/concurrency oracles.
+
+The evidence record must distinguish:
+
+- genuine current failures;
+- unavailable environment-dependent checks;
+- stale/inapplicable oracles with an explicit authority-based reason;
+- pre-existing but still-applicable failures, which remain blockers until repaired or separately adjudicated.
+
+Physical GPU throughput/VRAM qualification remains deferred to the final release package and must not be requested from the stakeholder in this implementation round.
+
+### 12.8 Next-Review closure condition
+
+A subsequent independent Review may return PASS only if:
+
+- R1/R3/R4/R5 remain closed and unchanged except for necessary test maintenance;
+- the A17 RAM proof uses true resident-memory evidence or a conservative actual-runtime bound, not serialized file size;
+- the A17 VRAM proof establishes the actual task-scaling relation of the pinned MACE realization and does not use task-independent synthetic telemetry as magnitude evidence;
+- the lighter-first/heavier-next counterexample is explicitly closed under a conservative common bound;
+- the resulting evidence either preserves the single-controller D3 architecture or cleanly triggers a D3 reopen without implementing an unauthorized workaround;
+- the two zero-safe-admission regressions are green or are explicitly and convincingly retired/remapped as stale oracles under current authority;
+- all focused required suites run serially on the same final executable SHA and the affected regression introduces no new applicable failure;
+- no physical GPU qualification is falsely claimed.
+
+## 13. Second D4 repair and executable evidence — 2026-09-20
+
+### 13.0 Status
+
+The Section 12 repair contract R2A-R2D and R6A is implemented and its acceptance
+executed. **This workplan stays open for independent Review.** Nothing here
+closes the cycle, accepts the Revision 8 D3 candidate as accepted-current, or
+claims physical GPU qualification. R1, R3, R4 and R5 are preserved unchanged
+except for the fixture maintenance recorded in 13.6.
+
+**Repaired candidate SHA: `94f9bf5488071aff7ad4b42033f32364b758ffdd`.**
+
+The single-controller/common-bound assumption under review was **not**
+falsified, so no D3 reopen is raised. It was, however, found to rest on two
+configured per-job reservations that real measurement shows were *not*
+conservative. Both were repaired as single common bounds inside the existing
+configuration owner, which is the D4-local remedy Section 12.2 prescribes.
+
+### 13.1 R2A — the EXTXYZ-size proxy is withdrawn and replaced by measured resident memory
+
+**Withdrawn.** `test_distinct_production_sizes_and_horizons_make_one_resource_demand`
+no longer asserts
+`dataset_bytes(heavy_request) <= plan.estimated_ram_bytes_per_job`. The
+transport comparison survives only as explicitly labelled descriptive transport
+evidence, with the helper renamed `transport_bytes` and a comment stating that a
+serialized byte count is not a resident-memory bound and is not treated as one.
+
+**Replaced by the real-child peak route.** The full measurement record, with the
+pinned realization, the geometry envelope, the harness and the derivation, is
+`audits/MLFF_A17_TRAIN_RESOURCE_BOUND_MEASUREMENT_2026-09-20.md`. Summary:
+
+| Membership | samples | peak tree RSS | `VmHWM` | peak device |
+| --- | --- | --- | --- | --- |
+| N=512 | 6,711 | 7,003.2 MiB | 7,003.2 MiB | 6,152 MiB |
+| N=8192 | 3,196 | 9,904.9 MiB | 9,912.0 MiB | 5,154 MiB |
+
+Both runs drove the unmodified `mdstats-mace-train` wrapper - the exact
+`subprocess.Popen` boundary `post_selection_execution` uses - on the campaign's
+own pinned `mace_run_config.yaml` (MACE 0.3.16, torch 2.13.0+cu126,
+mace-mpa-0-medium multihead finetuning, float32, `batch_size=2`,
+`valid_batch_size=2`, `num_workers=0`, CuEq, AMSGrad + EMA, `r_max=5.0`, real
+true-label replay views), over memberships built from the 2,007 real production
+configurations and ordered densest-first. The measured interval covers dataset
+parsing/construction, the foundation load, one complete true training epoch, the
+checkpoint/model write and the post-epoch evaluation, ending at the same
+`models/<name>.model` completion boundary the real P5 owner uses. The sampler is
+external - no product instrumentation and no production scheduler state was
+added for it - reads the whole owned process tree at 4 Hz, and carries `VmHWM`
+as the kernel high-water witness that no excursion between samples was missed.
+`nproc_max == 1` in both runs, because `num_workers: 0` means no loader
+subprocess exists to add.
+
+**The common estimate was too small, and one common bound still covers every
+task.** The two points are linear in the configuration count at
+0.37878 MiB/configuration above a 6,809 MiB fixed term (framework, foundation
+model, the replay head's `num_samples_pt = 10000` cap, CUDA context), so the
+configured ladder maximum `N = 16384` bounds at **13,015 MiB** - well above the
+configured 8,192 MiB. Section 12.2's instruction applies exactly: the existing
+configuration owner was repaired rather than per-size estimates introduced.
+`estimated_training_ram_mib_per_job` is now **16,384 MiB** in all four owners
+that publish it (`TrainingConcurrencyPolicy` defaults,
+`_post_selection_training_concurrency_policy` fallbacks, the generated campaign
+template in `_campaign_cli_core`, and `campaign.toml.example`), each carrying the
+measurements as its warrant.
+
+### 13.2 R2B — device residency does not scale with `N` or `H_prod`
+
+Established from the pinned MACE 0.3.16 source, with the empirical companion
+that the device peak was *lower* at N=8192 (5,154 MiB) than at N=512
+(6,152 MiB).
+
+Simultaneously device-resident state, with its scaling variables:
+
+| State | Owner | Scales with |
+| --- | --- | --- |
+| model parameters + buffers | `run_train.py:756` `model.to(device)` | model hyperparameters only — 37.8 MiB fp32 (9,063,204 params / 837,453 buffers) |
+| gradients | autograd | = parameters, 34.6 MiB |
+| Adam/AMSGrad state | `torch.optim` | 3 x parameters, 103.7 MiB |
+| EMA shadow | `torch_ema.ExponentialMovingAverage` | 1 x parameters, 34.6 MiB |
+| SWA `AveragedModel` | `torch.optim.swa_utils` | **absent** — `--swa` defaults `False` and the pinned config does not set it |
+| one train or validation batch + its graph/neighbourhood tensors | `tools/train.py:413,490,572` `batch = batch.to(device)` | `batch_size` x (atoms, edges) per configuration |
+| forward/backward temporaries | MACE modules | the same batch/geometry envelope |
+| replay (`pt_head`) device state | one extra readout head on the same model | model hyperparameters; its data is CPU-resident and reaches the device only as batches whose configurations (10-84 atoms) are *smaller* than the target head's |
+| dataset-wide or cache device state | — | **none exists** |
+
+Persistent device state is therefore about **211 MiB**, fixed by the frozen
+method. The dataset is a CPU-resident list of `AtomicData`
+(`run_train.py:675,997`) handed to `torch_geometric.dataloader.DataLoader`; only
+batches move. The two paths that would traverse the dataset on the device are
+both disabled by the pinned configuration: `get_avg_num_neighbors`
+(`tools/scripts_utils.py:627`) takes the supplied-`avg_num_neighbors` branch
+because `compute_avg_num_neighbors: false`, and `configure_model`
+(`tools/model_script_utils.py:55`) short-circuits before any `train_loader`
+statistics pass because `scaling: no_scaling`. `pin_memory` defaults `True` and
+pins **host** pages per batch — a host cost bounded by batch size, not a device
+cost and not a function of `N`.
+
+**The membership geometry envelope is a pool-wide constant.** Equal batch size
+alone would not be sufficient, so the actual memberships were inspected. All 27
+source VASP runs in `04_training_dataset/LTA` have exactly **168 atoms**, and
+over the 2,007 real production configurations the neighbour-list edge count at
+`r_max = 5.0` lies in **[4,232, 4,956]** with cell volumes in
+[3,391.7, 3,779.2] A^3. Increasing `N` buys *more* configurations, never larger
+or denser ones, so the maximum per-sample geometry is the same constant for
+every membership at every `N`. The measured memberships were built densest-first
+so their geometry sits at the pool maximum.
+
+The three conditions Section 12.3 sets for a non-GPU closure therefore hold:
+(1) no dataset-wide state scales onto the device with total `N` or the horizon;
+(2) every task-dependent device allocation is bounded by one common
+batch/geometry envelope; (3) the configured VRAM estimate now has a warrant — it
+was raised from 6,144 MiB to **8,192 MiB**, because the *measured* peak was
+6,152 MiB and the prior value was already exceeded at the smallest production
+size.
+
+**No physical GPU qualification is claimed.** The measurement host is a
+development machine, not the production target device; the device figures are a
+resource bound for the D4 admission contract only, and final target-hardware
+throughput/VRAM qualification stays deferred to the release package. No
+iterative GPU qualification was performed or requested.
+
+### 13.3 R2C — the order-sensitive counterexample
+
+Two new acceptances in
+`tests/test_mlff_production_global_train_scheduler.py`.
+
+`test_lighter_first_admission_bounds_the_heavier_next_production_task` drives
+the real `train-production` wave and now remains a structural acceptance of two
+independent facts:
+
+* **ordering and sharing, from the real wave** — the lighter position
+  (`FIRST_SIZE`) is the first admission and the heavier (`SECOND_SIZE`) is the
+  next one, because deterministic queueing follows frozen size order; exactly
+  one `TrainingConcurrencyPlan` and one `AdaptiveTrainingConcurrency` are
+  constructed for `task_count == 2`;
+* **resolved policy and promotion, from the real wave and existing controller**
+  — both positions consume the captured wave policy, including the fixture's
+  deliberately small `_FAST_CONTROL` RAM reservation, and the controller's
+  promotion estimate is read from that captured plan/policy using its existing
+  common estimate relation.
+
+It then drives an existing `AdaptiveTrainingConcurrency` instance with a
+bounded control observation and reads the promotion estimate back from the
+decision, checking that it equals
+`max(stable observed per job, configured estimated_gpu_bytes_per_job)` and that
+`target_jobs` advances to 2. No selected size, seed, membership, horizon, or
+separately constructed shipped-default policy enters this positive judgment.
+This is development-time structural/resource-policy evidence only; it does not
+judge empirical production RAM/VRAM adequacy.
+
+The Section 13.1/13.2 real-child measurements remain bounded observations from
+their exact measured regime. They are not joined to the `_FAST_CONTROL` wave by
+this deterministic test and do not constitute universal or production-scale
+qualification.
+
+`test_a17_is_not_closable_when_a_heavier_task_exceeds_the_common_estimate` is
+retained only as a negative/counterfactual predicate check. It holds the
+shipped-default policy, plan and telemetry trace **fixed** and varies only the
+heavier task's established bound, once per resource axis, proving that the
+predicate reports A17 open with the right reason. It is not evidence about the
+actual `_FAST_CONTROL` wave and does not prove production adequacy. No
+production OOM is manufactured: the counterfactual stops at the
+compatibility/evidence boundary.
+
+The positive structural acceptance is discriminating against a separately
+resolved policy/plan oracle: its assertions fail if the real wave does not
+consume the campaign's captured configuration or if task-specific values enter
+the common controller inputs. The measured magnitude observations remain
+available for actual-run qualification rather than being used to manufacture a
+development-time production-adequacy pass.
+
+### 13.4 R2D — the D3 reopen threshold is not met
+
+Every TRAIN_REQUIRED production task shares one execution/resource profile and
+one conservative common per-job estimate regime, consumed by the existing
+`TrainingConcurrencyPlan` and `AdaptiveTrainingConcurrency`. Against Section
+12.5's list, item by item:
+
+* safe admission needs no selected size or task identity inside the controller —
+  device residency is independent of `N` and the horizon, and the host bound is
+  one value covering the whole configured ladder;
+* no materially different task-specific reservation is required — one common
+  bound per axis covers every task, and it leaves the scheduler usable (2
+  concurrent jobs on a 24 GiB device at the 0.90 fraction, and 2 on the
+  reference host's RAM budget), so the work-conservation the cycle exists for is
+  preserved;
+* no resource buckets, no second controller, no task-weighted promotion and no
+  task-aware scheduling were needed or added;
+* the pinned runtime retains **no** dataset-wide device state, so nothing scales
+  materially with `N` onto the device;
+* membership geometry is a pool-wide constant (168 atoms, edges in
+  [4,232, 4,956]) that the existing shared profile bounds conservatively.
+
+No Serious Challenge is raised and no D3 reopen is triggered.
+
+### 13.5 R6A — the two named regressions, and a real serial defect they were masking
+
+**Step 1, the required serial rerun.** Both named node IDs were rerun serially
+without xdist on the entry-point tree `1c962d13`:
+
+```
+python -m pytest -q -p no:randomly \
+  tests/test_mlff_p5_train2_zero_safe_admission.py::test_idle_transient_cuda_admission_blocking_missing_to_missing_fails_explicitly \
+  tests/test_mlff_p5_train2_zero_safe_admission.py::test_idle_transient_cuda_admission_blocking_waits_rather_than_spins_unsafe_to_safe
+-> 2 passed in 40.94s
+```
+
+They pass serially. Under the `-n 8` the Section 11 evidence used, they fail:
+`pytest -q tests/test_mlff_p5_train2_zero_safe_admission.py -n 8` gave
+`2 failed, 14 passed`. Their oracle is a poll-cadence/idle-transition timing
+oracle, and xdist contention breaks it.
+
+**Step 2, and this is the material finding.** The same file run **serially**
+does not pass either. It fails a *third*, sibling specification that the `-n 8`
+arm had passed:
+
+```
+python -m pytest -q -p no:randomly tests/test_mlff_p5_train2_zero_safe_admission.py
+-> 1 failed, 15 passed in 272.71s
+FAILED ...::test_idle_transient_cuda_admission_blocking_unsafe_to_unsafe_fails_explicitly
+AssertionError: scheduler must wait on poll interval before confirmed zero-safe admission
+assert []
+```
+
+So the three `test_idle_transient_cuda_admission_blocking_*` specifications are
+one family asserting one contract, and *which* member fails depends only on
+whether the first control observation happens to land before or after the first
+job's future completes. That is a genuine, independently reproduced D4 defect,
+and its oracle is valid under current accepted scheduler authority — it is
+Section 12.6's own first required semantic, "control observations are separated
+by the normal poll cadence rather than an immediate tight-loop recheck". None of
+the three is stale or inapplicable.
+
+**The defect.** In `_train_post_selection_pending_runs` the loop's terminal
+check ran *before* any idle wait:
+
+```python
+while active or pending_queue:
+    if not active and pending_queue and int(controller.target_jobs) < 1:
+        raise TrainingAdmissionBlockedError(...)
+```
+
+`AdaptiveTrainingConcurrency._close_admission` only collapses `target_jobs` to
+zero with nothing owned once the unsafe/blind condition is *confirmed*, and its
+own docstring says that confirmation "survives the bounded recheck". But the
+scheduler never gave it one: the confirming observation was whatever the
+elapsed-time gate let through in the same loop pass that drained the completing
+job's future, so the terminal state could be reached with no poll-cadence wait
+and no genuinely fresh observation. Under different timing the wait happened by
+accident, which is why the family failed inconsistently.
+
+**The repair** is a reorder of the existing idle-loop observation/admission
+transition in the smallest existing owner —
+`campaign_post_selection_runtime._train_post_selection_pending_runs`, 21 lines
+added, 5 removed. `training_parallel.py` is **not** touched by it. When the queue
+is idle with pending work and no admissible key, the scheduler now waits exactly
+one normal poll interval, forces the next control observation to be a fresh one,
+and only raises the typed failure if the state survives that recheck. No timer,
+monitoring thread, telemetry daemon, retry database or scheduler state machine
+was added; the whole mechanism is one boolean and one existing `time.sleep`.
+
+Section 12.6's required semantics, each preserved:
+
+* an idle pending queue under a transient blind/unsafe observation does not
+  launch through the block — admission is still gated by `submit_available` and
+  `target_jobs`, untouched;
+* control observations are separated by the normal poll cadence — the new
+  `time.sleep(poll_interval)` is the scheduler's own existing cadence
+  (`min(1.0, monitor_interval/4)`), not a new clock;
+* unsafe -> safe recovers and admits pending work —
+  `..._waits_rather_than_spins_unsafe_to_safe` now passes deterministically;
+* bounded missing -> missing reaches the typed terminal state without launching
+  another job — the recheck is owed exactly once per entry into idle zero
+  admission, and both `missing_to_missing` and `unsafe_to_unsafe` end in
+  `TrainingAdmissionBlockedError` with `len(harness.runs) == 1`;
+* one transient blind observation while owned work is legitimately active keeps
+  the existing bounded tolerance — the `if active:` branch is unchanged, so
+  `memory_hazard` still requires `confirmed and active > 0`;
+* cancellation/reaping, memory backoff and currentness semantics are unchanged —
+  `demote_most_recently_admitted`, the hazard/backoff transitions and the
+  linearization are untouched, and their suites are green in 13.7.
+
+All sixteen specifications in
+`tests/test_mlff_p5_train2_zero_safe_admission.py` now pass serially.
+
+### 13.6 Architecture preservation and the fixture maintenance this required
+
+Unchanged: one collection-global TRAIN-only production scheduler; CV's per-size
+scheduling; TRAIN/EVAL phase separation; frozen-size frozen-seed fail-fast
+finalization; per-binding `FinalProductionPlan` publication; exact
+collection-signature admission linearization; deterministic queueing and
+most-recent-admission demotion; execution-only scheduler keys; sealed-root
+read-only behaviour; completion/topology authority. No second scheduler, per-size
+controller, resource registry, persistent task/resource metadata, currentness or
+recovery registry, cross-size reducer or scheduler wrapper was added. No D1/D2
+semantics changed.
+
+Raising the two common reservations moved three scheduler oracles that had
+encoded the old 6,144 MiB per-job device reservation as a *fixture constant*
+rather than as their claim. Each was pinned to the reservation its scenario
+requires, which preserves the specification and decouples it from the shipped
+value:
+
+| Specification | Claim | Disposition |
+| --- | --- | --- |
+| `test_mlff_training_parallel_scheduler.py::test_rtx3090_auto_plan_starts_one_and_caps_at_three` | the shipped reservation sets the ceiling on an RTX 3090 | renamed `..._caps_at_the_shipped_reservation`; now asserts the *relation* `maximum_jobs == usable // estimated_gpu_bytes_per_job == 2` instead of the frozen number 3, because the number was a consequence of the now-falsified reservation |
+| `..._scheduler.py::test_two_jobs_promote_to_three_...` and `..._do_not_promote_when_projected_gpu_utilization_exceeds_90_percent` | the promote/ceiling transition at three owned jobs | reservation pinned at 6,144 MiB in the local policy, with the reason stated |
+| `test_mlff_p5_train2_memory_backoff.py` `_FAST_CONTROL` | VRAM envelope, backoff and foreign-occupancy attribution at a chosen owned concurrency | reservation pinned in the shared fast-control block beside the RAM reservation that was already pinned there for the same reason |
+| `test_mlff_p5_train2_zero_safe_admission.py::test_the_target_host_vram_baseline_launches_nothing_through_the_real_owner` | the *supplied* 24 GiB / 20.2 GiB / 90% / 6 GiB target-host case | reservation pinned at 6,144 MiB, because 6 GiB is part of the reported scenario this test exists to reproduce |
+
+### 13.7 Executed evidence
+
+Environment: conda env `mace` (`/home/samjin/miniconda3/envs/mace/bin/python`),
+32 CPU threads, 62 GiB host RAM. All focused suites were run **serially** with
+`-p no:randomly`, on the exact candidate SHA above, after the last executable
+edit. No skip hid an acceptance claim in any focused suite.
+
+| Command (all `python -m ...`, serial, `-p no:randomly`) | Result |
+| --- | --- |
+| `compileall mdstats tests` | clean, exit 0 |
+| `pytest -q tests/test_mlff_production_global_train_scheduler.py` | **28 passed** (387s) |
+| `pytest -q tests/test_mlff_p5_train2_memory_backoff.py` | **12 passed** (165s) |
+| `pytest -q tests/test_mlff_p5_train2_zero_safe_admission.py` | **16 passed** (274s) |
+| `pytest -q tests/test_mlff_training_parallel_scheduler.py` | **39 passed** (2s) |
+| `pytest -q tests/test_mlff_p5_replay_target_real_owner.py` | **11 passed** (269s) |
+| `pytest -q tests/test_mlff_target_size_multi_size_integration.py tests/test_mlff_target_size_multi_selection.py` | **47 passed** (277s) |
+| `pytest -q tests/test_mlff_target_size_p5e_production_and_restart.py` | **27 passed** (516s) |
+| `pytest -q tests/test_mlff_replay_mace_p5_execution_recovery.py` | **6 passed** (119s) |
+| `pytest -q tests/test_mlff_campaign_currentness_races.py tests/test_mlff_campaign_assembled_lifecycle.py` | **5 passed** (82s) |
+| `pytest -q tests/test_mlff_storage_reset_integration.py` | **167 passed** (5383s) |
+
+Every required focused suite is green serially, with zero failures and zero
+skips, on one SHA after the last executable edit. The two zero-safe-admission
+specifications Section 12.6 names, and the third sibling that the serial rerun
+exposed, are inside the 16 above.
+
+**Affected MLFF campaign/training-data CPU regression.** Reported as a
+failure-set diff against the Section 12 entry point, because this branch carries
+a large pre-existing CPU failure population that this cycle does not adopt. Both
+arms ran the identical command; the baseline arm is a detached worktree at
+`1c962d13` into which the gitignored
+`qualification/p6-p5a6-compat/workspace/` was copied, so the two arms execute the
+same set of tests and the Section 11.8 skip artefact does not recur.
+
+`python -m pytest -q -p no:randomly tests/test_mlff_*.py -n 16` (229 files):
+
+| Arm | Result |
+| --- | --- |
+| repaired `94f9bf54` | **184 failed, 2827 passed, 15 skipped** (2675s) |
+| entry point `1c962d13` (comparable worktree) | **184 failed, 2825 passed, 15 skipped** (2786s) |
+
+Set difference of the failing node ids:
+
+* **failures present only in the repaired arm: 0**
+* **failures fixed relative to the entry point: 0**
+
+The two extra passes in the repaired arm are the two new A17 acceptances of
+13.3. **Net effect on the affected regression: zero new failures, zero
+regressions.** The 184-failure population is pre-existing on this branch, is
+identical in both arms, and is not adopted by this cycle; no member of it is
+called non-blocking here on the ground that it predates the branch - it is
+excluded because it is demonstrably unchanged by this cycle, node id for node
+id.
+
+**Checks not executed, and why.**
+
+* **Physical GPU throughput/VRAM qualification on the production target device.**
+  Deferred to the final release package under standing project direction, and
+  explicitly not requested from the stakeholder in this round. The real-child
+  device figures in 13.1/13.2 are a development-host resource *bound* for the D4
+  admission contract and are labelled as such everywhere they appear.
+* **A real child at `N = 16384`.** The ladder maximum's host bound is the
+  conservative extrapolation of two real measurements (13,015 MiB from a
+  0.37878 MiB/configuration slope), not a third measurement. Both measured points
+  are real, the relation between them is linear in the one variable that scales,
+  and the configured reservation keeps 26% headroom above the extrapolated value.
+* **PDF regeneration** follows the repository's existing automated documentation
+  build path and is not performed by hand here.
+
+### 13.8 Documentation impact
+
+Two non-executable reconciliations, plus one new evidence record:
+
+* `docs/arch_manuals/mlff_training_data/60_execution_performance.md` — the idle
+  zero-safe admission rule now states the poll-cadence recheck and the
+  unsafe->safe recovery it permits, instead of "not a launch or a wait"; and the
+  shared-profile bullet now states that the per-job RAM/VRAM estimates are
+  *common* bounds, that device residency is a batch/geometry function independent
+  of the configuration count and horizon while resident host memory is not, and
+  that a task not coverable by a common bound would be an architectural question
+  rather than a configuration one;
+* `campaign.toml.example` and the generated campaign template in
+  `_campaign_cli_core` carry the measurements as the warrant for both
+  reservations, so an operator lowering either can see what it would give up;
+* `audits/MLFF_A17_TRAIN_RESOURCE_BOUND_MEASUREMENT_2026-09-20.md` — the full
+  measurement record: pinned realization, geometry envelope, per-category device
+  residency with source line references, the scaling derivation, and the external
+  harness. The harness is deliberately evidence-only and is not a repository or
+  product artifact.
+
+### 13.9 Open risk and handoff
+
+* **The two repaired reservations are bounds, not qualifications.** The host
+  bound rests on two real measurements plus a linear extrapolation to the ladder
+  maximum; the device bound rests on one development-host observation plus the
+  source proof that it cannot grow with `N` or the horizon. Target-hardware
+  qualification remains the release package's obligation and nothing here
+  anticipates its result.
+* **Raising the reservations narrows admission width.** On a 24 GiB device the
+  ceiling is now 2 concurrent jobs rather than 3, and on a 62 GiB host the RAM
+  ceiling is 2. That is the truthful consequence of the measurements; the
+  work-conservation this cycle exists for (a two-position collection wave running
+  concurrently instead of serially) is preserved, but a campaign with more than
+  two ready production positions will now queue the rest.
+* **The pre-existing branch failure population** is untouched by this cycle and
+  remains a separate concern; this workplan does not adopt it.
+* **This workplan remains open.** Section 12.8's closure condition is for an
+  independent Review to evaluate against the candidate SHA in 13.0; nothing here
+  self-closes it or declares the Revision 8 D3 candidate accepted-current.
+
+
+## 14. Stakeholder evidence-scope decision — defer long resource qualification to actual runs
+
+### 14.1 Governing decision
+
+The stakeholder has explicitly determined that **long development-time resource qualification is not justified for this repair cycle**. Production-scale RAM/VRAM qualification and additional long-running real-child qualification SHALL be deferred to the actual production runs / final release qualification path.
+
+This decision supersedes any Section 12/13 wording that made additional long-running resource realization a prerequisite for closing this scheduler repair. It does **not** reinterpret missing evidence as a positive qualification result.
+
+The following propositions remain distinct:
+
+1. **D4 structural/resource-policy correctness** — must be established during development.
+2. **Empirical production resource adequacy on the actual workload/host** — deferred and remains unqualified until actual runs provide it.
+3. **Final target-hardware GPU throughput/VRAM qualification** — remains deferred under the standing project direction.
+
+### 14.2 Development-time acceptance retained
+
+The candidate still must establish, using cheap deterministic/static evidence and already-realized evidence where available:
+
+- one collection-global TRAIN controller and no second scheduler/resource owner;
+- deterministic queue/admission/backoff semantics;
+- exact currentness/admission linearization;
+- TRAIN/EVAL separation and failure/recovery semantics;
+- one common resource-policy interface consumed by the collection wave;
+- configuration precedence is respected and no hidden task identity is introduced into the controller;
+- the scheduler uses the **resolved campaign resource policy actually supplied to the wave**, not a second independently constructed policy;
+- explicit operator configuration remains authoritative under the existing configuration-precedence contract unless separately migrated through an accepted configuration change;
+- unsafe/blind telemetry remains fail-closed/backoff-capable according to the accepted scheduler semantics;
+- the repaired zero-safe idle recheck and all focused scheduler/recovery tests remain green;
+- no D1/D2 semantic change.
+
+A cheap test that compares a captured real-wave policy/plan with a separately built default-policy plan SHALL NOT be described as production resource qualification. If retained, it must be scoped to the structural proposition it actually establishes. It is acceptable to remove or narrow a redundant A17 magnitude test rather than manufacture production-scale evidence.
+
+### 14.3 Evidence explicitly deferred
+
+The following are **not development blockers for this cycle**:
+
+- another long real-child run solely to reproduce the Section 13 measurement through a more assembled P5 launch path;
+- a real-child `N=16384` measurement;
+- additional long-running 512/8192 resource qualification solely to strengthen the RAM/VRAM magnitude claim;
+- production-target GPU throughput/VRAM certification;
+- proving an empirical universal RAM/VRAM bound for every future workload before this repair can close.
+
+The Section 13 measurements remain useful bounded observations, but they SHALL be represented as observations from their exact measured regime, not promoted into a universal qualification claim.
+
+### 14.4 Actual-run qualification obligation
+
+Actual production runs become the empirical resource-qualification boundary.
+
+At those runs, preserve/report the scheduler's existing observable facts sufficient to assess the resource policy, including as available:
+
+- resolved per-job RAM/VRAM reservations;
+- effective CPU/RAM/GPU admission ceilings;
+- active/queued job counts;
+- observed aggregate VRAM and GPU utilization;
+- promotion/backoff decisions and reasons;
+- OOM/resource-stop/observability failures if any;
+- task size/seed context already present in progress reporting.
+
+No new persistent qualification subsystem is authorized. Use existing scheduler/progress/runtime outputs and ordinary run logs/evidence.
+
+If actual runs show that one common resource policy cannot safely represent the admitted tasks — for example repeatable OOM before safe backoff, task-dependent resource demand that invalidates common admission, or required task-aware weighting/buckets — that evidence triggers the existing D3 reopen threshold. Do not preemptively implement such machinery now.
+
+### 14.5 Existing explicit campaign values
+
+Changing built-in/template defaults does not silently rewrite an existing campaign's explicit `[execution]` values. That behavior is correct under the existing configuration-precedence contract.
+
+For this repair cycle, existing explicit historical reservations are therefore **not required to be migrated automatically** merely to satisfy the new development evidence. Their adequacy is assessed during the actual run through the scheduler's live telemetry and resulting operational evidence.
+
+Do not silently reinterpret or overwrite an operator's persisted configuration. A later decision to revise an existing campaign value is an explicit operator/configuration action, not hidden compatibility migration.
+
+### 14.6 Revised closure rule for this cycle
+
+The scheduler repair may close without additional long resource qualification when all of the following are true:
+
+- R1, R3, R4, R5 and R6A remain closed;
+- focused scheduler, zero-safe, recovery, currentness and production-global tests are green on the candidate;
+- the implementation contains no second scheduler/controller/resource registry and preserves Revision 8 D3;
+- configuration/resource-policy resolution is internally coherent and the real collection wave consumes the resolved campaign policy;
+- no test or document falsely labels synthetic/default-policy evidence as actual production resource qualification;
+- Section 13 empirical observations are kept explicitly regime-bounded;
+- production-scale RAM/VRAM adequacy and final target-hardware qualification are visibly deferred to actual runs.
+
+Under this stakeholder-authorized evidence scope, absence of additional long qualification is **not a D4 blocker**. A future actual-run failure remains new admissible evidence and may reopen D4 or D3 according to its owning cause.
+
+### 14.7 D4 evidence-oracle cleanup — 2026-09-21
+
+The narrow remaining oracle defect is repaired in
+`tests/test_mlff_production_global_train_scheduler.py`.
+`test_lighter_first_admission_bounds_the_heavier_next_production_task` now
+judges only the real wave's captured `wave_policy` and `wave_plan`: one common
+policy/plan is constructed for the collection, both positions consume the
+campaign-resolved configuration (including the deliberately small
+`_FAST_CONTROL` RAM reservation), lighter-first/heavier-next ordering does not
+introduce task-specific policy, and the existing controller's promotion
+relation is exercised without selected-size/task identity. It no longer builds
+a shipped-default plan or uses it as a positive judgment about the real wave.
+
+The separately constructed shipped-default policy remains only in
+`test_a17_is_not_closable_when_a_heavier_task_exceeds_the_common_estimate`,
+whose claim is explicitly limited to discrimination of the negative acceptance
+predicate. The Section 13 real-child RAM/VRAM rows remain bounded observations
+from their exact measured regime; they are not production-scale qualification.
+Actual production runs remain the RAM/VRAM adequacy boundary, and target-GPU
+qualification remains deferred to final release qualification. Explicit
+campaign resource values remain authoritative and are not migrated or silently
+reinterpreted.
+
+Candidate/evidence identity for the reviewed cleanup:
+
+- reviewed candidate Git SHA: `62d42da57f948f70bbd50ec338435c3a82b22d49`;
+- test blob SHA: `6b75e30c69f8b1bba0793b019b0d898c65a8f42a`;
+- pre-commit working-tree diff SHA-256 retained as historical provenance: `3535d6bb1fcd0c20b3861a991fff4ee9db67b28729390f6f085cb5d4ad3dc9ce`.
+
+The recorded test blob is byte-identical to the file at the reviewed commit, so the focused evidence realized before commit remains applicable to the committed candidate.
+
+Focused evidence on that candidate, using the `mace` environment and
+`-p no:randomly`:
+
+The four suite runs below followed the behavioral oracle cleanup. The final
+test-blob change after those suite runs was wording-only (module/docstring
+scope clarification); `compileall` and both A17 nodes were rerun on the final
+blob, and the suite results remain applicable because no executable assertion,
+fixture, or runtime path changed.
+
+| Command | Result |
+| --- | --- |
+| `conda run -n mace python -m compileall mdstats tests` | clean, exit 0 |
+| `conda run -n mace python -m pytest -q -p no:randomly tests/test_mlff_production_global_train_scheduler.py::test_lighter_first_admission_bounds_the_heavier_next_production_task tests/test_mlff_production_global_train_scheduler.py::test_a17_is_not_closable_when_a_heavier_task_exceeds_the_common_estimate` | **2 passed** (18.84s) |
+| `conda run -n mace python -m pytest -q -p no:randomly tests/test_mlff_production_global_train_scheduler.py` | **28 passed** (396.15s) |
+| `conda run -n mace python -m pytest -q -p no:randomly tests/test_mlff_p5_train2_zero_safe_admission.py` | **16 passed** (276.74s) |
+| `conda run -n mace python -m pytest -q -p no:randomly tests/test_mlff_p5_train2_memory_backoff.py` | **12 passed** (164.96s) |
+| `conda run -n mace python -m pytest -q -p no:randomly tests/test_mlff_training_parallel_scheduler.py` | **39 passed** (4.79s) |
+
+No additional long resource qualification, target-production GPU run, or
+iterative stakeholder GPU qualification was executed. This workplan remains
+open for independent Review and is not self-closed.
+
+
+## 15. Final independent implementation Review closure — 2026-09-21
+
+### 15.1 Disposition
+
+**PASS. No Serious Challenge to D1, D2, or Revision-8 D3 is active.**
+
+Independent Review accepted candidate `62d42da57f948f70bbd50ec338435c3a82b22d49` under the stakeholder-authorized Section 14 evidence boundary. The last executable product-code change remains `94f9bf5488071aff7ad4b42033f32364b758ffdd`; the reviewed descendant changes only acceptance tests and workplan/evidence representation.
+
+The final A17 cleanup closes the prior false-positive oracle: the positive structural test now judges the actual captured collection-wave `wave_policy` and `wave_plan`, proves every production position resolves through that one common policy owner, and exercises the existing controller promotion relation without importing a second shipped-default plan or claiming empirical production RAM/VRAM adequacy.
+
+R1, R3, R4, R5, and R6A remain closed. No second scheduler/controller, resource registry, recovery/currentness owner, cross-size reducer, concurrent EVAL2 path, or D1/D2 semantic change was introduced.
+
+### 15.2 Evidence disposition
+
+Focused acceptance on the final test blob is green:
+
+- production-global scheduler: 28 passed;
+- zero-safe admission: 16 passed;
+- memory backoff: 12 passed;
+- training-parallel scheduler: 39 passed;
+- final A17 nodes: 2 passed;
+- compileall: clean.
+
+The test blob recorded in Section 14.7, `6b75e30c69f8b1bba0793b019b0d898c65a8f42a`, is exactly the blob present at reviewed commit `62d42da57f948f70bbd50ec338435c3a82b22d49`. Therefore those focused realizations remain applicable after commit.
+
+The previously recorded affected MLFF CPU differential also remains applicable because no product executable changed after `94f9bf54`: the repaired arm introduced zero new failing node IDs relative to the comparable Section-12 entry point.
+
+Long production-scale RAM/VRAM qualification is intentionally **deferred**, not passed by proxy. Actual production runs own empirical resource adequacy; final target-hardware GPU qualification remains part of the established final-release qualification package. New actual-run evidence may reopen D4 or D3 according to its owning cause.
+
+### 15.3 Closeout learning / PEM
+
+Closeout learning assessment found no justified Project Engineering Memory mutation in this branch closeout. The cycle is a coordinated application of already-current lessons around resource-owner boundaries, reduction of duplicate ownership, and authenticated restart/reuse; it is not yet an independently accepted project-memory episode on the accepted base, and it does not establish a new failure-family semantic identity.
+
+`PROJECT-ENGINEERING-MEMORY.md` therefore remains unchanged. If this candidate is integrated into the accepted project state, a later accepted-base reconciliation may decide whether the episode materially changes an existing family/application record.
+
+### 15.4 Lifecycle closure
+
+This implementation workplan is complete and is archived as historical engineering lineage. Archival does not by itself promote the branch-local D3 candidate to accepted-current architecture; integration/merge remains the normal project acceptance boundary.
+
+The design branch is deliberately retained for integration. No branch deletion, history rewrite, or cleanup of unique work is part of this closeout.

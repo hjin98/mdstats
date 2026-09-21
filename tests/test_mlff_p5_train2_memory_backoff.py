@@ -3,7 +3,7 @@
 The governed owner is the pair
 ``training_parallel.AdaptiveTrainingConcurrency`` (the admission/backoff
 decision) and
-``campaign_post_selection_runtime._execute_post_selection_pending_runs`` (owned
+``campaign_post_selection_runtime._train_post_selection_pending_runs`` (owned
 TRAIN2 lifetime, per-job demotion, teardown, requeue and accounting). Both are
 driven here through the real cross-validation caller; only MACE numerics and the
 device telemetry probe are substituted, and the telemetry substitution is
@@ -69,6 +69,12 @@ _FAST_CONTROL = "\n".join(
         # whatever else the machine is doing; pin the per-job reservation so the
         # planned ceiling is decided by the VRAM semantics under test.
         "estimated_training_ram_mib_per_job = 512.0",
+        # The claim here is the VRAM envelope/backoff/occupancy-attribution
+        # semantics at a chosen owned concurrency, not the magnitude of the
+        # shipped per-job device reservation. Pin it so these scenarios keep
+        # exercising the transition they were built for when that shipped
+        # reservation moves.
+        "estimated_training_vram_mib_per_job = 6144.0",
     )
 )
 
@@ -837,9 +843,9 @@ def test_the_demotion_barrier_imposes_no_deadline_on_the_owned_future() -> None:
     from mdstats.training_data import campaign_post_selection_runtime as runtime
     from mdstats.training_data import post_selection_execution
 
-    source = inspect.getsource(runtime.__dict__["_execute_post_selection_pending_runs"])
+    source = inspect.getsource(runtime.__dict__["_train_post_selection_pending_runs"])
     barrier = source.split("def demote_most_recently_admitted", 1)[1].split(
-        "def complete_eval2_for_trained_slots", 1
+        "\n    executor = ThreadPoolExecutor", 1
     )[0]
     for forbidden in (
         "timeout",

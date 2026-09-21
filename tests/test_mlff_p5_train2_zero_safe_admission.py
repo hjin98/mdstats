@@ -1,7 +1,7 @@
 """Real-owner acceptance for zero-safe TRAIN2 admission and phase ownership.
 
 The P5 admission/supervision owner is
-``campaign_post_selection_runtime._execute_post_selection_pending_runs``, driven
+``campaign_post_selection_runtime._train_post_selection_pending_runs``, driven
 here through the real ``cross-validate`` command. Only MACE numerics are
 substituted, through the shared fixture's two seams below the owner boundary,
 plus bounded deterministic resource facts where the claim *is* resource
@@ -122,6 +122,11 @@ def test_the_target_host_vram_baseline_launches_nothing_through_the_real_owner(
     scheduler admission semantics, not telemetry plumbing. Everything above it -
     the planner, the controller, the submission loop, and the CV caller - is the
     real owner, and the 90% default is the configured one.
+
+    The 6 GiB per-job reservation is part of the *supplied* target-host case and
+    is therefore pinned here rather than inherited: the shipped reservation has
+    since been raised to cover measured real-child device peaks, and this test
+    must keep reproducing the reported scenario.
     """
 
     from dataclasses import replace
@@ -135,7 +140,9 @@ def test_the_target_host_vram_baseline_launches_nothing_through_the_real_owner(
     from mdstats.training_data.training_parallel import GpuTelemetrySample
 
     gib = 1024 ** 3
-    config = _selected_campaign(tmp_path)
+    config = _selected_campaign(
+        tmp_path, execution="estimated_training_vram_mib_per_job = 6144.0"
+    )
     monkeypatch.setattr(
         training_parallel,
         "query_gpu_telemetry",

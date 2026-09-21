@@ -55,3 +55,16 @@ Archived in this closeout:
 - `MLFF_REPLAY_TRUE_DFT_DEFAULT_PSEUDOLABEL_PREP_AND_CUDA_LIFETIME_REPAIR_FOURTH_REVIEW_REOPEN.md`;
 - `MLFF_REPLAY_TRUE_DFT_DEFAULT_PSEUDOLABEL_PREP_AND_CUDA_LIFETIME_REPAIR_FIFTH_REVIEW_REOPEN.md`;
 - `MLFF_REPLAY_TRUE_DFT_DEFAULT_PSEUDOLABEL_PREP_AND_CUDA_LIFETIME_REPAIR_SIXTH_REVIEW_REOPEN.md`.
+
+
+## 2026-09-21 final-production global TRAIN scheduler closeout
+
+Independent Software Design Review closed the bounded D3/D4 final-production scheduling rework **PASS** at candidate `62d42da57f948f70bbd50ec338435c3a82b22d49`, with no Serious Challenge to D1/D2 or the Revision-8 D3 architecture. The repair replaces serial outer-size production TRAIN orchestration with one collection-global use of the existing adaptive TRAIN scheduler after collection-wide recovery normalization, while keeping EVAL2, per-seed assessment, and publication serial/fail-fast in frozen selected-size order. Recovery classification remains under the existing run-activity owner, each admission remains linearized against the exact current collection signature, and completed authenticated TRAIN2 siblings are reused after failure/restart.
+
+The final review accepted the stakeholder-directed evidence boundary: additional long RAM/VRAM qualification is deferred to actual production runs, and final target-hardware GPU qualification remains deferred to the final release package. Deterministic scheduler/recovery/currentness acceptance is green; no second scheduler, resource registry, or task-aware resource mechanism was added.
+
+Archived in this closeout:
+
+- `MLFF_PRODUCTION_GLOBAL_TRAIN_SCHEDULER_REPAIR_WORKPLAN.md`.
+
+The design branch is retained for normal integration; archival is lifecycle closure of the coordination plan, not branch deletion or self-promotion to accepted-current architecture.
