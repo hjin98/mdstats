@@ -24,7 +24,9 @@ d4_repair_head: 0462f56f6bfb22ea254a28683a62937b6aad2740
 d4_repair_evidence_date: 2026-09-20
 second_d4_repair_head: 94f9bf5488071aff7ad4b42033f32364b758ffdd
 second_d4_repair_evidence_date: 2026-09-20
-second_d4_repair_review_status: awaiting-third-independent-implementation-review
+second_d4_repair_review_status: stakeholder-scope-reconciled
+stakeholder_deferred_resource_qualification: actual-production-runs
+stakeholder_deferred_resource_qualification_date: 2026-09-21
 reviewed_pre_repair_head: 10c68eb50cb7ee2b5f0bb8d43e35bb250a186d96
 second_reviewed_pre_repair_head: 35fe7c19f60d99a2ae99257496acb2e82c35975d
 closure_falsification_pre_repair_head: 47376b968a62ab05473e370746f79988436bb3e3
@@ -2038,3 +2040,88 @@ Two non-executable reconciliations, plus one new evidence record:
 * **This workplan remains open.** Section 12.8's closure condition is for an
   independent Review to evaluate against the candidate SHA in 13.0; nothing here
   self-closes it or declares the Revision 8 D3 candidate accepted-current.
+
+
+## 14. Stakeholder evidence-scope decision — defer long resource qualification to actual runs
+
+### 14.1 Governing decision
+
+The stakeholder has explicitly determined that **long development-time resource qualification is not justified for this repair cycle**. Production-scale RAM/VRAM qualification and additional long-running real-child qualification SHALL be deferred to the actual production runs / final release qualification path.
+
+This decision supersedes any Section 12/13 wording that made additional long-running resource realization a prerequisite for closing this scheduler repair. It does **not** reinterpret missing evidence as a positive qualification result.
+
+The following propositions remain distinct:
+
+1. **D4 structural/resource-policy correctness** — must be established during development.
+2. **Empirical production resource adequacy on the actual workload/host** — deferred and remains unqualified until actual runs provide it.
+3. **Final target-hardware GPU throughput/VRAM qualification** — remains deferred under the standing project direction.
+
+### 14.2 Development-time acceptance retained
+
+The candidate still must establish, using cheap deterministic/static evidence and already-realized evidence where available:
+
+- one collection-global TRAIN controller and no second scheduler/resource owner;
+- deterministic queue/admission/backoff semantics;
+- exact currentness/admission linearization;
+- TRAIN/EVAL separation and failure/recovery semantics;
+- one common resource-policy interface consumed by the collection wave;
+- configuration precedence is respected and no hidden task identity is introduced into the controller;
+- the scheduler uses the **resolved campaign resource policy actually supplied to the wave**, not a second independently constructed policy;
+- explicit operator configuration remains authoritative under the existing configuration-precedence contract unless separately migrated through an accepted configuration change;
+- unsafe/blind telemetry remains fail-closed/backoff-capable according to the accepted scheduler semantics;
+- the repaired zero-safe idle recheck and all focused scheduler/recovery tests remain green;
+- no D1/D2 semantic change.
+
+A cheap test that compares a captured real-wave policy/plan with a separately built default-policy plan SHALL NOT be described as production resource qualification. If retained, it must be scoped to the structural proposition it actually establishes. It is acceptable to remove or narrow a redundant A17 magnitude test rather than manufacture production-scale evidence.
+
+### 14.3 Evidence explicitly deferred
+
+The following are **not development blockers for this cycle**:
+
+- another long real-child run solely to reproduce the Section 13 measurement through a more assembled P5 launch path;
+- a real-child `N=16384` measurement;
+- additional long-running 512/8192 resource qualification solely to strengthen the RAM/VRAM magnitude claim;
+- production-target GPU throughput/VRAM certification;
+- proving an empirical universal RAM/VRAM bound for every future workload before this repair can close.
+
+The Section 13 measurements remain useful bounded observations, but they SHALL be represented as observations from their exact measured regime, not promoted into a universal qualification claim.
+
+### 14.4 Actual-run qualification obligation
+
+Actual production runs become the empirical resource-qualification boundary.
+
+At those runs, preserve/report the scheduler's existing observable facts sufficient to assess the resource policy, including as available:
+
+- resolved per-job RAM/VRAM reservations;
+- effective CPU/RAM/GPU admission ceilings;
+- active/queued job counts;
+- observed aggregate VRAM and GPU utilization;
+- promotion/backoff decisions and reasons;
+- OOM/resource-stop/observability failures if any;
+- task size/seed context already present in progress reporting.
+
+No new persistent qualification subsystem is authorized. Use existing scheduler/progress/runtime outputs and ordinary run logs/evidence.
+
+If actual runs show that one common resource policy cannot safely represent the admitted tasks — for example repeatable OOM before safe backoff, task-dependent resource demand that invalidates common admission, or required task-aware weighting/buckets — that evidence triggers the existing D3 reopen threshold. Do not preemptively implement such machinery now.
+
+### 14.5 Existing explicit campaign values
+
+Changing built-in/template defaults does not silently rewrite an existing campaign's explicit `[execution]` values. That behavior is correct under the existing configuration-precedence contract.
+
+For this repair cycle, existing explicit historical reservations are therefore **not required to be migrated automatically** merely to satisfy the new development evidence. Their adequacy is assessed during the actual run through the scheduler's live telemetry and resulting operational evidence.
+
+Do not silently reinterpret or overwrite an operator's persisted configuration. A later decision to revise an existing campaign value is an explicit operator/configuration action, not hidden compatibility migration.
+
+### 14.6 Revised closure rule for this cycle
+
+The scheduler repair may close without additional long resource qualification when all of the following are true:
+
+- R1, R3, R4, R5 and R6A remain closed;
+- focused scheduler, zero-safe, recovery, currentness and production-global tests are green on the candidate;
+- the implementation contains no second scheduler/controller/resource registry and preserves Revision 8 D3;
+- configuration/resource-policy resolution is internally coherent and the real collection wave consumes the resolved campaign policy;
+- no test or document falsely labels synthetic/default-policy evidence as actual production resource qualification;
+- Section 13 empirical observations are kept explicitly regime-bounded;
+- production-scale RAM/VRAM adequacy and final target-hardware qualification are visibly deferred to actual runs.
+
+Under this stakeholder-authorized evidence scope, absence of additional long qualification is **not a D4 blocker**. A future actual-run failure remains new admissible evidence and may reopen D4 or D3 according to its owning cause.
