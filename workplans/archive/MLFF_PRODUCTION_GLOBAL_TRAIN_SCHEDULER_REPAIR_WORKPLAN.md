@@ -3,7 +3,7 @@
 kind: implementation-workplan
 workplan_id: MLFF-PRODUCTION-GLOBAL-TRAIN-SCHEDULER-REPAIR
 protocol_version: 6.4.0
-status: implementation-reopened
+status: closed-pass
 created_date: 2026-09-19
 reviewed_date: 2026-09-19
 second_reviewed_date: 2026-09-19
@@ -25,6 +25,10 @@ d4_repair_evidence_date: 2026-09-20
 second_d4_repair_head: 94f9bf5488071aff7ad4b42033f32364b758ffdd
 second_d4_repair_evidence_date: 2026-09-20
 second_d4_repair_review_status: stakeholder-scope-reconciled
+final_implementation_review_status: pass
+final_implementation_reviewed_head: 62d42da57f948f70bbd50ec338435c3a82b22d49
+final_implementation_review_date: 2026-09-21
+closed_date: 2026-09-21
 stakeholder_deferred_resource_qualification: actual-production-runs
 stakeholder_deferred_resource_qualification_date: 2026-09-21
 reviewed_pre_repair_head: 10c68eb50cb7ee2b5f0bb8d43e35bb250a186d96
@@ -37,7 +41,7 @@ fourth_review_closure_pre_repair_head: d7efcf62c8cc5b29cbd021f9f74cb13fff3f921e
 branch: design/mlff-production-global-train-scheduler-repair
 basis_commit: f341a3f993b931c5e0838e95520b8b4fd41459ae
 highest_affected_domain: D3
-authority_state: stakeholder-authorized-d3-reopen-candidate
+authority_state: independent-review-pass-awaiting-integration
 d1_d2_change: false
 production_gpu_qualification: deferred-final-release
 ---
@@ -2146,14 +2150,13 @@ qualification remains deferred to final release qualification. Explicit
 campaign resource values remain authoritative and are not migrated or silently
 reinterpreted.
 
-Candidate/evidence identity for this uncommitted cleanup:
+Candidate/evidence identity for the reviewed cleanup:
 
-- base candidate Git SHA: `add583eff7fe4a4cca11b634a1c23f0784493d65`;
-- edited test blob SHA: `6b75e30c69f8b1bba0793b019b0d898c65a8f42a`;
-- edited-test working-tree diff SHA-256: `3535d6bb1fcd0c20b3861a991fff4ee9db67b28729390f6f085cb5d4ad3dc9ce`.
+- reviewed candidate Git SHA: `62d42da57f948f70bbd50ec338435c3a82b22d49`;
+- test blob SHA: `6b75e30c69f8b1bba0793b019b0d898c65a8f42a`;
+- pre-commit working-tree diff SHA-256 retained as historical provenance: `3535d6bb1fcd0c20b3861a991fff4ee9db67b28729390f6f085cb5d4ad3dc9ce`.
 
-No commit is created by this cleanup; the base SHA plus the recorded working-tree
-identity is the exact candidate state available for independent Review.
+The recorded test blob is byte-identical to the file at the reviewed commit, so the focused evidence realized before commit remains applicable to the committed candidate.
 
 Focused evidence on that candidate, using the `mace` environment and
 `-p no:randomly`:
@@ -2176,3 +2179,45 @@ fixture, or runtime path changed.
 No additional long resource qualification, target-production GPU run, or
 iterative stakeholder GPU qualification was executed. This workplan remains
 open for independent Review and is not self-closed.
+
+
+## 15. Final independent implementation Review closure — 2026-09-21
+
+### 15.1 Disposition
+
+**PASS. No Serious Challenge to D1, D2, or Revision-8 D3 is active.**
+
+Independent Review accepted candidate `62d42da57f948f70bbd50ec338435c3a82b22d49` under the stakeholder-authorized Section 14 evidence boundary. The last executable product-code change remains `94f9bf5488071aff7ad4b42033f32364b758ffdd`; the reviewed descendant changes only acceptance tests and workplan/evidence representation.
+
+The final A17 cleanup closes the prior false-positive oracle: the positive structural test now judges the actual captured collection-wave `wave_policy` and `wave_plan`, proves every production position resolves through that one common policy owner, and exercises the existing controller promotion relation without importing a second shipped-default plan or claiming empirical production RAM/VRAM adequacy.
+
+R1, R3, R4, R5, and R6A remain closed. No second scheduler/controller, resource registry, recovery/currentness owner, cross-size reducer, concurrent EVAL2 path, or D1/D2 semantic change was introduced.
+
+### 15.2 Evidence disposition
+
+Focused acceptance on the final test blob is green:
+
+- production-global scheduler: 28 passed;
+- zero-safe admission: 16 passed;
+- memory backoff: 12 passed;
+- training-parallel scheduler: 39 passed;
+- final A17 nodes: 2 passed;
+- compileall: clean.
+
+The test blob recorded in Section 14.7, `6b75e30c69f8b1bba0793b019b0d898c65a8f42a`, is exactly the blob present at reviewed commit `62d42da57f948f70bbd50ec338435c3a82b22d49`. Therefore those focused realizations remain applicable after commit.
+
+The previously recorded affected MLFF CPU differential also remains applicable because no product executable changed after `94f9bf54`: the repaired arm introduced zero new failing node IDs relative to the comparable Section-12 entry point.
+
+Long production-scale RAM/VRAM qualification is intentionally **deferred**, not passed by proxy. Actual production runs own empirical resource adequacy; final target-hardware GPU qualification remains part of the established final-release qualification package. New actual-run evidence may reopen D4 or D3 according to its owning cause.
+
+### 15.3 Closeout learning / PEM
+
+Closeout learning assessment found no justified Project Engineering Memory mutation in this branch closeout. The cycle is a coordinated application of already-current lessons around resource-owner boundaries, reduction of duplicate ownership, and authenticated restart/reuse; it is not yet an independently accepted project-memory episode on the accepted base, and it does not establish a new failure-family semantic identity.
+
+`PROJECT-ENGINEERING-MEMORY.md` therefore remains unchanged. If this candidate is integrated into the accepted project state, a later accepted-base reconciliation may decide whether the episode materially changes an existing family/application record.
+
+### 15.4 Lifecycle closure
+
+This implementation workplan is complete and is archived as historical engineering lineage. Archival does not by itself promote the branch-local D3 candidate to accepted-current architecture; integration/merge remains the normal project acceptance boundary.
+
+The design branch is deliberately retained for integration. No branch deletion, history rewrite, or cleanup of unique work is part of this closeout.

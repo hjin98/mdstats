@@ -4,16 +4,6 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 ## Current active MLFF work
 
-### Final-production global TRAIN scheduler repair
-
-Branch: `design/mlff-production-global-train-scheduler-repair`
-
-Canonical workplan:
-
-- `workplans/active/MLFF_PRODUCTION_GLOBAL_TRAIN_SCHEDULER_REPAIR_WORKPLAN.md`
-
-This is a stakeholder-authorized **bounded D3 reopen of final-production selected-size scheduling**: it supersedes the accepted serial production-size TRAIN2 concretization only. After the collection-wide CV barrier and two-phase per-size authorization/planning, final-production recovery first authenticates sealed/current/legacy continuations and seals any already-terminal-but-unsealed roots with zero trainer launch. Only positions that remain TRAIN_REQUIRED enter the one existing adaptive TRAIN scheduler wave; this normalization does not change public CV scheduling/task-count semantics. Each TRAIN admission and the EVAL/finalization phase boundary is linearized against target-generation transitions using the existing CampaignStore serialization owner and the exact `(generation, ordered binding digests)` collection signature; there is no read-then-submit currentness race. That scheduler stops at sealed TRAIN2 roots; EVAL2, per-seed assessment, and final publication remain serial/fail-fast in frozen selected-size order. Per-size scientific identity/currentness and the multi-size no-winner boundary remain independent; public CV selected-size orchestration stays unchanged. No collection-level pointer transaction, production-seed policy change, second scheduler/resource owner, concurrent EVAL2, or cross-size publication/release rule is authorized. Physical GPU qualification remains deferred to the final complete-release package.
-
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
 Branch: `design/mlff-pi-train-fps-diversity-restoration`
@@ -39,6 +29,13 @@ The proposed method restores the final mature multi-view semantics under current
 **No D1/D2 promotion has occurred.** Independent D1/D2 falsification and stakeholder human ratification remain mandatory before accepted-current method-paper promotion and before R2 begins. The current UID-capable product method therefore remains under **SERIOUS CHALLENGE**.
 
 ## Recently closed MLFF work
+
+The final-production global TRAIN scheduler repair on branch `design/mlff-production-global-train-scheduler-repair` closed **PASS** under Protocol 6.4 at reviewed candidate `62d42da57f948f70bbd50ec338435c3a82b22d49`. Final production now normalizes recovery collection-wide, executes only remaining TRAIN_REQUIRED positions through one existing adaptive TRAIN scheduler wave, and retains serial/fail-fast EVAL2/assessment/publication in frozen selected-size order. Exact CampaignStore collection-signature admission linearization, authenticated restart/reuse, and zero-safe/backoff semantics remain intact. Production-scale RAM/VRAM adequacy is deferred to actual runs and target-hardware GPU qualification to the final release package.
+
+Final closure record:
+
+- `workplans/archive/MLFF_PRODUCTION_GLOBAL_TRAIN_SCHEDULER_REPAIR_WORKPLAN.md`.
+
 
 The replay-retention / target-admissibility rework on branch `design/mlff-replay-retention-target-admissibility-rework` closed **PASS** under Protocol 6.4. Final D4 Review accepted executable candidate `042b84b74d0b109dd576b725eafe6359629a55ea` with evidence-only binding descendant `51db5d33723fad862b803b2487ea448cb876ec06`, with no Serious Challenge to accepted D1/D2/D3 authority. Final affected CPU evidence records 656 passing tests, including all 167 storage-integration tests. Production-scale GPU qualification remains deferred to the final complete-release package.
 
