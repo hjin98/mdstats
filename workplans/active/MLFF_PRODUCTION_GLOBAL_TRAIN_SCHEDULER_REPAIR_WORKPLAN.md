@@ -17,6 +17,9 @@ workplan_review_status: pass-after-fourth-review-consistency-closure
 implementation_review_status: no-pass-d4-reopened
 implementation_reviewed_head: f7d4925e08fe3e013b4a35a71a29d6fed8c8c2be
 implementation_review_date: 2026-09-20
+second_implementation_review_status: no-pass-d4-r2-resource-proof-reopened
+second_implementation_reviewed_head: 07e506df4c0f58758c5364e8b1bb05ff32a8df68
+second_implementation_review_date: 2026-09-20
 d4_repair_head: 0462f56f6bfb22ea254a28683a62937b6aad2740
 d4_repair_evidence_date: 2026-09-20
 reviewed_pre_repair_head: 10c68eb50cb7ee2b5f0bb8d43e35bb250a186d96
@@ -1433,3 +1436,179 @@ build path and is not performed by hand here.
 * **This workplan remains open.** Section 10.8's closure condition is for an
   independent Review to evaluate against `0462f56f`; nothing here self-closes
   it or declares the D3 candidate accepted-current.
+
+
+## 12. Second independent implementation Review reopen — 2026-09-20
+
+### 12.1 Review disposition
+
+**NO-PASS at reviewed head `07e506df4c0f58758c5364e8b1bb05ff32a8df68`. No Serious Challenge to D3 is active.**
+
+R1, R3, R4 and R5 from Section 10 are materially closed and SHALL be preserved. The run-lease recovery repair is correct and discriminated by a real race; the fresh serial-versus-concurrent A4 oracle now executes both widths; the incompatible historical continuation fails through the public collection owner before sibling launch; and completed TRAIN2 sibling evidence survives a later wave failure and is excluded from retry task_count.
+
+The remaining blocker is **R2/A17 resource compatibility**. Section 11.2 overstates closure. The present oracle compares the serialized `target_train.extxyz` byte count with the configured per-job RAM reservation and uses synthetic, task-independent GPU telemetry. Those facts do not establish that the real trainer's peak resident host memory or device memory is conservatively bounded for the largest admitted production task. Rebuilding an identical `TrainingConcurrencyPlan` from the larger context proves only that both paths consume the same configured estimate; it does not prove that the estimate bounds the larger task.
+
+There is also an evidence-applicability obligation around the two failing zero-safe-admission regressions in Section 11.8. Their pre-existence proves this branch did not introduce them, but does not make them inapplicable to a candidate that now relies on the same shared TRAIN scheduler.
+
+The repairs below are D4-local unless R2B/R2C falsify the existing one-controller architecture. Do not add per-size scheduler buckets, a second controller, a task-specific persistent resource model, or another admission registry.
+
+### 12.2 R2A — replace the EXTXYZ-size proxy with the real host-memory quantity
+
+**Current invalid oracle:** `target_train.extxyz.stat().st_size <= plan.estimated_ram_bytes_per_job`.
+
+A serialized transport size is not a conservative bound on the MACE process's resident memory after parsing, graph construction, Python/ASE object creation, tensor conversion, loader state, caches, batches, optimizer state or framework overhead. Remove that assertion as the A17 RAM proof. It may remain as descriptive transport evidence only.
+
+Close host RAM by one of these two admissible evidence routes, preferring the first when the real MACE runtime is available in the development environment:
+
+1. **Real-child peak route.**
+   - Drive the existing P5 materialization/runtime owner with materially representative TRAIN_REQUIRED production memberships, preferably the actual `N=512` and `N=8192` regimes and their frozen production horizons.
+   - Use the existing MACE child/process boundary; do not add production scheduler state solely for measurement.
+   - Measure the trainer child's **peak resident host memory** over the interval that includes input parsing/dataset construction and at least one true training epoch. If loader workers or other owned descendants exist, include their simultaneously resident contribution rather than measuring the parent alone.
+   - Prefer a kernel/runtime high-water observation such as process high-water RSS/PSS or an equivalent process-tree peak over a sparse polling sample that can miss the peak.
+   - Record the exact MACE version, model/method realization, dtype, batch/valid-batch, loader worker count, replay mode, selected membership size, structure/atom-count geometry and horizon.
+   - Prove the common `estimated_training_ram_mib_per_job` used by the actual concurrency plan is >= the conservatively interpreted peak for the heaviest admissible task.
+
+2. **Static conservative-bound route.**
+   - If the real child cannot be executed, derive a conservative bound from the exact in-memory representation actually constructed by the pinned MACE/runtime path, including every dataset-wide object that coexists, loader duplication where applicable and fixed framework/model overhead.
+   - The derivation must be tied to the actual pinned realization and the largest relevant membership/geometry, not to file size.
+   - State all assumptions and prove the configured common per-job RAM estimate exceeds the resulting bound.
+
+If the existing configured/default common RAM estimate is too small but **one single conservative common bound** safely covers every task under the existing controller, repair the existing estimate/default/configuration owner and its documentation/tests rather than introducing per-size estimates. If no practical single bound exists under the one-controller contract, stop and reopen D3.
+
+### 12.3 R2B — prove the device-residency dependence from the actual MACE realization
+
+Physical target-GPU qualification remains deferred, but the D4 resource contract still requires a truthful answer to whether `N`, membership geometry or `H_prod` can make one later task materially heavier than the task used to calibrate promotion.
+
+Inspect the pinned MACE/TRAIN2 realization and establish, with exact source/runtime ownership, which objects are device resident simultaneously:
+
+- model parameters and buffers;
+- optimizer state;
+- EMA state if applicable;
+- training/validation batch tensors and graph/neighborhood tensors;
+- any replay-head/device-resident state;
+- any dataset-wide or cache state that is moved to the device;
+- temporary tensors whose size is controlled by batch geometry.
+
+For each item, state its scaling variables. The proof must distinguish:
+
+- **number of configurations `N`** from
+- **per-configuration geometry** such as atom count and graph/edge count from
+- **batch/valid-batch size** from
+- **epoch horizon `H_prod`**.
+
+Then inspect the actual memberships used by the two production positions and establish the maximum per-sample/batch geometry relevant to device residency. Equal batch size alone is insufficient if a later membership can contain larger structures or denser graphs.
+
+An acceptable non-GPU closure is a source/runtime proof that:
+1. no dataset-wide state scales onto the device with total `N` or horizon;
+2. all task-varying device state is bounded by a common batch-geometry envelope already represented by the accepted training realization; and
+3. the configured per-job VRAM estimate has an admissible conservative warrant for that envelope, either from an applicable existing qualification/telemetry record or from a defensible static bound.
+
+Synthetic telemetry that reports the same 0.4 GiB for every task is useful for scheduler-control tests but **cannot** establish this bound.
+
+If no admissible warrant exists for the configured VRAM estimate before final physical qualification, preserve the distinction explicitly: do not claim the estimate is validated. The implementer must still prove that globalization does not introduce an unrepresented task-dependent increase in device demand. If that cannot be proved without task-specific resource knowledge, trigger the D3 reopen below.
+
+### 12.4 R2C — exercise the order-sensitive promotion counterexample
+
+Add a discriminating A17 acceptance that orders a lighter production task before the heaviest task.
+
+The test/evidence must reconstruct the exact promotion decision used by `AdaptiveTrainingConcurrency`:
+
+```text
+memory_estimate =
+    max(stable observed memory/job from currently active work,
+        configured estimated_gpu_bytes_per_job)
+```
+
+and show why admitting the heavier next task is safe under the established common bound.
+
+At minimum:
+
+1. identify the light task that supplies the first stable telemetry window;
+2. identify the heavier pending task and its independently established RAM/VRAM bound;
+3. prove the common configured estimate used by the controller is conservative for that heavier task, or prove an equivalent stronger invariant already encoded by the accepted resource contract;
+4. show the candidate admission remains within the aggregate VRAM and host-RAM budgets with the configured growth/headroom policy;
+5. include a negative/counterfactual fixture in which the heavier task's bound exceeds the common estimate and prove the candidate is **not** allowed to report A17 closed. The negative case may stop at the compatibility/evidence boundary; do not manufacture a production OOM.
+
+Do not use equality of the two `TrainingConcurrencyPolicy` objects, equality of the resulting `TrainingConcurrencyPlan`, or a common synthetic telemetry trace as the discriminator. Those are consequences of the assumption under review.
+
+### 12.5 R2D — explicit D3-reopen threshold
+
+Remain in D4 only if all TRAIN_REQUIRED production tasks can be represented safely by **one common execution/resource profile and one conservative per-job estimate regime** consumed by the existing `TrainingConcurrencyPlan` / `AdaptiveTrainingConcurrency`.
+
+Raise a **Serious Challenge / D3 reopen** if evidence shows any of the following:
+
+- safe admission requires knowing the selected size or task identity inside the controller;
+- different tasks require materially different per-job RAM/VRAM reservations that cannot be represented by one conservative common bound without making the accepted scheduler unusable;
+- safe promotion requires per-task weighted demand, resource buckets, multiple controllers, or task-aware scheduling;
+- the pinned runtime can retain dataset-wide device state scaling materially with `N` in a way the homogeneous controller does not model;
+- a task's admissible device demand depends materially on membership geometry that the current shared profile cannot bound.
+
+Do **not** implement those mechanisms inside D4. Stop with the falsifying evidence and return to Software Design.
+
+### 12.6 R6A — resolve the two zero-safe-admission failures by applicability, not chronology
+
+The following required regression specifications failed in Section 11.7:
+
+- `test_idle_transient_cuda_admission_blocking_missing_to_missing_fails_explicitly`;
+- `test_idle_transient_cuda_admission_blocking_waits_rather_than_spins_unsafe_to_safe`.
+
+First rerun these two node IDs **serially, without xdist**, on the exact current executable candidate and on the Section-10 entry-point candidate. The original Section 10.7 commands did not require `-n 8`, and scheduler timing/idle-poll semantics are themselves the oracle here.
+
+Then classify them:
+
+**If the tests are stale or their oracle is wrong:** demonstrate the conflict against the current accepted scheduler authority, replace/repair the oracle with a stronger one, and record why the old expectation is inapplicable. Merely observing that the failure predates this branch is insufficient.
+
+**If the tests remain valid and reproducibly fail:** treat that as an independently falsified D4 defect in the shared `training_parallel` / scheduler loop now consumed by production. Repair the smallest existing owner while preserving current D3. In particular preserve these required semantics:
+
+- pending work with an idle scheduler and a transient unsafe/blind observation must not spin or launch through the block;
+- control observations are separated by the normal poll cadence rather than an immediate tight-loop recheck;
+- unsafe -> safe may recover and admit pending work;
+- bounded missing -> missing resolves to the existing typed zero-safe/observability failure without launching a second job;
+- while an owned child is legitimately active, one transient blind observation is tolerated according to the current controller contract; do not prematurely escalate it to a terminal observability failure;
+- cancellation/reaping, memory-backoff and currentness semantics remain unchanged.
+
+This is authorization to correct an **independently demonstrated existing D4 defect**, not to redesign the scheduler. Do not add another timer, monitor thread, telemetry daemon or retry state machine. Prefer reordering/correcting the existing idle-loop observation/admission transition.
+
+After any executable scheduler repair, rerun every scheduler/backoff/zero-safe/currentness/global-production regression affected by that edit.
+
+### 12.7 Required final evidence for the next Review
+
+After the last executable edit, record one exact candidate SHA and execute, without hiding timing-sensitive failures behind parallel test execution:
+
+```text
+python -m compileall mdstats tests
+python -m pytest -q tests/test_mlff_production_global_train_scheduler.py
+python -m pytest -q tests/test_mlff_p5_train2_memory_backoff.py
+python -m pytest -q tests/test_mlff_p5_train2_zero_safe_admission.py
+python -m pytest -q tests/test_mlff_training_parallel_scheduler.py
+python -m pytest -q tests/test_mlff_p5_replay_target_real_owner.py
+python -m pytest -q tests/test_mlff_target_size_multi_size_integration.py tests/test_mlff_target_size_multi_selection.py
+python -m pytest -q tests/test_mlff_target_size_p5e_production_and_restart.py
+python -m pytest -q tests/test_mlff_replay_mace_p5_execution_recovery.py
+python -m pytest -q tests/test_mlff_campaign_currentness_races.py tests/test_mlff_campaign_assembled_lifecycle.py
+python -m pytest -q tests/test_mlff_storage_reset_integration.py
+```
+
+Then run the complete affected MLFF campaign/training-data CPU regression. xdist may be used as an additional throughput run only after the authoritative serial focused suites above are green; it does not replace them for timing/concurrency oracles.
+
+The evidence record must distinguish:
+
+- genuine current failures;
+- unavailable environment-dependent checks;
+- stale/inapplicable oracles with an explicit authority-based reason;
+- pre-existing but still-applicable failures, which remain blockers until repaired or separately adjudicated.
+
+Physical GPU throughput/VRAM qualification remains deferred to the final release package and must not be requested from the stakeholder in this implementation round.
+
+### 12.8 Next-Review closure condition
+
+A subsequent independent Review may return PASS only if:
+
+- R1/R3/R4/R5 remain closed and unchanged except for necessary test maintenance;
+- the A17 RAM proof uses true resident-memory evidence or a conservative actual-runtime bound, not serialized file size;
+- the A17 VRAM proof establishes the actual task-scaling relation of the pinned MACE realization and does not use task-independent synthetic telemetry as magnitude evidence;
+- the lighter-first/heavier-next counterexample is explicitly closed under a conservative common bound;
+- the resulting evidence either preserves the single-controller D3 architecture or cleanly triggers a D3 reopen without implementing an unauthorized workaround;
+- the two zero-safe-admission regressions are green or are explicitly and convincingly retired/remapped as stale oracles under current authority;
+- all focused required suites run serially on the same final executable SHA and the affected regression introduces no new applicable failure;
+- no physical GPU qualification is falsely claimed.
