@@ -22,6 +22,9 @@ second_implementation_reviewed_head: 07e506df4c0f58758c5364e8b1bb05ff32a8df68
 second_implementation_review_date: 2026-09-20
 d4_repair_head: 0462f56f6bfb22ea254a28683a62937b6aad2740
 d4_repair_evidence_date: 2026-09-20
+second_d4_repair_head: 94f9bf5488071aff7ad4b42033f32364b758ffdd
+second_d4_repair_evidence_date: 2026-09-20
+second_d4_repair_review_status: awaiting-third-independent-implementation-review
 reviewed_pre_repair_head: 10c68eb50cb7ee2b5f0bb8d43e35bb250a186d96
 second_reviewed_pre_repair_head: 35fe7c19f60d99a2ae99257496acb2e82c35975d
 closure_falsification_pre_repair_head: 47376b968a62ab05473e370746f79988436bb3e3
@@ -1612,3 +1615,426 @@ A subsequent independent Review may return PASS only if:
 - the two zero-safe-admission regressions are green or are explicitly and convincingly retired/remapped as stale oracles under current authority;
 - all focused required suites run serially on the same final executable SHA and the affected regression introduces no new applicable failure;
 - no physical GPU qualification is falsely claimed.
+
+## 13. Second D4 repair and executable evidence — 2026-09-20
+
+### 13.0 Status
+
+The Section 12 repair contract R2A-R2D and R6A is implemented and its acceptance
+executed. **This workplan stays open for independent Review.** Nothing here
+closes the cycle, accepts the Revision 8 D3 candidate as accepted-current, or
+claims physical GPU qualification. R1, R3, R4 and R5 are preserved unchanged
+except for the fixture maintenance recorded in 13.6.
+
+**Repaired candidate SHA: `94f9bf5488071aff7ad4b42033f32364b758ffdd`.**
+
+The single-controller/common-bound assumption under review was **not**
+falsified, so no D3 reopen is raised. It was, however, found to rest on two
+configured per-job reservations that real measurement shows were *not*
+conservative. Both were repaired as single common bounds inside the existing
+configuration owner, which is the D4-local remedy Section 12.2 prescribes.
+
+### 13.1 R2A — the EXTXYZ-size proxy is withdrawn and replaced by measured resident memory
+
+**Withdrawn.** `test_distinct_production_sizes_and_horizons_make_one_resource_demand`
+no longer asserts
+`dataset_bytes(heavy_request) <= plan.estimated_ram_bytes_per_job`. The
+transport comparison survives only as explicitly labelled descriptive transport
+evidence, with the helper renamed `transport_bytes` and a comment stating that a
+serialized byte count is not a resident-memory bound and is not treated as one.
+
+**Replaced by the real-child peak route.** The full measurement record, with the
+pinned realization, the geometry envelope, the harness and the derivation, is
+`audits/MLFF_A17_TRAIN_RESOURCE_BOUND_MEASUREMENT_2026-09-20.md`. Summary:
+
+| Membership | samples | peak tree RSS | `VmHWM` | peak device |
+| --- | --- | --- | --- | --- |
+| N=512 | 6,711 | 7,003.2 MiB | 7,003.2 MiB | 6,152 MiB |
+| N=8192 | 3,196 | 9,904.9 MiB | 9,912.0 MiB | 5,154 MiB |
+
+Both runs drove the unmodified `mdstats-mace-train` wrapper - the exact
+`subprocess.Popen` boundary `post_selection_execution` uses - on the campaign's
+own pinned `mace_run_config.yaml` (MACE 0.3.16, torch 2.13.0+cu126,
+mace-mpa-0-medium multihead finetuning, float32, `batch_size=2`,
+`valid_batch_size=2`, `num_workers=0`, CuEq, AMSGrad + EMA, `r_max=5.0`, real
+true-label replay views), over memberships built from the 2,007 real production
+configurations and ordered densest-first. The measured interval covers dataset
+parsing/construction, the foundation load, one complete true training epoch, the
+checkpoint/model write and the post-epoch evaluation, ending at the same
+`models/<name>.model` completion boundary the real P5 owner uses. The sampler is
+external - no product instrumentation and no production scheduler state was
+added for it - reads the whole owned process tree at 4 Hz, and carries `VmHWM`
+as the kernel high-water witness that no excursion between samples was missed.
+`nproc_max == 1` in both runs, because `num_workers: 0` means no loader
+subprocess exists to add.
+
+**The common estimate was too small, and one common bound still covers every
+task.** The two points are linear in the configuration count at
+0.37878 MiB/configuration above a 6,809 MiB fixed term (framework, foundation
+model, the replay head's `num_samples_pt = 10000` cap, CUDA context), so the
+configured ladder maximum `N = 16384` bounds at **13,015 MiB** - well above the
+configured 8,192 MiB. Section 12.2's instruction applies exactly: the existing
+configuration owner was repaired rather than per-size estimates introduced.
+`estimated_training_ram_mib_per_job` is now **16,384 MiB** in all four owners
+that publish it (`TrainingConcurrencyPolicy` defaults,
+`_post_selection_training_concurrency_policy` fallbacks, the generated campaign
+template in `_campaign_cli_core`, and `campaign.toml.example`), each carrying the
+measurements as its warrant.
+
+### 13.2 R2B — device residency does not scale with `N` or `H_prod`
+
+Established from the pinned MACE 0.3.16 source, with the empirical companion
+that the device peak was *lower* at N=8192 (5,154 MiB) than at N=512
+(6,152 MiB).
+
+Simultaneously device-resident state, with its scaling variables:
+
+| State | Owner | Scales with |
+| --- | --- | --- |
+| model parameters + buffers | `run_train.py:756` `model.to(device)` | model hyperparameters only — 37.8 MiB fp32 (9,063,204 params / 837,453 buffers) |
+| gradients | autograd | = parameters, 34.6 MiB |
+| Adam/AMSGrad state | `torch.optim` | 3 x parameters, 103.7 MiB |
+| EMA shadow | `torch_ema.ExponentialMovingAverage` | 1 x parameters, 34.6 MiB |
+| SWA `AveragedModel` | `torch.optim.swa_utils` | **absent** — `--swa` defaults `False` and the pinned config does not set it |
+| one train or validation batch + its graph/neighbourhood tensors | `tools/train.py:413,490,572` `batch = batch.to(device)` | `batch_size` x (atoms, edges) per configuration |
+| forward/backward temporaries | MACE modules | the same batch/geometry envelope |
+| replay (`pt_head`) device state | one extra readout head on the same model | model hyperparameters; its data is CPU-resident and reaches the device only as batches whose configurations (10-84 atoms) are *smaller* than the target head's |
+| dataset-wide or cache device state | — | **none exists** |
+
+Persistent device state is therefore about **211 MiB**, fixed by the frozen
+method. The dataset is a CPU-resident list of `AtomicData`
+(`run_train.py:675,997`) handed to `torch_geometric.dataloader.DataLoader`; only
+batches move. The two paths that would traverse the dataset on the device are
+both disabled by the pinned configuration: `get_avg_num_neighbors`
+(`tools/scripts_utils.py:627`) takes the supplied-`avg_num_neighbors` branch
+because `compute_avg_num_neighbors: false`, and `configure_model`
+(`tools/model_script_utils.py:55`) short-circuits before any `train_loader`
+statistics pass because `scaling: no_scaling`. `pin_memory` defaults `True` and
+pins **host** pages per batch — a host cost bounded by batch size, not a device
+cost and not a function of `N`.
+
+**The membership geometry envelope is a pool-wide constant.** Equal batch size
+alone would not be sufficient, so the actual memberships were inspected. All 27
+source VASP runs in `04_training_dataset/LTA` have exactly **168 atoms**, and
+over the 2,007 real production configurations the neighbour-list edge count at
+`r_max = 5.0` lies in **[4,232, 4,956]** with cell volumes in
+[3,391.7, 3,779.2] A^3. Increasing `N` buys *more* configurations, never larger
+or denser ones, so the maximum per-sample geometry is the same constant for
+every membership at every `N`. The measured memberships were built densest-first
+so their geometry sits at the pool maximum.
+
+The three conditions Section 12.3 sets for a non-GPU closure therefore hold:
+(1) no dataset-wide state scales onto the device with total `N` or the horizon;
+(2) every task-dependent device allocation is bounded by one common
+batch/geometry envelope; (3) the configured VRAM estimate now has a warrant — it
+was raised from 6,144 MiB to **8,192 MiB**, because the *measured* peak was
+6,152 MiB and the prior value was already exceeded at the smallest production
+size.
+
+**No physical GPU qualification is claimed.** The measurement host is a
+development machine, not the production target device; the device figures are a
+resource bound for the D4 admission contract only, and final target-hardware
+throughput/VRAM qualification stays deferred to the release package. No
+iterative GPU qualification was performed or requested.
+
+### 13.3 R2C — the order-sensitive counterexample
+
+Two new acceptances in
+`tests/test_mlff_production_global_train_scheduler.py`.
+
+`test_lighter_first_admission_bounds_the_heavier_next_production_task` drives
+the real `train-production` wave and then joins two independent facts:
+
+* **ordering and sharing, from the real wave** — the lighter position
+  (`FIRST_SIZE`) is the first admission and the heavier (`SECOND_SIZE`) is the
+  next one, because deterministic queueing follows frozen size order; exactly
+  one `TrainingConcurrencyPlan` and one `AdaptiveTrainingConcurrency` are
+  constructed for `task_count == 2`;
+* **magnitudes, from `_MEASURED_PRODUCTION_DEMAND`** — the real-child peaks of
+  13.1, judged against the estimate regime production actually runs. That regime
+  is read from the shipped configuration owner via `cli._config_template`, and
+  the test asserts the dataclass defaults and the template agree, so the
+  acceptance cannot drift from the value production uses.
+
+It then drives the **real** controller through the lighter task's calibration
+window and reads the promotion estimate back off the real decision rather than
+re-implementing it, checking that it equals
+`max(stable observed per job, configured estimated_gpu_bytes_per_job)`, that
+`target_jobs` really advanced to 2, and that
+`verdict.predicted_device_bytes == decision.predicted_bytes_at_target`. The
+acceptance predicate `_a17_next_admission_verdict` then asks the question the
+controller cannot ask itself: does that reservation bound the *heavier* task's
+independently measured demand, on both axes, with the aggregate device and host
+budgets still holding after the proposed admission?
+
+The acceptance identifies, explicitly: the lighter active task (N=512 regime,
+6,152 MiB device / 7,003 MiB host), the heavier pending task (N=8192 regime,
+5,154 MiB device / 9,912 MiB host), the common estimate the controller uses
+(8,192 MiB device, 16,384 MiB host), and the aggregate budget after admission
+(17.2 GiB projected at two jobs, from a 0.4 GiB observed baseline plus
+`2 x 8192 MiB x 1.05`, against the 21.6 GiB envelope).
+
+`test_a17_is_not_closable_when_a_heavier_task_exceeds_the_common_estimate` is
+the negative case. It holds the policy, the plan and the telemetry trace
+**fixed** and varies only the heavier task's established bound, once per resource
+axis, and proves the same acceptance predicate reports A17 open with the right
+reason. It asserts the plan is byte-identical across all three judgements, so
+neither `TrainingConcurrencyPolicy` equality, `TrainingConcurrencyPlan` equality
+nor the common synthetic telemetry could have been the discriminator. No
+production OOM is manufactured: the counterfactual stops at the
+compatibility/evidence boundary.
+
+**The positive acceptance is discriminating, not tautological.** Re-running it
+with the pre-repair defaults restored on an otherwise identical tree fails with
+`N=8192 production membership needs 9.68 GiB of resident host memory but the
+common per-job RAM estimate is 8.00 GiB`. The estimate repair of 13.1 is
+therefore necessary for A17, not cosmetic.
+
+### 13.4 R2D — the D3 reopen threshold is not met
+
+Every TRAIN_REQUIRED production task shares one execution/resource profile and
+one conservative common per-job estimate regime, consumed by the existing
+`TrainingConcurrencyPlan` and `AdaptiveTrainingConcurrency`. Against Section
+12.5's list, item by item:
+
+* safe admission needs no selected size or task identity inside the controller —
+  device residency is independent of `N` and the horizon, and the host bound is
+  one value covering the whole configured ladder;
+* no materially different task-specific reservation is required — one common
+  bound per axis covers every task, and it leaves the scheduler usable (2
+  concurrent jobs on a 24 GiB device at the 0.90 fraction, and 2 on the
+  reference host's RAM budget), so the work-conservation the cycle exists for is
+  preserved;
+* no resource buckets, no second controller, no task-weighted promotion and no
+  task-aware scheduling were needed or added;
+* the pinned runtime retains **no** dataset-wide device state, so nothing scales
+  materially with `N` onto the device;
+* membership geometry is a pool-wide constant (168 atoms, edges in
+  [4,232, 4,956]) that the existing shared profile bounds conservatively.
+
+No Serious Challenge is raised and no D3 reopen is triggered.
+
+### 13.5 R6A — the two named regressions, and a real serial defect they were masking
+
+**Step 1, the required serial rerun.** Both named node IDs were rerun serially
+without xdist on the entry-point tree `1c962d13`:
+
+```
+python -m pytest -q -p no:randomly \
+  tests/test_mlff_p5_train2_zero_safe_admission.py::test_idle_transient_cuda_admission_blocking_missing_to_missing_fails_explicitly \
+  tests/test_mlff_p5_train2_zero_safe_admission.py::test_idle_transient_cuda_admission_blocking_waits_rather_than_spins_unsafe_to_safe
+-> 2 passed in 40.94s
+```
+
+They pass serially. Under the `-n 8` the Section 11 evidence used, they fail:
+`pytest -q tests/test_mlff_p5_train2_zero_safe_admission.py -n 8` gave
+`2 failed, 14 passed`. Their oracle is a poll-cadence/idle-transition timing
+oracle, and xdist contention breaks it.
+
+**Step 2, and this is the material finding.** The same file run **serially**
+does not pass either. It fails a *third*, sibling specification that the `-n 8`
+arm had passed:
+
+```
+python -m pytest -q -p no:randomly tests/test_mlff_p5_train2_zero_safe_admission.py
+-> 1 failed, 15 passed in 272.71s
+FAILED ...::test_idle_transient_cuda_admission_blocking_unsafe_to_unsafe_fails_explicitly
+AssertionError: scheduler must wait on poll interval before confirmed zero-safe admission
+assert []
+```
+
+So the three `test_idle_transient_cuda_admission_blocking_*` specifications are
+one family asserting one contract, and *which* member fails depends only on
+whether the first control observation happens to land before or after the first
+job's future completes. That is a genuine, independently reproduced D4 defect,
+and its oracle is valid under current accepted scheduler authority — it is
+Section 12.6's own first required semantic, "control observations are separated
+by the normal poll cadence rather than an immediate tight-loop recheck". None of
+the three is stale or inapplicable.
+
+**The defect.** In `_train_post_selection_pending_runs` the loop's terminal
+check ran *before* any idle wait:
+
+```python
+while active or pending_queue:
+    if not active and pending_queue and int(controller.target_jobs) < 1:
+        raise TrainingAdmissionBlockedError(...)
+```
+
+`AdaptiveTrainingConcurrency._close_admission` only collapses `target_jobs` to
+zero with nothing owned once the unsafe/blind condition is *confirmed*, and its
+own docstring says that confirmation "survives the bounded recheck". But the
+scheduler never gave it one: the confirming observation was whatever the
+elapsed-time gate let through in the same loop pass that drained the completing
+job's future, so the terminal state could be reached with no poll-cadence wait
+and no genuinely fresh observation. Under different timing the wait happened by
+accident, which is why the family failed inconsistently.
+
+**The repair** is a reorder of the existing idle-loop observation/admission
+transition in the smallest existing owner —
+`campaign_post_selection_runtime._train_post_selection_pending_runs`, 21 lines
+added, 5 removed. `training_parallel.py` is **not** touched by it. When the queue
+is idle with pending work and no admissible key, the scheduler now waits exactly
+one normal poll interval, forces the next control observation to be a fresh one,
+and only raises the typed failure if the state survives that recheck. No timer,
+monitoring thread, telemetry daemon, retry database or scheduler state machine
+was added; the whole mechanism is one boolean and one existing `time.sleep`.
+
+Section 12.6's required semantics, each preserved:
+
+* an idle pending queue under a transient blind/unsafe observation does not
+  launch through the block — admission is still gated by `submit_available` and
+  `target_jobs`, untouched;
+* control observations are separated by the normal poll cadence — the new
+  `time.sleep(poll_interval)` is the scheduler's own existing cadence
+  (`min(1.0, monitor_interval/4)`), not a new clock;
+* unsafe -> safe recovers and admits pending work —
+  `..._waits_rather_than_spins_unsafe_to_safe` now passes deterministically;
+* bounded missing -> missing reaches the typed terminal state without launching
+  another job — the recheck is owed exactly once per entry into idle zero
+  admission, and both `missing_to_missing` and `unsafe_to_unsafe` end in
+  `TrainingAdmissionBlockedError` with `len(harness.runs) == 1`;
+* one transient blind observation while owned work is legitimately active keeps
+  the existing bounded tolerance — the `if active:` branch is unchanged, so
+  `memory_hazard` still requires `confirmed and active > 0`;
+* cancellation/reaping, memory backoff and currentness semantics are unchanged —
+  `demote_most_recently_admitted`, the hazard/backoff transitions and the
+  linearization are untouched, and their suites are green in 13.7.
+
+All sixteen specifications in
+`tests/test_mlff_p5_train2_zero_safe_admission.py` now pass serially.
+
+### 13.6 Architecture preservation and the fixture maintenance this required
+
+Unchanged: one collection-global TRAIN-only production scheduler; CV's per-size
+scheduling; TRAIN/EVAL phase separation; frozen-size frozen-seed fail-fast
+finalization; per-binding `FinalProductionPlan` publication; exact
+collection-signature admission linearization; deterministic queueing and
+most-recent-admission demotion; execution-only scheduler keys; sealed-root
+read-only behaviour; completion/topology authority. No second scheduler, per-size
+controller, resource registry, persistent task/resource metadata, currentness or
+recovery registry, cross-size reducer or scheduler wrapper was added. No D1/D2
+semantics changed.
+
+Raising the two common reservations moved three scheduler oracles that had
+encoded the old 6,144 MiB per-job device reservation as a *fixture constant*
+rather than as their claim. Each was pinned to the reservation its scenario
+requires, which preserves the specification and decouples it from the shipped
+value:
+
+| Specification | Claim | Disposition |
+| --- | --- | --- |
+| `test_mlff_training_parallel_scheduler.py::test_rtx3090_auto_plan_starts_one_and_caps_at_three` | the shipped reservation sets the ceiling on an RTX 3090 | renamed `..._caps_at_the_shipped_reservation`; now asserts the *relation* `maximum_jobs == usable // estimated_gpu_bytes_per_job == 2` instead of the frozen number 3, because the number was a consequence of the now-falsified reservation |
+| `..._scheduler.py::test_two_jobs_promote_to_three_...` and `..._do_not_promote_when_projected_gpu_utilization_exceeds_90_percent` | the promote/ceiling transition at three owned jobs | reservation pinned at 6,144 MiB in the local policy, with the reason stated |
+| `test_mlff_p5_train2_memory_backoff.py` `_FAST_CONTROL` | VRAM envelope, backoff and foreign-occupancy attribution at a chosen owned concurrency | reservation pinned in the shared fast-control block beside the RAM reservation that was already pinned there for the same reason |
+| `test_mlff_p5_train2_zero_safe_admission.py::test_the_target_host_vram_baseline_launches_nothing_through_the_real_owner` | the *supplied* 24 GiB / 20.2 GiB / 90% / 6 GiB target-host case | reservation pinned at 6,144 MiB, because 6 GiB is part of the reported scenario this test exists to reproduce |
+
+### 13.7 Executed evidence
+
+Environment: conda env `mace` (`/home/samjin/miniconda3/envs/mace/bin/python`),
+32 CPU threads, 62 GiB host RAM. All focused suites were run **serially** with
+`-p no:randomly`, on the exact candidate SHA above, after the last executable
+edit. No skip hid an acceptance claim in any focused suite.
+
+| Command (all `python -m ...`, serial, `-p no:randomly`) | Result |
+| --- | --- |
+| `compileall mdstats tests` | clean, exit 0 |
+| `pytest -q tests/test_mlff_production_global_train_scheduler.py` | **28 passed** (387s) |
+| `pytest -q tests/test_mlff_p5_train2_memory_backoff.py` | **12 passed** (165s) |
+| `pytest -q tests/test_mlff_p5_train2_zero_safe_admission.py` | **16 passed** (274s) |
+| `pytest -q tests/test_mlff_training_parallel_scheduler.py` | **39 passed** (2s) |
+| `pytest -q tests/test_mlff_p5_replay_target_real_owner.py` | **11 passed** (269s) |
+| `pytest -q tests/test_mlff_target_size_multi_size_integration.py tests/test_mlff_target_size_multi_selection.py` | **47 passed** (277s) |
+| `pytest -q tests/test_mlff_target_size_p5e_production_and_restart.py` | **27 passed** (516s) |
+| `pytest -q tests/test_mlff_replay_mace_p5_execution_recovery.py` | **6 passed** (119s) |
+| `pytest -q tests/test_mlff_campaign_currentness_races.py tests/test_mlff_campaign_assembled_lifecycle.py` | **5 passed** (82s) |
+| `pytest -q tests/test_mlff_storage_reset_integration.py` | **167 passed** (5383s) |
+
+Every required focused suite is green serially, with zero failures and zero
+skips, on one SHA after the last executable edit. The two zero-safe-admission
+specifications Section 12.6 names, and the third sibling that the serial rerun
+exposed, are inside the 16 above.
+
+**Affected MLFF campaign/training-data CPU regression.** Reported as a
+failure-set diff against the Section 12 entry point, because this branch carries
+a large pre-existing CPU failure population that this cycle does not adopt. Both
+arms ran the identical command; the baseline arm is a detached worktree at
+`1c962d13` into which the gitignored
+`qualification/p6-p5a6-compat/workspace/` was copied, so the two arms execute the
+same set of tests and the Section 11.8 skip artefact does not recur.
+
+`python -m pytest -q -p no:randomly tests/test_mlff_*.py -n 16` (229 files):
+
+| Arm | Result |
+| --- | --- |
+| repaired `94f9bf54` | **184 failed, 2827 passed, 15 skipped** (2675s) |
+| entry point `1c962d13` (comparable worktree) | **184 failed, 2825 passed, 15 skipped** (2786s) |
+
+Set difference of the failing node ids:
+
+* **failures present only in the repaired arm: 0**
+* **failures fixed relative to the entry point: 0**
+
+The two extra passes in the repaired arm are the two new A17 acceptances of
+13.3. **Net effect on the affected regression: zero new failures, zero
+regressions.** The 184-failure population is pre-existing on this branch, is
+identical in both arms, and is not adopted by this cycle; no member of it is
+called non-blocking here on the ground that it predates the branch - it is
+excluded because it is demonstrably unchanged by this cycle, node id for node
+id.
+
+**Checks not executed, and why.**
+
+* **Physical GPU throughput/VRAM qualification on the production target device.**
+  Deferred to the final release package under standing project direction, and
+  explicitly not requested from the stakeholder in this round. The real-child
+  device figures in 13.1/13.2 are a development-host resource *bound* for the D4
+  admission contract and are labelled as such everywhere they appear.
+* **A real child at `N = 16384`.** The ladder maximum's host bound is the
+  conservative extrapolation of two real measurements (13,015 MiB from a
+  0.37878 MiB/configuration slope), not a third measurement. Both measured points
+  are real, the relation between them is linear in the one variable that scales,
+  and the configured reservation keeps 26% headroom above the extrapolated value.
+* **PDF regeneration** follows the repository's existing automated documentation
+  build path and is not performed by hand here.
+
+### 13.8 Documentation impact
+
+Two non-executable reconciliations, plus one new evidence record:
+
+* `docs/arch_manuals/mlff_training_data/60_execution_performance.md` — the idle
+  zero-safe admission rule now states the poll-cadence recheck and the
+  unsafe->safe recovery it permits, instead of "not a launch or a wait"; and the
+  shared-profile bullet now states that the per-job RAM/VRAM estimates are
+  *common* bounds, that device residency is a batch/geometry function independent
+  of the configuration count and horizon while resident host memory is not, and
+  that a task not coverable by a common bound would be an architectural question
+  rather than a configuration one;
+* `campaign.toml.example` and the generated campaign template in
+  `_campaign_cli_core` carry the measurements as the warrant for both
+  reservations, so an operator lowering either can see what it would give up;
+* `audits/MLFF_A17_TRAIN_RESOURCE_BOUND_MEASUREMENT_2026-09-20.md` — the full
+  measurement record: pinned realization, geometry envelope, per-category device
+  residency with source line references, the scaling derivation, and the external
+  harness. The harness is deliberately evidence-only and is not a repository or
+  product artifact.
+
+### 13.9 Open risk and handoff
+
+* **The two repaired reservations are bounds, not qualifications.** The host
+  bound rests on two real measurements plus a linear extrapolation to the ladder
+  maximum; the device bound rests on one development-host observation plus the
+  source proof that it cannot grow with `N` or the horizon. Target-hardware
+  qualification remains the release package's obligation and nothing here
+  anticipates its result.
+* **Raising the reservations narrows admission width.** On a 24 GiB device the
+  ceiling is now 2 concurrent jobs rather than 3, and on a 62 GiB host the RAM
+  ceiling is 2. That is the truthful consequence of the measurements; the
+  work-conservation this cycle exists for (a two-position collection wave running
+  concurrently instead of serially) is preserved, but a campaign with more than
+  two ready production positions will now queue the rest.
+* **The pre-existing branch failure population** is untouched by this cycle and
+  remains a separate concern; this workplan does not adopt it.
+* **This workplan remains open.** Section 12.8's closure condition is for an
+  independent Review to evaluate against the candidate SHA in 13.0; nothing here
+  self-closes it or declares the Revision 8 D3 candidate accepted-current.
