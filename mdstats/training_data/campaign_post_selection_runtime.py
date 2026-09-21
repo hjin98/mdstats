@@ -4312,7 +4312,7 @@ def _post_selection_training_concurrency_policy(
                 context.cfg,
                 "execution",
                 "estimated_training_vram_mib_per_job",
-                6144.0,
+                8192.0,
             )
         ),
         estimated_ram_mib_per_job=float(
@@ -4320,7 +4320,7 @@ def _post_selection_training_concurrency_policy(
                 context.cfg,
                 "execution",
                 "estimated_training_ram_mib_per_job",
-                8192.0,
+                16384.0,
             )
         ),
         epoch_stabilization_seconds=float(
@@ -4859,14 +4859,20 @@ def _train_post_selection_pending_runs(
     try:
         submit_available(executor)
         report("running", force=True)
+        # Whether the idle zero-admission state has already survived one
+        # poll-cadence wait and the fresh control observation that follows it.
+        idle_zero_admission_rechecked = False
         while active or pending_queue:
-            if (
+            idle_zero_admission = (
                 not active
                 and pending_queue
                 and int(controller.target_jobs) < 1
-            ):
-                # Pending work with an idle queue and no feasible key is a
-                # terminal resource state; busy-waiting would hide it.
+            )
+            if idle_zero_admission and idle_zero_admission_rechecked:
+                # Pending work with an idle queue and no feasible key, still
+                # true after one normal poll interval and the fresh control
+                # observation taken across it, is a terminal resource state;
+                # busy-waiting would hide it.
                 raise TrainingAdmissionBlockedError(
                     f"{len(pending_queue)} pending TRAIN2 job(s) "
                     "remain but no job is currently resource-admissible: "
@@ -4880,8 +4886,18 @@ def _train_post_selection_pending_runs(
                 )
             else:
                 done = set()
-                if admission_blocked and pending_queue:
+                if pending_queue and (idle_zero_admission or admission_blocked):
+                    # Nothing owned is running, so only a fresh control
+                    # observation can change the decision. Wait exactly one
+                    # normal poll interval instead of rechecking in a tight
+                    # loop, and make the observation below a genuinely new one
+                    # rather than whatever the completing job's own latency
+                    # happened to let through the elapsed-time gate.
                     time.sleep(poll_interval)
+                    last_sample_at = float("-inf")
+            # A recheck is owed exactly once per entry into idle zero
+            # admission; recovery to an admissible target clears it.
+            idle_zero_admission_rechecked = idle_zero_admission
             first_failure: BaseException | None = None
             for future in done:
                 task = active.pop(future)

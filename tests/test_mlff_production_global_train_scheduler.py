@@ -25,7 +25,9 @@ The governed propositions are:
 
 from __future__ import annotations
 
+import dataclasses
 import json
+import math
 import threading
 import time
 from dataclasses import replace
@@ -1443,16 +1445,20 @@ def test_distinct_production_sizes_and_horizons_make_one_resource_demand(
     } == {k: v for k, v in heavy_budget.items() if k not in horizon_derived}
 
     # (d) The one per-job quantity that genuinely scales with ``N`` is the
-    # host-resident materialized training set, and the configured per-job RAM
-    # estimate the planner uses covers the larger admitted position.
-    def dataset_bytes(request) -> int:
+    # host-resident dataset the trainer constructs from the materialized
+    # training set.  The serialized transport below is *descriptive transport
+    # evidence only*: a serialized byte count is not a bound on the resident
+    # memory of the real MACE process, and this test does not treat it as one.
+    # The admissible host-RAM bound is the externally measured real-child peak
+    # resident memory recorded in ``_MEASURED_PRODUCTION_DEMAND`` and closed by
+    # ``test_lighter_first_admission_bounds_the_heavier_next_production_task``.
+    def transport_bytes(request) -> int:
         transport = request.materialization_directory / "target_train.extxyz"
         assert transport.is_file()
         return transport.stat().st_size
 
-    assert dataset_bytes(light_request) < dataset_bytes(heavy_request)
+    assert transport_bytes(light_request) < transport_bytes(heavy_request)
     plan = spy.plans[0]["plan"]
-    assert dataset_bytes(heavy_request) <= plan.estimated_ram_bytes_per_job
 
     # (e) The planner's demand model saw the shared profile and the task count
     # and nothing else; ``N``, membership, seed and horizon are not among its
@@ -1505,6 +1511,420 @@ def test_distinct_production_sizes_and_horizons_make_one_resource_demand(
         gpu_sample=inputs["gpu_sample"],
     )
     assert homogeneous == plan
+
+
+# --- A17 / R2A+R2B+R2C: the measured resource bound of the heaviest task ----
+
+
+@dataclasses.dataclass(frozen=True)
+class _MeasuredTrainingDemand:
+    """One externally measured peak resource demand of a real TRAIN2 child.
+
+    These are *not* synthetic numbers and they are not derived from serialized
+    transport size.  Each row is the peak resident host memory and peak device
+    memory of one real ``mdstats-mace-train`` child - the exact P5/MACE child
+    boundary ``post_selection_execution`` spawns - driven over a materially
+    representative TRAIN_REQUIRED production membership of the live LTA
+    campaign, sampled externally from ``/proc/<pid>/status`` and confirmed by
+    the kernel ``VmHWM`` high-water mark so no excursion between samples can be
+    missed.  The full provenance is recorded in section 13 of
+    ``workplans/active/MLFF_PRODUCTION_GLOBAL_TRAIN_SCHEDULER_REPAIR_WORKPLAN.md``.
+
+    The measurement host's device is not the production target device, so these
+    rows are a resource *bound* for the D4 admission contract, not a physical
+    GPU qualification; final target-hardware qualification stays deferred.
+    """
+
+    label: str
+    #: Target-head training configurations (the frozen ``N`` of the position).
+    configurations: int
+    #: Replay (``pt_head``) training configurations resident beside them.
+    replay_configurations: int
+    #: Atoms per configuration - uniform over the whole prepared frame pool.
+    atoms_per_configuration: int
+    #: Largest neighbour-list edge count over the membership at ``r_max=5.0``.
+    max_edges_per_configuration: int
+    #: Peak resident host memory of the owned child process tree.
+    peak_host_rss_bytes: int
+    #: Peak device memory the child held, as the aggregate telemetry the
+    #: scheduler itself observes reports it (CUDA context + allocator reserve).
+    peak_device_bytes: int
+
+
+#: MACE 0.3.16 / torch 2.13.0+cu126, mace-mpa-0-medium foundation, multihead
+#: finetuning with the campaign's own true-label replay views, float32,
+#: batch_size=2, valid_batch_size=2, num_workers=0, enable_cueq=true,
+#: amsgrad, ema=true - i.e. the exact pinned realization the live campaign's
+#: own ``mace_run_config.yaml`` carries.  One true epoch each.
+_MEASURED_PRODUCTION_DEMAND: tuple[_MeasuredTrainingDemand, ...] = (
+    _MeasuredTrainingDemand(
+        label="N=512 production membership",
+        configurations=512,
+        replay_configurations=10000,
+        atoms_per_configuration=168,
+        max_edges_per_configuration=4956,
+        peak_host_rss_bytes=7003 * _MIB,
+        peak_device_bytes=6152 * _MIB,
+    ),
+    _MeasuredTrainingDemand(
+        label="N=8192 production membership",
+        configurations=8192,
+        replay_configurations=10000,
+        atoms_per_configuration=168,
+        max_edges_per_configuration=4956,
+        peak_host_rss_bytes=9912 * _MIB,
+        peak_device_bytes=5154 * _MIB,
+    ),
+)
+
+_MEASURED_LIGHT, _MEASURED_HEAVY = _MEASURED_PRODUCTION_DEMAND
+
+
+def _shipped_execution_default(key: str) -> float:
+    """One ``[execution]`` default as the shipped configuration owner writes it."""
+
+    template = cli._config_template(
+        workspace="/tmp/a17",
+        training_root="/tmp/a17/dataset",
+        foundation_model="/tmp/a17/foundation.model",
+        foundation_family="mace_mpa_0",
+    )
+    values = [
+        line.split("=", 1)[1].strip()
+        for line in template.splitlines()
+        if line.startswith(f"{key} =")
+    ]
+    assert len(values) == 1, f"{key} must have exactly one shipped default"
+    return float(values[0])
+
+
+def _production_default_policy() -> training_parallel.TrainingConcurrencyPolicy:
+    """The per-job estimate regime production actually runs under.
+
+    Three owners publish it - the ``TrainingConcurrencyPolicy`` dataclass
+    defaults, the generated campaign template, and the runtime resolver's
+    fallbacks - and A17 is only meaningful if they agree, so that is asserted
+    here rather than assumed.
+    """
+
+    policy = training_parallel.TrainingConcurrencyPolicy()
+    assert float(policy.estimated_ram_mib_per_job) == _shipped_execution_default(
+        "estimated_training_ram_mib_per_job"
+    )
+    assert float(
+        policy.estimated_gpu_memory_mib_per_job
+    ) == _shipped_execution_default("estimated_training_vram_mib_per_job")
+    return policy
+
+
+@dataclasses.dataclass(frozen=True)
+class _A17Verdict:
+    closed: bool
+    reasons: tuple[str, ...]
+    controller_estimate_bytes: int
+    predicted_device_bytes: int
+
+
+def _a17_next_admission_verdict(
+    *,
+    plan,
+    policy,
+    controller_estimate_bytes: int,
+    heavier: _MeasuredTrainingDemand,
+    resources,
+) -> _A17Verdict:
+    """Judge one proposed next admission against an independent heavier bound.
+
+    ``controller_estimate_bytes`` is read back from the *real* controller (it is
+    the ``memory_estimate`` that ``AdaptiveTrainingConcurrency.observe``
+    computes as ``max(stable observed per job, configured per-job estimate)``);
+    nothing here re-implements that relation.  What this function adds is the
+    question the controller cannot ask for itself: does that estimate bound the
+    independently measured demand of the task that is about to be admitted?
+    """
+
+    reasons: list[str] = []
+    if int(heavier.peak_device_bytes) > int(controller_estimate_bytes):
+        reasons.append(
+            f"{heavier.label} needs {heavier.peak_device_bytes / _GIB:.2f} GiB of "
+            f"device memory but the controller reserves only "
+            f"{controller_estimate_bytes / _GIB:.2f} GiB per job"
+        )
+    if int(heavier.peak_host_rss_bytes) > int(plan.estimated_ram_bytes_per_job):
+        reasons.append(
+            f"{heavier.label} needs {heavier.peak_host_rss_bytes / _GIB:.2f} GiB of "
+            f"resident host memory but the common per-job RAM estimate is "
+            f"{plan.estimated_ram_bytes_per_job / _GIB:.2f} GiB"
+        )
+    candidate_jobs = 2
+    predicted = int(plan.baseline_gpu_used_bytes or 0) + math.ceil(
+        candidate_jobs
+        * int(controller_estimate_bytes)
+        * float(policy.observed_memory_growth_margin)
+    )
+    if predicted >= int(plan.gpu_memory_budget_bytes):
+        reasons.append(
+            f"projected aggregate VRAM {predicted / _GIB:.2f} GiB at "
+            f"{candidate_jobs} jobs reaches the "
+            f"{plan.gpu_memory_budget_bytes / _GIB:.2f} GiB envelope"
+        )
+    if candidate_jobs * int(heavier.peak_host_rss_bytes) > int(
+        resources.ram_budget_bytes
+    ):
+        reasons.append("two measured host-RAM peaks exceed the host RAM budget")
+    return _A17Verdict(
+        closed=not reasons,
+        reasons=tuple(reasons),
+        controller_estimate_bytes=int(controller_estimate_bytes),
+        predicted_device_bytes=int(predicted),
+    )
+
+
+def _calibrate_light_then_estimate(
+    plan, policy, *, light: _MeasuredTrainingDemand, utilization_percent: float = 40.0
+) -> tuple[object, object]:
+    """Run the real controller through one lighter task's calibration window.
+
+    The controller is the production one; the samples are the aggregate device
+    telemetry a single owned job whose measured peak is ``light`` would
+    actually produce on top of the plan's own observed baseline.  The
+    utilization level is an ordinary non-saturating value: GPU utilization is
+    not the quantity A17 is about, and a saturating one would stop the
+    promotion before the memory decision under review is ever taken.
+    """
+
+    controller = training_parallel.AdaptiveTrainingConcurrency(plan, policy)
+    baseline = int(plan.baseline_gpu_used_bytes or 0)
+    aggregate = baseline + int(light.peak_device_bytes)
+    start = 1_000.0
+    decision = None
+    step = float(policy.monitor_interval_seconds)
+    for index in range(40):
+        now = start + index * step
+        decision = controller.observe(
+            GpuTelemetrySample(
+                sampled_monotonic=now,
+                device_index=0,
+                utilization_percent=utilization_percent,
+                used_bytes=aggregate,
+                total_bytes=24 * _GIB,
+            ),
+            active_jobs=1,
+            epoch_active_jobs=1,
+            now=now,
+        )
+        if decision.target_jobs > 1:
+            break
+    return controller, decision
+
+
+def test_lighter_first_admission_bounds_the_heavier_next_production_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A17/R2C: lighter task calibrates first, heavier task is the next admission.
+
+    The decisive risk the single-controller contract carries is ordering: the
+    lighter production position supplies the first stable telemetry window, and
+    the promotion that window authorizes admits the *heavier* position next.
+    The controller never learns which task that is, so the acceptance has to
+    show the reservation it derives bounds the heavier task's own measured
+    demand.
+
+    Two independent facts are joined here, and neither substitutes for the
+    other:
+
+    * the **ordering and sharing** facts come from the real wave below - which
+      position is admitted first, that the next admission is the heavier one,
+      and that both are planned by one ``TrainingConcurrencyPlan`` built from
+      one policy;
+    * the **magnitudes** come from ``_MEASURED_PRODUCTION_DEMAND``, the real
+      ``mdstats-mace-train`` child peaks over the actual production
+      memberships, judged against the estimate regime production actually runs
+      (``_production_default_policy``) rather than the fixture's deliberately
+      tiny fast-control value.
+
+    Synthetic telemetry appears only as the *light* task's observed occupancy,
+    which is what the promotion relation legitimately consumes; it is never
+    offered as the heavier task's bound.
+    """
+
+    config = _two_size_campaign(tmp_path)
+    _bind_bounded_device(monkeypatch)
+    spy = _SchedulerSpy(monkeypatch)
+    admitted: list[int] = []
+    real_wave = runtime._train_post_selection_pending_runs
+
+    def observed(pending, **kwargs):
+        admitted.extend(int(task.context.selected.n_selected) for task in pending)
+        return real_wave(pending, **kwargs)
+
+    monkeypatch.setattr(runtime, "_train_post_selection_pending_runs", observed)
+    harness = _ConcurrentProductionHarness(expected_width=2)
+    assert fx.run_train_production(config, harness) == 0
+
+    # (1) The lighter position is the first admission and the heavier position
+    # is the next one: deterministic queueing follows the frozen size order, so
+    # the risky ordering is the one production actually takes.
+    assert admitted == [FIRST_SIZE, SECOND_SIZE]
+    assert len(spy.plans) == 1 and len(spy.controllers) == 1
+    wave_plan = spy.plans[0]["plan"]
+    wave_policy = spy.plans[0]["policy"]
+    assert int(wave_plan.task_count) == 2
+
+    # (2) The estimate regime under review is the production one, published
+    # consistently by every configuration owner.
+    policy = _production_default_policy()
+    assert (
+        _MEASURED_LIGHT.configurations < _MEASURED_HEAVY.configurations
+    ), "the measured rows must actually differ in N"
+    # Per-configuration geometry - the only residency-relevant task variable -
+    # is common to both memberships because the whole prepared frame pool has
+    # one structure size; N buys more configurations, never larger ones.
+    assert (
+        _MEASURED_LIGHT.atoms_per_configuration
+        == _MEASURED_HEAVY.atoms_per_configuration
+    )
+    assert (
+        _MEASURED_LIGHT.max_edges_per_configuration
+        == _MEASURED_HEAVY.max_edges_per_configuration
+    )
+
+    plan = training_parallel.build_training_concurrency_plan(
+        task_count=2,
+        device="cuda:0",
+        loader_workers_per_job=int(wave_plan.loader_workers_per_job),
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_safe_sample(),
+    )
+    assert plan.gpu_memory_observation == "telemetry"
+    assert int(plan.maximum_jobs) >= 2, plan.summary()
+
+    # (3) Drive the *real* controller through the lighter task's calibration
+    # window and read back the exact estimate it promotes on.
+    controller, decision = _calibrate_light_then_estimate(
+        plan, policy, light=_MEASURED_LIGHT
+    )
+    assert decision is not None
+    assert int(decision.target_jobs) == 2, decision.reason
+    estimate = int(decision.observed_bytes_per_job)
+    # This is the promotion relation itself, not a re-derivation of it: the
+    # controller's own estimate equals max(stable observed per job, configured).
+    stable_per_job = int(_MEASURED_LIGHT.peak_device_bytes)
+    assert estimate == max(
+        stable_per_job, int(plan.estimated_gpu_bytes_per_job)
+    )
+
+    # (4) The heavier task's independently measured bound is inside it, and the
+    # aggregate device/host budgets still hold after the proposed admission.
+    verdict = _a17_next_admission_verdict(
+        plan=plan,
+        policy=policy,
+        controller_estimate_bytes=estimate,
+        heavier=_MEASURED_HEAVY,
+        resources=_resources(),
+    )
+    assert verdict.closed, verdict.reasons
+    assert verdict.predicted_device_bytes == int(decision.predicted_bytes_at_target)
+    assert verdict.predicted_device_bytes < int(plan.gpu_memory_budget_bytes)
+
+    # (5) The wave really did consume one common estimate regime: the plan the
+    # heterogeneous wave used is the plan its own policy produces, and swapping
+    # in the production policy changes only the estimates, never the shape of
+    # the contract.
+    assert wave_policy == runtime._post_selection_training_concurrency_policy(
+        _contexts(config)[2][0]
+    )
+    assert int(wave_plan.estimated_ram_bytes_per_job) == int(
+        wave_policy.estimated_ram_mib_per_job * _MIB
+    )
+
+
+def test_a17_is_not_closable_when_a_heavier_task_exceeds_the_common_estimate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A17/R2C negative: the discriminator is the bound, not the plan.
+
+    Nothing about the policy, the plan or the telemetry changes here.  Only the
+    heavier task's independently established demand does, and that alone must
+    make the acceptance report A17 open.  This is what proves the positive case
+    above is discriminating rather than tautological - equality of
+    ``TrainingConcurrencyPolicy``, equality of ``TrainingConcurrencyPlan`` and a
+    common synthetic telemetry trace are all held fixed across the two cases.
+
+    No production OOM is manufactured: the counterfactual stops at the
+    compatibility/evidence boundary, which is where the claim lives.
+    """
+
+    policy = _production_default_policy()
+    plan = training_parallel.build_training_concurrency_plan(
+        task_count=2,
+        device="cuda:0",
+        loader_workers_per_job=0,
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_safe_sample(),
+    )
+    controller, decision = _calibrate_light_then_estimate(
+        plan, policy, light=_MEASURED_LIGHT
+    )
+    estimate = int(decision.observed_bytes_per_job)
+
+    admissible = _a17_next_admission_verdict(
+        plan=plan,
+        policy=policy,
+        controller_estimate_bytes=estimate,
+        heavier=_MEASURED_HEAVY,
+        resources=_resources(),
+    )
+    assert admissible.closed
+
+    # One counterfactual heavier task per resource axis; the common estimate is
+    # untouched, so each failure is attributable to the bound alone.
+    heavier_on_device = dataclasses.replace(
+        _MEASURED_HEAVY,
+        label="counterfactual device-heavier membership",
+        peak_device_bytes=estimate + 1 * _GIB,
+    )
+    device_verdict = _a17_next_admission_verdict(
+        plan=plan,
+        policy=policy,
+        controller_estimate_bytes=estimate,
+        heavier=heavier_on_device,
+        resources=_resources(),
+    )
+    assert not device_verdict.closed
+    assert any("device memory" in reason for reason in device_verdict.reasons)
+    assert device_verdict.controller_estimate_bytes == admissible.controller_estimate_bytes
+
+    heavier_on_host = dataclasses.replace(
+        _MEASURED_HEAVY,
+        label="counterfactual host-heavier membership",
+        peak_host_rss_bytes=int(plan.estimated_ram_bytes_per_job) + 1 * _GIB,
+    )
+    host_verdict = _a17_next_admission_verdict(
+        plan=plan,
+        policy=policy,
+        controller_estimate_bytes=estimate,
+        heavier=heavier_on_host,
+        resources=_resources(),
+    )
+    assert not host_verdict.closed
+    assert any("resident host memory" in reason for reason in host_verdict.reasons)
+
+    # The plan and policy are provably identical across all three judgements,
+    # so neither could have been the discriminator.
+    for other in (heavier_on_device, heavier_on_host):
+        assert other.configurations == _MEASURED_HEAVY.configurations
+        assert other.atoms_per_configuration == _MEASURED_HEAVY.atoms_per_configuration
+    assert plan == training_parallel.build_training_concurrency_plan(
+        task_count=2,
+        device="cuda:0",
+        loader_workers_per_job=0,
+        resources=_resources(),
+        policy=policy,
+        gpu_sample=_safe_sample(),
+    )
 
 
 # --- A15: duplicate global identity fails closed ---------------------------

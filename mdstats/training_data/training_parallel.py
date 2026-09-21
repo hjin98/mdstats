@@ -104,8 +104,14 @@ class TrainingConcurrencyPolicy:
     maximum_auto_jobs: int = 4
     gpu_memory_fraction: float = 0.90
     gpu_utilization_fraction: float = 0.90
-    estimated_gpu_memory_mib_per_job: float = 6144.0
-    estimated_ram_mib_per_job: float = 8192.0
+    # Common (task-independent) per-job reservations, warranted by measured
+    # real-child peaks rather than by any serialized transport size. Device
+    # residency is model/optimizer/EMA state plus one batch and its graph
+    # tensors, so it does not scale with the configuration count; resident host
+    # memory does, and the value below covers the whole configured size ladder
+    # with headroom. See the campaign-template commentary for the measurements.
+    estimated_gpu_memory_mib_per_job: float = 8192.0
+    estimated_ram_mib_per_job: float = 16384.0
     epoch_stabilization_seconds: float = 60.0
     stability_samples: int = 12
     stability_relative_tolerance: float = 0.10

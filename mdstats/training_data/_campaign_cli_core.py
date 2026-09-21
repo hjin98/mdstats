@@ -7469,8 +7469,22 @@ minimum_parallel_training_jobs = 1
 maximum_parallel_training_jobs = 4
 training_gpu_memory_fraction = 0.90
 training_gpu_utilization_fraction = 0.90
-estimated_training_vram_mib_per_job = 6144.0
-estimated_training_ram_mib_per_job = 8192.0
+# Per-job reservations for the one adaptive TRAIN controller. Both are
+# common (task-independent) bounds and both are warranted by real
+# ``mdstats-mace-train`` child peaks over the production memberships, not by
+# serialized transport size:
+#   VRAM  - device residency is model/optimizer/EMA state plus one
+#           batch/validation batch and its graph tensors; nothing dataset-wide
+#           reaches the device, so it does not scale with N or the horizon.
+#           Measured peaks were 6152 MiB at N=512 and 5154 MiB at N=8192.
+#   RAM   - the resident dataset does scale with N. Measured peaks were
+#           7003 MiB at N=512 and 9912 MiB at N=8192, i.e. 6809 MiB fixed plus
+#           0.379 MiB per configuration, so the ladder maximum N=16384 bounds
+#           at about 13015 MiB.
+# Both values keep conservative headroom above those bounds. Lowering either
+# below its measured bound removes the warrant for concurrent admission.
+estimated_training_vram_mib_per_job = 8192.0
+estimated_training_ram_mib_per_job = 16384.0
 parallel_training_epoch_stabilization_seconds = 60.0
 parallel_training_epoch_activity_timeout_seconds = 120.0
 parallel_training_epoch_stability_samples = 12

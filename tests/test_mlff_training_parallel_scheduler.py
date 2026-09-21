@@ -64,11 +64,21 @@ def _plan(policy: TrainingConcurrencyPolicy | None = None):
     )
 
 
-def test_rtx3090_auto_plan_starts_one_and_caps_at_three() -> None:
+def test_rtx3090_auto_plan_starts_one_and_caps_at_the_shipped_reservation() -> None:
+    """The shipped per-job VRAM reservation, not a historical cap, sets the ceiling.
+
+    This oracle previously asserted three jobs, which was a consequence of a
+    6144 MiB per-job reservation that measured real-child device peaks have
+    since shown to be non-conservative. The claim here is the relation - the
+    ceiling is the observed envelope divided by the shipped reservation - so it
+    is asserted against the shipped value rather than a frozen number.
+    """
+
     policy = TrainingConcurrencyPolicy(epoch_stabilization_seconds=0.0)
     plan = _plan(policy)
     assert plan.initial_jobs == 1
-    assert plan.maximum_jobs == 3
+    usable = plan.gpu_memory_budget_bytes - plan.baseline_gpu_used_bytes
+    assert plan.maximum_jobs == usable // plan.estimated_gpu_bytes_per_job == 2
     assert plan.gpu_utilization_budget_percent == 90.0
     assert plan.cpu_threads_per_job >= 1
 
@@ -127,6 +137,10 @@ def test_two_jobs_do_not_promote_when_projected_gpu_utilization_exceeds_90_perce
         epoch_stabilization_seconds=0.0,
         stability_samples=4,
         maximum_auto_jobs=4,
+        # Pinned, not inherited: this oracle is about the promotion transition
+        # at three owned jobs, so it must not move when the shipped per-job
+        # reservation moves.
+        estimated_gpu_memory_mib_per_job=6144.0,
     )
     controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
     controller.target_jobs = 2
@@ -156,6 +170,10 @@ def test_two_jobs_promote_to_three_only_when_memory_and_utilization_are_both_saf
         epoch_stabilization_seconds=0.0,
         stability_samples=4,
         maximum_auto_jobs=4,
+        # Pinned, not inherited: this oracle is about the promotion transition
+        # at three owned jobs, so it must not move when the shipped per-job
+        # reservation moves.
+        estimated_gpu_memory_mib_per_job=6144.0,
     )
     controller = AdaptiveTrainingConcurrency(_plan(policy), policy)
     controller.target_jobs = 2
