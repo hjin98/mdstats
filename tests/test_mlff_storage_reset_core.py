@@ -2563,7 +2563,13 @@ def test_no_mutation_path_relies_on_snapshot_revalidation_alone() -> None:
 
 def test_p5_and_p7_publishers_hold_the_same_owner_barrier() -> None:
     root = Path(cli.__file__).parent
-    publication = (root / "post_selection_publication.py").read_text(encoding="utf-8")
+    # The scientific member-selection owner delegates representation
+    # publication to the subordinate model-product owner.  The barrier must be
+    # checked at that real publication owner rather than at the decision-only
+    # module, which must remain free of serialized-model machinery.
+    publication = (root / "post_selection_model_products.py").read_text(
+        encoding="utf-8"
+    )
     runtime = (root / "campaign_post_selection_runtime.py").read_text(encoding="utf-8")
     qualification = (root / "qualification" / "runtime.py").read_text(encoding="utf-8")
     assert publication.count("post_selection_publication_barrier") >= 2

@@ -270,6 +270,23 @@ def terminal_currentness_failure(
     declared = str(record.deployment_realization_set_digest or "")
     observed: set[str] = set()
     for outcome in record.components:
+        # A waiting outcome records the absence of external evidence, not a
+        # content-addressed component object.  Its digest is an actionable
+        # request/input marker owned by the terminal record, so attempting to
+        # authenticate it here would incorrectly turn a current
+        # ``waiting_for_reference`` observation into historical evidence.  The
+        # same rule is used by the strict qualification resolver.
+        if (
+            str(
+                getattr(
+                    getattr(outcome, "status", None),
+                    "value",
+                    getattr(outcome, "status", ""),
+                )
+            )
+            == "waiting_for_reference"
+        ):
+            continue
         evidence = _authenticated(
             store, outcome.evidence_digest, QualificationComponentEvidence.from_dict
         )
