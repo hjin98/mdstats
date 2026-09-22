@@ -4,9 +4,10 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reopened
 created_date: 2026-09-21
-revision: 23
+revision: 24
 reviewed_date: 2026-09-22
-workplan_review_status: implementation-review-no-pass-reopened-1
+workplan_review_status: workplan-review-pass-reopened-implementation-no-pass
+workplan_review_basis: ec1df80d80fe6faa8bdc597addbc60f8adbf5853
 implementation_review_candidate: c9b4a713511329988d26311c8b6bb5ef79f0bed1
 implementation_review_domain: D4
 branch: design/mlff-final-production-model-publication-mh1-integration
@@ -21,6 +22,8 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 ## 0. Disposition
 
 **IMPLEMENTATION REVIEW NO-PASS / REOPENED FOR D4 REPAIR. Revision-22 D3 remains coherent and frozen; no Serious Challenge is active.**
+
+**REVISION-24 WORKPLAN REVIEW PASS.** Exhaustive re-review of the reopened repair contract closes the remaining plan-level ambiguity at the authenticated-anchor/private-scratch boundary and at first-reveal activation-pointer recovery. The implementation itself remains NO-PASS until the complete Revision-23 + Revision-24 D4 repair contract and assembled-candidate evidence pass.
 
 Independent Review of assembled candidate `c9b4a713511329988d26311c8b6bb5ef79f0bed1` found blocking D4 violations at the publication-currentness, durability/trust, P7 realization/execution, qualification-binding fence, and MH-1 lightweight-evidence boundaries. The implementation must repair the existing owners directly; no new selection rule, currentness database, publication registry, deployment registry, scheduler, trainer, wrapper hierarchy, or cleanup authority is authorized.
 
@@ -387,6 +390,7 @@ A full PyTorch model is executable serialized content. P5, status and P7 must sh
 The authenticator preserves the repository's existing no-follow trust discipline:
 
 - start from an authenticated campaign-owned `CampaignPaths.models` anchor;
+- the shared trust helper MUST NOT manufacture that trust anchor with `Path.mkdir(parents=True)` or another unchecked pathname walk before authentication. A pre-existing campaign-owned anchor is opened no-follow. If an owner legitimately has to create an absent anchor/subroot, create it from an already-authenticated parent-directory descriptor, fsync the containing directory entry, then reopen/authenticate the new directory before descending;
 - descend components relative to already-opened directory descriptors, refusing symlink/special-node substitution in intermediate components;
 - open the final model with `O_NOFOLLOW` or the accepted platform-equivalent;
 - prove regular-file type with `fstat()` on the opened descriptor;
@@ -400,6 +404,8 @@ Prefer factoring/reusing the existing descriptor-relative qualification/storage 
 The same owner serves P5 current resolution, train-production create-or-verify/reclosure, lifecycle/status, and P7 intake/staging. When a downstream library requires a pathname, copy authenticated bytes from the trusted descriptor into attempt-owned private scratch, fsync/hash-verify that copy, then execute from the trusted copy.
 
 Publication uses the same anchored trust discipline on the **write side**: create/descend `production/g.../N.../decision...` relative to an opened campaign-owned models-root descriptor; reject symlink/special-node intermediate components; create private temps and the no-clobber final entry relative to the authenticated destination-directory descriptor; and fsync that directory descriptor. A pre-planted `models/production` symlink must not redirect product bytes outside the campaign models root.
+
+Every owner-private temporary pathname used by this feature is an ownership claim, not merely a naming convention. Create serialization/projection/receipt/build/execution temps with fresh collision-resistant names and create-exclusive/no-follow semantics beneath an authenticated owner directory. A predictable PID-only name opened with `O_TRUNC`, or a predictable scratch directory removed with recursive deletion before this invocation proves it created/owns that node, is forbidden. Cleanup may unlink/remove only nodes successfully claimed by this invocation.
 
 ## 8. Publication atomicity and restart
 
@@ -457,7 +463,7 @@ Under the publication-set lock:
 1. re-read/re-authenticate the exact replayable/current decision, completion, predecessor reclosure and model-publication state;
 2. if one current model-publication record names a fully valid ordered artifact set, reuse it;
 3. otherwise process published members serially in canonical decision order, bounding provider/model residency;
-4. for each missing/successor member, reconstruct through the native provider, retain its returned evaluated-state digest, move the exact portable model to CPU/eval mode, serialize to a private destination-filesystem temp, flush/fsync, reload/verify, compute byte SHA/size, then retire the provider in `finally`;
+4. for each missing/successor member, reconstruct through the native provider, retain its returned evaluated-state digest, move the exact portable model to CPU/eval mode, create a fresh descriptor-relative private temp with create-exclusive/no-follow semantics, serialize through that already-opened file object/fd where supported, flush/fsync, reload/verify from the exact claimed temp without an unchecked pathname reopen, compute byte SHA/size, then retire the provider in `finally`;
 5. derive the immutable final filename from decision/member identity, full model SHA, and a fresh collision-resistant artifact locator token;
 6. publish the final directory entry with **no-clobber/create-once semantics**. `os.replace` is forbidden for immutable model evidence;
 7. if the chosen locator already exists, descriptor-authenticate it. Exact expected bytes may be reused for that locator; any mismatch chooses a fresh locator token rather than overwriting or wedging reclosure. Never deserialize an unreceipted pre-existing pickle merely to decide reuse;
@@ -490,8 +496,8 @@ Fresh-publication flow:
 4. materialize + verify + durably place complete model set
 5. persist immutable decision / reclosure / model-publication objects
 6. acquire generation P5 publication barrier
-7. re-resolve/revalidate exact final plan/completion/decision
-8. one CampaignStore transaction atomically publishes all 3 product pointers
+7. while holding the generation P5 publication barrier, replay/re-resolve the exact current CV plan + CV acceptance, final plan/completion, committee/head/method lineage and every required final-seed assessment-position key/value through the accepted decision procedure; require the reproduced `FinalProductionPublicationDecision.content_digest` to equal the decision being committed. Every writer of those P5 parent pointers must participate in this same generation barrier, so no parent can advance between this replay and the pointer transaction
+8. one CampaignStore transaction atomically publishes all 3 product pointers, retaining the selected-binding/generation CAS as the final database fence
 9. refresh publication.json while still under generation barrier
 10. release barriers/lock; only then report size complete
 ```
@@ -550,7 +556,7 @@ The bypass never weakens selected binding, completion, CV/method/monitor lineage
 
 `publication.json` is non-authoritative mutable projection:
 
-- using the authenticated descriptor for the stable `N_<size>` directory, create the private projection temp there without following symlinks, flush/fsync it, perform atomic replace **relative to that same directory descriptor**, then fsync the directory; never resolve/reopen the projection destination through an unchecked pathname;
+- using the authenticated descriptor for the stable `N_<size>` directory, create the private projection temp there with a fresh collision-resistant name and create-exclusive/no-follow semantics, flush/fsync it, perform atomic replace **relative to that same directory descriptor**, then fsync the directory; never resolve/reopen the projection destination through an unchecked pathname or truncate a pre-existing predictable temp;
 - refresh only after atomic three-pointer commit while still under generation barrier;
 - if projection refresh fails after DB commit, the product remains authoritative/current; later `train-production` repairs only the projection, without TRAIN2/EVAL2/model rebuild;
 - status/currentness never consumes the projection;
@@ -919,7 +925,7 @@ Do not duplicate the P5 source model/state/architecture, target head, dtype, res
 
 The attempt-local root receipt is a mutable locator for the currently authenticated realization; it is not scientific authority. It records the realization digest, exact immutable realization path, deployed-artifact SHA, and source identities. The ML-IAP artifact itself is published create-once at a fresh immutable locator under the full deployment-identity root. A corrupt/missing current artifact is never overwritten: rebuild to a fresh locator and atomically advance the receipt only after descriptor authentication/durability. Old realization bytes remain inert historical attempt residue.
 
-The mutable receipt update is performed relative to the already-authenticated deployment-identity directory descriptor: private temp, fsync, descriptor-relative atomic replace, directory fsync. A planted symlink at the receipt name or in an intermediate deployment directory cannot redirect either artifact or receipt publication.
+The mutable receipt update is performed relative to the already-authenticated deployment-identity directory descriptor: a fresh collision-resistant create-exclusive/no-follow private temp, fsync, descriptor-relative atomic replace, directory fsync. A planted symlink at the receipt name or in an intermediate deployment directory cannot redirect either artifact or receipt publication, and a stale/predictable temp can never be truncated as if this invocation owned it.
 
 Deployment-dependent component identity then binds the **ordered deployment-realization set digest** in addition to the P5 `model_artifact_set_digest`.
 
@@ -927,7 +933,8 @@ For one consequential P7 execution invocation, resolve one **invocation-frozen o
 
 - create-or-authenticate every required member deployment realization under its existing per-deployment lock;
 - derive the ordered realization-set digest from the exact publication member order and each `deployment_realization_digest`;
-- freeze those exact member realization identities/immutable artifact locators in the in-memory session for that invocation;
+- freeze, per member and in decision order, the exact `(member_id, deployment_identity, deployment_realization_digest, immutable artifact relative locator, artifact SHA-256)` in the in-memory session for that invocation;
+- after freeze, deployment-dependent execution/reuse authenticates that exact frozen locator + SHA directly and MUST NOT re-enter the mutable receipt/build resolution path for that member. Missing/corrupt frozen bytes abort the current invocation; only a subsequent invocation may resolve/build a successor realization;
 - require both `deployment_parity` and `dynamics` to use that same frozen set for execution and reuse checks;
 - include the set digest in those components' `component_input_digest` / stored evidence currentness;
 - checkpoint-only components never acquire it.
@@ -965,7 +972,7 @@ Extend the existing qualification pointer-publication owner with expected-curren
 - the same transaction requires the current final-publication decision pointer and predecessor-reclosure pointer to equal the session's exact scientific predecessors;
 - it also requires the current CV plan/acceptance, final-plan pointer, and the exact derived **final-seed assessment-position key/value pairs** admitted into the session to equal the captured P5 parent snapshot. Do not compare by run-evidence value search. A decision pointer that has not moved does **not** rescue it when one of those exact position locators has advanced.
 
-Before those pointer writes, re-establish the **current `QualificationInputBinding` identity** through the existing identity owners (selected publication/predecessor, executable, environment, specification, evidence roles/resource scope) and require exact equality with the session binding. The identity resolver must authenticate that the current final decision still reproduces from the current final-plan/CV/final-seed assessment parents. Then, inside the same `CampaignStore.exclusive_transaction()` that writes the P7 pointer, compare the exact captured parent-locator set plus decision/reclosure/model pointers before the write.
+At the actual terminal/release publication fence, re-establish the **current `QualificationInputBinding` identity** through the exact same pure constructor path used by session admission (selected publication/predecessor, executable, environment, specification, evidence roles and accepted stable resource scope) and require exact equality with the session binding. Perform this re-resolution inside the existing P7 publication critical section at the latest safe point immediately before the CampaignStore parent/pointer CAS, not as a precheck that can be invalidated before publication. The identity resolver must authenticate that the current final decision still reproduces from the current final-plan/CV/final-seed assessment parents. Then, inside the same `CampaignStore.exclusive_transaction()` that writes the P7 pointer, compare the exact captured parent-locator set plus decision/reclosure/model pointers before the write.
 
 Factor this as one bounded identity-only resolver shared with first-reveal revalidation. It must reuse the same constructors/identities as `build_qualification_session(...)` but must not publish a reference request, open/modify attempt state, construct a provider/model, or create a second qualification-binding algorithm. Session admission may still build the ordinary full session outside critical sections.
 
@@ -1019,8 +1026,10 @@ post_selection_publication_barrier(generation)
 
 3. immediately before the irreversible reveal, re-establish the current `QualificationInputBinding` through the existing owner and require exact equality with `session.binding` (including executable/environment/specification/evidence roles/resource scope);
 4. while the writer exclusion is held, transactionally compare the current selected binding, captured CV plan/acceptance, final-plan pointer, the exact derived final-seed assessment-position key/value set, and exact final-decision/predecessor-reclosure/model-publication pointers against the session's admitted P5 parent snapshot;
-5. only after that binding + pointer CAS succeeds, append/create-or-verify the reveal record and publish the locked-activation pointer while the same writer exclusion and publication barriers still prevent a competing P5/P7/current-selection writer from invalidating the authorization window;
+5. only after that binding + pointer CAS succeeds, append/create-or-verify the reveal record **and publish the locked-activation pointer** while the same writer exclusion and publication barriers still prevent a competing P5/P7/current-selection writer from invalidating the authorization window. There is no second unfenced current-pointer publication path after leaving this window;
 6. release those locks before running the locked numerical evaluation.
+
+Crash recovery is history-first and fail-closed. If the process dies after the irreversible reveal-history append but before the activation pointer commits, the cohort is permanently revealed. A resume may repair the missing activation pointer only after repeating the same canonical binding re-resolution plus exact P5-parent/model CAS under the same short P5 -> P7 -> writer-exclusion order. If those parents/binding have drifted, preserve the reveal as historical and do **not** publish the stale activation as current. Never append a second reveal to repair the pointer.
 
 Do not hold the writer gate or publication barriers across the locked test computation.
 
@@ -1207,9 +1216,9 @@ If the locked real `mace-mh-1.model` and pinned environment are readily availabl
 - exact `mace_mh_1 / omat_pbe` resolution;
 - tiny source inference;
 - selected-head extraction/parity;
-- P5 foundation-provider/model-construction smoke;
-- prove the post-selection output head inventory/order is exactly the current canonical `[pt_head, target_head]`, so the existing ML-IAP target-head index-1 contract is valid for MH-1 just as for MPA-0;
-- exercise the new full-model publication save/reload owner on that bounded MH-1 path;
+- drive the **actual current MH-1 foundation/materialization owner** into the canonical post-selection two-head realization, emit a current-format bounded checkpoint, and authenticate that checkpoint through the real selected-checkpoint provider with `allow_forward_override=False`;
+- require the provider-returned portable model to preserve exact state/architecture/dtype identity and the canonical `[pt_head, target_head]` inventory/order, so the existing ML-IAP target-head index-1 contract is valid for MH-1 just as for MPA-0;
+- exercise the new full-model publication save/reload owner on that same provider-returned bounded MH-1 path, not by serializing the raw foundation model as a substitute;
 - when pinned CPU deployment/export dependencies are readily available, exercise publication -> target-head deployment exporter -> ML-IAP builder construction without a long LAMMPS/MD run.
 
 If the real bytes/runtime are unavailable in the development host, that is not a blocker by itself.
@@ -1249,7 +1258,9 @@ Any obvious incompatibility found by lightweight tests is a blocker.
 PEM basis for this cycle:
 
 ```text
-repository state reviewed: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
+governing source basis: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
+implementation candidate reviewed: c9b4a713511329988d26311c8b6bb5ef79f0bed1
+reopened-plan review basis: ec1df80d80fe6faa8bdc597addbc60f8adbf5853
 accepted PEM file: PROJECT-ENGINEERING-MEMORY.md
 PEM accepted/reconciled base recorded by that file: 4eabe2ae9783c7ff92f3a1093c37502a01380812
 coverage: PARTIAL
@@ -1273,7 +1284,9 @@ PEM remains non-authoritative learning support. Because its coverage is partial,
 
 Historical MH-1 qualification remains an oracle for expected family/head shape, not current proof after later P5/TRAIN2/EVAL2 changes.
 
-Refresh this HAS if accepted PEM or branch authority materially advances before implementation closeout.
+Revision-24 refresh confirms the accepted PEM file/base did not advance and no same-branch semantic PEM overlay exists. The applicability dispositions above therefore remain unchanged. IR23/IR24 findings are current-cycle implementation evidence, not automatically promoted to durable project memory.
+
+Refresh this HAS again if accepted PEM or branch authority materially advances before implementation closeout.
 
 ## 18. Expected implementation surface
 
@@ -1346,6 +1359,8 @@ Acceptance:
 - `model_artifact_set_digest` is path-independent and includes exact member byte/state identities;
 - `model_size_bytes` is recorded;
 - one descriptor/no-follow published-model authenticator is shared by P5/status/P7;
+- the trust helper starts from an authenticated owner anchor and never creates that anchor through an unchecked pathname walk;
+- all owner-private temps/scratch are fresh, create-exclusive/no-follow, and cleanup deletes only nodes this invocation proved it owns;
 - canonical model paths use collision-proof full identities;
 
 - each member path also uses a fresh non-authoritative artifact locator token so same-SHA corruption can be reclosed without overwrite;
@@ -1361,6 +1376,7 @@ Acceptance:
 - reload preserves exact state/architecture/head inventory/mode;
 - native path uses `allow_forward_override=False`;
 - immutable file placement is create-once/no-clobber and durable;
+- serialization/reload uses the exact descriptor-claimed private temp rather than reconstructing and reopening its pathname;
 
 - newly created model publication directory entries are descriptor-relative/no-follow and fsynced through the complete path chain before pointer publication;
 - no terminal-model copy path.
@@ -1372,7 +1388,8 @@ Acceptance:
 - one stable decision/publication-set lock covers the complete ordered committee;
 - immutable objects are persisted before pointer visibility;
 - one CampaignStore transaction atomically changes model-publication + predecessor-reclosure + final-publication pointers;
-- commit-time stale binding/currentness fence remains inside that transaction;
+- while holding the generation barrier immediately before the pointer transaction, the exact current CV/final-plan/completion/final-seed parent graph is replayed through the accepted decision procedure and must reproduce the exact decision digest being committed; all writers of those P5 parent pointers participate in the same barrier;
+- commit-time selected-binding/currentness fence remains inside that transaction;
 - fault injection at each logical pointer write proves all-old/all-new visibility;
 - `publication.json` is refreshed only after authoritative commit and is never currentness authority.
 
@@ -1423,14 +1440,14 @@ Acceptance:
 
 - each deployed ML-IAP build has a path-independent deployment-realization digest; deployment parity/dynamics bind the ordered realization-set digest;
 
-- one P7 invocation freezes one ordered realization set before deployment-dependent component admission; parity/dynamics reuse/execution and terminal reduction must all agree on that set;
+- one P7 invocation freezes the exact ordered per-member deployment artifact locator + SHA + deployment/realization identities before deployment-dependent component admission; parity/dynamics reuse/execution and terminal reduction must all agree on that set, and a frozen missing/corrupt artifact aborts that invocation instead of following a newer receipt;
 
 - realization receipts/ML-IAP files remain attempt-local reuse/execution state; terminal/release evidence records the exercised realization identity but public currentness survives legitimate released-scratch cleanup;
 - corrupted deployed output rebuilds at a fresh immutable locator and advances only the attempt-local receipt locator; no overwrite of prior deployed bytes;
-- terminal/release publication re-establishes exact current `QualificationInputBinding` before pointer CAS;
+- terminal/release publication re-establishes the canonical current `QualificationInputBinding` through the same pure resolver as admission **inside the P7 publication critical section immediately before** pointer CAS;
 - terminal/release pointer publication CAS-checks the exact captured CV/final-plan/final-seed assessment parents **and** current final-decision, predecessor-reclosure and model-publication pointers;
 
-- first irreversible locked reveal re-establishes the exact current qualification binding and is CAS-fenced under P5 barrier -> P7 barrier -> CampaignStore writer exclusion against the exact captured CV/final-plan/final-seed assessment parents and current prerequisite model publication;
+- first irreversible locked reveal re-establishes the exact current qualification binding and is CAS-fenced under P5 barrier -> P7 barrier -> CampaignStore writer exclusion against the exact captured CV/final-plan/final-seed assessment parents and current prerequisite model publication; both reveal-history append and activation-pointer publication occur inside that authorization window, while crash recovery may repair a missing pointer only under the same fences and never re-reveals;
 - active P7 attempt references include exact P5 model paths without adding representation to the scientific attempt identity;
 - `release_qualified` observation requires the matching authenticated release-evidence index, not a terminal-record pointer alone;
 - `qualification status` and general lifecycle share the same pure P7 terminal-currentness observer for executable/predecessor/P5-model currentness plus internal deployment-evidence/realization consistency; they never promote mutable attempt scratch into public currentness authority;
@@ -1444,8 +1461,8 @@ Acceptance:
 - real current selected checkpoint != trainer terminal checkpoint case publishes the selected model;
 - published file loads through the supported MACE target-head consumption path and performs bounded finite inference on non-locked known data; reuse an existing parity oracle/tolerance if one already owns that comparison, otherwise do not invent a D2 tolerance;
 - MPA-0 regression remains green;
-- MH-1 `mace_mh_1 / omat_pbe` resolution, reconstruction and `[pt_head, target_head]` order are proved;
-- bounded MH-1 publication save/reload runs when real bytes are readily available;
+- MH-1 `mace_mh_1 / omat_pbe` resolution is driven through the actual current post-selection two-head materialization/current-format checkpoint/selected-checkpoint-provider seam with `allow_forward_override=False`, proving exact state/architecture/dtype identity and `[pt_head, target_head]` order;
+- bounded MH-1 publication save/reload uses that provider-returned portable model when real bytes are readily available;
 - bounded CPU deployment/ML-IAP construction runs when pinned dependencies are readily available;
 - no long MH-1 TRAIN/CV/production/MD/GPU qualification is required.
 
@@ -1566,6 +1583,13 @@ Acceptance:
 | mixed PRODUCT_RECLOSURE + PRODUCTION_REQUIRED | accepted global TRAIN wave remains isolated; serial reclosure/finalization follows it |
 
 | storage owner graph after publication | models root remains protected container; exact P5 model artifacts and artifact-set state are owner-certified; no new reclamation authority |
+| P5 parent advances after materialization but before product commit | late replay under the common generation barrier reproduces a different decision and refuses every authoritative product-pointer change |
+| unchecked trust-anchor creation attempt | trust helper refuses/fails closed; no `mkdir(parents=True)` pathname walk establishes an executable-artifact trust root |
+| pre-planted predictable projection/receipt/build temp | fresh create-exclusive owner temp is used or publication fails; no foreign/stale node is truncated, recursively deleted or later cleaned as this invocation's residue |
+| freeze R1 then delete/corrupt R1 and advance/build R2 | same invocation refuses execution rather than following R2 under the R1 set digest; a later invocation may resolve R2 |
+| binding/spec/executable drift after old terminal/release precheck but before pointer CAS | canonical binding is re-resolved at the actual P7 publication fence and the pointer does not move |
+| crash after first reveal-history append but before activation-pointer commit | reveal remains permanently consumed; unchanged parents allow fenced pointer repair without a second reveal, while drifted parents leave the activation historical and never publish it current |
+| MH-1 real-foundation smoke | real bytes, when available, cross the current post-selection checkpoint -> `authenticate_post_selection_provider(..., allow_forward_override=False)` seam; raw-foundation serialization alone cannot claim this evidence |
 
 ## 22. Real-owner integration
 
@@ -1648,8 +1672,15 @@ projection and P7 current-receipt descriptor-relative atomic-replace symlink-rac
 
 nested-directory fsync/failure-injection durability tests for P5 model publication and touched P7 deployment roots
 P5/P7/storage owner-graph exact model-path and publication-lock protection tests
+unchecked trust-anchor creation / pre-planted anchor-symlink rejection tests
+create-exclusive collision/ownership tests for P5 projection, P7 receipt and deployment build/execution scratch; no predictable `O_TRUNC` or unowned recursive cleanup
+late P5 replay races after expensive materialization for final-plan, CV acceptance and exact final-seed assessment-position advances
+frozen-realization R1 deletion/corruption + receipt advance to R2 tests
+terminal/release binding drift injected after the old precheck point and before the actual pointer CAS
+first-reveal crash after history append/before activation pointer, both unchanged-parent repair and drifted-parent no-current-pointer cases
 collection stage COMPLETE/fail-fast multi-size restart tests
 bounded real-MACE published-model usability tests
+real-MH1 selected-checkpoint-provider seam test or explicit unavailable-evidence report plus structural current-owner coverage
 documentation structural/build checks
 ```
 
@@ -1746,6 +1777,11 @@ NO-PASS if any remains true:
 
 82. One terminal/release record can combine deployment-dependent component evidence from different deployment-realization-set digests.
 83. `deployment_parity` and `dynamics` independently follow a mutable current receipt within one invocation instead of consuming one frozen ordered realization set, allowing a mid-run receipt advance to switch executable bytes.
+84. The shared executable-artifact trust helper establishes its own trust anchor through unchecked pathname creation, or an absent P5/P7 artifact root can be created without an authenticated parent descriptor + containing-directory fsync.
+85. Projection/receipt/model/build/execution private state uses a predictable PID-only `O_TRUNC` temp or recursively deletes a pre-existing scratch node without create-exclusive proof that this invocation owns it.
+86. A first locked reveal appends irreversible history under the required fence but publishes/repairs its current activation pointer later outside the same canonical binding + exact P5-parent CAS, allowing a stale activation to become current after authorization drift.
+87. A frozen P7 realization set records only a digest while later execution can re-resolve a mutable receipt/build path and consume different bytes under that digest.
+88. Real-MH1 evidence is claimed from raw-foundation or generic-tiny-model serialization without exercising the current MH-1 post-selection current-format selected-checkpoint provider seam when real bytes are available, or without accurately reporting their unavailability.
 
 ## 25. D3 reopen triggers
 
@@ -1768,25 +1804,25 @@ Implementation is complete only when the assembled candidate proves all of the f
 
 1. Every frozen selected size has exact P5 decision membership plus a reloadable, descriptor-authenticated, no-clobber full MACE `.model` representation for every published member, with a fresh locator mechanism that cannot wedge same-SHA repair.
 2. Representation comes from the exact selected checkpoint/provider state, never trainer terminal output, with live/EMA/state/architecture/head/dtype equivalence and bounded supported-consumer usability.
-3. One publication-set lock plus one atomic CampaignStore product-pointer transaction makes decision/model/reclosure visibility crash-consistent and restart-safe.
+3. One publication-set lock plus one atomic CampaignStore product-pointer transaction makes decision/model/reclosure visibility crash-consistent and restart-safe, with the exact current P5 scientific parent graph replayed under the common generation barrier immediately before commit and required to reproduce the decision being published.
 4. Legacy completed campaigns reclose with zero TRAIN2/EVAL2 and independently reuse a still-valid model publication or still-current predecessor reclosure when only the other descendant is stale; serialized-loader/runtime drift is resolved by current-loader equivalence proof or representation-only successor publication, never retraining.
 5. Public lifecycle/status reports COMPLETE only after decision + completion + authenticated model publication + current predecessor reclosure for every selected size, from one coherent owner snapshot that also captures CV/final-plan and assessment-position parents; each required final-seed parent is current only at the exact canonical locator key derived from its immutable run evidence.
-6. P7 admission starts from one coherent captured **complete P5 parent graph** (including final plan/CV/assessment positions); P7 keeps checkpoint reconstruction as scientific reference, consumes descriptor-authenticated P5 model bytes only for deployment, freezes one authenticated ordered deployment-realization set per consequential invocation, makes every deployment-dependent component and terminal/release provenance agree on that same set without making mutable scratch exposure-time authority, versions the deployment-source identity, invalidates only deployment-dependent evidence for representation changes, and re-establishes both the exact qualification binding **and captured P5 parent-locator set** before CAS-fencing terminal/release publication.
+6. P7 admission starts from one coherent captured **complete P5 parent graph** (including final plan/CV/assessment positions); P7 keeps checkpoint reconstruction as scientific reference, consumes descriptor-authenticated P5 model bytes only for deployment, freezes the exact ordered artifact locator/SHA/deployment/realization tuple per member for each consequential invocation, never follows a newer receipt after freeze, makes every deployment-dependent component and terminal/release provenance agree on that same set without making mutable scratch exposure-time authority, versions the deployment-source identity, invalidates only deployment-dependent evidence for representation changes, and re-establishes both the exact canonical qualification binding **inside the actual publication critical section** and captured P5 parent-locator set before CAS-fencing terminal/release publication.
 7. `qualification status` and general lifecycle share one observational P7 currentness owner for current executable/predecessor/model-representation dependencies touched by this cycle.
 8. One-shot locked disclosure is never reopened; the cohort/reveal identity remains representation-independent while the immutable activation record preserves the exact prerequisite evidence that authorized first reveal; representation-only repair preserves current predecessor reclosure/attempt identity when applicable; historical older-executable P7 evidence remains historical.
 
-8a. A first locked reveal re-establishes the exact current qualification binding and captured CV/final-plan/final-seed assessment parents, and is authorized under a short P5/P7/writer critical section that proves its immutable prerequisite evidence still corresponds to the exact current P5 model publication; the activation records the exact prerequisite evidence digests, including any realization identity those evidence records exercised. Terminal `release_qualified` exposure requires the matching release index and never depends on retained attempt scratch.
-9. P5/P7 disk admission, anchored no-follow creation/authentication, descriptor-relative mutable-locator replacement, full directory-entry + file fsync/no-clobber durability, resource retirement and reconciled P5/models-root storage ownership remain within existing owners; the accepted global TRAIN scheduler is unchanged.
+8a. A first locked reveal re-establishes the exact current qualification binding and captured CV/final-plan/final-seed assessment parents, and is authorized under a short P5/P7/writer critical section that proves its immutable prerequisite evidence still corresponds to the exact current P5 model publication; reveal-history append and activation-pointer publication both occur within that authorization window. Crash recovery after history-but-before-pointer never re-reveals and repairs the pointer only under the same binding/P5 fences. The activation records the exact prerequisite evidence digests, including any realization identity those evidence records exercised. Terminal `release_qualified` exposure requires the matching release index and never depends on retained attempt scratch.
+9. P5/P7 disk admission, authenticated-anchor/no-follow creation/authentication, create-exclusive owner-private temp/scratch semantics, descriptor-relative mutable-locator replacement, full directory-entry + file fsync/no-clobber durability, resource retirement and reconciled P5/models-root storage ownership remain within existing owners; no trust helper self-creates an anchor through an unchecked pathname walk, and the accepted global TRAIN scheduler is unchanged.
 10. `train-production` directly prints authoritative usable model paths/SHA/target head, and current documentation consistently distinguishes checkpoint, P5 full model and P7 deployment artifact.
-11. MPA-0 affected regression and bounded real-owner selected-checkpoint publication pass; MH-1 passes the lightweight source/head/reconstruction/publication checks, while long campaign/GPU/MD qualification remains deferred.
+11. MPA-0 affected regression and bounded real-owner selected-checkpoint publication pass; MH-1 passes the lightweight source/head/current post-selection selected-checkpoint-provider/publication checks (or real-byte unavailability is explicitly recorded without misclaiming a real pass), while long campaign/GPU/MD qualification remains deferred.
 
 Any failed item above is an implementation NO-PASS. Local helper names, exact private temp names and equivalent no-clobber primitives remain D4 choices.
 
-> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. For the reopened implementation, Sections 0-26 **plus Section 26A** are normative; Revision-23 Section 26A is the mandatory D4 repair delta over the still-binding Revision-22 architecture. Earlier review-history wording is rationale/evidence only.
+> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. For the reopened implementation, Sections 0-26 **plus Sections 26A-26B** are normative. Section 26A is the mandatory D4 repair delta over the still-binding Revision-22 architecture as refined by Revision 24; Section 26B records the exhaustive reopened-plan convergence review. If older wording conflicts with a Revision-24 refinement, the Revision-24 wording controls. Earlier review-history wording is rationale/evidence only.
 
 
 
-## 26A. Revision-23 implementation Review reopen — mandatory D4 repair delta
+## 26A. Revision-23 implementation Review reopen — mandatory D4 repair delta, refined by Revision 24
 
 ### Review disposition and basis
 
@@ -1870,10 +1906,11 @@ Required repair:
 
 1. Change the existing shared trust owner; do not create a parallel durability subsystem.
 2. Required publication fsync failures must propagate/fail closed. Best-effort swallowing is allowed only for cleanup/close paths whose failure cannot make an artifact appear durably published.
-3. Create P5 private serialization temps relative to the already-authenticated destination-directory fd using no-follow/create-exclusive semantics. Pass the opened file object/fd to `torch.save` and current-loader verification where supported; do not reopen the authoritative temp through a reconstructed pathname.
-4. Keep final immutable placement descriptor-relative/no-clobber and require the directory fsync to succeed before the artifact can participate in a model-publication record.
-5. Rework the touched P7 deployment-root creation through the same anchored descriptor/no-follow directory owner and fsync the containing directory when a new deployment-identity directory entry is installed. Do not rely on `Path.mkdir` + fsync of the child directory as proof of parent-entry durability.
-6. Preserve existing projection semantics: `publication.json` remains post-commit/non-authoritative, so projection failure may remain repairable without undoing the scientific product.
+3. The shared trust owner must start from an already-authenticated owner anchor. Remove unchecked `anchor_path.mkdir(parents=True, exist_ok=True)`-style trust-root creation; if an absent root genuinely must be created, create it descriptor-relative from an authenticated parent and fsync the containing directory before trusting it.
+4. Create P5 private serialization temps relative to the already-authenticated destination-directory fd using fresh collision-resistant no-follow/create-exclusive semantics. Pass the opened file object/fd to `torch.save` and current-loader verification where supported; do not reopen the authoritative temp through a reconstructed pathname.
+5. Keep final immutable placement descriptor-relative/no-clobber and require the directory fsync to succeed before the artifact can participate in a model-publication record.
+6. Rework the touched P7 deployment-root creation through the same anchored descriptor/no-follow directory owner and fsync the containing directory when a new deployment-identity directory entry is installed. Do not rely on `Path.mkdir` + fsync of the child directory as proof of parent-entry durability.
+7. Preserve existing projection semantics: `publication.json` remains post-commit/non-authoritative, so projection failure may remain repairable without undoing the scientific product.
 
 Required falsification:
 
@@ -1948,8 +1985,9 @@ Required repair:
 2. The shared resolver must re-resolve the current specification from the authoritative command/config mapping, executable identity, environment identity, evidence-role membership and the accepted stable resource-scope material; predecessor identity remains tied to the exact current/captured P5 parent graph.
 3. Session construction uses that resolver.
 4. Terminal/release publication re-establishes the exact binding at the latest safe point inside the existing P7 publication critical section, immediately before the CampaignStore P5-parent/pointer CAS.
-5. First irreversible reveal performs the same binding check **inside** the existing P5 barrier -> P7 barrier -> CampaignStore writer-exclusion critical section, immediately before the current-parent CAS/reveal record. No long numerical work may occur while those locks are held.
-6. Preserve locked cohort/reveal identity independence from model representation.
+5. First irreversible reveal performs the same binding check **inside** the existing P5 barrier -> P7 barrier -> CampaignStore writer-exclusion critical section, immediately before the current-parent CAS/reveal record. Both irreversible reveal-history append and the current locked-activation pointer publication remain inside that authorization window. No long numerical work may occur while those locks are held.
+6. Crash after history append but before activation-pointer commit is history-first: resume never emits another reveal and may repair the pointer only after repeating the same binding + exact P5-parent CAS under the same lock order. If current parents/binding drifted, leave the activation historical rather than publishing it current.
+7. Preserve locked cohort/reveal identity independence from model representation.
 
 Required falsification:
 
@@ -1975,6 +2013,50 @@ Required repair/evidence:
 3. Require the returned portable model to have canonical `[pt_head, target_head]` order, target-head index 1, exact provider state/architecture/dtype identity, publication save/reload, and—when pinned CPU deployment dependencies are available—the current ML-IAP builder construction.
 4. No long training horizon, production campaign, GPU run or MD qualification is required.
 5. If real MH-1 bytes/runtime are unavailable on the implementation host, preserve that as explicitly unavailable evidence rather than converting a generic tiny-model test into a claimed real-MH1 pass; the structural owner-path test must still cover the actual MH-1 family configuration/materialization code.
+
+### IR24-B7 — trust-anchor and private-temp/scratch ownership are still not closed — BLOCKING
+
+Revision-24 plan review found a second trust-boundary defect family adjacent to IR23-B2/B3:
+
+- `model_artifact_trust.open_publication_directory(...)` calls `anchor_path.mkdir(parents=True, exist_ok=True)` before opening the supposed trust anchor no-follow, so the helper can create/traverse the very path it is supposed to treat as already authenticated;
+- P5 `publication.json` and P7 deployment-receipt temps use predictable PID-only names with `O_TRUNC` rather than create-exclusive ownership;
+- P7 deployment build scratch uses a predictable `.build-<pid>` path and recursively removes a pre-existing node before proving the current invocation created/owns it.
+
+This violates D3-4A, D3-5, blocking conditions 25/54/59/67 and the general rule that cleanup may destroy only owner-proven private residue.
+
+Required repair:
+
+1. Rewire the shared trust owner so an executable-artifact trust anchor is never created by unchecked pathname traversal. Reuse an authenticated campaign/attempt parent and descriptor-relative create/open/fsync semantics.
+2. Use fresh collision-resistant create-exclusive/no-follow names for P5 serialization/projection temps, P7 receipt temps, and authority-adjacent build/execution scratch.
+3. Remove predictable `exists() -> rmtree()` scratch reclamation. A pre-existing node at a candidate scratch name is collision/foreign residue: choose another fresh private name or fail safely; never recursively delete it to claim the name.
+4. Cleanup only nodes this invocation successfully created/claimed. Preserve inert historical/foreign nodes conservatively.
+5. Keep this within the existing trust/publication/deployment owners; add no cleanup subsystem.
+
+Required falsification:
+
+- pre-plant a symlink/foreign directory at a would-be trust anchor or deployment subroot; publication/build must not traverse or delete through it;
+- pre-plant the old predictable projection/receipt/build-temp names with sentinels; the invocation neither truncates nor recursively deletes them;
+- inject creation/fsync failure after a new descriptor-relative anchor/subroot entry; no authoritative product/evidence pointer becomes current.
+
+### IR24-B8 — first-reveal history and activation-pointer recovery are not one fenced authorization sequence — BLOCKING
+
+The candidate's new-activation path appends `record_locked_reveal(...)` inside the P5 -> P7 -> writer-exclusion window, then later leaves that window and separately re-enters only the P7 barrier to create-or-verify the reveal and publish `POINTER_LOCKED_ACTIVATION`. That second current-pointer publication has neither the canonical binding re-resolution nor the exact expected-P5-parent CAS required at first reveal.
+
+IR23-B5 therefore needs this explicit completion: authorization is not closed merely because the irreversible history append was fenced.
+
+Required repair:
+
+1. On a brand-new reveal, after canonical binding re-resolution + exact P5-parent CAS, append/create-or-verify reveal history and publish the locked-activation current pointer while the same P5 barrier -> P7 barrier -> writer exclusion still holds.
+2. Keep history-first ordering so a crash can never make an unrevealed cohort appear unopened after disclosure.
+3. If a crash occurs after reveal history but before the pointer commit, resume recognizes the cohort as already revealed and never calls the numerical locked test as a fresh cohort.
+4. Pointer-only recovery is allowed only after repeating the same canonical current-binding and exact P5-parent/model-publication fences. If they no longer match, preserve the activation/reveal as historical and do not publish a stale activation pointer.
+5. Do not solve this with a second reveal index, transaction log or activation registry.
+
+Required falsification:
+
+- inject a crash immediately after durable reveal history and before activation-pointer publication; unchanged parents permit idempotent pointer repair with exactly one reveal-history entry;
+- repeat, advance specification/executable or one exact P5 parent before resume; no current activation pointer is published and no second reveal occurs;
+- prove a competing representation/final-seed successor cannot enter between reveal authorization and current activation-pointer publication.
 
 ### IR23-E1 — executable acceptance evidence for the assembled candidate is not independently available — BLOCKING FOR CLOSEOUT
 
@@ -2015,9 +2097,41 @@ The reopened implementation is Review-ready only when all of the following are t
 5. terminal/release and first locked reveal re-establish the same canonical qualification binding at their actual commit/reveal fences;
 6. the lightweight MH-1 evidence crosses the current family-specific post-selection selected-checkpoint provider seam without long qualification;
 7. the focused + affected assembled-candidate regression is executed and reported;
-8. no new currentness database, publication/deployment registry, wrapper hierarchy, scheduler, trainer, cleanup authority, or family-specific production path was added to achieve the repair.
+8. no new currentness database, publication/deployment registry, wrapper hierarchy, scheduler, trainer, cleanup authority, or family-specific production path was added to achieve the repair;
+9. executable-artifact trust anchors and all private publication/deployment temps/scratch satisfy the Revision-24 authenticated-anchor/create-exclusive ownership contract, with no predictable `O_TRUNC` or unowned recursive cleanup;
+10. first-reveal history + activation-pointer publication/recovery satisfy the single fenced authorization sequence in IR24-B8.
 
 If repair evidence shows any of the original Section-25 D3 reopen triggers, stop and route a Serious Challenge to D3. Otherwise these findings remain D4 blockers under the accepted Revision-22 architecture.
+
+## 26B. Revision-24 exhaustive reopened-plan convergence review
+
+### Scope and Challenge result
+
+Revision-24 independently re-read the reopened plan against:
+
+- accepted D1/D2 non-change;
+- frozen Revision-22 D3 ownership and currentness architecture;
+- assembled implementation candidate `c9b4a713511329988d26311c8b6bb5ef79f0bed1`;
+- reopened plan head `ec1df80d80fe6faa8bdc597addbc60f8adbf5853`;
+- current accepted PEM/HAS applicability.
+
+**Challenge result: PASS at D3.** No Serious Challenge is active. The original six Revision-23 blockers are correctly classified as D4 nonconformance. Exhaustive plan review found two additional D4 concretization gaps, IR24-B7 and IR24-B8, and closed the plan ambiguity by integrating them into the normative trust, publication, P7, acceptance, regression, blocking and completion contracts above.
+
+### Closed plan-level gaps
+
+1. **Trust-root bootstrap was under-specified.** A helper cannot call a path an authenticated anchor after first creating it through unchecked `Path.mkdir(parents=True)`. Revision 24 makes anchor bootstrap descriptor-relative from a prior trusted owner boundary.
+2. **Private temp/scratch ownership was under-specified.** Descriptor-relative `O_NOFOLLOW` is insufficient when a predictable existing regular file can be opened with `O_TRUNC`, or a predictable scratch directory can be recursively removed. Revision 24 requires fresh create-exclusive ownership and owner-proven cleanup.
+3. **First-reveal recovery was split across two authorization windows.** Revision 24 makes reveal history + current activation-pointer publication one fenced authorization sequence and specifies history-first crash recovery without a second reveal.
+4. **P5 late replay dependence on the common generation barrier was implicit.** Revision 24 states that every relevant CV/final-plan/final-seed parent writer participates in that barrier; otherwise the late replay would not close the check-to-commit race.
+5. **Frozen deployment execution identity was too abstract.** Revision 24 freezes the exact artifact locator + SHA as well as deployment/realization digests and forbids mutable receipt re-resolution after freeze.
+6. **MH-1 evidence wording admitted a weaker surrogate.** Revision 24 requires real MH-1 bytes, when available, to cross the actual current post-selection current-format selected-checkpoint provider seam; raw-foundation serialization is not equivalent evidence.
+7. **HAS basis was stale as review coordination state.** Revision 24 refreshes the reviewed candidate/head while preserving the unchanged accepted PEM base and applicability set.
+
+### Workplan disposition
+
+**PASS AS REOPENED REPAIR WORKPLAN.** The plan is now implementer-ready and has no known remaining D3/D4 specification gap within the bounded scope.
+
+This does **not** pass the implementation. Candidate `c9b4a713511329988d26311c8b6bb5ef79f0bed1` remains NO-PASS until IR23-B1..B6, IR24-B7..B8 and IR23-E1 are satisfied on one assembled repair candidate. Long production MH-1/GPU/MD qualification remains intentionally deferred exactly as stated in Sections 15-16.
 
 ## 27. Current-implementation review closure (Revision 2)
 
