@@ -6448,9 +6448,12 @@ def execute_current_train_production(args: Any) -> int:
                     context, classification
                 )
                 _ok(
-                    f"N={n_selected}: {classification.state}; the existing "
-                    "scientifically valid final production was reclosed into a "
-                    "current usable model product with no TRAIN2 and no EVAL2"
+                    f"N={n_selected}: verified the existing published model "
+                    "product; no training or evaluation was required"
+                    if classification.state == PRODUCT_COMPLETE
+                    else f"N={n_selected}: the existing scientifically valid final "
+                    "production was reclosed into a current usable model product "
+                    "with no TRAIN2 and no EVAL2"
                 )
             else:  # pragma: no cover - every state is handled above
                 raise PostSelectionError(
