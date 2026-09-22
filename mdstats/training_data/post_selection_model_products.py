@@ -17,6 +17,7 @@ no member, and has no API that could.
 from __future__ import annotations
 
 import os
+import secrets
 import shutil
 import tempfile
 from contextlib import contextmanager
@@ -31,6 +32,7 @@ from .model_artifact_trust import (
     ModelArtifactTrustError,
     authenticate_descriptor_leaf,
     authenticate_model_artifact,
+    create_private_directory,
     open_publication_directory,
     place_immutable_file,
     stage_authenticated_model,
@@ -315,7 +317,11 @@ def current_runtime_compatibility_established(record: FinalProductionModelPublic
 
 def campaign_models_root(context: Any) -> Path:
     root = Path(context.paths.models)
-    root.mkdir(parents=True, exist_ok=True)
+    # The model root is an owner anchor.  If it is absent, establish it from
+    # its already-existing parent descriptor; never bless a planted symlink or
+    # another namespace node by first calling ``Path.mkdir`` on the anchor.
+    with open_publication_directory(root.parent, root.name, create=True):
+        pass
     return root
 
 
@@ -327,12 +333,40 @@ class _PlacedArtifact:
     size_bytes: int
 
 
-def _fsync_file(path: Path) -> None:
-    with path.open("rb") as handle:
+class _OwnedTemporaryFile:
+    """A file-like view over one create-exclusive descriptor-relative temp."""
+
+    def __init__(self, fd: int):
+        self._file = os.fdopen(fd, "w+b", closefd=True)
+
+    def write_bytes(self, value: bytes) -> int:
+        self.seek(0)
+        self.truncate(0)
+        return self.write(value)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._file, name)
+
+    def close(self) -> None:
+        self._file.close()
+
+    def __enter__(self) -> "_OwnedTemporaryFile":
+        return self
+
+    def __exit__(self, *_args: Any) -> None:
+        self.close()
+
+
+def _fsync_file(path: Any) -> None:
+    if hasattr(path, "flush") and hasattr(path, "fileno"):
+        path.flush()
+        os.fsync(path.fileno())
+        return
+    with Path(path).open("rb") as handle:
         os.fsync(handle.fileno())
 
 
-def _serialize_portable_model(model: Any, destination: Path) -> None:
+def _serialize_portable_model(model: Any, destination: Any) -> None:
     import torch
 
     torch.save(model, destination)
@@ -340,7 +374,7 @@ def _serialize_portable_model(model: Any, destination: Path) -> None:
 
 
 def _verify_reloaded_product(
-    path: Path,
+    path: Any,
     *,
     realization: PortableModelRealization,
     target_head_name: str,
@@ -355,6 +389,8 @@ def _verify_reloaded_product(
         mace_model_state_dict_clone,
     )
 
+    if hasattr(path, "seek"):
+        path.seek(0)
     reloaded = torch.load(path, map_location="cpu", weights_only=False)
     try:
         if isinstance(reloaded, Mapping):
@@ -423,16 +459,42 @@ def place_member_model(
     with open_publication_directory(
         models_root, decision_relative_directory, create=True
     ) as directory_fd:
-        temporary_name = f".publish-{os.getpid()}-{fresh_locator_token()}.tmp"
-        directory_path = models_root / decision_relative_directory
-        temporary_path = directory_path / temporary_name
+        temporary_name = f".publish-{fresh_locator_token()}.tmp"
+        temporary_handle: _OwnedTemporaryFile | None = None
+        temporary_stat: os.stat_result | None = None
+        flags = (
+            os.O_RDWR
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+        )
         try:
-            _serialize_portable_model(model, temporary_path)
+            temporary_fd = None
+            for _attempt in range(8):
+                try:
+                    temporary_fd = os.open(
+                        temporary_name, flags, 0o600, dir_fd=directory_fd
+                    )
+                    break
+                except FileExistsError:
+                    temporary_name = f".publish-{fresh_locator_token()}.tmp"
+            if temporary_fd is None:
+                raise ModelPublicationError(
+                    "No fresh owner-private publication temp could be claimed."
+                )
+            temporary_stat = os.fstat(temporary_fd)
+            temporary_handle = _OwnedTemporaryFile(temporary_fd)
+            _serialize_portable_model(model, temporary_handle)
             _verify_reloaded_product(
-                temporary_path,
+                temporary_handle,
                 realization=realization,
                 target_head_name=target_head_name,
             )
+            temporary_handle.flush()
+            os.fsync(temporary_handle.fileno())
+            temporary_handle.close()
+            temporary_handle = None
             observed = authenticate_descriptor_leaf(directory_fd, temporary_name)
             if reserve is not None:
                 reserve.recheck_after_actual(observed.size_bytes)
@@ -460,8 +522,31 @@ def place_member_model(
                 "No fresh artifact locator could be claimed for the published model."
             )
         finally:
-            # Only the private temp this attempt owns is ever removed.
-            temporary_path.unlink(missing_ok=True)
+            if temporary_handle is not None:
+                temporary_handle.close()
+            # Only the private temp this attempt owns is ever removed, and a
+            # replacement inode is left untouched if an external actor raced
+            # the best-effort cleanup.
+            if temporary_stat is not None:
+                try:
+                    fd = os.open(
+                        temporary_name,
+                        os.O_RDONLY
+                        | getattr(os, "O_NOFOLLOW", 0)
+                        | getattr(os, "O_CLOEXEC", 0),
+                        dir_fd=directory_fd,
+                    )
+                    try:
+                        current = os.fstat(fd)
+                    finally:
+                        os.close(fd)
+                    if (current.st_dev, current.st_ino) == (
+                        temporary_stat.st_dev,
+                        temporary_stat.st_ino,
+                    ):
+                        os.unlink(temporary_name, dir_fd=directory_fd)
+                except OSError:
+                    pass
 
 
 # ---------------------------------------------------------------------------
@@ -925,10 +1010,31 @@ def write_publication_projection(
         ],
         "published_at": record.published_at,
     }
-    temporary_name = f".{PUBLICATION_PROJECTION_FILENAME}.{os.getpid()}.tmp"
+    temporary_name = (
+        f".{PUBLICATION_PROJECTION_FILENAME}.{secrets.token_hex(16)}.tmp"
+    )
     with open_publication_directory(models_root, relative, create=True) as directory_fd:
-        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0)
-        handle = os.open(temporary_name, flags, 0o644, dir_fd=directory_fd)
+        flags = (
+            os.O_WRONLY
+            | os.O_CREAT
+            | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+        )
+        handle = None
+        for _attempt in range(8):
+            try:
+                handle = os.open(temporary_name, flags, 0o644, dir_fd=directory_fd)
+                break
+            except FileExistsError:
+                temporary_name = (
+                    f".{PUBLICATION_PROJECTION_FILENAME}.{secrets.token_hex(16)}.tmp"
+                )
+        if handle is None:
+            raise ModelPublicationError(
+                "No fresh owner-private projection temp could be claimed."
+            )
+        temporary_stat = os.fstat(handle)
         try:
             with os.fdopen(handle, "w", encoding="utf-8") as stream:
                 stream.write(canonical_json(payload))
@@ -937,7 +1043,22 @@ def write_publication_projection(
                 os.fsync(stream.fileno())
         except BaseException:
             try:
-                os.unlink(temporary_name, dir_fd=directory_fd)
+                fd = os.open(
+                    temporary_name,
+                    os.O_RDONLY
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_CLOEXEC", 0),
+                    dir_fd=directory_fd,
+                )
+                try:
+                    current = os.fstat(fd)
+                finally:
+                    os.close(fd)
+                if (current.st_dev, current.st_ino) == (
+                    temporary_stat.st_dev,
+                    temporary_stat.st_ino,
+                ):
+                    os.unlink(temporary_name, dir_fd=directory_fd)
             except OSError:
                 pass
             raise
@@ -951,10 +1072,103 @@ def write_publication_projection(
             os.fsync(directory_fd)
         except BaseException:
             try:
-                os.unlink(temporary_name, dir_fd=directory_fd)
+                fd = os.open(
+                    temporary_name,
+                    os.O_RDONLY
+                    | getattr(os, "O_NOFOLLOW", 0)
+                    | getattr(os, "O_CLOEXEC", 0),
+                    dir_fd=directory_fd,
+                )
+                try:
+                    current = os.fstat(fd)
+                finally:
+                    os.close(fd)
+                if (current.st_dev, current.st_ino) == (
+                    temporary_stat.st_dev,
+                    temporary_stat.st_ino,
+                ):
+                    os.unlink(temporary_name, dir_fd=directory_fd)
             except OSError:
                 pass
             raise
+
+
+def _replay_current_p5_parent_graph(
+    context: Any, campaign_store: Any, decision: Any
+) -> None:
+    """Replay every scientific parent immediately before P5 pointer CAS."""
+
+    # This is deliberately the accepted P5 replay owner, not a second
+    # reconstruction of plan/committee/assessment identity.  The generation
+    # barrier keeps the replay and the following pointer transaction from
+    # being separated by a concurrent CV/final-seed parent writer.
+    from .post_selection_product_recovery import replayable_decision_candidate
+    from .campaign_post_selection_runtime import resolve_current_final_production_completion
+    from .post_selection_publication import decide_final_production_publication
+    from .post_selection_product_observation import required_final_seed_locators
+    from .post_selection_store import (
+        POINTER_ASSESSMENT_POSITION,
+        POINTER_CV_ACCEPTANCE,
+        POINTER_CV_PLAN,
+        POINTER_FINAL_PLAN,
+        open_post_selection_store,
+        post_selection_pointer_key,
+        read_current_post_selection_pointer,
+    )
+
+    # A current decision pointer is the normal reclosure path.  A first
+    # publication has no such pointer yet, so replay the same decision owner
+    # directly from the current completion in that one narrow case.
+    replayed = replayable_decision_candidate(context)
+    if replayed is None:
+        completion = resolve_current_final_production_completion(context)
+        replayed = (
+            None
+            if completion is None
+            else decide_final_production_publication(context, completion)
+        )
+    if replayed is None or replayed.content_digest != decision.content_digest:
+        raise PostSelectionError(
+            "The current P5 scientific parent graph no longer reproduces the "
+            "final-production publication decision being committed."
+        )
+    binding = context.selected.binding
+    fixed = {
+        POINTER_CV_PLAN: decision.cv_plan_digest,
+        POINTER_CV_ACCEPTANCE: decision.cv_authorization_digest,
+        POINTER_FINAL_PLAN: decision.final_plan_digest,
+    }
+    for kind, expected in fixed.items():
+        observed = read_current_post_selection_pointer(
+            campaign_store, binding=binding, kind=kind
+        )
+        if observed != str(expected):
+            raise PostSelectionError(
+                f"The current P5 {kind} pointer advanced while the publication "
+                "was being materialized."
+            )
+    p5_store = open_post_selection_store(context.paths, binding, create=False)
+    positions, failure = required_final_seed_locators(binding, replayed, p5_store)
+    if failure is not None:
+        raise PostSelectionError(
+            "The current P5 final-seed assessment graph is not replayable: "
+            f"{failure}"
+        )
+    for key, expected in sorted(positions.items()):
+        position = key.rsplit(":", 1)[-1]
+        observed = read_current_post_selection_pointer(
+            campaign_store,
+            binding=binding,
+            kind=POINTER_ASSESSMENT_POSITION,
+            position=position,
+        )
+        if observed != str(expected) or key != post_selection_pointer_key(
+            binding, POINTER_ASSESSMENT_POSITION, position
+        ):
+            raise PostSelectionError(
+                "A required final-seed assessment position advanced while the "
+                "publication was being materialized."
+            )
 
 
 def publish_final_production_model_products(
@@ -1000,6 +1214,7 @@ def publish_final_production_model_products(
     with post_selection_publication_barrier(
         context.paths, context.selected.binding.campaign_generation
     ):
+        _replay_current_p5_parent_graph(context, campaign_store, decision)
         store.put(decision)
         store.put(record)
         store.put(reclosure)

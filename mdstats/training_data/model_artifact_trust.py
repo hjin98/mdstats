@@ -25,6 +25,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import os
+import secrets
 import stat
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -243,36 +244,122 @@ def stage_authenticated_model(
     if Path(filename).name != filename or not filename.strip():
         raise ModelArtifactTrustError("A staged model filename must be one basename.")
     scratch = Path(scratch_directory)
-    scratch.mkdir(parents=True, exist_ok=True)
-    staged = scratch / filename
+    _ensure_directory_path(scratch)
+    staged_name = f".{filename}.{secrets.token_hex(16)}.tmp"
+    staged = scratch / staged_name
+    created_stat: os.stat_result | None = None
+    scratch_fd: int | None = None
+    staged_fd: int | None = None
     hasher = hashlib.sha256()
     total = 0
-    with open_model_artifact_descriptor(anchor, relative_path) as fd:
-        os.lseek(fd, 0, os.SEEK_SET)
-        with staged.open("wb") as sink:
-            while True:
-                chunk = os.read(fd, _CHUNK_BYTES)
-                if not chunk:
-                    break
-                total += len(chunk)
-                hasher.update(chunk)
-                sink.write(chunk)
-            sink.flush()
-            os.fsync(sink.fileno())
     try:
-        if total != expected_size or hasher.hexdigest() != expected_digest:
-            raise ModelArtifactTrustError(
-                f"Staging {relative_path!r} did not reproduce the recorded product "
-                "bytes; nothing is deserialized from an unauthenticated copy."
+        with open_publication_directory(scratch, "", create=False) as scratch_fd_value:
+            scratch_fd = os.dup(scratch_fd_value)
+            flags = (
+                os.O_RDWR
+                | os.O_CREAT
+                | os.O_EXCL
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0)
             )
-        restaged = hashlib.sha256(staged.read_bytes()).hexdigest()
-        if restaged != expected_digest:
-            raise ModelArtifactTrustError(
-                "The staged private copy does not authenticate; execution is refused."
-            )
+            for _attempt in range(8):
+                try:
+                    staged_fd = os.open(staged_name, flags, 0o600, dir_fd=scratch_fd)
+                    break
+                except FileExistsError:
+                    staged_name = f".{filename}.{secrets.token_hex(16)}.tmp"
+                    staged = scratch / staged_name
+            if staged_fd is None:
+                raise ModelArtifactTrustError(
+                    "No fresh owner-private staging name could be claimed."
+                )
+            created_stat = os.fstat(staged_fd)
+            with open_model_artifact_descriptor(anchor, relative_path) as fd:
+                os.lseek(fd, 0, os.SEEK_SET)
+                while True:
+                    chunk = os.read(fd, _CHUNK_BYTES)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    hasher.update(chunk)
+                    view = memoryview(chunk)
+                    while view:
+                        written = os.write(staged_fd, view)
+                        view = view[written:]
+                os.fsync(staged_fd)
+            # Re-hash the exact descriptor that was written.  The pathname is
+            # never used as the trust boundary, even though the staged path is
+            # later needed by libraries that insist on one.
+            staged_size, staged_digest = _digest_descriptor(staged_fd)
+            if total != expected_size or hasher.hexdigest() != expected_digest:
+                raise ModelArtifactTrustError(
+                    f"Staging {relative_path!r} did not reproduce the recorded product "
+                    "bytes; nothing is deserialized from an unauthenticated copy."
+                )
+            if staged_size != expected_size or staged_digest != expected_digest:
+                raise ModelArtifactTrustError(
+                    "The staged private copy does not authenticate; execution is refused."
+                )
+        assert staged_fd is not None
+        os.close(staged_fd)
+        staged_fd = None
+        assert scratch_fd is not None
+        os.close(scratch_fd)
+        scratch_fd = None
         yield staged
     finally:
-        staged.unlink(missing_ok=True)
+        if staged_fd is not None:
+            try:
+                os.close(staged_fd)
+            except OSError:
+                pass
+        if scratch_fd is not None:
+            try:
+                os.close(scratch_fd)
+            except OSError:
+                pass
+        if created_stat is not None:
+            _unlink_owned_leaf(scratch, staged_name, created_stat)
+
+
+def _ensure_directory_path(path: Path) -> None:
+    """Create one absent owner subroot through its authenticated parent."""
+
+    path = Path(path)
+    if path.name in ("", ".", ".."):
+        raise ModelArtifactTrustError("An owner directory must have one ordinary basename.")
+    with open_publication_directory(path.parent, path.name, create=True):
+        pass
+
+
+def _unlink_owned_leaf(directory: Path, name: str, created_stat: os.stat_result) -> None:
+    """Remove a leaf only if the entry is still the inode this invocation created."""
+
+    try:
+        with open_publication_directory(directory, "", create=False) as directory_fd:
+            flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+            fd = os.open(name, flags, dir_fd=directory_fd)
+            try:
+                current = os.fstat(fd)
+            finally:
+                os.close(fd)
+            if (current.st_dev, current.st_ino) != (created_stat.st_dev, created_stat.st_ino):
+                return
+            os.unlink(name, dir_fd=directory_fd)
+    except (ModelArtifactTrustError, OSError):
+        return
+
+
+def retire_owned_private_leaf(
+    directory: str | os.PathLike[str], name: str, created_stat: os.stat_result
+) -> None:
+    """Best-effort retirement of one invocation-owned private leaf.
+
+    The descriptor/inode check remains in this shared trust owner so callers
+    cannot accidentally grow a second pathname-based cleanup authority.
+    """
+
+    _unlink_owned_leaf(Path(directory), name, created_stat)
 
 
 def _open_or_create_directory(name: str, *, dir_fd: int) -> int:
@@ -300,8 +387,11 @@ def _open_or_create_directory(name: str, *, dir_fd: int) -> int:
         # a file inside it.
         try:
             os.fsync(dir_fd)
-        except OSError:
-            pass
+        except OSError as exc:
+            raise ModelArtifactTrustError(
+                f"The containing directory for publication component {name!r} "
+                f"could not be made durable ({exc.strerror})."
+            ) from exc
     try:
         return open_directory_nofollow(name, dir_fd=dir_fd)
     except (FileNotFoundError, NamespaceAmbiguity) as exc:
@@ -323,22 +413,58 @@ def open_publication_directory(
     relative to the previously authenticated descriptor.
     """
 
+    # The anchor is an owner-selected directory.  If it is absent, creation is
+    # still descriptor-relative through its authenticated parent; this helper
+    # never calls ``Path.mkdir`` on the anchor being trusted.
     anchor_path = Path(anchor)
-    anchor_path.mkdir(parents=True, exist_ok=True)
+    open_fds: list[int] = []
     try:
-        root_fd = os.open(
-            str(anchor_path),
-            os.O_RDONLY
-            | os.O_DIRECTORY
-            | getattr(os, "O_NOFOLLOW", 0)
-            | getattr(os, "O_CLOEXEC", 0),
-        )
+        try:
+            root_fd = os.open(
+                str(anchor_path),
+                os.O_RDONLY
+                | os.O_DIRECTORY
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+            )
+        except FileNotFoundError as exc:
+            if not create:
+                raise ModelArtifactTrustError(
+                    f"The campaign model root {anchor_path!s} could not be opened as a "
+                    f"plain directory ({exc.strerror})."
+                ) from exc
+            parent_fd = os.open(
+                str(anchor_path.parent),
+                os.O_RDONLY
+                | os.O_DIRECTORY
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_CLOEXEC", 0),
+            )
+            open_fds.append(parent_fd)
+            root_fd = _open_or_create_directory(anchor_path.name, dir_fd=parent_fd)
+        except OSError as exc:
+            raise ModelArtifactTrustError(
+                f"The campaign model root {anchor_path!s} could not be opened as a plain "
+                f"directory ({exc.strerror})."
+            ) from exc
+        open_fds.append(root_fd)
+    except ModelArtifactTrustError:
+        for handle in reversed(open_fds):
+            try:
+                os.close(handle)
+            except OSError:
+                pass
+        raise
     except OSError as exc:
+        for handle in reversed(open_fds):
+            try:
+                os.close(handle)
+            except OSError:
+                pass
         raise ModelArtifactTrustError(
             f"The campaign model root {anchor_path!s} could not be opened as a plain "
             f"directory ({exc.strerror})."
         ) from exc
-    open_fds = [root_fd]
     try:
         text = str(relative_directory).strip()
         parts = () if not text else PurePosixPath(
@@ -379,7 +505,13 @@ def place_immutable_file(directory_fd: int, temporary_name: str, final_name: str
     """
 
     try:
-        os.link(temporary_name, final_name, src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
+        os.link(
+            temporary_name,
+            final_name,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=directory_fd,
+            follow_symlinks=False,
+        )
     except FileExistsError:
         raise
     except OSError as exc:
@@ -389,8 +521,45 @@ def place_immutable_file(directory_fd: int, temporary_name: str, final_name: str
         ) from exc
     try:
         os.fsync(directory_fd)
-    except OSError:
-        pass
+    except OSError as exc:
+        raise ModelArtifactTrustError(
+            f"The containing directory for immutable artifact {final_name!r} "
+            f"could not be made durable ({exc.strerror})."
+        ) from exc
+
+
+def place_immutable_file_from_directory(
+    source_directory_fd: int,
+    source_name: str,
+    destination_directory_fd: int,
+    final_name: str,
+) -> None:
+    """Link one owned source leaf into another authenticated directory."""
+
+    if Path(source_name).name != source_name or not str(source_name).strip():
+        raise ModelArtifactTrustError("An immutable source must be one basename.")
+    try:
+        os.link(
+            source_name,
+            final_name,
+            src_dir_fd=source_directory_fd,
+            dst_dir_fd=destination_directory_fd,
+            follow_symlinks=False,
+        )
+    except FileExistsError:
+        raise
+    except OSError as exc:
+        raise ModelArtifactTrustError(
+            f"Immutable model artifact {final_name!r} could not be placed "
+            f"({exc.strerror})."
+        ) from exc
+    try:
+        os.fsync(destination_directory_fd)
+    except OSError as exc:
+        raise ModelArtifactTrustError(
+            f"The containing directory for immutable artifact {final_name!r} "
+            f"could not be made durable ({exc.strerror})."
+        ) from exc
 
 
 def authenticate_descriptor_leaf(
@@ -440,15 +609,114 @@ def authenticate_descriptor_leaf(
     return AuthenticatedModelArtifact(relative_path=name, size_bytes=size, sha256=observed)
 
 
+def read_authenticated_descriptor_leaf(
+    directory_fd: int,
+    name: str,
+    *,
+    expected_sha256: str | None = None,
+    expected_size_bytes: int | None = None,
+) -> tuple[AuthenticatedModelArtifact, bytes]:
+    """Authenticate and read one leaf from the exact descriptor that was hashed."""
+
+    if Path(name).name != name or not str(name).strip():
+        raise ModelArtifactTrustError("A model artifact leaf must be one basename.")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    try:
+        fd = os.open(name, flags, dir_fd=directory_fd)
+    except FileNotFoundError:
+        raise
+    except OSError as exc:
+        raise ModelArtifactTrustError(
+            f"Model artifact {name!r} could not be opened no-follow ({exc.strerror})."
+        ) from exc
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ModelArtifactTrustError(f"Model artifact {name!r} is not a regular file.")
+        os.lseek(fd, 0, os.SEEK_SET)
+        chunks: list[bytes] = []
+        hasher = hashlib.sha256()
+        total = 0
+        while True:
+            chunk = os.read(fd, _CHUNK_BYTES)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total += len(chunk)
+            hasher.update(chunk)
+        observed = hasher.hexdigest()
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+    if expected_size_bytes is not None and total != int(expected_size_bytes):
+        raise ModelArtifactTrustError(
+            f"Model artifact {name!r} is {total} bytes; {int(expected_size_bytes)} expected."
+        )
+    if expected_sha256 is not None and observed != validate_digest(
+        str(expected_sha256), name="model_sha256"
+    ):
+        raise ModelArtifactTrustError(
+            f"Model artifact {name!r} does not carry the expected bytes."
+        )
+    return (
+        AuthenticatedModelArtifact(relative_path=name, size_bytes=total, sha256=observed),
+        b"".join(chunks),
+    )
+
+
+def create_private_directory(parent_fd: int, prefix: str) -> tuple[str, int]:
+    """Create a fresh owner-private directory relative to an authenticated fd."""
+
+    prefix = str(prefix).strip()
+    if not prefix or Path(prefix).name != prefix:
+        raise ModelArtifactTrustError("A private-directory prefix must be one basename.")
+    for _attempt in range(16):
+        name = f"{prefix}-{secrets.token_hex(16)}"
+        try:
+            os.mkdir(name, 0o700, dir_fd=parent_fd)
+        except FileExistsError:
+            continue
+        except OSError as exc:
+            raise ModelArtifactTrustError(
+                f"Owner-private directory {name!r} could not be created ({exc.strerror})."
+            ) from exc
+        try:
+            os.fsync(parent_fd)
+        except OSError as exc:
+            raise ModelArtifactTrustError(
+                f"The containing directory for private scratch {name!r} could not be "
+                f"made durable ({exc.strerror})."
+            ) from exc
+        try:
+            child_fd = open_directory_nofollow(name, dir_fd=parent_fd)
+        except (FileNotFoundError, NamespaceAmbiguity) as exc:
+            raise ModelArtifactTrustError(
+                f"Owner-private directory {name!r} could not be authenticated after "
+                f"creation: {exc}"
+            ) from exc
+        return name, child_fd
+    raise ModelArtifactTrustError("No fresh owner-private directory name could be claimed.")
+
+
 __all__ = [
     "AuthenticatedModelArtifact",
     "ModelArtifactTrustError",
     "authenticate_descriptor_leaf",
     "authenticate_model_artifact",
+    "create_private_directory",
     "normalize_relative_artifact_path",
     "open_model_artifact_descriptor",
     "open_publication_directory",
     "place_immutable_file",
+    "place_immutable_file_from_directory",
+    "read_authenticated_descriptor_leaf",
     "read_model_artifact_identity",
+    "retire_owned_private_leaf",
     "stage_authenticated_model",
 ]

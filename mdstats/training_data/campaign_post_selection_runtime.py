@@ -189,6 +189,13 @@ class PostSelectionContext:
     # can reconstruct the same resource scope that created the P7 attempt.  It
     # is not a P5 scientific or selection identity.
     qualification_case_workers: int = 1
+    # Qualification-only execution seams are carried with the invocation
+    # context so a fresh currentness resolver reuses the same owner seams
+    # instead of silently constructing a different deployment identity.
+    qualification_deployment_exporter: Callable[..., Any] | None = None
+    qualification_mliap_builder: Callable[..., Any] | None = None
+    qualification_deployed_evaluator: Callable[..., Any] | None = None
+    qualification_dynamics_runner: Callable[..., Any] | None = None
     # Every frozen selected size of this campaign generation.  The common target
     # monitor is separated from all of them, so it never depends on one size.
     governed_selected: tuple[CurrentSelectedTrainingContext, ...] = ()
