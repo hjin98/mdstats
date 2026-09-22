@@ -593,7 +593,21 @@ Use durable product-record data. A selected size may be reported COMPLETE only a
 
 The member count is bounded by the frozen production committee, so this integrity read is intentionally preferred over a cheap but potentially false COMPLETE result.
 
-The new P5 model-publication pointer MUST be included in `campaign_lifecycle._post_selection_prefix(...)` / `campaign_owner_snapshot(...)`, so final-production status and `qualification status` observe the target revision, decision pointer, model-publication pointer and P7 pointers in the same SQLite read transaction. Do not add a second independent pointer read in either status command.
+Both `POINTER_FINAL_MODEL_PUBLICATION` and the already-existing `POINTER_PREDECESSOR_RECLOSURE` MUST be added to `campaign_lifecycle._post_selection_prefix(...)` / `campaign_owner_snapshot(...)`. Current implementation snapshots the final-publication pointer but omits predecessor reclosure; that is no longer admissible once reclosure participates in COMPLETE.
+
+Final-production status and `qualification status` therefore observe in the same SQLite read transaction:
+
+```text
+target-size revision / binding
+current replay lineage/status
+final plan
+FinalProductionPublicationDecision
+FinalProductionModelPublication
+PredecessorReclosureRecord
+P7 pointers where single-size qualification is authorized
+```
+
+Neither public observer may perform a later independent pointer read.
 
 Concurrency acceptance must force pointer transitions and prove a status answer is always one real snapshot: before publication, an intermediate recoverable state, or after publication — never a hybrid decision/model pair.
 
@@ -704,6 +718,8 @@ These terminal owners are current only when:
 - every deployment-dependent component outcome has the expected current component-input digest;
 - all other existing component/reference/currentness rules remain satisfied.
 
+For `qualification status`, “exact current P5 model publication” means the content-addressed object named by the **captured** model-publication pointer from `campaign_owner_snapshot()`. Observation may authenticate that immutable object and its decision/member/artifact-set relation, but it must not read a later live P5 pointer. The captured predecessor-reclosure pointer is treated identically. Missing/corrupt/mismatched captured P5 objects make the P7 verdict blocked/superseded, never current.
+
 The qualification plan and attempt identity do not need to change.
 
 Schema evolution is explicit:
@@ -755,7 +771,7 @@ exact P5 model SHA
 exact P5 full-state digest
 ```
 
-Because full PyTorch model loading is executable deserialization, authenticate expected SHA, confinement and regular/non-symlink type **before** `torch.load` / MACE inspection and avoid hash-then-reopen TOCTOU. Prefer one shared P5 model-artifact authenticator; when the downstream exporter must reopen by pathname, copy the authenticated bytes into attempt-owned scratch and export from that trusted copy.
+Because full PyTorch model loading is executable deserialization, P7 MUST use the shared descriptor-authenticated published-model owner from D3-4A. It may not implement an `lstat`/hash/reopen pathname sequence. When the exporter needs a pathname, stage bytes from the already-authenticated descriptor into attempt-owned private scratch, fsync + SHA-verify the staged copy, then export from that trusted copy.
 
 The existing `MaceDeploymentArtifact` already reports `source_artifact_sha256` and `source_state_sha256`; require both to agree with the P5 model-publication member after export.
 
@@ -793,17 +809,28 @@ verified temporary full-model serialization for every member
 + configured retained free-space reserve
 ```
 
-A conservative D4 estimator may use authenticated checkpoint size and/or exact in-memory state tensor bytes, but underestimation must not be accepted as success. Record each final `model_size_bytes` in the product record; P7 disk admission should use the authenticated published-model sizes rather than the old checkpoint-only estimate.
+A conservative D4 estimator may use authenticated checkpoint size and/or exact in-memory state tensor bytes, but underestimation must not be accepted as success. Recheck the configured retained free-space reserve after actual serialized member sizes are known and before final placement/commit; on shortfall remove only private temp state and abort with no pointer change.
 
-Durability sequence for every new model/projection is:
+Record each final `model_size_bytes` in the product record; P7 disk admission uses those authenticated published-model sizes rather than the old checkpoint-only estimate.
+
+Durability distinguishes immutable evidence from mutable projection:
 
 ```text
-write private temp on destination filesystem
-flush + fsync temp file
-validate/reload where applicable
-atomic replace/rename into final path
-fsync parent directory
+immutable .model:
+    private temp on destination filesystem
+    -> flush + fsync
+    -> validate/reload
+    -> create-once/no-clobber final directory entry
+    -> fsync parent directory
+
+publication.json:
+    private temp
+    -> flush + fsync
+    -> atomic replace
+    -> fsync parent directory
 ```
+
+An existing immutable destination is descriptor-authenticated and reused only on exact expected bytes; it is never overwritten.
 
 Use the shared persistence `fsync_parent_directory` owner. A simulated write/ENOSPC/fsync failure before authoritative pointer commit must leave the previous current publication intact and the command failed/recoverable; it must never mark a partial model set current.
 
@@ -823,6 +850,10 @@ Update storage integration only if implementation changes what the existing owne
 - no new cleanup/archive authority is introduced.
 
 Do not introduce another model root.
+
+Publication coordination locks live under the internal post-selection owner, not the public models tree. Attempt-private serialization temps remain publication-owner scratch and are removed only when ownership is certain. This cycle does not grant generic storage per-file reclaim/archive authority over model products or orphan full-SHA products.
+
+If future storage work wants product-level archive/dedup/reclaim, it must derive authority from the P5 model-publication owner and synchronize with its publication seam; that is outside this cycle.
 
 Because canonical product files are immutable/versioned and `CampaignPaths.models` is already durable scientific evidence, superseded model bytes may accumulate. This cycle does **not** add a cleanup/retention authority merely to reclaim them. Preserve them under the existing models-root owner; if long-horizon accumulation becomes material, route that as a separate storage-policy change rather than deleting historical products by pathname heuristics.
 
@@ -906,7 +937,9 @@ If the locked real `mace-mh-1.model` and pinned environment are readily availabl
 - tiny source inference;
 - selected-head extraction/parity;
 - P5 foundation-provider/model-construction smoke;
-- prove the post-selection output head inventory/order is exactly the current canonical `[pt_head, target_head]`, so the existing ML-IAP target-head index-1 contract is valid for MH-1 just as for MPA-0.
+- prove the post-selection output head inventory/order is exactly the current canonical `[pt_head, target_head]`, so the existing ML-IAP target-head index-1 contract is valid for MH-1 just as for MPA-0;
+- exercise the new full-model publication save/reload owner on that bounded MH-1 path;
+- when pinned CPU deployment/export dependencies are readily available, exercise publication -> target-head deployment exporter -> ML-IAP builder construction without a long LAMMPS/MD run.
 
 If the real bytes/runtime are unavailable in the development host, that is not a blocker by itself.
 
@@ -942,18 +975,34 @@ Any obvious incompatibility found by lightweight tests is a blocker.
 
 ## 17. Historical applicability set
 
-Use the repository's accepted `PROJECT-ENGINEERING-MEMORY.md` as non-authoritative learning support.
+PEM basis for this cycle:
 
-Material current lessons:
+```text
+repository state reviewed: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
+accepted PEM file: PROJECT-ENGINEERING-MEMORY.md
+PEM accepted/reconciled base recorded by that file: 4eabe2ae9783c7ff92f3a1093c37502a01380812
+coverage: PARTIAL
+same-branch semantic PEM overlay: NONE
+```
 
-- reuse existing semantic owners rather than introducing parallel wrappers/registries;
-- fail closed on checkpoint/product identity mismatch;
-- restart expensive completed work from durable evidence rather than rerunning;
-- real-owner integration is needed for claims synthetic fixtures cannot discriminate;
-- storage actions depend on owner-certified currentness, not pathname heuristics;
-- status/observation must remain side-effect free.
+PEM remains non-authoritative learning support. Because its coverage is partial, absence is not evidence that no historical analogue exists.
 
-Historical MH-1 qualification remains useful for expected head inventory, SHA, and failure-regression shape, but later P5/TRAIN2/EVAL2 changes mean it cannot alone close current integration.
+| PEM entry | Disposition | Cycle consequence |
+|---|---|---|
+| SP-001 duplicate-owner reduction | APPLICABLE | reuse checkpoint/provider, trust, persistence and CampaignStore owners; no wrapper registry/second transaction system |
+| SP-002 authenticated identity boundaries | APPLICABLE | model bytes/state/path/member set and pointer currentness fail closed before executable consumption |
+| SP-003 immutable durable restart/reuse | APPLICABLE | completed decision/checkpoint/model work reclose without TRAIN2/EVAL2; model products are create-once |
+| SP-004 real-owner integration | APPLICABLE | selected-checkpoint != terminal real-MACE publication test and bounded MH-1 real-owner smoke |
+| FF-001 realized-model identity drift | APPLICABLE | exact existing provider/architecture owner; no duplicate MACE reconstruction |
+| FF-002 premature continuation authority | APPLICABLE | temp/unreceipted pickle is never durable authority; restart distinguishes temp/orphan/current |
+| FF-003 duplicated destructive storage authority | APPLICABLE TO TRUST/RETENTION BOUNDARY | publication cleans only owned private temp; generic storage does not infer orphan disposability; reuse no-follow trust primitives |
+| FF-004 resource ownership drift | APPLICABLE, BOUNDED | retire provider/accelerator at real owner boundary; no scheduler change |
+| FF-005 downstream reconstruction leakage | APPLICABLE | status/qualification consume immutable product evidence and never reconstruct MACE/source state |
+| NT-001 CuEq recurrence notice | RETIRED / NON-AUTHORITATIVE | no active challenge; closed lesson remains represented by FF-001/current owners |
+
+Historical MH-1 qualification remains an oracle for expected family/head shape, not current proof after later P5/TRAIN2/EVAL2 changes.
+
+Refresh this HAS if accepted PEM or branch authority materially advances before implementation closeout.
 
 ## 18. Expected implementation surface
 
