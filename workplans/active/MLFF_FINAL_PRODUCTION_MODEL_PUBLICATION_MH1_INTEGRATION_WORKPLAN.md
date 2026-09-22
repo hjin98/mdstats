@@ -4,9 +4,9 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reviewed
 created_date: 2026-09-21
-revision: 21
+revision: 22
 reviewed_date: 2026-09-22
-workplan_review_status: pass-after-shared-deployment-realization-set-review
+workplan_review_status: pass-after-final-handoff-discoverability-review
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -18,7 +18,7 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER SHARED DEPLOYMENT-REALIZATION-SET REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER FINAL HANDOFF-DISCOVERABILITY REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
 
 This cycle closes two adjacent product-readiness gaps without changing D1 scientific or D2 numerical authority:
 
@@ -1287,10 +1287,13 @@ mdstats/training_data/model_features.py / mace_deployment.py as shared identity 
 mdstats/training_data/persistence.py and/or the existing descriptor-trust helper owner
 mdstats/training_data/qualification/publication.py
 mdstats/training_data/qualification/providers.py
+mdstats/training_data/qualification/deployment.py
 mdstats/training_data/qualification/runtime.py
 mdstats/training_data/qualification/record.py
 mdstats/training_data/qualification/store.py
 mdstats/training_data/qualification/observation.py
+mdstats/training_data/qualification/locked.py
+mdstats/training_data/qualification/commands.py
 mdstats/training_data/storage/owners.py
 mdstats/training_data/campaign_lifecycle.py
 mdstats/training_data/_campaign_cli_core.py
@@ -1775,7 +1778,7 @@ Implementation is complete only when the assembled candidate proves all of the f
 
 Any failed item above is an implementation NO-PASS. Local helper names, exact private temp names and equivalent no-clobber primitives remain D4 choices.
 
-> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-21 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
+> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-22 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
 
 
 ## 27. Current-implementation review closure (Revision 2)
