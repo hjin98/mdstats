@@ -237,8 +237,12 @@ def terminal_currentness_failure(
     observation = observe_current_product(paths, binding, pointers)
     if observation.state != PRODUCT_STATE_COMPLETE:
         return f"the current P5 product is not exposable: {observation.message}"
-    if str(record.publication_digest) != str(observation.decision.content_digest):
-        return "the terminal record binds a superseded final-production decision"
+    # The terminal record carries the P7 authenticated-publication view digest,
+    # which an observer cannot reconstruct without building that view.  What it
+    # can compare is the member identity, which both owners define identically
+    # and which is the thing that must not have changed.
+    if str(record.publication_member_digest) != str(observation.decision.member_digest):
+        return "the terminal record binds a superseded final-production member set"
     if str(record.predecessor_reclosure_digest or "") != str(
         observation.reclosure.content_digest
     ):

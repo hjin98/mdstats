@@ -2035,8 +2035,11 @@ def expected_p5_parent_pointers(session: QualificationSession) -> dict[str, str 
 
     binding = session.context.selected.binding
     expected: dict[str, str | None] = {
+        # The *P5 decision* digest, not the P7 authenticated-publication view
+        # digest that `QualificationInputBinding` carries: the pointer row this
+        # compares against is owned by P5.
         post_selection_pointer_key(binding, POINTER_FINAL_PUBLICATION): (
-            session.binding.publication_digest
+            session.publication.decision_digest
         ),
         post_selection_pointer_key(binding, POINTER_PREDECESSOR_RECLOSURE): (
             session.predecessor_reclosure.content_digest
