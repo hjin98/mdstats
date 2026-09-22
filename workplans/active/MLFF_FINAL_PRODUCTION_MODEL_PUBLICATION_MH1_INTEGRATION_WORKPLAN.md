@@ -4,9 +4,9 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reviewed
 created_date: 2026-09-21
-revision: 8
+revision: 9
 reviewed_date: 2026-09-22
-workplan_review_status: pass-after-exhaustive-fresh-candidate-review
+workplan_review_status: pass-after-exhaustive-convergence-review
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -18,7 +18,7 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER EXHAUSTIVE FRESH-CANDIDATE REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER EXHAUSTIVE CONVERGENCE REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
 
 This cycle closes two adjacent product-readiness gaps without changing D1 scientific or D2 numerical authority:
 
@@ -375,6 +375,8 @@ Prefer factoring/reusing the existing descriptor-relative qualification/storage 
 
 The same owner serves P5 current resolution, train-production create-or-verify/reclosure, lifecycle/status, and P7 intake/staging. When a downstream library requires a pathname, copy authenticated bytes from the trusted descriptor into attempt-owned private scratch, fsync/hash-verify that copy, then execute from the trusted copy.
 
+Publication uses the same anchored trust discipline on the **write side**: create/descend `production/g.../N.../decision...` relative to an opened campaign-owned models-root descriptor; reject symlink/special-node intermediate components; create private temps and the no-clobber final entry relative to the authenticated destination-directory descriptor; and fsync that directory descriptor. A pre-planted `models/production` symlink must not redirect product bytes outside the campaign models root.
+
 ## 8. Publication atomicity and restart
 
 ### D3-4 — Create-or-verify and representation reclosure
@@ -568,6 +570,18 @@ The predecessor-reclosure requirement is operational lineage/readiness, not a ne
 A decision-only historical/current state with no materialized model is a recoverable WAITING/reclosure state, not COMPLETE.
 
 This is an intentional strengthening of the operator-visible D3 lifecycle, not a change in scientific selection.
+
+Successful `train-production` finalization must make the product explicit **in that command's own output**, not only through a later `status` call. After the authoritative product pointer-set commit, print one deterministic line per published member, in frozen size then decision-member order, containing at least:
+
+```text
+N
+member id / optimizer seed
+target head
+canonical published .model path
+model SHA-256
+```
+
+The completion summary must use `FinalProductionModelPublication`, never the trainer run-root terminal `.model`. In a multi-size campaign it prints every independently published size without selecting a winner. If a later size fails, already committed earlier-size product lines remain truthful durable results even though the collection command exits incomplete.
 
 ### D3-8 — Status remains observational
 
@@ -820,6 +834,8 @@ These comparisons occur inside the same `CampaignStore.exclusive_transaction()` 
 
 Representation change while locked activation is in progress never reopens disclosure. The activation remains bound to the unchanged scientific qualification identity; any later terminal/release reduction must pass the current model-publication CAS.
 
+While a P7 attempt is active, its retention/reference state names both exact representative checkpoint paths and the exact P5 published-model paths it consumes. This does not make the model representation part of `QualificationInputBinding`; it makes storage dependency reporting truthful. Current models remain independently protected by the P5/models-root owners.
+
 ### D3-17C — One observational owner for P7 terminal currentness
 
 Current `qualification status` and the general campaign lifecycle do not use the same P7 terminal-currentness logic. The compact lifecycle path can currently report a terminal record from pointer presence while the richer qualification observer applies additional checks. Remove that semantic duplication for the dependencies touched by this cycle.
@@ -837,7 +853,34 @@ This observer performs no qualification-session construction, no reference-reque
 
 The general campaign lifecycle's single-size P7 step reuses this observation/helper instead of independently interpreting `ProductionQualificationRecord`. Because generic lifecycle intentionally remains config-independent, it may omit the specification comparison, but it MUST never report `release_qualified` when captured predecessor/model publication or current P7 executable identity makes the terminal record stale.
 
+A public `release_qualified` claim additionally requires the captured `ReleaseEvidenceIndex` to authenticate against the exact current terminal record, binding, model-artifact-set digest, component set, locked activation (when required), resource scope/observation and verdict. A crash that published the terminal record but not its release index is recoverable/incomplete exposure, not a complete release claim. Historical terminal objects remain immutable.
+
 `status`, `advance` and `qualification status` therefore agree on the product/executable currentness introduced by this cycle without making ordinary observation consequential.
+
+### D3-17D — First locked reveal is fenced by the exact current prerequisite representation
+
+The locked test itself remains checkpoint-based, but **activation** is authorized only after every mandatory nonlocked prerequisite has passed. Those prerequisites can include deployment-dependent components. Therefore the first irreversible reveal may not race a P5 representation successor.
+
+Immediately before a brand-new `record_locked_reveal(...)`, after `execute_nonlocked_components(session)` has returned the prerequisite set:
+
+1. require every prerequisite evidence object to have the exact current component-input digest for this session, including the current `model_artifact_set_digest` for deployment-dependent components;
+2. acquire locks in the existing global order:
+
+```text
+post_selection_publication_barrier(generation)
+    -> qualification_publication_barrier(generation)
+        -> CampaignStore.writer_exclusion()
+```
+
+3. while the writer exclusion is held, transactionally compare the current selected binding plus exact final-decision, predecessor-reclosure and model-publication pointers against the session's inputs;
+4. only after that CAS succeeds, append/create-or-verify the reveal record and publish the locked-activation pointer while the same writer exclusion and publication barriers still prevent a competing P5/P7/current-selection writer from invalidating the authorization window;
+5. release those locks before running the locked numerical evaluation.
+
+Do not hold the writer gate or publication barriers across the locked test computation.
+
+If the cohort was already revealed, resume the existing activation under the accepted one-shot rules; never create a second reveal merely because model representation changed. A later representation successor may stale deployment-dependent prerequisites/terminal evidence, but it cannot undo or repeat the historical reveal. Resume reruns/reuses nonlocked components under the then-current model artifact set before reducing a new terminal verdict.
+
+Lock ordering matches the existing storage mutation order (P5 barrier before P7 barrier before CampaignStore writer gate); no reverse acquisition is introduced.
 
 ### D3-18 — Executable-evolution consequence is explicit
 
@@ -912,6 +955,19 @@ Do not introduce another model root.
 Publication coordination locks live under the internal post-selection owner, not the public models tree. Attempt-private serialization temps remain publication-owner scratch and are removed only when ownership is certain. This cycle does not grant generic storage per-file reclaim/archive authority over model products or orphan full-SHA products.
 
 If future storage work wants product-level archive/dedup/reclaim, it must derive authority from the P5 model-publication owner and synchronize with its publication seam; that is outside this cycle.
+
+### D3-12A — Reconcile storage owner views with the new P5 product boundary
+
+The existing `campaign_store:models` view currently blanket-labels `paths.models` as durable production-model evidence, while P5 will now be the semantic producer/owner of exact current model files. Preserve safety but remove owner ambiguity:
+
+- keep the models-root view only as a protected campaign layout/container boundary; it grants no product identity/currentness and no recursive deletion authority;
+- make the P5 storage owner expose one exact durable/current/immutable/hot-path artifact view per current published `.model` member, authenticated from `FinalProductionModelPublication`;
+- make the P5 publication owner view depend on both the representative checkpoint artifacts and the exact published-model artifacts, and include the model-publication/artifact-set identity in its `state_identity` so same-decision representation advancement invalidates stale storage plans;
+- before model-publication reclosure of a legacy decision, unresolved product representation causes retention/fail-closed storage classification, never inference that old model files are disposable;
+- active P7 attempt references include the exact P5 model paths as well as checkpoints;
+- unrelated legacy files already under `models/` remain ambiguous/protected unless another real owner certifies them; this cycle adds no cleanup authority.
+
+The new internal P5 model-publication lock namespace is owner-known coordination infrastructure and is never a storage action candidate. Storage integration tests must prove report/cleanup/archive/dedup cannot mutate a live publication lock, private in-flight serialization, current model product, or inert full-SHA orphan.
 
 Because canonical product files are immutable/versioned and `CampaignPaths.models` is already durable scientific evidence, superseded model bytes may accumulate. This cycle does **not** add a cleanup/retention authority merely to reclaim them. Preserve them under the existing models-root owner; if long-horizon accumulation becomes material, route that as a separate storage-policy change rather than deleting historical products by pathname heuristics.
 
@@ -1163,6 +1219,7 @@ Acceptance:
 - COMPLETE requires decision + completion + authenticated model publication + current predecessor reclosure;
 - RECLOSURE handles missing/stale model or reclosure with zero TRAIN2/EVAL2;
 - valid model bytes are reused when only predecessor reclosure is stale;
+- exact current predecessor-reclosure object/digest is preserved when only model representation is repaired;
 - narrow decision/model candidate readers bypass only stale predecessor executable-tree currentness;
 - mixed-size collection sends only PRODUCTION_REQUIRED jobs to the accepted global TRAIN wave;
 - post-TRAIN revalidation prevents stale early classification from committing;
@@ -1179,6 +1236,8 @@ Acceptance:
 - status is filesystem-write/source-read/provider neutral;
 - multi-size reports every N independently.
 
+- successful `train-production` itself prints the canonical `.model` path/SHA/target head for every committed member; operator discovery does not depend on inspecting internal hashes or running another command.
+
 ### Stage F — P7 intake/currentness reconciliation
 
 Acceptance:
@@ -1192,6 +1251,10 @@ Acceptance:
 - successor `deployment_identity` binds exact P5 source model/state/architecture identities and uses a collision-proof full deployment-root identity;
 - deployment receipt records source model/state identities; exporter source artifact/state digests agree with the P5 member;
 - terminal/release pointer publication CAS-checks exact current final-decision, predecessor-reclosure and model-publication pointers;
+
+- first irreversible locked reveal is CAS-fenced under P5 barrier -> P7 barrier -> CampaignStore writer exclusion against the exact current prerequisite model publication;
+- active P7 attempt references include exact P5 model paths without adding representation to the scientific attempt identity;
+- `release_qualified` observation requires the matching authenticated release-evidence index, not a terminal-record pointer alone;
 - `qualification status` and general lifecycle share the same pure P7 terminal-currentness observer for executable/predecessor/model-artifact staleness;
 - P7 disk admission uses authenticated `model_size_bytes` only on deployment-dependent paths;
 - workspace relocation with identical bytes does not invalidate numerical evidence.
@@ -1213,6 +1276,8 @@ Acceptance:
 Acceptance:
 
 - current model products remain protected by existing models-root owner;
+
+- storage ownership distinguishes protected models-root layout from exact P5-owned current model artifacts; P5 publication state identity advances with the model-artifact set;
 - publication private temp/lock paths have explicit owners and no generic cleanup authority is added;
 - current docs describe decision/checkpoint/full-model/deployment boundaries consistently;
 - public collection stage COMPLETE is written only after every frozen selected size satisfies the strengthened product-complete contract;
@@ -1247,13 +1312,21 @@ Acceptance:
 | immutable destination collision | exact bytes -> reuse; mismatch -> fail; never overwrite |
 | digest-prefix collision attempt | impossible by canonical full/collision-proof identity |
 | intermediate/final symlink substitution | descriptor/no-follow authentication rejects |
+
+| pre-planted intermediate symlink on publication write | anchored descriptor-relative creation refuses redirect; no external write |
 | hash-then-reopen race attempt | same-descriptor source auth / trusted scratch staging prevents substitution |
 | status | side-effect-free; SHA/size authenticates current model; reports direct `.model` paths |
+
+| train-production completion output | every committed size/member prints canonical model path, SHA and target head; never trainer terminal model |
 | same-byte workspace relocation | product/deployment currentness unchanged |
 | P7 reference/deployment split | checkpoint provider remains reference; deployment consumes authenticated P5 model bytes |
 | P7 deployment identity collision | full/collision-proof deployment identity root; no `[:16]` authoritative namespace |
 | unchanged member in changed committee representation | its per-member deployed artifact may be reused; aggregate deployment component evidence reruns |
 | representation successor during P7 run | stale terminal/release pointer CAS fails; old object stays historical; locked activation is not reopened |
+
+| representation successor before first locked reveal | prerequisite/model CAS fails before reveal; cohort remains unopened |
+| representation successor after locked reveal | reveal remains consumed; deployment prerequisites/terminal are refreshed under current artifact set, no second reveal |
+| crash after terminal record before release index | no public `release_qualified`; rerun publishes/repairs release index without reopening locked evidence |
 | representation-only repair with current predecessor reclosure | exact predecessor-reclosure digest preserved; qualification attempt identity unchanged |
 | general lifecycle after stale model/executable P7 evidence | does not report current `release_qualified`; agrees with shared observation owner |
 | same checkpoint/state, different serialized bytes under same P7 binding | deployment_parity/dynamics stale; checkpoint-only evidence reusable; terminal binds successor model-artifact-set |
@@ -1271,6 +1344,8 @@ Acceptance:
 | MH-1 bounded publication | save/reload new P5 full-model representation when real bytes readily available |
 | bounded inference override | cannot source a production published `.model` |
 | mixed PRODUCT_RECLOSURE + PRODUCTION_REQUIRED | accepted global TRAIN wave remains isolated; serial reclosure/finalization follows it |
+
+| storage owner graph after publication | models root remains protected container; exact P5 model artifacts and artifact-set state are owner-certified; no new reclamation authority |
 
 ## 22. Real-owner integration
 
@@ -1301,6 +1376,9 @@ campaign lifecycle/status coherence
 P7 publication/provider/deployment intake
 P7 deployment-identity successor/full-root/receipt migration and per-member reuse
 P7 terminal/release commit-time P5 decision/reclosure/model CAS races
+
+P7 first-locked-reveal prerequisite/model CAS and lock-order/crash-resume tests
+P7 release-qualified terminal/index atomic-exposure recovery tests
 P7 qualification-status + general-lifecycle shared currentness observation
 P7 selective component invalidation and locked one-shot preservation
 P7 terminal/release v1->v2 historical readability/currentness without cross-executable evidence promotion
@@ -1312,6 +1390,10 @@ descriptor no-follow path-substitution / trusted-staging tests
 private-temp vs immutable-orphan recovery tests
 P5 publication disk-reserve/actual-size-recheck/ENOSPC/fsync-failure tests
 status SHA-corruption/coherent-reclosure-pointer/workspace-relocation tests
+
+train-production direct published-model locator/output tests
+write-side intermediate-symlink/no-clobber confinement tests
+P5/P7/storage owner-graph exact model-path and publication-lock protection tests
 collection stage COMPLETE/fail-fast multi-size restart tests
 bounded real-MACE published-model usability tests
 documentation structural/build checks
@@ -1376,6 +1458,11 @@ NO-PASS if any remains true:
 49. A terminal/release P7 pointer can be published after its consumed P5 decision, predecessor reclosure, or model-publication pointer has changed.
 50. `qualification status`, general campaign lifecycle, and consequential P7 current resolvers can disagree about terminal currentness for the exact predecessor/model representation or executable identity touched by this cycle.
 51. A representation successor forces unrelated checkpoint-only P7 components to reserve full-model deployment scratch or otherwise changes their resource semantics.
+52. A first locked reveal can occur after deployment-dependent prerequisites became stale because the current P5 model publication is not CAS-fenced across the irreversible reveal.
+53. A public `release_qualified` state can be reported from a terminal record whose matching release-evidence index is absent, stale or belongs to another model-artifact set.
+54. Publication write-side directory creation/final placement can follow an intermediate symlink even though later reads use no-follow authentication.
+55. `train-production` can succeed without directly printing the authoritative published `.model` path/target head/SHA, leaving the user dependent on internal-tree inspection.
+56. Storage continues to treat the whole models root as the only semantic product owner while P5 publishes exact model artifacts, or a storage action can target current/in-flight/orphan publication artifacts without P5 authority.
 
 ## 25. D3 reopen triggers
 
@@ -1404,8 +1491,10 @@ Implementation is complete only when the assembled candidate proves all of the f
 6. P7 keeps checkpoint reconstruction as scientific reference, consumes descriptor-authenticated P5 model bytes only for deployment, versions the deployment-source identity, invalidates only deployment-dependent evidence for representation changes, and CAS-fences terminal/release publication against concurrent P5 successors.
 7. `qualification status` and general lifecycle share one observational P7 currentness owner for current executable/predecessor/model-representation dependencies touched by this cycle.
 8. One-shot locked disclosure is never reopened; representation-only repair preserves current predecessor reclosure/attempt identity when applicable; historical older-executable P7 evidence remains historical.
-9. P5/P7 disk admission, fsync/no-clobber durability, resource retirement and storage ownership remain within existing owners; the accepted global TRAIN scheduler is unchanged.
-10. Current documentation exposes direct usable model paths and consistently distinguishes checkpoint, P5 full model and P7 deployment artifact.
+
+8a. A first locked reveal is authorized under a short P5/P7/writer critical section that proves its deployment-dependent prerequisites still correspond to the exact current model publication; terminal `release_qualified` exposure requires the matching release index.
+9. P5/P7 disk admission, anchored no-follow creation/authentication, fsync/no-clobber durability, resource retirement and reconciled P5/models-root storage ownership remain within existing owners; the accepted global TRAIN scheduler is unchanged.
+10. `train-production` directly prints authoritative usable model paths/SHA/target head, and current documentation consistently distinguishes checkpoint, P5 full model and P7 deployment artifact.
 11. MPA-0 affected regression and bounded real-owner selected-checkpoint publication pass; MH-1 passes the lightweight source/head/reconstruction/publication checks, while long campaign/GPU/MD qualification remains deferred.
 
 Any failed item above is an implementation NO-PASS. Local helper names, exact private temp names and equivalent no-clobber primitives remain D4 choices.
