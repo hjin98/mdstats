@@ -12,7 +12,7 @@ Canonical workplan:
 
 - `workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`
 
-Revision 4 is **PASS AS WORKPLAN / D3->D4 handoff ready after third review**. It keeps the scientific P7 attempt binding checkpoint-based so representation-only changes cannot reopen one-shot locked evidence; instead a path-independent P5 `model_artifact_set_digest` invalidates only deployment-dependent P7 evidence (`deployment_parity`, `dynamics`) and the terminal/release currentness that consumes it. It also closes terminal-schema migration, canonical-path self-reference, native-model-only publication, projection ordering, mixed reclosure/TRAIN sequencing, and predecessor-reclosure completion semantics. MH-1 remains lightweight compatibility-only; real campaign/GPU qualification is deferred to the stakeholder's upcoming run.
+Revision 5 is **PASS AS WORKPLAN / D3->D4 handoff ready after fourth review**. It adds the stable pre-serialization decision/member publication lock required for non-deterministic Torch pickles, safe no-deserialization handling of uncommitted residue, successor reclosure for corrupt product bytes, race-free operator projection, explicit P7 executable-cutover semantics, eval-mode serialization checks, and an MH-1 canonical `[pt_head, target_head]` head-layout smoke. Representation-only changes under one unchanged qualification binding still invalidate only deployment-dependent P7 evidence; pre-change P7 evidence remains historical because executable currentness is preserved. Real MH-1 campaign/GPU qualification remains deferred.
 
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
