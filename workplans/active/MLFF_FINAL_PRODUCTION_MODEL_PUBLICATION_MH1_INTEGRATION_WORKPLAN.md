@@ -1034,7 +1034,10 @@ docs/specs/training_data/mlff_post_selection_p5_spec.md
 docs/specs/training_data/mlff_data9b3_campaign_cli_spec.md
 docs/specs/training_data/mlff_p7_post_production_qualification_spec.md
 docs/guides/mlff_campaign_cli_user_guide.md
-current MLFF architecture manual chapter source(s)
+docs/arch_manuals/mlff_training_data_architecture.md
+docs/arch_manuals/mlff_training_data/80_ownership_and_decisions.md
+README.md
+current storage spec only if its models-root/publication description is affected
 ```
 
 Document the three representations distinctly:
@@ -1050,111 +1053,104 @@ P7 deployment artifact
     downstream converted/qualified representation
 ```
 
+Current prose that says `train-production` finishes merely by publishing `FinalProductionPublicationDecision` must be reconciled: the decision remains the scientific membership owner, while successful final-production completion additionally publishes the subordinate usable full-model representation. Historical release notes/snapshots remain historical and are not rewritten.
+
 ## 20. Implementation stages
 
-### Stage A — subordinate product schema/resolver
-
-Implement immutable materialized-product record + current resolver/pointer.
+### Stage A — product schema, invariants, resolver and trust owner
 
 Acceptance:
 
-- record binds exact decision/member digest;
-- record carries existing evaluated-state, architecture and full-state identities plus model SHA and model_size_bytes;
-- canonical artifact path is immutable/versioned, not seed-only mutable;
-- wrong/stale decision rejected;
-- ordered member set preserved;
-- multi-member committees supported;
-- no selection/ranking logic introduced.
+- immutable `FinalProductionModelPublication` binds exact decision/member/order/checkpoint lineage and rejects duplicates/malformed paths;
+- `model_artifact_set_digest` is path-independent and includes exact member byte/state identities;
+- `model_size_bytes` is recorded;
+- one descriptor/no-follow published-model authenticator is shared by P5/status/P7;
+- canonical model paths use collision-proof full identities;
+- no selection/ranking logic is introduced.
 
 ### Stage B — selected checkpoint -> full model materialization
 
-Use existing authenticated provider/reconstruction owner.
-
 Acceptance:
 
-- nonterminal selected checkpoint can be materialized;
-- reloadable full MACE model produced;
-- selected state/head/architecture equivalence verified;
-- the exact evaluated_model_state_digest returned by the native provider is bound to the serialized member;
-- native MACE reconstruction uses `allow_forward_override=False`; synthetic parameter-shell/test forward seams cannot become published products;
-- published/reloaded model is portable CPU e3nn at accepted dtype and recursively in inference/eval mode;
+- nonterminal selected checkpoint materializes through the existing native provider;
+- exact returned `evaluated_model_state_digest` is bound to the model member;
+- portable CPU e3nn full model is saved at accepted dtype and eval mode;
+- reload preserves exact state/architecture/head inventory/mode;
+- native path uses `allow_forward_override=False`;
+- immutable file placement is create-once/no-clobber and durable;
 - no terminal-model copy path.
 
-### Stage C — integrate `train-production`
-
-A size is complete only after product materialization.
+### Stage C — atomic P5 publication-set integration
 
 Acceptance:
 
-- normal fresh run publishes products;
-- failure to materialize prevents COMPLETE;
-- output prints usable paths;
-- no cross-size choice.
+- one stable decision/publication-set lock covers the complete ordered committee;
+- immutable objects are persisted before pointer visibility;
+- one CampaignStore transaction atomically changes model-publication + predecessor-reclosure + final-publication pointers;
+- commit-time stale binding/currentness fence remains inside that transaction;
+- fault injection at each logical pointer write proves all-old/all-new visibility;
+- `publication.json` is refreshed only after authoritative commit and is never currentness authority.
 
-### Stage D — existing-campaign reclosure and recovery classification
-
-Implement the `PRODUCT_COMPLETE / PRODUCT_RECLOSURE / PRODUCTION_REQUIRED` classification before expensive production execution, plus the narrow decision-candidate replay seam that can repair a stale predecessor-reclosure record without weakening the strict public P5 resolver.
+### Stage D — `train-production` recovery classification/reclosure
 
 Acceptance:
 
-- current old decision + missing model -> publication-only materialization;
-- zero TRAIN2 jobs;
-- zero EVAL2 for PRODUCT_RECLOSURE;
-- mixed-size collections send only PRODUCTION_REQUIRED trajectories into the existing global TRAIN wave;
-- reclosure revalidates currentness after the TRAIN wave and again before pointer commit;
-- repeated invocation verifies/reuses exact current bytes;
-- corrupted/missing current product fails consumers closed but `train-production` can create a new immutable successor product without TRAIN2/EVAL2 or in-place overwrite;
-- uncommitted pickle residue is never deserialized without an authenticated record.
+- COMPLETE requires decision + completion + authenticated model publication + current predecessor reclosure;
+- RECLOSURE handles missing/stale model or reclosure with zero TRAIN2/EVAL2;
+- valid model bytes are reused when only predecessor reclosure is stale;
+- narrow decision/model candidate readers bypass only stale predecessor executable-tree currentness;
+- mixed-size collection sends only PRODUCTION_REQUIRED jobs to the accepted global TRAIN wave;
+- post-TRAIN revalidation prevents stale early classification from committing;
+- every provider/accelerator is retired on success/failure.
 
 ### Stage E — observational lifecycle/status
 
 Acceptance:
 
-- new model-publication pointer participates in the shared coherent CampaignStore snapshot;
-- decision-only legacy/current state reports reclosure needed;
-- complete product state reports model paths;
-- missing/wrong-kind/wrong-size/SHA-mismatched product is not COMPLETE;
-- status authenticates bytes by streaming hash only and never deserializes the model;
-- forced publication/status races never yield a hybrid decision/model ancestry;
-- status is byte/side-effect neutral;
+- coherent snapshot includes final model publication and predecessor reclosure pointers;
+- status consumes only captured pointers/immutable records, never later live pointer reads;
+- COMPLETE requires descriptor-authenticated SHA/size of every member but no `torch.load`;
+- missing/wrong-kind/wrong-size/SHA/unsupported-format model is not COMPLETE;
+- status is filesystem-write/source-read/provider neutral;
 - multi-size reports every N independently.
 
-### Stage F — P7 intake reconciliation
+### Stage F — P7 intake/currentness reconciliation
 
 Acceptance:
 
-- P7 resolves the exact current model-publication record separately from the unchanged scientific qualification binding;
-- `QualificationInputBinding` / `attempt_identity` do not change for representation-only successors;
-- `deployment_parity` and `dynamics` input identities include current model-artifact-set identity and are recomputed when it changes;
-- checkpoint-only physical/relaxation/calibration/locked evidence remains reusable when its own inputs are unchanged;
-- irreversible locked activation/reveal history is preserved and never reopened;
-- terminal/release v2 currentness binds the current model-artifact-set digest; historical v1 records remain readable but are not promoted across the changed executable binding;
-- checkpoint-based `member_provider` remains the independent reference path;
-- deployment exporter source changes from raw checkpoint path to authenticated P5 full model path;
-- product SHA is authenticated before executable model deserialization with no hash/reopen race;
-- exporter source artifact/state digests match the P5 product record;
-- disk admission uses authenticated P5 model_size_bytes and accounts for model/deployment scratch size;
-- member order unchanged;
-- wrong/mutated product fails before downstream execution;
-- a deliberately corrupted serialized model is detected even when the source checkpoint still authenticates.
+- scientific `QualificationInputBinding` remains checkpoint-based;
+- current P5 model-publication and predecessor pointers come from the same captured observation snapshot;
+- deployment parity/dynamics component identity includes current model-artifact-set; checkpoint-only components do not;
+- terminal/release successor schemas bind model-artifact-set digest;
+- historical older-executable P7 evidence remains historical and locked reveal remains consumed;
+- deployment source is a trusted scratch copy made from descriptor-authenticated P5 model bytes;
+- deployment exporter source artifact/state digests agree with P5 member;
+- P7 disk admission uses authenticated `model_size_bytes`;
+- workspace relocation with identical bytes does not invalidate numerical evidence.
 
-### Stage G — lightweight MH-1 audit/regression
+### Stage G — bounded real-owner publication/usability + MH-1 integration
 
 Acceptance:
 
-- no obvious MPA-0-only assumption;
-- current MH-1/head tests pass;
-- bounded real model checks run if readily available;
-- no long production qualification required.
+- real current selected checkpoint != trainer terminal checkpoint case publishes the selected model;
+- published file loads through the supported MACE target-head consumption path and performs bounded finite inference on non-locked known data; reuse an existing parity oracle/tolerance if one already owns that comparison, otherwise do not invent a D2 tolerance;
+- MPA-0 regression remains green;
+- MH-1 `mace_mh_1 / omat_pbe` resolution, reconstruction and `[pt_head, target_head]` order are proved;
+- bounded MH-1 publication save/reload runs when real bytes are readily available;
+- bounded CPU deployment/ML-IAP construction runs when pinned dependencies are readily available;
+- no long MH-1 TRAIN/CV/production/MD/GPU qualification is required.
 
 ### Stage H — storage/docs/assembled closure
 
 Acceptance:
 
-- current products protected;
-- docs distinguish terminal trainer output from P5 product;
-- full affected regression passes;
-- publication + MH-1 compatibility changes assessed together.
+- current model products remain protected by existing models-root owner;
+- publication private temp/lock paths have explicit owners and no generic cleanup authority is added;
+- current docs describe decision/checkpoint/full-model/deployment boundaries consistently;
+- public collection stage COMPLETE is written only after every frozen selected size satisfies the strengthened product-complete contract;
+- failure at a later selected size may leave earlier products durable/current for restart, but the collection stage is not COMPLETE;
+- existing frozen-size serial EVAL2/finalization fail-fast order and multi-size non-release terminal boundary remain unchanged;
+- full affected regression/build checks pass.
 
 ## 21. Required acceptance cases
 
@@ -1162,47 +1158,46 @@ Acceptance:
 |---|---|
 | selected checkpoint == final epoch | published model matches selected checkpoint |
 | selected checkpoint != final epoch | published model matches selected earlier checkpoint, never trainer terminal model |
-| EMA-selected representative | exact accepted provider state serialized |
-| transient CuEq TRAIN2 | portable accepted model serialized |
+| EMA-selected representative | exact provider-returned evaluated state/digest serialized |
+| transient CuEq TRAIN2 | portable accepted e3nn model serialized |
 | single-best committee | exactly selected member product |
-| all-qualified committee | every published member product |
-| multi-size | independent products for every N |
-| legacy/current decision with no model | publication-only reclosure |
-| repeat reclosure | no retraining and no rewrite when valid |
-| partial write/interruption | not observable as current; restart repairs |
-| wrong existing model bytes | fail closed |
-| wrong decision/member binding | fail closed |
+| all-qualified committee | exact ordered decision member set, one publication-set transaction |
+| committee concurrent builders | one decision-set lock; no mixed/interleaved artifact set |
+| multi-size | independent products for every N; no cross-size winner |
+| later-size publication failure | earlier durable size products reusable; collection stage not COMPLETE |
+| legacy decision with no model | publication-only reclosure, zero TRAIN2/EVAL2 |
+| stale predecessor + valid existing model | reuse exact model bytes; rebuild reclosure only; zero reserialization |
+| repeat reclosure | no retraining/re-EVAL/rewrite when valid |
+| stale pre-TRAIN classification | late revalidation aborts/reclassifies before commit |
+| pointer-set fault at write 1/2/3 | all old pointers or all new pointers, never hybrid |
+| projection failure after DB commit | product remains authoritative/current; projection later repairable |
+| private temp crash residue | removed/rebuilt without treating it as authority |
+| immutable unreferenced full-SHA model | inert, not auto-deleted/deserialized; reusable only after independent expected-SHA reconstruction |
+| wrong/corrupt current model bytes | consumers fail closed; train-production may publish immutable successor |
+| wrong decision/member/order binding | fail closed |
 | missing selected checkpoint | fail closed |
-| status | observational and reports product path |
-| P7 reference/deployment split | checkpoint provider remains reference; deployment consumes exact P5 model publication |
-| MH-1 explicit `omat_pbe` | preserved through current path |
-| MH-1 omitted/invalid head | fail closed |
-| MPA-0 regression | remains supported with `default` head |
-| same N/seed, successor publication | immutable new model path; historical product not overwritten |
-| crash after file placement before record | uncommitted residue recoverable under owner lock |
-| source-tree change stales predecessor reclosure | decision replay reclosure succeeds with zero TRAIN2/EVAL2 |
-| same checkpoint/state, different serialized model bytes | same P7 attempt; deployment_parity/dynamics stale, checkpoint-only and locked evidence reusable; new terminal binds new model-artifact-set |
-| tampered/symlink product | rejected before `torch.load` |
-| model pointer/status publication race | one coherent before/intermediate/after snapshot, never hybrid |
-| P7 disk admission | accounts for published model + deployment scratch |
-| concurrent same-member publication | stable decision/member lock serializes non-deterministic Torch saves; exactly one logical product is adopted |
-| crash leaves uncommitted model pickle | residue is removed/rebuilt without deserializing untrusted/unreceipted pickle |
-| current product bytes missing/corrupt | consumers fail closed; train-production creates immutable successor from same authenticated checkpoint |
-| projection publication race | older publisher cannot overwrite `publication.json` after newer pointer commit |
-| pre-change P7 release evidence | remains historical under new executable; locked reveal remains consumed; no compatibility laundering |
-| published model object mode | CPU portable e3nn, accepted dtype, eval/inference mode before and after reload |
-| MH-1 post-selection head layout | exactly `[pt_head, target_head]`; existing target-head index-1 deployment contract remains valid |
-| all-qualified committee concurrent publication | one decision-set lock prevents mixed/interleaved member artifact sets |
-| currentness changes after pre-TRAIN classification | late revalidation aborts/reclassifies; no stale pointer commit |
-| status with same-size byte corruption | SHA mismatch -> not COMPLETE, with no model deserialization |
-| publication ENOSPC/fsync failure | previous current product remains current; partial set not published |
-| workspace relocation with identical model bytes | model-artifact/deployment currentness unchanged; locators update only |
-| locked already revealed, representation-only successor | reveal remains consumed; no reactivation; reuse locked evidence and rerun deployment-dependent components only |
-| interrupted locked activation, representation-only successor | resume same activation; never create a fresh locked event |
-| historical P7 v1 terminal/release record | readable historical evidence; not current until v2 terminal reduction binds current model-artifact-set |
-| canonical product locator | derived only from parent/member/model identities; no subordinate-record self-digest cycle |
+| immutable destination collision | exact bytes -> reuse; mismatch -> fail; never overwrite |
+| digest-prefix collision attempt | impossible by canonical full/collision-proof identity |
+| intermediate/final symlink substitution | descriptor/no-follow authentication rejects |
+| hash-then-reopen race attempt | same-descriptor source auth / trusted scratch staging prevents substitution |
+| status | side-effect-free; SHA/size authenticates current model; reports direct `.model` paths |
+| same-byte workspace relocation | product/deployment currentness unchanged |
+| P7 reference/deployment split | checkpoint provider remains reference; deployment consumes authenticated P5 model bytes |
+| same checkpoint/state, different serialized bytes under same P7 binding | deployment_parity/dynamics stale; checkpoint-only evidence reusable; terminal binds successor model-artifact-set |
+| pre-change P7 evidence under older executable | historical only; no compatibility laundering; locked reveal remains consumed |
+| already-revealed locked cohort | never reactivated for representation-only successor |
+| interrupted locked activation | resumes same activation under existing rules; no fresh reveal |
+| P7 terminal/release v1 | readable historical evidence; never promoted across executable cutover |
+| P5 publication ENOSPC/write/fsync failure before pointer commit | previous current pointer set intact; partial set not current |
+| actual size exceeds preflight estimate | reserve recheck aborts before commit without deleting authority |
+| P7 disk admission | authenticated P5 model sizes + deployment/ML-IAP scratch |
+| published model object mode | CPU portable e3nn, accepted dtype, eval/inference mode after reload |
+| bounded published-model usability | supported MACE target-head consumer loads model and finite bounded inference succeeds |
+| MH-1 explicit source head | `mace_mh_1 / omat_pbe` preserved end-to-end |
+| MH-1 output head order | exactly `[pt_head, target_head]`; target-head index-1 deployment contract valid |
+| MH-1 bounded publication | save/reload new P5 full-model representation when real bytes readily available |
 | bounded inference override | cannot source a production published `.model` |
-| mixed PRODUCT_RECLOSURE + PRODUCTION_REQUIRED | global TRAIN wave remains isolated; serial publication/reclosure occurs post-TRAIN with accelerator retirement |
+| mixed PRODUCT_RECLOSURE + PRODUCTION_REQUIRED | accepted global TRAIN wave remains isolated; serial reclosure/finalization follows it |
 
 ## 22. Real-owner integration
 
@@ -1216,7 +1211,9 @@ and prove that the published full model follows the selected representative.
 
 Use real current checkpoint/provider/model serialization owners. A toy `torch.nn.Linear`-only test is insufficient for this claim.
 
-For MH-1, lightweight source/provider/head tests are sufficient for this cycle. A full real TRAIN2 campaign is deliberately not required.
+After publication, open the resulting file through the supported MACE target-head consumption path and execute one bounded finite inference on non-locked known geometry. If an accepted existing reference-vs-published parity oracle/tolerance already exists, reuse it; otherwise this stage proves structural/operational usability only and does not invent a numerical threshold.
+
+For MH-1, lightweight source/provider/head/publication checks are sufficient for this cycle. A full real TRAIN2/CV/production/MD campaign is deliberately not required.
 
 ## 23. Affected regression
 
@@ -1234,9 +1231,13 @@ P7 terminal/release v1->v2 historical readability/currentness without cross-exec
 storage owner/protection
 MH-1 foundation/head/selected-head tests
 generic MACE execution/CuEq parity tests
-publication-set-lock concurrency/crash-residue/projection-race tests
-P5 publication disk-reserve/ENOSPC/fsync-failure tests
-status SHA-corruption and workspace-relocation tests
+publication-set-lock / atomic three-pointer transaction / crash-injection tests
+descriptor no-follow path-substitution / trusted-staging tests
+private-temp vs immutable-orphan recovery tests
+P5 publication disk-reserve/actual-size-recheck/ENOSPC/fsync-failure tests
+status SHA-corruption/coherent-reclosure-pointer/workspace-relocation tests
+collection stage COMPLETE/fail-fast multi-size restart tests
+bounded real-MACE published-model usability tests
 documentation structural/build checks
 ```
 
@@ -1272,16 +1273,28 @@ NO-PASS if any remains true:
 22. `train-production` reports final production COMPLETE while predecessor reclosure is stale/missing.
 23. Mixed reclosure/new-production flow leaves model-publication accelerator residency alive into the global TRAIN scheduler wave.
 24. Concurrent builders can bypass one another because the publication lock is derived only after non-deterministic serialization/model SHA exists.
-25. Uncommitted full-model pickle residue is deserialized without an authenticated receipt/record.
-26. An older publisher can overwrite the convenience `publication.json` after a newer model publication becomes authoritative.
+25. Unreceipted/private full-model pickle residue is deserialized as authority.
+26. An older publisher can overwrite `publication.json` after a newer model publication becomes authoritative.
 27. Historical P7 evidence from an older executable is promoted to current by weakening executable currentness or compatibility-shimming a locked result.
 28. Product serialization preserves tensor state but leaves the module in training mode.
-29. MH-1 lightweight coverage fails to prove the canonical two-head `[pt_head, target_head]` post-selection layout needed by the existing ML-IAP target-head index contract.
+29. MH-1 lightweight coverage fails to prove canonical `[pt_head, target_head]` needed by the ML-IAP target-head index contract.
 30. Multi-member publication can be assembled from independently locked member builds rather than one decision-set transaction.
 31. A stale PRODUCT_RECLOSURE/PRODUCT_COMPLETE classification can commit after currentness changes during another size's TRAIN wave.
 32. Status can report COMPLETE for a same-size SHA-corrupted current model.
-33. P5 full-model publication bypasses the configured disk reserve or lacks file/parent fsync durability.
+33. P5 publication bypasses configured disk reserve, actual-size reserve recheck, or file/parent fsync durability.
 34. Deployment/P7 currentness depends on workspace/model path rather than exact model bytes/state identity.
+35. Model-publication, predecessor-reclosure and final-publication pointers can commit in separate SQLite transactions and expose a hybrid/stranded product.
+36. PRODUCT_COMPLETE can be reached with missing/stale predecessor reclosure.
+37. Public status/qualification reads model-publication or predecessor pointers outside `campaign_owner_snapshot()`.
+38. Model byte authentication uses `lstat`/hash followed by independent reopen, or follows an intermediate symlink, before executable deserialization.
+39. Immutable model publication uses overwrite-capable placement such as `os.replace`, or canonical authority depends on a truncated digest without collision resolution.
+40. The subordinate model-publication record can omit/reorder/add members or disagree with exact decision seed/run/checkpoint evidence.
+41. Code-change reclosure unnecessarily reserializes a valid model because migration has no narrow authenticated model-publication candidate reader.
+42. Collection-level `post_selection_final_production` is COMPLETE before every frozen size has authenticated model publication + current predecessor reclosure.
+43. Projection failure after authoritative commit is treated as scientific product loss or causes selection/training rerun instead of projection-only repair.
+44. P7 terminal/release observation compares against a later live P5 pointer rather than the captured coherent owner snapshot.
+45. Current docs still describe the decision/checkpoint as the only complete P5 product boundary and leave usable-model publication undiscoverable.
+46. Bounded real-owner evidence proves only `torch.load`/state equality but never exercises the published file through a supported MACE target-head consumer.
 
 ## 25. D3 reopen triggers
 
@@ -1292,7 +1305,9 @@ Reopen rather than patch D4 if evidence shows:
 - a subordinate product record cannot be bound acyclically to current P5 publication;
 - `CampaignPaths.models` cannot safely remain the durable product owner;
 - P7 fundamentally requires a product representation incompatible with P5's accepted portable model;
-- current MH-1 support requires a different scientific/numerical fine-tuning method rather than an implementation correction.
+- current MH-1 support requires a different scientific/numerical fine-tuning method rather than an implementation correction;
+- the existing CampaignStore cannot provide one atomic P5 product-pointer transaction without changing accepted campaign-currentness architecture;
+- supported platform/path semantics cannot provide the already-required no-follow descriptor trust boundary for executable model bytes.
 
 Otherwise local serialization helpers, exact basenames, temporary-file mechanics, and bounded smoke-fixture choices remain D4.
 
@@ -1308,7 +1323,7 @@ P5 decision
   -> P7 authenticated consumption
 ```
 
-is complete and restart-safe, and the current MH-1 path has passed the bounded compatibility audit/regression with no clear unresolved issue.
+is complete, byte-authenticated, crash-atomic and restart-safe; the collection stage is COMPLETE only after every frozen selected size satisfies it; current docs expose direct usable model paths; and the current MH-1 path has passed the bounded compatibility audit/regression with no clear unresolved issue.
 
 Long real MH-1 campaign qualification remains intentionally deferred to the stakeholder's actual upcoming campaign.
 
