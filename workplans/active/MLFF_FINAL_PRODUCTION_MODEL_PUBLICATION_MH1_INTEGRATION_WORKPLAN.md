@@ -4,9 +4,9 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reviewed
 created_date: 2026-09-21
-revision: 3
+revision: 4
 reviewed_date: 2026-09-22
-workplan_review_status: pass-after-second-current-implementation-review
+workplan_review_status: pass-after-third-current-implementation-review
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -18,7 +18,7 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER SECOND CURRENT-IMPLEMENTATION REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER THIRD CURRENT-IMPLEMENTATION REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
 
 This cycle closes two adjacent product-readiness gaps without changing D1 scientific or D2 numerical authority:
 
@@ -160,6 +160,26 @@ Do not invent these state identities. Reuse the current owners:
 
 If the full-state digest helper must be shared, extract/refactor the existing implementation into one common MACE serialization/state-identity owner. Do not copy its algorithm into P5.
 
+The record also defines one derived, path-independent `model_artifact_set_digest` for downstream representation currentness. It is a digest over the parent decision identity, canonical target head, and the ordered published members' exact deployment-source identities:
+
+```text
+final_publication_decision_digest
+target_head_name
+ordered:
+    member_id
+    representative_checkpoint_sha256
+    evaluation_model_state
+    evaluated_model_state_digest
+    model_execution_architecture_digest
+    model_state_sha256
+    model_dtype
+    model_sha256
+```
+
+It deliberately excludes `model_relative_path`, timestamps, the operator projection path, and diagnostic exporter metadata. A workspace relocation or equivalent locator repair therefore does not invalidate numerical/deployment evidence, while any changed executable model bytes do.
+
+This derived digest is not a second scientific member identity. `FinalProductionPublicationDecision.member_digest` remains the sole checkpoint/member-selection identity; `model_artifact_set_digest` identifies only the exact serialized representation consumed by deployment descendants.
+
 The record is subordinate to the existing decision:
 
 ```text
@@ -191,35 +211,42 @@ Materialized P5 model products live under the already-owned:
 <workspace>/models/
 ```
 
-Use a human-readable generation/size layout with an **immutable publication/member product path**, e.g.:
+Use a human-readable generation/size layout with an **immutable publication/member product path**, for example:
 
 ```text
 models/
   production/
     g<generation>/
       N_<size>/
-        <decision-or-product-identity>/
+        decision-<final-decision-prefix>/
           seed-<seed>-<model-sha>.model
         publication.json
 ```
 
-The exact spelling is delegated D4. The invariant is not: a bare mutable `seed-1.model` path MUST NOT be the canonical durable artifact, because the same generation/selected-size/seed can legitimately receive a later current final-publication decision after a policy/method/currentness change. A fixed seed-only path would either overwrite historical product bytes or permanently block a valid successor.
+Exact spelling is delegated D4. The identity rule is not:
+
+- the immutable model path may depend on already-known parent/member identities such as `FinalProductionPublicationDecision.content_digest`, member id/seed, and the serialized model SHA;
+- it MUST NOT depend on `FinalProductionModelPublication.content_digest` when that record itself contains `model_relative_path`, because that would create a self-referential identity cycle;
+- a bare mutable `seed-1.model` MUST NOT be the canonical durable artifact.
 
 For an all-qualified committee every published member gets its own immutable model artifact.
 
-The operator-facing `publication.json` at the N-level is a stable, atomically replaceable projection locating the current immutable product(s). The CampaignStore/P5 pointer remains currentness authority; the projection is never that authority.
+Durable model paths are relative to `CampaignPaths.models`. Reject absolute paths, `..` traversal, symlink substitution, wrong-kind nodes, or any path that escapes the campaign model root. Workspace relocation must not change scientific or model-artifact-set identity.
 
-Exact punctuation/basenames are delegated D4, but the operator must be able to identify generation, selected N, member, and immutable product identity without decoding run hashes.
+The N-level `publication.json` is an operator-facing projection only. It MUST:
 
-Durable model paths MUST be relative to `CampaignPaths.models`. Reject absolute paths, `..` traversal, symlink substitution, wrong-kind nodes, or any path that escapes the campaign model root. Workspace relocation must not change scientific/product identity.
+- carry the current decision digest, model-publication record digest, model-artifact-set digest, target head, and member model paths/SHAs;
+- be written atomically **after** the authoritative CampaignStore/P5 pointer commit succeeds;
+- never participate in scientific/currentness decisions;
+- be safely regenerated when absent or stale by `train-production`.
 
-The sibling `publication.json` is an operator-facing projection of the canonical P5 records. It MUST NOT become a second currentness or selection authority and may be rebuilt from authenticated owner state.
+A crash after authoritative pointer publication but before projection refresh may leave the projection absent/stale; official `status` still resolves the canonical P5 records and must report the correct product. A failed/stale-generation pointer commit must not publish a convenience projection claiming the uncommitted product is current.
 
 Do not write selected product files into sealed trainer run roots.
 
 Do not use the run-local MACE terminal model as the product source.
 
-## 6. Product construction owner
+## 6. Product construction owner## 6. Product construction owner
 
 The source of truth for each product is the exact selected member:
 
@@ -246,6 +273,8 @@ Reuse the existing authenticated P5/P7 checkpoint-provider path. The product mat
 Do not implement another checkpoint loader or MACE reconstruction path.
 
 If a small refactor is needed so publication and inference share one exact model reconstruction owner, prefer that refactor over a wrapper or duplicate helper tree.
+
+Production product materialization MUST use the native authenticated MACE reconstruction path with `allow_forward_override=False`. The bounded `inference_evaluator`/parameter-shell testing seam is not a valid source of a published `.model`. Tests may substitute expensive numerical forwards below an accepted owner, but real-owner publication acceptance must serialize an actual reconstructed MACE model object.
 
 ## 7. Product serialization contract
 
@@ -388,7 +417,8 @@ Rules:
 - `PRODUCT_RECLOSURE`: authenticate the existing decision/checkpoint(s), materialize product only; admit no TRAIN2/EVAL2.
 - `PRODUCTION_REQUIRED`: proceed through the existing final-plan/global-TRAIN/serial-EVAL2/publication machinery.
 - The existing collection-wide CV barrier and collection-signature admission/currentness fences still govern any new production work.
-- A mixed collection may reclose/verify completed sizes while only `PRODUCTION_REQUIRED` positions enter the existing TRAIN wave. This must not create a second scheduler or change frozen-size finalization order for genuinely new work.
+- Classification occurs before TRAIN admission, but model reclosure/materialization is performed in the existing serial post-TRAIN finalization phase in frozen selected-size order. Only `PRODUCTION_REQUIRED` positions enter the global TRAIN wave. This avoids model reconstruction/serialization retaining accelerator state while new production training is admitted.
+- Every publication/reclosure materialization must retire its provider and release transient accelerator residency before the next size/finalization step or any later TRAIN admission. No publication change may alter the accepted global TRAIN scheduler.
 
 This is the required mechanism behind the “zero unnecessary EVAL2” acceptance claim.
 
@@ -457,9 +487,12 @@ After this repair, the public final-production stage is COMPLETE for a selected 
 current final-production plan/completion
 + current FinalProductionPublicationDecision
 + current authenticated FinalProductionModelPublication
++ current predecessor-reclosure record
 ```
 
 all agree.
+
+The predecessor-reclosure requirement is operational lineage/readiness, not a new scientific decision. It prevents `train-production` from reporting a fully published product that the strict P7 exposure boundary must immediately reject as stale.
 
 A decision-only historical/current state with no materialized model is a recoverable WAITING/reclosure state, not COMPLETE.
 
@@ -511,20 +544,118 @@ Preserve the current multi-size terminal/qualification boundary:
 - every size can have a complete P5 `.model` publication;
 - P7 qualification remains unavailable when current authority supplies no release-product choice across sizes.
 
-## 12. P7 consumption and independence
+## 12. P7 consumption, selective representation currentness, and locked-evidence preservation
 
 P7 remains downstream and cannot alter P5 membership.
 
-Current P7 has two materially different consumers and they must remain independent:
+### D3-13 — Keep the scientific qualification binding checkpoint-based
 
-1. `member_provider(...)` reconstructs the selected representative from the authenticated TRAIN2 checkpoint. **Keep this checkpoint-based reference path.** It is the independent in-framework reference used to detect serialization/deployment drift.
-2. `_build_deployment_artifact(...)` currently passes `checkpoint_path_for_member(...)` into the MACE deployment exporter even though the exporter contract is a full MACE model path. **Change this deployment-source path to the authenticated P5 full `.model`.**
+Revision 3 overreached by putting the new model-publication digest into `QualificationInputBinding` / `attempt_identity`.
 
-Therefore the target architecture is:
+Do **not** do that.
+
+The current binding intentionally identifies the frozen scientific product, executable, environment, specification, evidence roles and predecessor reclosure. The new full `.model` is a subordinate representation of the same already-frozen checkpoint state. Making representation bytes part of the whole binding would stale every component, including the one-shot locked test, when only serialization changed.
+
+Therefore preserve:
+
+```text
+QualificationInputBinding
+    selected binding
+    FinalProductionPublicationDecision / member digest
+    executable
+    environment
+    specification
+    evidence roles
+    resource scope / predecessor reclosure
+```
+
+and keep `attempt_identity` stable for a representation-only successor that proves the same P5 decision/member/state.
+
+P7 resolves the current `FinalProductionModelPublication` separately as an authenticated subordinate input.
+
+### D3-14 — Invalidate only components that consume deployment representation
+
+Current component ownership shows:
+
+```text
+deployment_parity    consumes deployed artifact
+dynamics             consumes deployed artifact
+
+physical_pes         checkpoint/member_provider
+relaxation           checkpoint/member_provider
+calibration          checkpoint/member_provider
+locked test          checkpoint/member_provider
+```
+
+Accordingly:
+
+- `deployment_identity(member)` binds that member's exact P5 `model_sha256`, full-state digest, target head and deployment policy;
+- `component_input_digest` for `deployment_parity` and `dynamics` binds the current `model_artifact_set_digest` (or the exact equivalent per-member deployment-source identity);
+- checkpoint-only components do not acquire the model serialization digest and remain reusable when all of their existing inputs remain unchanged;
+- stress/capability evidence that actually depends on deployed runtime remains within the deployment-dependent input identity.
+
+Do not invalidate all P7 evidence merely because the full-model pickle bytes/path changed.
+
+### D3-15 — Preserve irreversible locked disclosure
+
+`LockedActivationRecord`, its cohort-generation identity, and the append-only locked-reveal index remain unchanged by this feature.
+
+A representation-only successor under the same P5 decision is admissible only if the model-publication owner proves the same:
+
+```text
+member/checkpoint
+evaluation state
+evaluated-model-state digest
+full model-state digest
+execution architecture
+target head
+dtype
+```
+
+Therefore an already-revealed locked cohort is never opened again:
+
+- an existing authentic locked activation/result remains evidence for the unchanged scientific checkpoint product;
+- a changed deployment representation triggers only deployment-dependent requalification;
+- if activation occurred but the locked result was interrupted, the same activation may resume under the existing one-shot rules;
+- the append-only reveal index continues to block any attempt to manufacture a fresh locked test.
+
+A different learned state cannot be published as a representation-only successor under the same P5 decision; that is lineage corruption and fails closed.
+
+### D3-16 — Terminal/release currentness binds the deployment representation without rebinding the whole attempt
+
+Add an explicit `model_artifact_set_digest` to the new terminal `ProductionQualificationRecord` and `ReleaseEvidenceIndex` schemas.
+
+These terminal owners are current only when:
+
+- their ordinary `QualificationInputBinding` remains current;
+- their stored `model_artifact_set_digest` equals the exact current P5 model-publication artifact-set digest;
+- every deployment-dependent component outcome has the expected current component-input digest;
+- all other existing component/reference/currentness rules remain satisfied.
+
+The qualification plan and attempt identity do not need to change.
+
+Schema evolution is explicit:
+
+- new terminal record/release-index schemas are versioned successors (v2 or equivalent);
+- old v1 objects remain readable as historical immutable evidence;
+- a v1 terminal/release object lacking model-artifact-set identity cannot be reported as the current release verdict once the new P5 product boundary is active;
+- its checkpoint-only component evidence, including a valid locked result, may be reused through the existing component objects when their exact component inputs still match;
+- deployment-dependent components are recomputed under the current model-artifact-set identity, then a new terminal/release record is reduced without reopening locked evidence.
+
+Do not mutate historical v1 objects in place.
+
+### D3-17 — Deployment source and parity remain independent
+
+Current P7 has two materially different model consumers:
+
+1. `member_provider(...)` reconstructs the selected representative from the authenticated TRAIN2 checkpoint. Keep this checkpoint-based reference path.
+2. `_build_deployment_artifact(...)` changes from `checkpoint_path_for_member(...)` to the authenticated P5 full `.model`.
+
+Target architecture:
 
 ```text
 selected checkpoint
-   -> existing authenticated member_provider
+   -> authenticated member_provider
    -> reference predictions
 
 same selected checkpoint
@@ -535,18 +666,7 @@ same selected checkpoint
 reference predictions <-> deployed predictions
 ```
 
-This preserves a discriminating deployment-parity oracle. Do not make `member_provider` load the same serialized `.model` used by deployment, because a serialization defect could then become common-mode and escape parity testing.
-
-The P7 read-only publication view MUST be extended with the current subordinate model-publication digest and each member's authenticated model path/SHA/state/architecture fields, while its member ordering and scientific `member_digest` still reproduce the existing P5 decision exactly.
-
-That representation change must enter P7 descendant currentness. At minimum:
-
-- the current model-publication digest is part of the P7 authenticated publication content identity;
-- `QualificationInputBinding` (schema bump or equivalent exact descendant contract) binds the model-publication digest;
-- therefore `attempt_identity`, qualification plan currentness, component evidence currentness and deployment identity change when the P5 serialized product changes even if the scientific checkpoint/member decision is identical;
-- `qualification status` compares the authenticated plan's model-publication digest with the P5 model-publication pointer from the same coherent CampaignStore snapshot and reports older attempts as historical/superseded rather than current.
-
-A new serialization of the same selected checkpoint may preserve `FinalProductionPublicationDecision.member_digest`, but it is a different deployment input and MUST NOT reuse a qualification attempt/deployed artifact that was bound to different full-model bytes.
+This preserves a discriminating deployment-parity oracle.
 
 Before deployment, verify:
 
@@ -561,15 +681,15 @@ exact P5 model SHA
 exact P5 full-state digest
 ```
 
-Because full PyTorch model loading is executable deserialization, P7 MUST authenticate the expected SHA **before** calling `torch.load` / MACE inspection on the published model and must not create a hash-then-reopen TOCTOU window. Use either the same no-follow regular-file descriptor for authentication and loading where supported, or copy authenticated bytes into attempt-owned scratch and load that trusted copy. A mutable/symlink-substituted source path must never reach `torch.load`.
+Because full PyTorch model loading is executable deserialization, authenticate expected SHA, confinement and regular/non-symlink type **before** `torch.load` / MACE inspection and avoid hash-then-reopen TOCTOU. Prefer one shared P5 model-artifact authenticator; when the downstream exporter must reopen by pathname, copy the authenticated bytes into attempt-owned scratch and export from that trusted copy.
 
-The existing `MaceDeploymentArtifact` already reports `source_artifact_sha256` and `source_state_sha256`; require those to agree with the P5 product record after export. This is stronger and simpler than adding another P7 source-state mechanism.
+The existing `MaceDeploymentArtifact` already reports `source_artifact_sha256` and `source_state_sha256`; require both to agree with the P5 model-publication member after export.
 
-Update P7 disk-headroom estimation to account for the authenticated published model size and deployment/ML-IAP scratch, not only the representative TRAIN2 checkpoint size.
+Update P7 disk-headroom estimation to account for the authenticated published model size plus deployment and ML-IAP scratch, not only the TRAIN2 checkpoint.
 
-Do not duplicate P5 selection logic inside P7.
+Do not duplicate P5 selection or checkpoint reconstruction logic inside P7.
 
-## 13. Storage ownership
+## 13. Storage ownership## 13. Storage ownership
 
 `CampaignPaths.models` is already current durable scientific evidence under `campaign_store:models`.
 
@@ -785,6 +905,7 @@ Acceptance:
 - nonterminal selected checkpoint can be materialized;
 - reloadable full MACE model produced;
 - selected state/head/architecture equivalence verified;
+- native MACE reconstruction uses `allow_forward_override=False`; synthetic parameter-shell/test forward seams cannot become published products;
 - no terminal-model copy path.
 
 ### Stage C — integrate `train-production`
@@ -827,9 +948,12 @@ Acceptance:
 
 Acceptance:
 
-- P7 resolves exact product record;
-- P7 binding/attempt identity includes the model-publication identity;
-- old attempt/deployment evidence is superseded when only serialized product bytes change;
+- P7 resolves the exact current model-publication record separately from the unchanged scientific qualification binding;
+- `QualificationInputBinding` / `attempt_identity` do not change for representation-only successors;
+- `deployment_parity` and `dynamics` input identities include current model-artifact-set identity and are recomputed when it changes;
+- checkpoint-only physical/relaxation/calibration/locked evidence remains reusable when its own inputs are unchanged;
+- irreversible locked activation/reveal history is preserved and never reopened;
+- terminal/release v2 currentness binds the current model-artifact-set digest; historical v1 records remain readable but not current under the new boundary;
 - checkpoint-based `member_provider` remains the independent reference path;
 - deployment exporter source changes from raw checkpoint path to authenticated P5 full model path;
 - product SHA is authenticated before executable model deserialization with no hash/reopen race;
@@ -882,10 +1006,16 @@ Acceptance:
 | same N/seed, successor publication | immutable new model path; historical product not overwritten |
 | crash after file placement before record | uncommitted residue recoverable under owner lock |
 | source-tree change stales predecessor reclosure | decision replay reclosure succeeds with zero TRAIN2/EVAL2 |
-| same checkpoint, different serialized product bytes | P7 attempt/deployment identity changes; old evidence not reused |
+| same checkpoint/state, different serialized model bytes | same P7 attempt; deployment_parity/dynamics stale, checkpoint-only and locked evidence reusable; new terminal binds new model-artifact-set |
 | tampered/symlink product | rejected before `torch.load` |
 | model pointer/status publication race | one coherent before/intermediate/after snapshot, never hybrid |
 | P7 disk admission | accounts for published model + deployment scratch |
+| locked already revealed, representation-only successor | reveal remains consumed; no reactivation; reuse locked evidence and rerun deployment-dependent components only |
+| interrupted locked activation, representation-only successor | resume same activation; never create a fresh locked event |
+| historical P7 v1 terminal/release record | readable historical evidence; not current until v2 terminal reduction binds current model-artifact-set |
+| canonical product locator | derived only from parent/member/model identities; no subordinate-record self-digest cycle |
+| bounded inference override | cannot source a production published `.model` |
+| mixed PRODUCT_RECLOSURE + PRODUCTION_REQUIRED | global TRAIN wave remains isolated; serial publication/reclosure occurs post-TRAIN with accelerator retirement |
 
 ## 22. Real-owner integration
 
@@ -912,6 +1042,8 @@ checkpoint authentication/provider reconstruction
 multi-size integration
 campaign lifecycle/status coherence
 P7 publication/provider/deployment intake
+P7 selective component invalidation and locked one-shot preservation
+P7 terminal/release v1->v2 historical compatibility/currentness
 storage owner/protection
 MH-1 foundation/head/selected-head tests
 generic MACE execution/CuEq parity tests
@@ -938,11 +1070,17 @@ NO-PASS if any remains true:
 10. Lightweight current MH-1 audit exposes an obvious family/head/shape incompatibility and it remains unresolved.
 11. Missing long MH-1 production qualification is incorrectly treated as implementation failure.
 12. A valid successor publication for the same N/seed must overwrite an existing canonical seed-only model path.
-13. P7 attempt/deployment identity ignores the current P5 model-publication digest or model SHA.
+13. P7 deployment-dependent identity ignores the current P5 model-artifact-set/model SHA, or representation bytes are incorrectly injected into the whole QualificationInputBinding/attempt identity.
 14. A published full-model pickle can reach `torch.load` before its expected SHA/path kind is authenticated.
 15. Existing completed publications cannot be reclosed solely because the previous predecessor source-tree digest became stale after this implementation.
 16. The new model-publication pointer is read outside the shared coherent status snapshot.
 17. Crash residue at an uncommitted product path permanently wedges reclosure.
+18. A representation-only P5 model successor causes a fresh locked activation or makes already-revealed locked evidence appear fresh.
+19. Historical P7 v1 terminal/release evidence is either silently treated as current under the new product boundary or made unreadable/deleted rather than preserved as historical.
+20. A canonical model path depends circularly on the subordinate model-publication record digest that contains that path.
+21. Product materialization can serialize the bounded forward-override/parameter-shell fixture path instead of a native reconstructed MACE model.
+22. `train-production` reports final production COMPLETE while predecessor reclosure is stale/missing.
+23. Mixed reclosure/new-production flow leaves model-publication accelerator residency alive into the global TRAIN scheduler wave.
 
 ## 25. D3 reopen triggers
 
@@ -1037,13 +1175,13 @@ Implementation must preserve the recently accepted global production TRAIN sched
 
 Review basis: `237448b449b6f8042de5f239e5fefdfd54e3b2c3`; reviewed active-plan head before repair: `a1b79f8aa64339026b24d7106f7f9c1b7646bb33`.
 
-### R3-F1 — P7 attempt identity did not bind the serialized P5 product — CLOSED
+### R3-F1 — P7 representation currentness needed an explicit owner — SUPERSEDED BY R4-F1
 
-Current `QualificationInputBinding` binds the P7 authenticated-publication digest/member digest, while `deployment_identity()` binds the representative checkpoint and deployment policy. Revision 2 changed deployment source to the new full model but did not require that model-publication identity to enter P7 currentness. A regenerated/replaced P5 model could therefore leave an old qualification attempt/deployed artifact apparently reusable. Revision 3 requires the model-publication digest in the P7 binding/authenticated-publication identity and therefore in attempt/deployment currentness.
+Revision 3 correctly identified that deployed-artifact currentness must bind the new P5 model representation, but incorrectly placed that dependency in the whole `QualificationInputBinding` / attempt identity. Revision 4 narrows it to the deployment-dependent component and terminal/release boundaries so one-shot locked evidence is preserved.
 
-### R3-F2 — Qualification observation needed coherent P5 model-publication currentness — CLOSED
+### R3-F2 — Qualification observation needed coherent P5 model-publication currentness — CLOSED / NARROWED IN R4
 
-`campaign_owner_snapshot()` currently captures P5 final-publication and P7 pointers atomically, but no model-publication pointer exists yet. Revision 3 requires that new pointer in the same snapshot and requires `qualification status` to mark attempts bound to an older model publication historical/superseded.
+`campaign_owner_snapshot()` still must capture the new P5 model-publication pointer in the same atomic snapshot. Revision 4 compares terminal/release `model_artifact_set_digest` against that current P5 record rather than staling the entire qualification plan/attempt.
 
 ### R3-F3 — Existing predecessor reclosure becomes stale when this implementation changes P5 source — CLOSED
 
@@ -1075,25 +1213,82 @@ Revision 3 freezes the P5 product as portable e3nn CPU representation at the acc
 
 ## 30. Revision-3 workplan verdict
 
-**PASS AS WORKPLAN / D3->D4 HANDOFF READY AFTER SECOND REVIEW.**
+Revision 3 was an intermediate reviewed design. Its P7 whole-binding invalidation rule is superseded by Revision 4 because it conflicted with accepted one-shot locked-evidence semantics. All unaffected Revision-3 closures remain applicable.
 
-No remaining blocking workplan gap was found in the reviewed current implementation surface. The frozen design now has an acyclic identity chain:
+
+## 31. Third current-implementation review closure (Revision 4)
+
+Review basis: `237448b449b6f8042de5f239e5fefdfd54e3b2c3`; reviewed active-plan head before repair: `7d3e63f5ca3bc0e1b6350ceaf40d966fddec3d0a`.
+
+### R4-F1 — Whole-attempt model-publication invalidation conflicted with one-shot locked evidence — CLOSED
+
+Current locked qualification is intentionally checkpoint/provider based, and locked disclosure is globally irreversible through the append-only cohort reveal index. Revision 3 would have changed `QualificationInputBinding` and `attempt_identity` for serialization-only changes, making every component stale while the revealed locked cohort could not legally be opened again. Revision 4 preserves the scientific binding and makes model-artifact currentness component-scoped: deployment parity and dynamics depend on the serialized model; physical PES, relaxation, calibration and locked evidence remain checkpoint-based.
+
+### R4-F2 — Terminal verdict needed representation currentness without forcing a new attempt — CLOSED
+
+A stable attempt alone is insufficient because a release verdict must still describe the exact deployment representation. Revision 4 adds `model_artifact_set_digest` to successor terminal/release schemas. Exposure-time currentness compares that digest to the current P5 model-publication record and revalidates deployment-dependent component inputs.
+
+### R4-F3 — P7 schema migration/preservation was missing — CLOSED
+
+Changing terminal/release semantics cannot silently reinterpret schema v1. Revision 4 requires explicit successor schemas, historical v1 readability, no in-place mutation, and reduction of a new current terminal graph from reusable checkpoint-only evidence plus newly executed deployment-dependent evidence.
+
+### R4-F4 — Canonical product-path example admitted a self-reference cycle — CLOSED
+
+Revision 3 allowed `<decision-or-product-identity>` even though the subordinate product record itself contains `model_relative_path`. Revision 4 forbids subordinate-record digest in its own canonical path and derives immutable locations only from already-known parent/member/model identities.
+
+### R4-F5 — Product publication could accidentally serialize the test forward-override seam — CLOSED
+
+Current `member_provider` permits a bounded forward override when a test inference evaluator is present. That seam is valid for bounded numerical testing but not for publishing a user model. Revision 4 requires native authenticated MACE reconstruction with `allow_forward_override=False` for product materialization.
+
+### R4-F6 — Model-publication record digest was too coarse for downstream invalidation — CLOSED
+
+Path or diagnostic-metadata changes do not alter deployment semantics, while model bytes do. Revision 4 defines a path-independent `model_artifact_set_digest` from the parent decision and exact ordered serialized member identities. P7 deployment descendants bind that digest rather than the whole subordinate record content digest.
+
+### R4-F7 — Operator projection ordering was ambiguous — CLOSED
+
+`publication.json` is now explicitly written only after authoritative pointer commit and remains reconstructable/non-authoritative. A stale-generation failure cannot publish a convenience file that claims to be current.
+
+### R4-F8 — Mixed reclosure/new-production sequencing could perturb the global TRAIN scheduler — CLOSED
+
+Revision 4 separates classification from execution. Recovery classification happens before admission, but product materialization/reclosure is serial post-TRAIN finalization with explicit provider/accelerator retirement. Only genuine `PRODUCTION_REQUIRED` trajectories enter the accepted global TRAIN wave.
+
+### R4-F9 — Final-production COMPLETE omitted current predecessor reclosure — CLOSED
+
+The strict P7 exposure boundary requires current predecessor reclosure. Revision 4 adds it to operator-visible final-production completion so a product cannot be reported fully published while immediately unusable downstream.
+
+## 32. Revision-4 workplan verdict
+
+**PASS AS WORKPLAN / D3->D4 HANDOFF READY AFTER THIRD REVIEW.**
+
+No Serious Challenge to D1/D2 is active.
+
+The final dependency structure is now:
 
 ```text
 FinalProductionPublicationDecision
-    scientific member/checkpoint authority
+    scientific checkpoint/member identity
         |
         v
 FinalProductionModelPublication
-    exact usable serialization + state/architecture/byte identity
+    immutable full-model representation
+    + path-independent model_artifact_set_digest
         |
-        +----> campaign lifecycle/status
-        |         coherent read-only projection
+        +--> train-production/status
+        |      product-completion projection
         |
-        +----> P7 authenticated publication/binding
-                  |
-                  +---- checkpoint provider = independent reference
-                  +---- full model = deployment source
+        +--> P7 deployment-dependent inputs
+               deployment_parity
+               dynamics
+               deployed-artifact identity
+               terminal/release model_artifact_set_digest
+
+QualificationInputBinding remains checkpoint/science based:
+    physical_pes
+    relaxation
+    calibration
+    locked test
+    one-shot reveal history
+remain reusable when their own inputs are unchanged.
 ```
 
-The scientific `member_digest` remains checkpoint-based and unchanged; representation changes invalidate only the subordinate product/P7 descendants that actually depend on serialized model bytes.
+This preserves both required properties simultaneously: exact deployment bytes cannot reuse stale deployment evidence, and changing only the serialized representation cannot manufacture a fresh locked test.

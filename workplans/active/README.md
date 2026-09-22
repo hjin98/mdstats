@@ -12,7 +12,7 @@ Canonical workplan:
 
 - `workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`
 
-Revision 3 is **PASS AS WORKPLAN / D3->D4 handoff ready after second review**. It keeps the existing P5 checkpoint/member decision authority unchanged; publishes immutable/versioned full-MACE `.model` products with existing evaluated-state, full-state, architecture and byte identities; adds a zero-TRAIN2/zero-EVAL2 reclosure path even when this code change stales the prior predecessor-reclosure source digest; preserves coherent status snapshots; and binds P7 attempt/deployment currentness to the exact serialized product while keeping checkpoint reconstruction as the independent parity reference. MH-1 remains lightweight compatibility-only; real campaign/GPU qualification is deferred to the stakeholder's upcoming run.
+Revision 4 is **PASS AS WORKPLAN / D3->D4 handoff ready after third review**. It keeps the scientific P7 attempt binding checkpoint-based so representation-only changes cannot reopen one-shot locked evidence; instead a path-independent P5 `model_artifact_set_digest` invalidates only deployment-dependent P7 evidence (`deployment_parity`, `dynamics`) and the terminal/release currentness that consumes it. It also closes terminal-schema migration, canonical-path self-reference, native-model-only publication, projection ordering, mixed reclosure/TRAIN sequencing, and predecessor-reclosure completion semantics. MH-1 remains lightweight compatibility-only; real campaign/GPU qualification is deferred to the stakeholder's upcoming run.
 
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
