@@ -459,6 +459,65 @@ The target RMSE coordinate is strict primary authority. Replay values/warnings, 
 
 Publication performs no second target evaluation and no M3 evaluation. The publication record SHALL bind the fixed ordering identity and the exact input representative/metric-record lineage needed to reconstruct the decision.
 
+### 14.1 Three distinct representations of one product
+
+The decision above is the scientific membership owner. It is not, by itself, a usable product, and the campaign deliberately distinguishes three representations that are easy to confuse:
+
+```text
+representative TRAIN2 checkpoint
+    .mdstats/post-selection/g<gen>/runs/<run>/checkpoints/...
+    scientific/restart lineage; what P5 selected and what the provider
+    reconstructs; also the independent P7 reference model
+
+P5 published full .model
+    <workspace>/models/production/g<gen>/N_<size>/decision-<digest>/...
+    the selected representative materialized as a complete MACE model; the
+    usable production product an operator loads
+
+P7 deployment/ML-IAP artifact
+    attempt-local, under the P7 attempt root
+    a downstream converted/qualified representation of the P5 model
+```
+
+The trainer's own run-root terminal `.model` is a fourth thing and is none of these: MACE writes it from the last TRAIN2 epoch, which is routinely *not* the P5-selected representative. It SHALL NOT be copied, renamed, symlinked or otherwise substituted for the published product.
+
+### 14.2 `FinalProductionModelPublication`
+
+A subordinate immutable record represents - never redefines - the decision. It binds the selected binding, the exact decision and member digests, the target head, and, in exact decision member order, each member's optimizer seed, run identity, representative checkpoint path/SHA-256, evaluation model state and the provider's own returned `evaluated_model_state_digest`, execution-architecture digest, full model-state SHA-256, learned dtype, artifact locator token, model-root-relative path, model SHA-256 and byte size. Serialization format, serializer identity and Torch/MACE/e3nn/Python runtime material are representation-compatibility metadata only.
+
+Its derived `model_artifact_set_digest` is path-independent: it binds the parent decision identity, the target head and each member's exact deployment-source identity, and deliberately excludes paths, locator tokens, timestamps and exporter metadata. A workspace relocation with identical bytes therefore does not invalidate deployment evidence, while any changed executable model byte does. It is not a second member-selection identity; `FinalProductionPublicationDecision.member_digest` remains the sole checkpoint/member authority.
+
+Product construction reuses the existing authenticated TRAIN2 checkpoint provider with `allow_forward_override=False`. The published object is the exact portable e3nn model that provider exposes, relocated to CPU and put in inference mode at the accepted learned dtype; reload through `torch.load(path, map_location="cpu", weights_only=False)` must reproduce the exact state keys, dtypes, shapes, values, execution architecture, head inventory, target-head presence and inference mode. The bounded forward-override/parameter-shell testing seam is not an admissible source of a published product.
+
+### 14.3 Publication transaction, recovery and currentness
+
+Publication of one committee is one logical act under one decision/publication-set lock derived from the full decision digest. Lock order is fixed and never reversed:
+
+```text
+decision/publication-set lock
+    -> generation P5 publication barrier
+        -> CampaignStore exclusive transaction
+```
+
+Model artifacts are placed create-once beneath `models/production/g<gen>/N_<size>/decision-<full decision digest>/` under descriptor-relative no-follow creation, with file and containing-directory fsync, configured free-disk admission and an actual-size reserve recheck after each member's real bytes exist. An occupied locator is never overwritten: a fresh collision-resistant artifact locator token is claimed instead, so a corrupted leaf cannot wedge reclosure even when the rebuild reproduces the identical model SHA-256. Authoritative paths use full digests; truncated digests are display-only.
+
+`POINTER_FINAL_MODEL_PUBLICATION`, `POINTER_PREDECESSOR_RECLOSURE` and `POINTER_FINAL_PUBLICATION` are made current in exactly one CampaignStore transaction, so no observer can see a hybrid pointer set. `publication.json` at the stable `N_<size>` level is a non-authoritative operator projection written only after that commit, relative to the authenticated directory descriptor, while the generation barrier is still held; a stale or absent projection never affects currentness and is repaired by projection-only work.
+
+`train-production` classifies each selected size before admitting work:
+
+```text
+PRODUCT_COMPLETE      decision + completion + authenticated model publication
+                      + current predecessor reclosure
+PRODUCT_RECLOSURE     the decision replays exactly, but representation and/or
+                      predecessor reclosure is missing, stale, corrupt or no
+                      longer loadable
+PRODUCTION_REQUIRED   no exact replayable decision for current evidence
+```
+
+Only `PRODUCTION_REQUIRED` positions enter the accepted global TRAIN wave; reclosure and finalization remain serial post-TRAIN work in frozen size order. COMPLETE and RECLOSURE admit no TRAIN2 and no EVAL2. When the recorded serializer/runtime no longer proves the current loader, or the predecessor executable changed, the existing product is descriptor-authenticated, staged into trusted scratch, loaded through the current supported loader and compared against a fresh native provider reconstruction; equal state/architecture/head/dtype reuses the exact bytes, an unloadable pickle over unchanged checkpoint semantics publishes a fresh representation at a new locator, and a provider reconstruction that no longer proves the same learned state fails closed as an upstream defect rather than being relabelled a serialization repair.
+
+The public stage is COMPLETE for a selected size only when the current final plan/completion, the current decision, an authenticated current model publication and a current predecessor reclosure all agree. Successful `train-production` prints the canonical `.model` path, SHA-256 and target head for every committed member, in frozen size then decision member order.
+
 
 ## 15. `PostSelectionMaterialization`, sealed training roots, and EVAL2 separation
 
@@ -760,5 +819,6 @@ This section records concrete D4 tokens chosen within the delegated space of sec
 | assessments | `mdstats.post-selection-cv-fold-acceptance.v3`, `mdstats.post-selection-run-evidence.v2`, `mdstats.post-selection-cv-campaign-acceptance.v2` |
 | assessment locator | CampaignStore pointer kind `assessment_position` keyed by `mdstats.post-selection-assessment-position.v1` |
 | publication | `mdstats.post-selection-final-publication-decision.v3`, seed evidence v2, decision identity `...strict-target-rmse-seed-sha256.v3`, `mdstats.post-selection-final-publication-policy.v1` |
+| model publication | `mdstats.post-selection-final-production-model-publication.v1`, member `...model-member.v1`, artifact set `...model-artifact-set.v1`, projection `...model-projection.v1`, serializer `mdstats.p5-final-production-model-serializer.2026-09.v1` |
 | diagnostics | `mdstats.post-selection-checkpoint-diagnostics.v1` (unreferenced diagnostic evidence) |
 | held-out transport | bounded `tempfile` scratch outside every training root, removed on return |
