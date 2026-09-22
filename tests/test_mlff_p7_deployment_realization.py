@@ -333,3 +333,41 @@ def test_terminal_and_release_v1_remain_readable_but_never_current():
     # A *current* record must be able to say which representation it ran.
     with pytest.raises(TrainingDataInputError, match="model-artifact set"):
         ProductionQualificationRecord(**fields)
+
+
+def test_a_receipt_advance_cannot_switch_a_frozen_invocation(session_bundle):
+    """One invocation executes one realization set, start to finish.
+
+    If parity and dynamics each followed the mutable current receipt, a rebuild
+    between them would let one component's evidence describe R1 while the
+    other's described R2, and the terminal reduction would combine them as if
+    they were one run.
+    """
+
+    _config, _paths, _store, session, _harness = session_bundle
+    member = _member(session)
+    frozen = session.freeze_deployment_realization_set()
+    path, _sha = session.deployed_artifact(member)
+
+    # A concurrent builder advances the receipt to a different realization.
+    root = session._deployment_root(member)
+    receipt = root / "deployment-receipt.json"
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    successor = root / "deployment-mliap-successor.pt"
+    successor.write_bytes(path.read_bytes() + b"\x00")
+    successor_sha = hashlib.sha256(successor.read_bytes()).hexdigest()
+    payload["artifact_relative_name"] = successor.name
+    payload["artifact_sha256"] = successor_sha
+    payload["deployment_realization_digest"] = session.deployment_realization_digest(
+        session.deployment_identity(member), successor_sha
+    )
+    receipt.write_text(json.dumps(payload), encoding="utf-8")
+
+    try:
+        # The session continues from the set it froze; the advance does not
+        # silently switch a later component to different executable bytes.
+        assert session.freeze_deployment_realization_set() == frozen
+        assert session.deployed_artifact(member)[0] == path
+    finally:
+        session._deployment_cache.clear()
+        session._frozen_realization_set = None

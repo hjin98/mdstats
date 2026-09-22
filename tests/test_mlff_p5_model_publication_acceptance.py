@@ -848,3 +848,85 @@ def test_projection_replacement_refuses_a_planted_symlink(published, tmp_path):
             preserved.rename(size_directory)
     finally:
         store.close()
+
+
+def pathlib_read(module) -> str:
+    from pathlib import Path as _Path
+
+    return _Path(module.__file__).read_text(encoding="utf-8")
+
+
+def _executable_source(module) -> str:
+    """Module source with docstrings and comments removed.
+
+    Prose *about* a forbidden call is not a forbidden call, and a structural
+    check that cannot tell the difference would force the documentation to lie
+    by omission.
+    """
+
+    import ast
+
+    tree = ast.parse(pathlib_read(module))
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            if (
+                node.body
+                and isinstance(node.body[0], ast.Expr)
+                and isinstance(node.body[0].value, ast.Constant)
+                and isinstance(node.body[0].value.value, str)
+            ):
+                node.body.pop(0)
+    return ast.unparse(tree)
+
+
+def test_the_product_observer_cannot_reconstruct_mace():
+    """Observation is read-only *and* model-free, structurally.
+
+    A status path that could import a reconstruction owner would eventually be
+    asked to use one, and describing a campaign would start needing a GPU.
+    """
+
+    import mdstats.training_data.post_selection_product_observation as observer
+
+    code = _executable_source(observer)
+    for forbidden in (
+        "import torch",
+        "torch.load",
+        "authenticate_post_selection_provider",
+        "selected_representative_provider",
+        "build_mace_model_from_configuration",
+        "realize_portable_publication_model",
+        "prove_existing_representation_reusable",
+    ):
+        assert forbidden not in code, forbidden
+
+
+def test_publication_never_sources_the_trainer_terminal_model():
+    """Blocking condition 2, as a structural fact about the producer."""
+
+    import mdstats.training_data.post_selection_model_products as products
+
+    code = _executable_source(products)
+    # No copy/rename path from a run root into the product tree exists, and
+    # immutable evidence is never published through overwrite-capable
+    # placement.
+    for forbidden in ("shutil.copy", "shutil.move", "os.rename"):
+        assert forbidden not in code, forbidden
+    # Immutable model evidence is published create-once.  `os.replace` is
+    # overwrite-capable and is confined to the mutable operator projection,
+    # which is explicitly not authority.
+    import ast
+
+    import mdstats.training_data.post_selection_model_products as _products
+
+    tree = ast.parse(pathlib_read(_products))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        body = ast.unparse(node)
+        if "os.replace" in body:
+            assert node.name == "write_publication_projection", node.name
+    assert "place_immutable_file" in code
+    # ... and the native reconstruction is never given the override seam.
+    assert "allow_forward_override=False" in code
+    assert "allow_forward_override=True" not in code
