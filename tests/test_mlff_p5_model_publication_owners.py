@@ -329,3 +329,70 @@ def test_read_identity_reports_actual_bytes(tmp_path: Path):
     sha = _write(root, "x.model", b"payload")
     observed = read_model_artifact_identity(root, "x.model")
     assert (observed.sha256, observed.size_bytes) == (sha, 7)
+
+
+# -- durability -------------------------------------------------------------
+
+
+def test_directory_creation_is_fsynced_through_the_whole_chain(tmp_path, monkeypatch):
+    """Directory creation is part of durability, not only containment.
+
+    A crash between creating `decision-<digest>/` and committing the pointer
+    that names a file inside it must not lose the directory entry, so every
+    newly installed component is fsynced as it is created.
+    """
+
+    import mdstats.training_data.model_artifact_trust as trust
+
+    synced: list[int] = []
+    real_fsync = os.fsync
+    monkeypatch.setattr(
+        trust.os, "fsync", lambda fd: (synced.append(fd), real_fsync(fd))[1]
+    )
+    root = tmp_path / "models"
+    with open_publication_directory(root, "production/g1/N_8/decision-x", create=True):
+        pass
+    # One fsync per newly created component of the chain.
+    assert len(synced) >= 4
+    synced.clear()
+    # Re-descending an existing chain creates nothing and syncs nothing.
+    with open_publication_directory(root, "production/g1/N_8/decision-x", create=True):
+        pass
+    assert synced == []
+
+
+def test_a_write_failure_leaves_no_published_entry(tmp_path, monkeypatch):
+    """ENOSPC before placement publishes nothing; the temp is the only loss."""
+
+    import mdstats.training_data.post_selection_model_products as products
+
+    class _Realization:
+        state_sha256 = _A
+        execution_architecture_digest = _B
+        dtype = "float64"
+        head_inventory = ()
+
+    def failing_serialize(model, destination):
+        destination.write_bytes(b"partial")
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(products, "_serialize_portable_model", failing_serialize)
+    context = type(
+        "C",
+        (),
+        {"paths": type("P", (), {"models": tmp_path / "models"})(), "cfg": {}},
+    )()
+    relative = "production/g1/N_8/decision-" + _A
+    with pytest.raises(OSError):
+        products.place_member_model(
+            context,
+            model=object(),
+            member_id="seed-1",
+            realization=_Realization(),
+            target_head_name="target_head",
+            decision_relative_directory=relative,
+        )
+    published = list((tmp_path / "models" / relative).glob("*.model"))
+    assert published == [], "a failed serialization published nothing"
+    # Only the attempt's own private temp is removed; nothing else is touched.
+    assert list((tmp_path / "models" / relative).glob("*.tmp")) == []
