@@ -4,9 +4,9 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reviewed
 created_date: 2026-09-21
-revision: 6
+revision: 7
 reviewed_date: 2026-09-22
-workplan_review_status: pass-after-fifth-current-implementation-review
+workplan_review_status: pass-after-exhaustive-sixth-current-implementation-review
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -18,7 +18,7 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER FIFTH CURRENT-IMPLEMENTATION REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER EXHAUSTIVE SIXTH CURRENT-IMPLEMENTATION REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
 
 This cycle closes two adjacent product-readiness gaps without changing D1 scientific or D2 numerical authority:
 
@@ -195,6 +195,33 @@ FinalProductionModelPublication
 
 It is not a second member-selection authority.
 
+The record constructor/deserializer and current resolver must enforce, rather than merely document, these invariants:
+
+```text
+selected_binding_digest == decision.binding.content_digest
+final_publication_decision_digest == decision.content_digest
+final_publication_member_digest == decision.member_digest
+target_head_name == decision.target_head_name
+
+ordered model members
+    == decision.published_member_ids exactly
+    == same cardinality/order, no missing/extra/duplicate member ids
+
+for each member:
+    optimizer_seed / run_identity / checkpoint path / checkpoint SHA
+        == exact published seed evidence in the decision
+
+    evaluation_model_state / evaluated_model_state_digest
+    model_execution_architecture_digest / model_state_sha256 / model_dtype
+        == exact authenticated provider realization for that checkpoint
+
+    model_relative_path is relative, confined and normalized
+    model_sha256 is a valid full digest
+    model_size_bytes > 0
+```
+
+A subordinate record may represent the decision but may never redefine committee membership, order, checkpoint ancestry, target head or learned state. Its deserializer recomputes its own content digest and rejects malformed or duplicate member identities.
+
 ### D3-3 — One current subordinate pointer
 
 Add the minimum binding-scoped current pointer required to resolve the current model materialization, e.g. a new P5 pointer kind such as:
@@ -222,16 +249,18 @@ models/
   production/
     g<generation>/
       N_<size>/
-        decision-<final-decision-prefix>/
-          seed-<seed>-<model-sha>.model
+        decision-<full-final-decision-digest>/
+          seed-<seed>-<full-model-sha>.model
         publication.json
 ```
 
 Exact spelling is delegated D4. The identity rule is not:
 
+- authoritative immutable paths use collision-proof full digests, or an engineering-equivalent collision-proof encoding; shortened digest prefixes are display-only;
 - the immutable model path may depend on already-known parent/member identities such as `FinalProductionPublicationDecision.content_digest`, member id/seed, and the serialized model SHA;
 - it MUST NOT depend on `FinalProductionModelPublication.content_digest` when that record itself contains `model_relative_path`, because that would create a self-referential identity cycle;
-- a bare mutable `seed-1.model` MUST NOT be the canonical durable artifact.
+- a bare mutable `seed-1.model` MUST NOT be the canonical durable artifact;
+- this cycle creates no mutable `.model` symlink/copy alias that could be mistaken for authority. `publication.json` and CLI output are the stable operator locators.
 
 For an all-qualified committee every published member gets its own immutable model artifact.
 
@@ -327,183 +356,162 @@ Do not silently change precision during base P5 publication.
 
 Deployment/dtype conversion remains downstream P7/deployment ownership.
 
+### D3-4A — One descriptor-authenticated published-model byte owner
+
+A full PyTorch model is executable serialized content. P5, status and P7 must share one published-model artifact authenticator rather than reimplement path checks.
+
+The authenticator preserves the repository's existing no-follow trust discipline:
+
+- start from an authenticated campaign-owned `CampaignPaths.models` anchor;
+- descend components relative to already-opened directory descriptors, refusing symlink/special-node substitution in intermediate components;
+- open the final model with `O_NOFOLLOW` or the accepted platform-equivalent;
+- prove regular-file type with `fstat()` on the opened descriptor;
+- stream expected byte count and SHA-256 from that same descriptor;
+- compare recorded `model_size_bytes` and `model_sha256`;
+- never establish authority with `lstat(path)` followed by a separate normal open;
+- never hash one pathname and then reopen an independently resolved pathname for executable deserialization.
+
+Prefer factoring/reusing the existing descriptor-relative qualification/storage trust primitives over creating another traversal implementation.
+
+The same owner serves P5 current resolution, train-production create-or-verify/reclosure, lifecycle/status, and P7 intake/staging. When a downstream library requires a pathname, copy authenticated bytes from the trusted descriptor into attempt-owned private scratch, fsync/hash-verify that copy, then execute from the trusted copy.
+
 ## 8. Publication atomicity and restart
 
-### D3-4 — Create-or-verify
+### D3-4 — Create-or-verify and representation reclosure
 
 For each expected product relation:
 
 - no current model-publication record -> materialize;
-- current record + valid matching artifact -> reuse;
-- current record + missing/SHA-mismatched/wrong-kind artifact -> consumers fail closed immediately, while `train-production` may perform representation-only reclosure from the authenticated selected checkpoint into a **new immutable artifact + successor model-publication record**;
-- never overwrite or “repair in place” an artifact named by an immutable historical/current record.
+- current record + valid exact artifact set -> reuse;
+- current record + missing/SHA-mismatched/wrong-kind/unsupported-format artifact -> consequential consumers fail closed, while `train-production` may explicitly reclose representation from the authenticated selected checkpoint into a new immutable artifact set + successor model-publication record;
+- never overwrite or repair in place an artifact named by an immutable historical/current record.
 
-File existence alone is never validity. Corrupt or missing product bytes are recoverable representation failure when the selected checkpoint lineage still authenticates; they are not authority to retrain, rerank, or mutate the old record.
+File existence is never validity. Corrupt, missing or unsupported representation bytes are recoverable only when exact selected-checkpoint lineage remains authentic; they grant no authority to retrain, rerank or mutate the old decision.
 
-At minimum authenticate:
+At minimum authenticate decision/member/order, representative checkpoint SHA, evaluation state + returned evaluated-state digest, target head, architecture digest, exact full-state digest, model SHA/size and serialization-format compatibility. Reuse existing state-digest owners; define no third tensor hash.
+
+### D3-5 — Crash-safe publication, committee transactionality, concurrency and residue
+
+Do not hold the generation-wide P5 publication barrier or a SQLite write transaction across model reconstruction/serialization.
+
+A multi-member committee is one logical P5 model publication. Full PyTorch model serialization is not byte-deterministic, so publication uses one stable decision/publication-set lock, not independent member locks.
+
+The lock reuses `artifact_publication_lock` over an internal P5 coordination path derived from the **full** decision identity, for example:
 
 ```text
-decision digest
-member digest
-member identity
-representative checkpoint SHA
-evaluation model state
-existing evaluated_model_state_digest
-target head
-existing canonical execution-architecture digest
-existing exact full-state/state_dict digest
-serialized model SHA
+.mdstats/post-selection/g<generation>/
+    model-publication-locks/
+        <full-final-decision-digest>
 ```
 
-Revision 2 was too restrictive here: the repository already has both the TRAIN2 evaluated-state digest and an exact deterministic MACE `state_dict` digest implementation in the deployment owner. Reuse or factor those current identities; do not define a third competing tensor hash.
-
-### D3-5 — Crash-safe publication, committee atomicity, concurrency and residue
-
-Do **not** hold the generation-wide P5 publication barrier across model reconstruction or serialization; that would block unrelated selected sizes and storage publication.
-
-Full PyTorch model serialization is not byte-deterministic. A multi-member committee is one logical P5 product, so publication uses **one stable decision/publication-set lock**, not independent per-member locks.
-
-Derive the lock target entirely from already-known authority, for example:
+Do not leave coordination locks in the operator-facing models tree. Lock order is fixed:
 
 ```text
-CampaignPaths.models/
-  production/g<generation>/N_<size>/
-  decision-<final-decision-digest>/
-  .publication-set.lock
-```
-
-Exact spelling is D4-delegated. The lock is acquired before any member serialization and remains held until the exact model-publication record has been committed current (including the short nested generation publication-barrier section). Lock ordering for this flow is:
-
-```text
-decision/publication-set artifact lock
+decision/publication-set lock
     -> generation P5 publication barrier
+        -> CampaignStore exclusive transaction
 ```
 
-Never acquire those two in the reverse order in this feature.
+No path in this feature may acquire those in reverse order.
 
 Under the publication-set lock:
 
-1. re-read/re-authenticate the exact current decision/model-publication state;
-2. if the current record names a completely valid ordered member set, reuse it;
-3. otherwise reconstruct and serialize **all** required published members in the decision's canonical member order;
-4. for each member, use a private destination-filesystem temporary file, move the native provider model to CPU/eval mode, serialize, flush/fsync the file, reload/verify, derive state/architecture/dtype/head identity, byte SHA and byte size;
-5. derive the immutable SHA-bearing final filename only after verification;
-6. if that immutable final path is absent, atomically rename the verified temporary file and fsync its parent directory;
-7. if that immutable final path already exists, hash the existing regular non-symlink bytes and reuse it only when they equal the freshly authenticated expected SHA; never deserialize an unreceipted pre-existing pickle merely to decide reuse;
-8. after the complete ordered member set is durable, build/store the one immutable `FinalProductionModelPublication`;
-9. enter the generation P5 publication barrier, revalidate current upstream lineage/decision, publish subordinate/reclosure/final pointers in the required order, refresh the operator projection, then release the generation barrier and publication-set lock.
+1. re-read/re-authenticate the exact replayable/current decision, completion, predecessor reclosure and model-publication state;
+2. if one current model-publication record names a fully valid ordered artifact set, reuse it;
+3. otherwise process published members serially in canonical decision order, bounding provider/model residency;
+4. for each missing/successor member, reconstruct through the native provider, retain its returned evaluated-state digest, move the exact portable model to CPU/eval mode, serialize to a private destination-filesystem temp, flush/fsync, reload/verify, compute byte SHA/size, then retire the provider in `finally`;
+5. derive the immutable collision-proof final filename from decision/member identity and full model SHA;
+6. publish the final directory entry with **no-clobber/create-once semantics**. `os.replace` is forbidden for immutable model evidence;
+7. if the final path already exists, descriptor-authenticate size/SHA and reuse only on exact expected bytes; otherwise fail closed. Never deserialize an unreceipted pre-existing pickle merely to decide reuse;
+8. after the whole ordered set is durable, build/store one immutable `FinalProductionModelPublication`;
+9. enter the short generation P5 publication barrier and perform the atomic pointer-set commit in D3-6;
+10. refresh the mutable operator projection only after the authoritative pointer transaction commits.
 
-This prevents two processes from interleaving different non-deterministic member serializations into competing committee artifact sets.
+Only private attempt temps may be deleted automatically. A full-SHA immutable final model not referenced by the current pointer may be historical or pre-pointer crash residue; leave it inert. A later trusted reconstruction may byte-reuse it only when it independently derives the same expected SHA.
 
-Only private temporary files owned by the interrupted publication attempt may be deleted automatically. Immutable SHA-bearing final model files are never deleted merely because a current pointer is absent; an orphan may be historical or the result of a pre-pointer crash. It remains inert until a trusted reconstruction independently derives the same SHA. This avoids both executable-deserialization trust violations and accidental historical evidence deletion.
+### D3-6 — One atomic P5 product pointer-set commit
 
-Distinguish:
+Revision 6's ordered sequence of three independent pointer transactions is insufficient. A crash after changing model/reclosure pointers but before `FINAL_PUBLICATION` can strand the previous current product behind a hybrid pointer set.
 
-```text
-AUTHENTIC CURRENT ARTIFACT SET
-    current model-publication record names every ordered member
-    -> verify SHA/size/kind/path; reuse exact bytes
-
-RECOVERABLE CURRENT-ARTIFACT FAILURE
-    authentic current record exists but one or more member artifacts are missing/corrupt
-    -> consumers fail closed
-    -> train-production may publish a new immutable successor set from checkpoints
-
-PRIVATE TEMPORARY RESIDUE
-    attempt-owned private temp path
-    -> may be removed under the publication-set lock
-
-ORPHAN IMMUTABLE MODEL
-    SHA-bearing final path not named by current record
-    -> do not deserialize/delete automatically
-    -> may be byte-reused only if trusted reconstruction independently expects same SHA
-
-FOREIGN / AMBIGUOUS PATH
-    ownership/confinement/type not proven -> fail closed
-```
-
-A crash must never make a partial member set current, and a crashed lock holder must not strand recovery.
-
-### D3-6 — Publication ordering and visibility
-
-The current implementation publishes the P5 decision and predecessor-reclosure pointers inside `publish_final_production_publication()`. That ordering must be refactored narrowly so a **fresh** product cannot become publicly COMPLETE while its selected full model is still absent.
-
-Required logical ordering for fresh publication:
+Refactor the existing `post_selection_store` owner with the minimum batch helper required to publish these rows in **one** `CampaignStore.exclusive_transaction()`:
 
 ```text
-1. decide/reproduce FinalProductionPublicationDecision in memory
-2. acquire the stable decision/publication-set lock
-3. re-authenticate decision/current product state
-4. materialize + reload + verify + durably place the complete ordered model set
-5. persist decision object, predecessor-reclosure object, and model-publication object
-6. acquire the existing generation P5 publication barrier
-7. re-resolve/revalidate the exact upstream lineage and decision under that barrier
-8. publish:
-       a. subordinate model-publication pointer
-       b. predecessor-reclosure pointer
-       c. FINAL_PUBLICATION pointer LAST
-9. atomically refresh publication.json while still protected from stale writers
-10. release barriers/lock and report the size complete
+POINTER_FINAL_MODEL_PUBLICATION
+POINTER_PREDECESSOR_RECLOSURE
+POINTER_FINAL_PUBLICATION
 ```
 
-Putting `FINAL_PUBLICATION` last gives the existing public decision pointer its natural commit-marker role: an observer may temporarily see a subordinate product pointer that does not yet match a current decision and must ignore it, but it must never see a newly current decision and infer completion before the required model publication is current.
+The helper reuses the existing pointer-key/current-frozen-design logic, performs the binding/generation stale-writer check once inside the same `BEGIN IMMEDIATE`, validates all digests before the transaction, writes all three rows atomically or none, and is idempotent when the exact set already exists. It is not a second currentness database or transaction subsystem.
 
-For **legacy/current v3 decisions that already predate this feature**, the existing final-publication pointer remains valid scientific selection evidence. Lifecycle observation deliberately reports such a decision as product-reclosure WAITING until the subordinate product record exists. Reclosure adds only the subordinate product pointer and never rewrites/reranks the decision.
+Fresh-publication flow:
 
-The implementation MAY factor the current `decide_final_production_publication()` and pointer-writing path to achieve this, but must not create a second publication transaction/lock subsystem.
+```text
+1. decide/reproduce FinalProductionPublicationDecision
+2. acquire publication-set lock
+3. reauthenticate current/replayable lineage
+4. materialize + verify + durably place complete model set
+5. persist immutable decision / reclosure / model-publication objects
+6. acquire generation P5 publication barrier
+7. re-resolve/revalidate exact final plan/completion/decision
+8. one CampaignStore transaction atomically publishes all 3 product pointers
+9. refresh publication.json while still under generation barrier
+10. release barriers/lock; only then report size complete
+```
+
+The generation barrier protects the immutable-object -> pointer window from storage mutation; the SQLite transaction protects pointer-set atomicity. Expensive work remains outside both.
+
+For a legacy v3 decision, reclosure may atomically republish the same decision digest together with current model/reclosure pointers; it never reranks or rewrites the decision object. Fault injection must prove exceptions at every logical pointer-write position leave the visible pointer set wholly old or wholly new.
 
 ### D3-6A — Recovery classification before expensive work
 
-Current `execute_current_train_production()` plans every selected size, normalizes TRAIN recovery, and later enters serial EVAL2/finalization. For an already-complete valid decision, using that ordinary route merely to create a `.model` can needlessly revisit EVAL2 machinery.
-
-After the collection-wide CV/currentness barrier and before new TRAIN/EVAL admission, classify each selected size:
+After the collection-wide CV/currentness barrier and before new TRAIN/EVAL admission classify each selected size:
 
 ```text
 PRODUCT_COMPLETE
-    current decision + current authenticated model publication
+    exact replayable/current final decision + completion
+    + fully authenticated model publication
+    + current predecessor reclosure
 
 PRODUCT_RECLOSURE
-    current decision + current completion + missing/stale model publication
+    exact replayable final decision + completion exist
+    but model publication and/or predecessor reclosure is missing, stale, corrupt or representation-incompatible
 
 PRODUCTION_REQUIRED
-    no current final decision
+    no exact replayable final decision exists for current completion/evidence
 ```
 
-Rules:
+- COMPLETE admits no TRAIN2/EVAL2 and verifies/reuses the product.
+- RECLOSURE admits no TRAIN2/EVAL2. Reuse valid model bytes when only reclosure is stale; rebuild only missing/corrupt/incompatible representation, then atomically republish the product pointer set.
+- PRODUCTION_REQUIRED enters the accepted final-plan/global-TRAIN/serial-EVAL2/publication machinery.
+- only PRODUCTION_REQUIRED trajectories enter the global TRAIN wave;
+- reclosure/materialization remains serial post-TRAIN finalization in frozen selected-size order;
+- provider/accelerator residency is retired on every terminal path;
+- no publication change alters the accepted adaptive TRAIN scheduler.
 
-- `PRODUCT_COMPLETE`: verify/reuse product state; admit no TRAIN2/EVAL2.
-- `PRODUCT_RECLOSURE`: authenticate the existing decision/checkpoint(s), materialize product only; admit no TRAIN2/EVAL2.
-- `PRODUCTION_REQUIRED`: proceed through the existing final-plan/global-TRAIN/serial-EVAL2/publication machinery.
-- The existing collection-wide CV barrier and collection-signature admission/currentness fences still govern any new production work.
-- Classification occurs before TRAIN admission, but model reclosure/materialization is performed in the existing serial post-TRAIN finalization phase in frozen selected-size order. Only `PRODUCTION_REQUIRED` positions enter the global TRAIN wave. This avoids model reconstruction/serialization retaining accelerator state while new production training is admitted.
-- Every publication/reclosure materialization must retire its provider and release transient accelerator residency before the next size/finalization step or any later TRAIN admission. No publication change may alter the accepted global TRAIN scheduler.
+Classification is an admission hint, not commit authority. Every later COMPLETE/RECLOSURE action re-resolves current state under the publication-set lock, and pointer commit repeats exact upstream validation under the generation barrier. Drift aborts/reclassifies; no stale pre-TRAIN snapshot may publish.
 
-This is the required mechanism behind the “zero unnecessary EVAL2” acceptance claim.
+### D3-6B — Narrow migration resolvers without weakening public currentness
 
-Recovery classification is an admission hint, not a commit authority. Because another size's TRAIN wave may run for a long time after classification, every later PRODUCT_COMPLETE/PRODUCT_RECLOSURE action must re-resolve its current decision/completion/model publication under the stable publication-set lock, and every pointer commit must revalidate the exact upstream lineage again under the generation publication barrier. If currentness changed, abort/reclassify; never publish from a stale pre-TRAIN snapshot.
+This implementation changes predecessor executable source-tree identity, so strict public resolvers may reject old reclosure before migration.
 
-### D3-6B — Reclosure bootstrap must bypass stale predecessor reclosure without weakening decision authentication
+`train-production` owns two narrow candidate/reclosure-only readers:
 
-A code change in this cycle changes the P5/P6 executable source-tree digest. Therefore the existing strict `resolve_current_final_production_publication()` can reject the old publication **before** model reclosure, because that resolver intentionally requires a current `PredecessorReclosureRecord`.
+1. **decision candidate** — load the pointed final decision, authenticate current binding/final plan/completion/policy/CV/common monitor, replay `decide_final_production_publication(...)` from persisted evidence, and require exact decision digest equality while bypassing only stale predecessor executable-tree currentness;
+2. **model-publication candidate** — if a subordinate pointer exists, load its immutable record without declaring it publicly current, require exact replayed decision/member binding, and authenticate every model member through the shared descriptor-authenticated owner.
 
-Publication-only migration needs one narrow internal recovery seam owned by `train-production`:
+This permits same decision + valid model bytes + stale predecessor source digest -> reuse model bytes, rebuild reclosure, atomically republish pointers, with zero TRAIN2/EVAL2/model reserialization.
 
-```text
-read the pointed FinalProductionPublicationDecision object
-    -> authenticate current binding/final plan/completion/policy/CV/monitor
-    -> recompute decide_final_production_publication(...) from already-persisted evidence
-    -> require recomputed decision digest == pointed decision digest
-    -> DO NOT require the old predecessor-reclosure source-tree digest to match
-    -> materialize selected model(s)
-    -> build the new current PredecessorReclosureRecord
-    -> commit model-publication + reclosure pointers
-```
+The bypass never weakens selected binding, completion, CV/method/monitor lineage, committee replay, checkpoint ancestry, model member set, SHA/size/path trust or model-state identity. P7/public current resolvers stay strict.
 
-This is not a weaker public publication resolver. P7 and ordinary current-product consumers continue to require the strict current predecessor reclosure. Only the production reclosure/migration owner may use this candidate resolver, and only after exact decision replay proves that no selection changed.
+### D3-6C — Projection commit and failure semantics
 
-No EVAL2 numerical inference is rerun: `decide_final_production_publication(...)` re-authenticates the already-persisted representative/metric evidence.
+`publication.json` is non-authoritative mutable projection:
 
-
+- write private temp + flush/fsync + atomic `os.replace` + parent-directory fsync;
+- refresh only after atomic three-pointer commit while still under generation barrier;
+- if projection refresh fails after DB commit, the product remains authoritative/current; later `train-production` repairs only the projection, without TRAIN2/EVAL2/model rebuild;
+- status/currentness never consumes the projection;
+- stale projection can never override DB/content-addressed authority.
 
 ## 9. Existing completed campaign reclosure
 
