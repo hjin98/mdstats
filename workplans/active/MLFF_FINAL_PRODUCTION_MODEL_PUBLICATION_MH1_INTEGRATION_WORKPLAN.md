@@ -4,9 +4,9 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reviewed
 created_date: 2026-09-21
-revision: 12
+revision: 13
 reviewed_date: 2026-09-22
-workplan_review_status: pass-after-final-convergence-invariant-review
+workplan_review_status: pass-after-final-representation-currentness-review
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -18,7 +18,7 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER FINAL CONVERGENCE/INVARIANT REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER FINAL REPRESENTATION-CURRENTNESS REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
 
 This cycle closes two adjacent product-readiness gaps without changing D1 scientific or D2 numerical authority:
 
@@ -748,13 +748,14 @@ A different learned state cannot be published as a representation-only successor
 
 ### D3-16 — Terminal/release currentness binds the deployment representation without rebinding the whole attempt
 
-Add an explicit `model_artifact_set_digest` to the new terminal `ProductionQualificationRecord` and `ReleaseEvidenceIndex` schemas.
+Add explicit `model_artifact_set_digest` **and** `deployment_realization_set_digest` fields to the new terminal `ProductionQualificationRecord` and `ReleaseEvidenceIndex` schemas. The latter is required when the frozen qualification plan contains any deployment-dependent component; use a canonical null/not-applicable value only when no enabled component consumes a deployed realization.
 
 These terminal owners are current only when:
 
 - their ordinary `QualificationInputBinding` remains current;
 - their stored `model_artifact_set_digest` equals the exact current P5 model-publication artifact-set digest;
-- every deployment-dependent component outcome has the expected current component-input digest;
+- their stored `deployment_realization_set_digest` equals the exact currently authenticated ordered deployment-realization set for the attempt when deployment-dependent components are enabled;
+- every deployment-dependent component outcome has the expected current component-input digest binding **both** the P5 model-artifact set and deployed-realization set;
 - all other existing component/reference/currentness rules remain satisfied.
 
 For `qualification status`, “exact current P5 model publication” means the content-addressed object named by the **captured** model-publication pointer from `campaign_owner_snapshot()`. Observation may authenticate that immutable object and its decision/member/artifact-set relation, but it must not read a later live P5 pointer. The captured predecessor-reclosure pointer is treated identically. Missing/corrupt/mismatched captured P5 objects make the P7 verdict blocked/superseded, never current.
@@ -769,7 +770,7 @@ Schema evolution is explicit:
 - **do not manufacture cross-executable compatibility:** this implementation changes the mdstats executable source-tree digest, so pre-implementation P7 component evidence is ordinarily bound to an older `QualificationInputBinding` and cannot become current merely because its scientific checkpoint is unchanged;
 - the append-only locked reveal history remains binding across that executable-currentness change, so an old revealed cohort never becomes fresh;
 - selective reuse of checkpoint-only/locked component evidence is allowed only for representation-only successors created under the **same current qualification binding** (for example, rebuilding corrupted serialized product bytes without changing source/spec/environment);
-- deployment-dependent components are then recomputed under the current model-artifact-set identity and a new terminal/release record is reduced without reopening locked evidence.
+- deployment-dependent components are then recomputed under the current model-artifact-set **and deployment-realization-set** identities and a new terminal/release record is reduced without reopening locked evidence.
 
 Do not mutate historical v1 objects in place and do not weaken executable currentness to rescue them.
 
@@ -927,6 +928,8 @@ Extend `observe_current_qualification(...)` (or factor one pure subordinate curr
 - captured predecessor-reclosure pointer/object and current P5/P6 predecessor source-tree digest;
 - captured P5 model-publication pointer/object plus descriptor-authenticated model bytes;
 - terminal/release `model_artifact_set_digest`;
+
+- terminal/release `deployment_realization_set_digest`, the attempt-local current realization receipts, and descriptor-authenticated deployed ML-IAP bytes for every deployment-dependent member;
 - plan/terminal executable digest against current pure `resolve_executable_candidate_identity()`;
 - current qualification specification digest when the caller supplies configuration, as `qualification status` already does.
 
@@ -934,7 +937,7 @@ This observer performs no qualification-session construction, no reference-reque
 
 The general campaign lifecycle's single-size P7 step reuses this observation/helper instead of independently interpreting `ProductionQualificationRecord`. Because generic lifecycle intentionally remains config-independent, it may omit the specification comparison, but it MUST never report `release_qualified` when captured predecessor/model publication or current P7 executable identity makes the terminal record stale.
 
-A public `release_qualified` claim additionally requires the captured `ReleaseEvidenceIndex` to authenticate against the exact current terminal record, binding, model-artifact-set digest, component set, locked activation (when required), resource scope/observation and verdict. A crash that published the terminal record but not its release index is recoverable/incomplete exposure, not a complete release claim. Historical terminal objects remain immutable.
+A public `release_qualified` claim additionally requires the captured `ReleaseEvidenceIndex` to authenticate against the exact current terminal record, binding, model-artifact-set digest, deployment-realization-set digest, component set, locked activation (when required), resource scope/observation and verdict. A crash that published the terminal record but not its release index is recoverable/incomplete exposure, not a complete release claim. Historical terminal objects remain immutable.
 
 `status`, `advance` and `qualification status` therefore agree on the product/executable currentness introduced by this cycle without making ordinary observation consequential.
 
@@ -944,7 +947,7 @@ The locked test itself remains checkpoint-based, but **activation** is authorize
 
 Immediately before a brand-new `record_locked_reveal(...)`, after `execute_nonlocked_components(session)` has returned the prerequisite set:
 
-1. require every prerequisite evidence object to have the exact current component-input digest for this session, including the current `model_artifact_set_digest` for deployment-dependent components;
+1. require every prerequisite evidence object to have the exact current component-input digest for this session, including the current `model_artifact_set_digest` **and ordered `deployment_realization_set_digest`** for deployment-dependent components; descriptor-authenticate the realization receipts/bytes used to derive that set before the reveal fence;
 2. acquire locks in the existing global order:
 
 ```text
@@ -1341,7 +1344,7 @@ Acceptance:
 - P7 session admission captures decision + predecessor reclosure + model-publication pointers in one coherent CampaignStore snapshot and authenticates only those captured P5 objects;
 - current P5 model-publication and predecessor pointers come from the same captured observation snapshot;
 - deployment parity/dynamics component identity includes current model-artifact-set; checkpoint-only components do not;
-- terminal/release successor schemas bind model-artifact-set digest;
+- terminal/release successor schemas bind both model-artifact-set and deployment-realization-set digests;
 - historical older-executable P7 evidence remains historical and locked reveal remains consumed;
 - deployment source is a trusted scratch copy made from descriptor-authenticated P5 model bytes;
 - successor `deployment_identity` binds exact P5 source model/state/architecture identities and uses a collision-proof full deployment-root identity;
@@ -1357,7 +1360,7 @@ Acceptance:
 - first irreversible locked reveal re-establishes the exact current qualification binding and is CAS-fenced under P5 barrier -> P7 barrier -> CampaignStore writer exclusion against the exact current prerequisite model publication;
 - active P7 attempt references include exact P5 model paths without adding representation to the scientific attempt identity;
 - `release_qualified` observation requires the matching authenticated release-evidence index, not a terminal-record pointer alone;
-- `qualification status` and general lifecycle share the same pure P7 terminal-currentness observer for executable/predecessor/model-artifact staleness;
+- `qualification status` and general lifecycle share the same pure P7 terminal-currentness observer for executable/predecessor/P5-model/deployed-realization staleness;
 - P7 disk admission uses authenticated `model_size_bytes` only on deployment-dependent paths;
 - workspace relocation with identical bytes does not invalidate numerical evidence.
 
@@ -1437,6 +1440,9 @@ Acceptance:
 | deployed artifact corrupt then rebuilt to identical bytes | fresh immutable locator; same realization digest; otherwise-current deployment evidence may be reused |
 | deployed artifact corrupt then rebuilt to different bytes | fresh realization digest; deployment_parity/dynamics rerun before terminal verdict |
 | same deployment identity but changed deployed bytes | old deployment-dependent component evidence is stale by realization-set digest |
+
+| terminal/release with stale deployment realization set | not current / not release-qualified even when P5 model-artifact set is unchanged |
+| deployed realization mutates after locked prerequisites pass but before first reveal | reveal fence rejects before cohort opens |
 | unchanged member in changed committee representation | its per-member deployed artifact may be reused; aggregate deployment component evidence reruns |
 | representation successor during P7 run | stale terminal/release pointer CAS fails; old object stays historical; locked activation is not reopened |
 
@@ -1499,6 +1505,9 @@ P7 deployment-identity successor/full-root/receipt migration and per-member reus
 P7 deployed-artifact/receipt no-follow mutation/symlink/trusted-execution-staging tests
 
 P7 deployment-realization identical-byte/different-byte rebuild and component-invalidation tests
+
+P7 terminal/release deployment-realization-set schema/currentness/status tests
+P7 first-reveal deployed-realization mutation race tests
 P7 fresh-locator/no-overwrite deployment corruption recovery tests
 P7 terminal/release commit-time P5 decision/reclosure/model CAS races
 
@@ -1606,6 +1615,8 @@ NO-PASS if any remains true:
 65. A rebuilt deployed ML-IAP artifact can have different bytes under the same deployment identity while old deployment-parity/dynamics evidence remains current.
 66. Corrupt deployed output is repaired by overwriting a previously receipted artifact instead of publishing a fresh immutable realization locator.
 67. P5 model files or touched P7 deployed artifacts are fsynced without durably fsyncing newly-created containing directory entries before dependent pointers/evidence become current.
+68. Terminal/release currentness binds the P5 model-artifact set but not the exact deployed-realization set actually exercised by deployment parity/dynamics.
+69. First locked reveal verifies P5 model-publication currentness but can still open after its deployment-dependent prerequisite realization bytes/receipt changed.
 
 ## 25. D3 reopen triggers
 
@@ -1631,18 +1642,18 @@ Implementation is complete only when the assembled candidate proves all of the f
 3. One publication-set lock plus one atomic CampaignStore product-pointer transaction makes decision/model/reclosure visibility crash-consistent and restart-safe.
 4. Legacy completed campaigns reclose with zero TRAIN2/EVAL2 and independently reuse a still-valid model publication or still-current predecessor reclosure when only the other descendant is stale.
 5. Public lifecycle/status reports COMPLETE only after decision + completion + authenticated model publication + current predecessor reclosure for every selected size, from one coherent owner snapshot.
-6. P7 admission starts from one coherent captured P5 product snapshot; P7 keeps checkpoint reconstruction as scientific reference, consumes descriptor-authenticated P5 model bytes only for deployment, descriptor-authenticates deployed ML-IAP receipt/bytes before execution, binds deployment-dependent evidence to the exact deployed-realization set, versions the deployment-source identity, invalidates only deployment-dependent evidence for representation changes, and re-establishes the exact qualification binding before CAS-fencing terminal/release publication.
+6. P7 admission starts from one coherent captured P5 product snapshot; P7 keeps checkpoint reconstruction as scientific reference, consumes descriptor-authenticated P5 model bytes only for deployment, descriptor-authenticates deployed ML-IAP receipt/bytes before execution, binds deployment-dependent evidence **and terminal/release currentness** to the exact deployed-realization set, versions the deployment-source identity, invalidates only deployment-dependent evidence for representation changes, and re-establishes the exact qualification binding before CAS-fencing terminal/release publication.
 7. `qualification status` and general lifecycle share one observational P7 currentness owner for current executable/predecessor/model-representation dependencies touched by this cycle.
 8. One-shot locked disclosure is never reopened; representation-only repair preserves current predecessor reclosure/attempt identity when applicable; historical older-executable P7 evidence remains historical.
 
-8a. A first locked reveal re-establishes the exact current qualification binding and is authorized under a short P5/P7/writer critical section that proves its deployment-dependent prerequisites still correspond to the exact current model publication; terminal `release_qualified` exposure requires the matching release index.
+8a. A first locked reveal re-establishes the exact current qualification binding and is authorized under a short P5/P7/writer critical section that proves its deployment-dependent prerequisites still correspond to the exact current P5 model publication **and deployed-realization set**; terminal `release_qualified` exposure requires the matching release index.
 9. P5/P7 disk admission, anchored no-follow creation/authentication, full directory-entry + file fsync/no-clobber durability, resource retirement and reconciled P5/models-root storage ownership remain within existing owners; the accepted global TRAIN scheduler is unchanged.
 10. `train-production` directly prints authoritative usable model paths/SHA/target head, and current documentation consistently distinguishes checkpoint, P5 full model and P7 deployment artifact.
 11. MPA-0 affected regression and bounded real-owner selected-checkpoint publication pass; MH-1 passes the lightweight source/head/reconstruction/publication checks, while long campaign/GPU/MD qualification remains deferred.
 
 Any failed item above is an implementation NO-PASS. Local helper names, exact private temp names and equivalent no-clobber primitives remain D4 choices.
 
-> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-12 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
+> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-13 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
 
 
 ## 27. Current-implementation review closure (Revision 2)
