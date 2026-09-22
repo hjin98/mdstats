@@ -12,7 +12,7 @@ Canonical workplan:
 
 - `workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`
 
-Revision 5 is **PASS AS WORKPLAN / D3->D4 handoff ready after fourth review**. It adds the stable pre-serialization decision/member publication lock required for non-deterministic Torch pickles, safe no-deserialization handling of uncommitted residue, successor reclosure for corrupt product bytes, race-free operator projection, explicit P7 executable-cutover semantics, eval-mode serialization checks, and an MH-1 canonical `[pt_head, target_head]` head-layout smoke. Representation-only changes under one unchanged qualification binding still invalidate only deployment-dependent P7 evidence; pre-change P7 evidence remains historical because executable currentness is preserved. Real MH-1 campaign/GPU qualification remains deferred.
+Revision 6 is **PASS AS WORKPLAN / D3->D4 handoff ready after fifth review**. It upgrades publication concurrency from per-member locks to one decision/publication-set transaction for the complete committee, requires late currentness revalidation after any global TRAIN wave, makes status stream-authenticate current model SHA/size without deserialization, and adds P5 disk-reserve/fsync durability plus authenticated `model_size_bytes` for P7 admission. Immutable orphan models are preserved rather than guessed disposable, and deployment identity remains path-independent across workspace relocation. MH-1 remains lightweight compatibility-only; real campaign/GPU qualification is deferred.
 
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
