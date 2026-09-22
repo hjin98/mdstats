@@ -4,9 +4,9 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reviewed
 created_date: 2026-09-21
-revision: 20
+revision: 21
 reviewed_date: 2026-09-22
-workplan_review_status: pass-after-p7-scratch-currentness-reconciliation
+workplan_review_status: pass-after-shared-deployment-realization-set-review
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -18,7 +18,7 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER P7 SCRATCH-CURRENTNESS RECONCILIATION / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER SHARED DEPLOYMENT-REALIZATION-SET REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
 
 This cycle closes two adjacent product-readiness gaps without changing D1 scientific or D2 numerical authority:
 
@@ -784,7 +784,7 @@ These terminal owners are current only when:
 
 - their ordinary `QualificationInputBinding` remains current;
 - their stored `model_artifact_set_digest` equals the exact current P5 model-publication artifact-set digest;
-- their stored `deployment_realization_set_digest` equals the ordered realization-set identity carried by the immutable deployment-dependent component evidence they reference;
+- their stored `deployment_realization_set_digest` equals the **single common** ordered realization-set identity carried by every enabled immutable deployment-dependent component evidence object they reference;
 - every deployment-dependent component outcome has an authenticated component-input digest binding **both** the P5 model-artifact set and the exact deployed-realization set that component actually exercised;
 - no exposure-time resolver requires an attempt-local deployment receipt or ML-IAP scratch file to remain present after terminal completion;
 - all other existing component/reference/currentness rules remain satisfied.
@@ -917,12 +917,18 @@ The attempt-local root receipt is a mutable locator for the currently authentica
 
 The mutable receipt update is performed relative to the already-authenticated deployment-identity directory descriptor: private temp, fsync, descriptor-relative atomic replace, directory fsync. A planted symlink at the receipt name or in an intermediate deployment directory cannot redirect either artifact or receipt publication.
 
-Deployment-dependent component identity then binds the **ordered deployment-realization set digest** in addition to the P5 `model_artifact_set_digest`:
+Deployment-dependent component identity then binds the **ordered deployment-realization set digest** in addition to the P5 `model_artifact_set_digest`.
 
-- before reuse/admission of `deployment_parity` or `dynamics`, create-or-authenticate every required member deployment realization under its existing per-deployment lock;
-- derive the ordered realization-set digest from the exact member order and each `deployment_realization_digest`;
-- include that set digest in those components' `component_input_digest` / stored evidence currentness;
+For one consequential P7 execution invocation, resolve one **invocation-frozen ordered realization set** before admitting any deployment-dependent component:
+
+- create-or-authenticate every required member deployment realization under its existing per-deployment lock;
+- derive the ordered realization-set digest from the exact publication member order and each `deployment_realization_digest`;
+- freeze those exact member realization identities/immutable artifact locators in the in-memory session for that invocation;
+- require both `deployment_parity` and `dynamics` to use that same frozen set for execution and reuse checks;
+- include the set digest in those components' `component_input_digest` / stored evidence currentness;
 - checkpoint-only components never acquire it.
+
+Do not re-resolve the mutable receipt independently for each deployment-dependent component in the same invocation. A receipt advance after the session freezes its set cannot rewrite the session's already selected immutable artifacts.
 
 Consequences:
 
@@ -930,11 +936,16 @@ Consequences:
 - rebuilding to different ML-IAP bytes changes the realization-set digest and forces `deployment_parity` / `dynamics` to rerun before terminal reduction;
 - no component evidence can remain current merely because `deployment_identity` stayed the same while the executable deployed bytes changed.
 
+- a terminal/release reduction may reference only one common deployment-realization-set digest across **all** enabled deployment-dependent component evidence;
+- if retained `deployment_parity` and `dynamics` evidence bind different realization sets, neither combination is terminally admissible: under the invocation-frozen set, reuse the matching component and rerun the mismatching component(s) before reduction;
+- a process restart may reuse a previously exercised set only when all retained deployment-dependent evidence that is being reused agrees on that same set and the active-attempt retention owner still makes the required immutable artifacts available/authentic. Otherwise resolve a fresh invocation set and rerun only the affected deployment-dependent components;
+- no new durable currentness registry or attempt identity is introduced; the frozen set is execution coordination derived from existing receipts/artifacts/evidence and is reconstructible on resume.
+
 Implement this by reordering/factoring the existing deployment owner, not by adding a second deployment registry: the existing per-artifact lock, receipt, component-position/currentness owners and component-input digest remain the authority surfaces.
 
 The mutable attempt-local receipt is therefore a **consequential reuse/execution locator only**. It is consulted when a session is about to reuse/build/execute a deployed artifact. It is never consulted by read-only public release currentness after the attempt has terminal durable evidence.
 
-When a new/resumed P7 execution needs `deployment_parity` or `dynamics`, authenticate/create the current deployment realization first, derive the ordered realization-set digest, and only then ask whether existing component evidence has the matching component-input digest. Missing/reclaimed scratch rebuilds normally; byte-identical rebuild may reuse evidence, while different rebuilt bytes force only the deployment-dependent component(s) to rerun.
+When a new/resumed P7 execution needs any deployment-dependent component, resolve the one invocation-frozen set first and only then ask whether existing component evidence has the matching component-input digest. Missing/reclaimed scratch rebuilds normally; byte-identical rebuild may reuse matching evidence, while different rebuilt bytes force only the mismatching deployment-dependent component(s) to rerun. Terminal reduction is forbidden until every enabled deployment-dependent component binds the same frozen set.
 
 A representation successor for one committee member may reuse another member's deployed artifact when that other member's exact per-member deployment identity is unchanged. Aggregate `deployment_parity` / `dynamics` component input still binds the whole current `model_artifact_set_digest`, so aggregate evidence is rerun when any member representation changes.
 
@@ -945,7 +956,7 @@ Because model representation is deliberately outside `QualificationInputBinding`
 Extend the existing qualification pointer-publication owner with expected-current P5 fences:
 
 - qualification **plan identity/currentness** remains scientific-binding-only and does not acquire model serialization identity;
-- do not add a direct `model_artifact_set_digest` or model-path field to the scientific qualification binding, locked cohort-generation identity, or reveal-index key. `LockedActivationRecord.content_digest` nevertheless continues to include its existing `prerequisite_component_digests`; when those prerequisites are deployment-dependent, the activation record therefore **transitively records** the exact P5/deployed representation that authorized first reveal. The D3-17D model/realization CAS is an admission fence, not a new cohort identity, and never makes a revealed cohort fresh again;
+- do not add a direct `model_artifact_set_digest` or model-path field to the scientific qualification binding, locked cohort-generation identity, or reveal-index key. `LockedActivationRecord.content_digest` nevertheless continues to include its existing `prerequisite_component_digests`; when those prerequisites are deployment-dependent, the activation record therefore **transitively records** the exact P5/deployed representation that authorized first reveal. The D3-17D P5-parent/model-publication CAS is an admission fence, not a new cohort identity, and never makes a revealed cohort fresh again;
 - terminal `ProductionQualificationRecord` and `ReleaseEvidenceIndex` publication additionally require the current P5 model-publication pointer to equal the exact model-publication record digest consumed by the session;
 - the same transaction requires the current final-publication decision pointer and predecessor-reclosure pointer to equal the session's exact scientific predecessors;
 - it also requires the current CV plan/acceptance, final-plan pointer, and the exact derived **final-seed assessment-position key/value pairs** admitted into the session to equal the captured P5 parent snapshot. Do not compare by run-evidence value search. A decision pointer that has not moved does **not** rescue it when one of those exact position locators has advanced.
@@ -973,7 +984,7 @@ Extend `observe_current_qualification(...)` (or factor one pure subordinate curr
 - captured final-plan/CV pointers plus every required final-seed assessment-position locator/object; the captured final decision must reproduce from those exact current assessment parents rather than from later live position reads;
 - terminal/release `model_artifact_set_digest`;
 
-- terminal/release `deployment_realization_set_digest` reconstructed/checked against the immutable deployment-dependent component evidence named by the terminal/release objects; **do not read attempt-local current realization receipts or ML-IAP scratch bytes for exposure-time currentness**;
+- terminal/release `deployment_realization_set_digest` reconstructed/checked as one common set across every immutable deployment-dependent component evidence object named by the terminal/release objects; mixed sets are corruption/incomplete reduction. **Do not read attempt-local current realization receipts or ML-IAP scratch bytes for exposure-time currentness**;
 - plan/terminal executable digest against current pure `resolve_executable_candidate_identity()`;
 - current qualification specification digest when the caller supplies configuration, as `qualification status` already does.
 
@@ -993,7 +1004,7 @@ The locked test itself remains checkpoint-based, but **activation** is authorize
 
 Immediately before a brand-new `record_locked_reveal(...)`, after `execute_nonlocked_components(session)` has returned the prerequisite set:
 
-1. require every prerequisite evidence object to be the exact authenticated evidence admitted by the current session. Deployment-dependent prerequisites must bind the current P5 `model_artifact_set_digest` and the exact realization-set identity they actually exercised. Do **not** rebuild or reinterpret deployment scratch merely to authorize reveal; the immutable prerequisite evidence is the activation input, and an active attempt's existing retention rules separately protect any scratch still needed for resumed execution;
+1. require every prerequisite evidence object to be the exact authenticated evidence admitted by the current session. Deployment-dependent prerequisites must bind the current P5 `model_artifact_set_digest` and **all agree on the same invocation-frozen deployment-realization-set digest** they actually exercised. Do **not** rebuild or reinterpret deployment scratch merely to authorize reveal; the immutable prerequisite evidence is the activation input, and an active attempt's existing retention rules separately protect any scratch still needed for resumed execution;
 2. acquire locks in the existing global order:
 
 ```text
@@ -1405,6 +1416,8 @@ Acceptance:
 
 - each deployed ML-IAP build has a path-independent deployment-realization digest; deployment parity/dynamics bind the ordered realization-set digest;
 
+- one P7 invocation freezes one ordered realization set before deployment-dependent component admission; parity/dynamics reuse/execution and terminal reduction must all agree on that set;
+
 - realization receipts/ML-IAP files remain attempt-local reuse/execution state; terminal/release evidence records the exercised realization identity but public currentness survives legitimate released-scratch cleanup;
 - corrupted deployed output rebuilds at a fresh immutable locator and advances only the attempt-local receipt locator; no overwrite of prior deployed bytes;
 - terminal/release publication re-establishes exact current `QualificationInputBinding` before pointer CAS;
@@ -1507,6 +1520,9 @@ Acceptance:
 | deployed artifact corrupt then rebuilt to different bytes | fresh realization digest; deployment_parity/dynamics rerun before terminal verdict |
 | same deployment identity but changed deployed bytes | old deployment-dependent component evidence is stale by realization-set digest |
 
+| parity evidence on realization set R1 + dynamics evidence on R2 | terminal/release reduction refused; rerun mismatching deployment-dependent component(s) under one invocation-frozen set |
+| concurrent receipt advance after invocation freezes R1 | current invocation continues from immutable R1 artifacts; receipt advance does not silently switch one later component to R2 |
+
 | terminal/release realization-set field disagrees with its referenced deployment-dependent component evidence | fail closed as corrupt/internally inconsistent evidence |
 | deployment receipt/scratch is rebuilt or reclaimed after prerequisite evidence was recorded | does not rewrite prerequisite history; reveal uses exact immutable prerequisite evidence and current P5 product/binding fences, never a mutable receipt as authority |
 | unchanged member in changed committee representation | its per-member deployed artifact may be reused; aggregate deployment component evidence reruns |
@@ -1583,6 +1599,8 @@ P7 deployment-identity successor/full-root/receipt migration and per-member reus
 P7 deployed-artifact/receipt no-follow mutation/symlink/trusted-execution-staging tests
 
 P7 deployment-realization identical-byte/different-byte rebuild and component-invalidation tests
+
+P7 mixed parity/dynamics realization-set convergence and concurrent-receipt-advance tests
 
 P7 terminal/release deployment-realization-set **internal evidence-consistency** tests
 P7 first-reveal prerequisite-evidence/P5-currentness tests that do not treat mutable deployment receipts as reveal authority
@@ -1699,7 +1717,7 @@ NO-PASS if any remains true:
 61. The normative documentation set omits `mlff_storage_management_spec.md` even though exact P5 product ownership under `models/` changes.
 62. P7 session construction can combine P5 decision/reclosure pointers from one CampaignStore moment with a model-publication pointer from another before any component runs.
 63. The implementation creates a second qualification-binding/currentness algorithm instead of factoring the existing identity owners for admission/commit/reveal revalidation.
-64. The locked **cohort/reveal identity** is made representation-specific, or `LockedActivationRecord` stops recording exact prerequisite component digests, or first reveal is implemented without the D3-17D P5 model/deployment-realization prerequisite CAS.
+64. The locked **cohort/reveal identity** is made representation-specific, or `LockedActivationRecord` stops recording exact prerequisite component digests, or first reveal is implemented without the D3-17D current P5 parent/model-publication fence.
 65. A rebuilt deployed ML-IAP artifact can have different bytes under the same deployment identity while old deployment-parity/dynamics evidence remains current.
 66. Corrupt deployed output is repaired by overwriting a previously receipted artifact instead of publishing a fresh immutable realization locator.
 67. P5 model files or touched P7 deployed artifacts are fsynced without durably fsyncing newly-created containing directory entries before dependent pointers/evidence become current.
@@ -1718,6 +1736,9 @@ NO-PASS if any remains true:
 
 80. Public P7 currentness requires attempt-local deployment receipts/ML-IAP scratch to remain present after terminal release, contradicting accepted released-attempt cleanup/retention semantics.
 81. `qualification status` rebuilds or re-authenticates deployment scratch as part of ordinary observation instead of resolving durable immutable release evidence.
+
+82. One terminal/release record can combine deployment-dependent component evidence from different deployment-realization-set digests.
+83. `deployment_parity` and `dynamics` independently follow a mutable current receipt within one invocation instead of consuming one frozen ordered realization set, allowing a mid-run receipt advance to switch executable bytes.
 
 ## 25. D3 reopen triggers
 
@@ -1743,7 +1764,7 @@ Implementation is complete only when the assembled candidate proves all of the f
 3. One publication-set lock plus one atomic CampaignStore product-pointer transaction makes decision/model/reclosure visibility crash-consistent and restart-safe.
 4. Legacy completed campaigns reclose with zero TRAIN2/EVAL2 and independently reuse a still-valid model publication or still-current predecessor reclosure when only the other descendant is stale; serialized-loader/runtime drift is resolved by current-loader equivalence proof or representation-only successor publication, never retraining.
 5. Public lifecycle/status reports COMPLETE only after decision + completion + authenticated model publication + current predecessor reclosure for every selected size, from one coherent owner snapshot that also captures CV/final-plan and assessment-position parents; each required final-seed parent is current only at the exact canonical locator key derived from its immutable run evidence.
-6. P7 admission starts from one coherent captured **complete P5 parent graph** (including final plan/CV/assessment positions); P7 keeps checkpoint reconstruction as scientific reference, consumes descriptor-authenticated P5 model bytes only for deployment, descriptor-authenticates deployed ML-IAP receipt/bytes before execution, binds deployment-dependent component evidence and terminal/release **provenance** to the exact deployed-realization set without making mutable scratch exposure-time authority, versions the deployment-source identity, invalidates only deployment-dependent evidence for representation changes, and re-establishes both the exact qualification binding **and captured P5 parent-locator set** before CAS-fencing terminal/release publication.
+6. P7 admission starts from one coherent captured **complete P5 parent graph** (including final plan/CV/assessment positions); P7 keeps checkpoint reconstruction as scientific reference, consumes descriptor-authenticated P5 model bytes only for deployment, freezes one authenticated ordered deployment-realization set per consequential invocation, makes every deployment-dependent component and terminal/release provenance agree on that same set without making mutable scratch exposure-time authority, versions the deployment-source identity, invalidates only deployment-dependent evidence for representation changes, and re-establishes both the exact qualification binding **and captured P5 parent-locator set** before CAS-fencing terminal/release publication.
 7. `qualification status` and general lifecycle share one observational P7 currentness owner for current executable/predecessor/model-representation dependencies touched by this cycle.
 8. One-shot locked disclosure is never reopened; the cohort/reveal identity remains representation-independent while the immutable activation record preserves the exact prerequisite evidence that authorized first reveal; representation-only repair preserves current predecessor reclosure/attempt identity when applicable; historical older-executable P7 evidence remains historical.
 
@@ -1754,7 +1775,7 @@ Implementation is complete only when the assembled candidate proves all of the f
 
 Any failed item above is an implementation NO-PASS. Local helper names, exact private temp names and equivalent no-clobber primitives remain D4 choices.
 
-> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-20 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
+> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-21 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
 
 
 ## 27. Current-implementation review closure (Revision 2)
