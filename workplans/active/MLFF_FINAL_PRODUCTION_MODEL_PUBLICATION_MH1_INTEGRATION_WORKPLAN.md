@@ -4,9 +4,9 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reviewed
 created_date: 2026-09-21
-revision: 7
+revision: 8
 reviewed_date: 2026-09-22
-workplan_review_status: pass-after-exhaustive-sixth-current-implementation-review
+workplan_review_status: pass-after-exhaustive-fresh-candidate-review
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -18,7 +18,7 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER EXHAUSTIVE SIXTH CURRENT-IMPLEMENTATION REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER EXHAUSTIVE FRESH-CANDIDATE REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
 
 This cycle closes two adjacent product-readiness gaps without changing D1 scientific or D2 numerical authority:
 
@@ -481,7 +481,10 @@ PRODUCTION_REQUIRED
 ```
 
 - COMPLETE admits no TRAIN2/EVAL2 and verifies/reuses the product.
-- RECLOSURE admits no TRAIN2/EVAL2. Reuse valid model bytes when only reclosure is stale; rebuild only missing/corrupt/incompatible representation, then atomically republish the product pointer set.
+- RECLOSURE admits no TRAIN2/EVAL2.
+- If only predecessor reclosure is stale, reuse valid model bytes and build only a new reclosure.
+- If only representation is stale/corrupt/incompatible while predecessor reclosure remains current, preserve the exact predecessor-reclosure object/digest and rebuild only the representation. This keeps `QualificationInputBinding` / attempt identity unchanged for a representation-only successor.
+- If both are stale, repair each from its own authority, then atomically republish the product pointer set.
 - PRODUCTION_REQUIRED enters the accepted final-plan/global-TRAIN/serial-EVAL2/publication machinery.
 - only PRODUCTION_REQUIRED trajectories enter the global TRAIN wave;
 - reclosure/materialization remains serial post-TRAIN finalization in frozen selected-size order;
@@ -777,9 +780,64 @@ The existing `MaceDeploymentArtifact` already reports `source_artifact_sha256` a
 
 Deployment/component currentness is intentionally path-independent: `model_relative_path` and absolute workspace location are locators only and MUST NOT enter `deployment_identity`, deployment-dependent `component_input_digest`, terminal `model_artifact_set_digest`, or release currentness. Moving an intact campaign workspace with identical authenticated product bytes must not force numerical requalification. Any durable deployment receipt field that records a source path is diagnostic only.
 
-Update P7 disk-headroom estimation to account for the authenticated published model size plus deployment and ML-IAP scratch, not only the TRAIN2 checkpoint.
+Update P7 disk-headroom estimation by actual dependency: `deployment_parity` and `dynamics` budget authenticated P5 model staging plus deployment/ML-IAP scratch; checkpoint-only physical/relaxation/calibration/locked components retain their appropriate checkpoint/reference footprint rather than inheriting unrelated model-staging cost.
 
 Do not duplicate P5 selection or checkpoint reconstruction logic inside P7.
+
+### D3-17A — Version the deployment-source identity and eliminate truncated authoritative roots
+
+`deployment_identity(member)` advances to a successor schema because its executable source changes from the representative checkpoint file to the P5 full model. The identity binds the exact per-member deployment source:
+
+```text
+scientific final publication/member/checkpoint identity
+P5 source model SHA
+P5 source full-state SHA
+P5 source execution-architecture digest
+target head
+deployment dtype
+resource scope
+exporter identity
+ML-IAP builder identity
+```
+
+The deployment-artifact root uses the **full deployment identity** (or another collision-proof encoding), not the current `[:16]` truncation. Historical v1 deployment roots/receipts remain immutable historical attempt evidence and are not rewritten.
+
+Advance the deployment receipt schema as needed so it explicitly records the authenticated P5 source model SHA and source-state SHA in addition to deployment identity and deployed-artifact SHA. After export, `MaceDeploymentArtifact.source_artifact_sha256` must equal the P5 model SHA and `source_state_sha256` must equal the P5 model-state SHA before ML-IAP publication.
+
+A representation successor for one committee member may reuse another member's deployed artifact when that other member's exact per-member deployment identity is unchanged. Aggregate `deployment_parity` / `dynamics` component input still binds the whole current `model_artifact_set_digest`, so aggregate evidence is rerun when any member representation changes.
+
+### D3-17B — Commit-time P7 representation CAS without rebinding the attempt
+
+Because model representation is deliberately outside `QualificationInputBinding`, an in-flight P7 attempt can overlap a representation-only P5 successor. Its old immutable component objects may remain historical evidence, but it must not publish an already-stale terminal/release pointer after the successor becomes current.
+
+Extend the existing qualification pointer-publication owner with expected-current P5 fences:
+
+- qualification **plan** and locked-activation publication continue to fence the scientific P5 decision + predecessor reclosure, not model bytes;
+- terminal `ProductionQualificationRecord` and `ReleaseEvidenceIndex` publication additionally require the current P5 model-publication pointer to equal the exact model-publication record digest consumed by the session;
+- the same transaction also requires the current final-publication decision pointer and predecessor-reclosure pointer to equal the session's exact scientific predecessors.
+
+These comparisons occur inside the same `CampaignStore.exclusive_transaction()` that writes the P7 pointer. If any expected P5 pointer changed, the immutable P7 object remains historical but the current pointer write fails. This is a CAS fence, not a new lock or new attempt identity.
+
+Representation change while locked activation is in progress never reopens disclosure. The activation remains bound to the unchanged scientific qualification identity; any later terminal/release reduction must pass the current model-publication CAS.
+
+### D3-17C — One observational owner for P7 terminal currentness
+
+Current `qualification status` and the general campaign lifecycle do not use the same P7 terminal-currentness logic. The compact lifecycle path can currently report a terminal record from pointer presence while the richer qualification observer applies additional checks. Remove that semantic duplication for the dependencies touched by this cycle.
+
+Extend `observe_current_qualification(...)` (or factor one pure subordinate currentness helper used by it) so, using only the captured `campaign_owner_snapshot()` mapping plus immutable objects, it authenticates:
+
+- captured final-decision pointer/object relation;
+- captured predecessor-reclosure pointer/object and current P5/P6 predecessor source-tree digest;
+- captured P5 model-publication pointer/object plus descriptor-authenticated model bytes;
+- terminal/release `model_artifact_set_digest`;
+- plan/terminal executable digest against current pure `resolve_executable_candidate_identity()`;
+- current qualification specification digest when the caller supplies configuration, as `qualification status` already does.
+
+This observer performs no qualification-session construction, no reference-request creation, no locked activation and no provider/model reconstruction. Reading/hash-identifying the current importable executable source surface is observational and is permitted; reading scientific source data or constructing models is not.
+
+The general campaign lifecycle's single-size P7 step reuses this observation/helper instead of independently interpreting `ProductionQualificationRecord`. Because generic lifecycle intentionally remains config-independent, it may omit the specification comparison, but it MUST never report `release_qualified` when captured predecessor/model publication or current P7 executable identity makes the terminal record stale.
+
+`status`, `advance` and `qualification status` therefore agree on the product/executable currentness introduced by this cycle without making ordinary observation consequential.
 
 ### D3-18 — Executable-evolution consequence is explicit
 
@@ -1013,14 +1071,21 @@ Likely primary owners:
 ```text
 mdstats/training_data/post_selection_publication.py
 mdstats/training_data/post_selection_store.py
+mdstats/training_data/post_selection_reclosure.py
 mdstats/training_data/campaign_post_selection_runtime.py
 mdstats/training_data/target_size_execution/evaluation.py
+mdstats/training_data/model_features.py / mace_deployment.py as shared identity owners require
+mdstats/training_data/persistence.py and/or the existing descriptor-trust helper owner
 mdstats/training_data/qualification/publication.py
 mdstats/training_data/qualification/providers.py
 mdstats/training_data/qualification/runtime.py
+mdstats/training_data/qualification/record.py
+mdstats/training_data/qualification/store.py
+mdstats/training_data/qualification/observation.py
 mdstats/training_data/storage/owners.py
 mdstats/training_data/campaign_lifecycle.py
 mdstats/training_data/_campaign_cli_core.py
+mdstats/training_data/__init__.py / qualification/__init__.py only where public exports require update
 ```
 
 Potential shared model serialization/reconstruction owner may live in current MACE realization/model-feature modules. Prefer sharing existing owner over adding another subsystem.
@@ -1124,8 +1189,11 @@ Acceptance:
 - terminal/release successor schemas bind model-artifact-set digest;
 - historical older-executable P7 evidence remains historical and locked reveal remains consumed;
 - deployment source is a trusted scratch copy made from descriptor-authenticated P5 model bytes;
-- deployment exporter source artifact/state digests agree with P5 member;
-- P7 disk admission uses authenticated `model_size_bytes`;
+- successor `deployment_identity` binds exact P5 source model/state/architecture identities and uses a collision-proof full deployment-root identity;
+- deployment receipt records source model/state identities; exporter source artifact/state digests agree with the P5 member;
+- terminal/release pointer publication CAS-checks exact current final-decision, predecessor-reclosure and model-publication pointers;
+- `qualification status` and general lifecycle share the same pure P7 terminal-currentness observer for executable/predecessor/model-artifact staleness;
+- P7 disk admission uses authenticated `model_size_bytes` only on deployment-dependent paths;
 - workspace relocation with identical bytes does not invalidate numerical evidence.
 
 ### Stage G — bounded real-owner publication/usability + MH-1 integration
@@ -1183,6 +1251,11 @@ Acceptance:
 | status | side-effect-free; SHA/size authenticates current model; reports direct `.model` paths |
 | same-byte workspace relocation | product/deployment currentness unchanged |
 | P7 reference/deployment split | checkpoint provider remains reference; deployment consumes authenticated P5 model bytes |
+| P7 deployment identity collision | full/collision-proof deployment identity root; no `[:16]` authoritative namespace |
+| unchanged member in changed committee representation | its per-member deployed artifact may be reused; aggregate deployment component evidence reruns |
+| representation successor during P7 run | stale terminal/release pointer CAS fails; old object stays historical; locked activation is not reopened |
+| representation-only repair with current predecessor reclosure | exact predecessor-reclosure digest preserved; qualification attempt identity unchanged |
+| general lifecycle after stale model/executable P7 evidence | does not report current `release_qualified`; agrees with shared observation owner |
 | same checkpoint/state, different serialized bytes under same P7 binding | deployment_parity/dynamics stale; checkpoint-only evidence reusable; terminal binds successor model-artifact-set |
 | pre-change P7 evidence under older executable | historical only; no compatibility laundering; locked reveal remains consumed |
 | already-revealed locked cohort | never reactivated for representation-only successor |
@@ -1226,6 +1299,9 @@ checkpoint authentication/provider reconstruction
 multi-size integration
 campaign lifecycle/status coherence
 P7 publication/provider/deployment intake
+P7 deployment-identity successor/full-root/receipt migration and per-member reuse
+P7 terminal/release commit-time P5 decision/reclosure/model CAS races
+P7 qualification-status + general-lifecycle shared currentness observation
 P7 selective component invalidation and locked one-shot preservation
 P7 terminal/release v1->v2 historical readability/currentness without cross-executable evidence promotion
 storage owner/protection
@@ -1295,6 +1371,11 @@ NO-PASS if any remains true:
 44. P7 terminal/release observation compares against a later live P5 pointer rather than the captured coherent owner snapshot.
 45. Current docs still describe the decision/checkpoint as the only complete P5 product boundary and leave usable-model publication undiscoverable.
 46. Bounded real-owner evidence proves only `torch.load`/state equality but never exercises the published file through a supported MACE target-head consumer.
+47. A representation-only model repair rebuilds an otherwise-current predecessor reclosure and thereby changes P7 attempt identity unnecessarily.
+48. Touched P7 deployment roots continue to use a truncated deployment-identity prefix, or deployment identity omits exact P5 source model/state/architecture identity.
+49. A terminal/release P7 pointer can be published after its consumed P5 decision, predecessor reclosure, or model-publication pointer has changed.
+50. `qualification status`, general campaign lifecycle, and consequential P7 current resolvers can disagree about terminal currentness for the exact predecessor/model representation or executable identity touched by this cycle.
+51. A representation successor forces unrelated checkpoint-only P7 components to reserve full-model deployment scratch or otherwise changes their resource semantics.
 
 ## 25. D3 reopen triggers
 
@@ -1313,19 +1394,23 @@ Otherwise local serialization helpers, exact basenames, temporary-file mechanics
 
 ## 26. Completion criteria
 
-Ready for independent implementation Review when:
+Implementation is complete only when the assembled candidate proves all of the following simultaneously:
 
-```text
-P5 decision
-  -> exact selected representative checkpoint(s)
-  -> authenticated full .model product(s)
-  -> direct operator locator
-  -> P7 authenticated consumption
-```
+1. Every frozen selected size has exact P5 decision membership plus a reloadable, descriptor-authenticated, collision-proof/no-clobber full MACE `.model` representation for every published member.
+2. Representation comes from the exact selected checkpoint/provider state, never trainer terminal output, with live/EMA/state/architecture/head/dtype equivalence and bounded supported-consumer usability.
+3. One publication-set lock plus one atomic CampaignStore product-pointer transaction makes decision/model/reclosure visibility crash-consistent and restart-safe.
+4. Legacy completed campaigns reclose with zero TRAIN2/EVAL2 and independently reuse a still-valid model publication or still-current predecessor reclosure when only the other descendant is stale.
+5. Public lifecycle/status reports COMPLETE only after decision + completion + authenticated model publication + current predecessor reclosure for every selected size, from one coherent owner snapshot.
+6. P7 keeps checkpoint reconstruction as scientific reference, consumes descriptor-authenticated P5 model bytes only for deployment, versions the deployment-source identity, invalidates only deployment-dependent evidence for representation changes, and CAS-fences terminal/release publication against concurrent P5 successors.
+7. `qualification status` and general lifecycle share one observational P7 currentness owner for current executable/predecessor/model-representation dependencies touched by this cycle.
+8. One-shot locked disclosure is never reopened; representation-only repair preserves current predecessor reclosure/attempt identity when applicable; historical older-executable P7 evidence remains historical.
+9. P5/P7 disk admission, fsync/no-clobber durability, resource retirement and storage ownership remain within existing owners; the accepted global TRAIN scheduler is unchanged.
+10. Current documentation exposes direct usable model paths and consistently distinguishes checkpoint, P5 full model and P7 deployment artifact.
+11. MPA-0 affected regression and bounded real-owner selected-checkpoint publication pass; MH-1 passes the lightweight source/head/reconstruction/publication checks, while long campaign/GPU/MD qualification remains deferred.
 
-is complete, byte-authenticated, crash-atomic and restart-safe; the collection stage is COMPLETE only after every frozen selected size satisfies it; current docs expose direct usable model paths; and the current MH-1 path has passed the bounded compatibility audit/regression with no clear unresolved issue.
+Any failed item above is an implementation NO-PASS. Local helper names, exact private temp names and equivalent no-clobber primitives remain D4 choices.
 
-Long real MH-1 campaign qualification remains intentionally deferred to the stakeholder's actual upcoming campaign.
+> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-8 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
 
 
 ## 27. Current-implementation review closure (Revision 2)
@@ -1336,7 +1421,7 @@ Review basis: `237448b449b6f8042de5f239e5fefdfd54e3b2c3`.
 
 Current `FinalProductionPublicationDecision` v3 already owns the pre-qualification scientific/member decision, and `resolve_current_final_production_publication()` replays that decision exactly. Embedding the later serialized `.model` into this object would conflate selection with representation and make legacy reclosure awkward. Revision 2 freezes the subordinate-record design instead.
 
-### R2-F2 — Fresh publication pointer ordering was under-specified — CLOSED
+### R2-F2 — Fresh publication pointer ordering was under-specified — CLOSED / SUPERSEDED BY R7 ATOMIC POINTER-SET COMMIT
 
 Current `publish_final_production_publication()` stores the decision/reclosure and publishes the final pointer before any full selected model exists. Revision 2 now requires the final-publication pointer to be the last current-pointer commit for fresh publication, after model materialization and subordinate product pointer publication.
 
@@ -1356,7 +1441,7 @@ Revision 2 correctly rejected inventing a new tensor identity, but its wording m
 
 Revision 2 now requires model-root-relative paths, confinement beneath `CampaignPaths.models`, regular non-symlink files, and no absolute/`..` traversal. Absolute workspace paths remain outside durable identity.
 
-### R2-F7 — Status integrity cost needed a bounded rule — CLOSED
+### R2-F7 — Status integrity cost needed a bounded rule — CLOSED / SUPERSEDED BY R6-R8 BYTE-AUTHENTICATED STATUS
 
 Current `status` is explicitly observational and must stay cheap/pure. Revision 2 requires record/currentness/path-kind validation in normal status but reserves full large-model SHA authentication for consequential/reclosure/P7 consumers.
 
