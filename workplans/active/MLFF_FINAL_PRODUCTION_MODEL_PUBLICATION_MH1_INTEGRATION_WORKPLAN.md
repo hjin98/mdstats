@@ -4,9 +4,9 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reviewed
 created_date: 2026-09-21
-revision: 16
+revision: 17
 reviewed_date: 2026-09-22
-workplan_review_status: pass-after-serialization-runtime-compatibility-review
+workplan_review_status: pass-after-final-implementation-precision-review
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -18,7 +18,7 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER SERIALIZATION-RUNTIME COMPATIBILITY REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER FINAL IMPLEMENTATION-PRECISION REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
 
 This cycle closes two adjacent product-readiness gaps without changing D1 scientific or D2 numerical authority:
 
@@ -150,8 +150,8 @@ ordered published members:
     model_sha256
     model_size_bytes
 serialization_format
-serialization/exporter identity
-torch/runtime serialization identity where needed for diagnosis
+serializer identity
+torch/MACE/e3nn/Python serialization-runtime metadata where needed for diagnosis/compatibility
 ```
 
 Do not invent these state identities. Reuse the current owners:
@@ -546,7 +546,7 @@ The bypass never weakens selected binding, completion, CV/method/monitor lineage
 
 `publication.json` is non-authoritative mutable projection:
 
-- write private temp + flush/fsync + atomic `os.replace` + parent-directory fsync;
+- using the authenticated descriptor for the stable `N_<size>` directory, create the private projection temp there without following symlinks, flush/fsync it, perform atomic replace **relative to that same directory descriptor**, then fsync the directory; never resolve/reopen the projection destination through an unchecked pathname;
 - refresh only after atomic three-pointer commit while still under generation barrier;
 - if projection refresh fails after DB commit, the product remains authoritative/current; later `train-production` repairs only the projection, without TRAIN2/EVAL2/model rebuild;
 - status/currentness never consumes the projection;
@@ -889,17 +889,18 @@ A mutated/symlinked deployed artifact is lineage failure/rebuild input, never ex
 
 `deployment_identity(member)` identifies the deterministic source/build contract. The actual ML-IAP bytes are a subordinate **deployment realization** because serialization/build bytes can differ across a legitimate rebuild.
 
-Define one path-independent `deployment_realization_digest` (exact symbol delegated) from:
+Define one path-independent `deployment_realization_digest` (exact symbol delegated) from only:
 
 ```text
 deployment_identity
-P5 source model SHA / source-state SHA / source-architecture digest
 deployed ML-IAP artifact SHA-256
-target head
-deployment dtype
 ```
 
+Do not duplicate the P5 source model/state/architecture, target head, dtype, resource scope, exporter or builder fields in a second identity algorithm: they are already transitively and authoritatively bound by `deployment_identity`. The receipt may repeat them as authenticated audit fields, but mismatch is an error rather than a second source of truth.
+
 The attempt-local root receipt is a mutable locator for the currently authenticated realization; it is not scientific authority. It records the realization digest, exact immutable realization path, deployed-artifact SHA, and source identities. The ML-IAP artifact itself is published create-once at a fresh immutable locator under the full deployment-identity root. A corrupt/missing current artifact is never overwritten: rebuild to a fresh locator and atomically advance the receipt only after descriptor authentication/durability. Old realization bytes remain inert historical attempt residue.
+
+The mutable receipt update is performed relative to the already-authenticated deployment-identity directory descriptor: private temp, fsync, descriptor-relative atomic replace, directory fsync. A planted symlink at the receipt name or in an intermediate deployment directory cannot redirect either artifact or receipt publication.
 
 Deployment-dependent component identity then binds the **ordered deployment-realization set digest** in addition to the P5 `model_artifact_set_digest`:
 
@@ -1023,7 +1024,9 @@ verified temporary full-model serialization for every member
 + configured retained free-space reserve
 ```
 
-A conservative D4 estimator may use authenticated checkpoint size and/or exact in-memory state tensor bytes, but underestimation must not be accepted as success. Recheck the configured retained free-space reserve after actual serialized member sizes are known and before final placement/commit; on shortfall remove only private temp state and abort with no pointer change.
+A conservative D4 estimator may use authenticated checkpoint size and/or exact in-memory state tensor bytes, but underestimation must not be accepted as success.
+
+For serial committee materialization, recheck the retained free-space reserve **after each member's temporary serialization has consumed its actual bytes and before its create-once final placement**, accounting conservatively for the remaining members. Because the temp lives on the destination filesystem, a no-clobber rename/link-style placement need not double-count those same bytes. Recheck once more after the complete immutable set is durable and before the authoritative pointer transaction. On shortfall remove only the currently owned private temp; already-published immutable leaves remain inert/reusable residue and no pointer changes.
 
 Record each final `model_size_bytes` in the product record; P7 disk admission uses those authenticated published-model sizes rather than the old checkpoint-only estimate.
 
@@ -1038,10 +1041,11 @@ immutable .model:
     -> fsync parent directory
 
 publication.json:
-    private temp
+    authenticated N-level directory descriptor
+    -> private temp in that directory
     -> flush + fsync
-    -> atomic replace
-    -> fsync parent directory
+    -> descriptor-relative atomic replace
+    -> fsync directory
 ```
 
 An existing immutable destination is descriptor-authenticated and reused only on exact expected bytes; it is never overwritten.
@@ -1434,6 +1438,8 @@ Acceptance:
 | stale pre-TRAIN classification | late revalidation aborts/reclassifies before commit |
 | pointer-set fault at write 1/2/3 | all old pointers or all new pointers, never hybrid |
 | projection failure after DB commit | product remains authoritative/current; projection later repairable |
+
+| planted symlink/intermediate substitution during publication.json repair | anchored descriptor-relative projection write refuses redirect; authoritative product unchanged |
 | private temp crash residue | removed/rebuilt without treating it as authority |
 | immutable unreferenced full-SHA+locator model | inert, not auto-deleted/deserialized; reusable only after independent expected-SHA reconstruction |
 | wrong/corrupt current model bytes | consumers fail closed; train-production may publish immutable successor |
@@ -1468,6 +1474,8 @@ Acceptance:
 | P7 deployment identity collision | full/collision-proof deployment identity root; no `[:16]` authoritative namespace |
 
 | deployed artifact/receipt symlink or byte mutation | no-follow receipt/artifact authentication rejects before LAMMPS execution |
+
+| planted symlink during deployment receipt advancement | descriptor-relative temp/replace refuses redirect; prior authenticated realization remains authoritative |
 
 | deployed artifact corrupt then rebuilt to identical bytes | fresh immutable locator; same realization digest; otherwise-current deployment evidence may be reused |
 | deployed artifact corrupt then rebuilt to different bytes | fresh realization digest; deployment_parity/dynamics rerun before terminal verdict |
@@ -1578,6 +1586,8 @@ status SHA-corruption/coherent-reclosure-pointer/workspace-relocation tests
 train-production direct published-model locator/output tests
 write-side intermediate-symlink/no-clobber confinement tests
 
+projection and P7 current-receipt descriptor-relative atomic-replace symlink-race tests
+
 nested-directory fsync/failure-injection durability tests for P5 model publication and touched P7 deployment roots
 P5/P7/storage owner-graph exact model-path and publication-lock protection tests
 collection stage COMPLETE/fail-fast multi-size restart tests
@@ -1667,6 +1677,9 @@ NO-PASS if any remains true:
 72. P7 terminal/release publication or first locked reveal CAS-checks the final-decision pointer but not the exact captured CV/final-plan/final-seed assessment parents, allowing a stale decision to survive a parent-locator advance.
 73. `train-production` treats a changed Python/Torch/MACE/e3nn serialization-loader boundary as irrelevant merely because model bytes/SHA are unchanged, or downstream code rewrites historical P5 product bytes instead of failing closed / invoking producer-owned representation reclosure.
 74. Loader incompatibility is repaired by retraining/re-EVAL2 even though the exact selected checkpoint reconstructs the same accepted state/architecture/head/dtype.
+75. `publication.json` or the P7 current-realization receipt is atomically replaced through an unchecked pathname/intermediate symlink rather than relative to an authenticated owner directory descriptor.
+76. `deployment_realization_digest` redefines source/head/dtype/exporter fields already owned by `deployment_identity` instead of composing from that identity plus exact deployed bytes.
+77. Disk admission either assumes estimates after actual serialization is known or unnecessarily requires all committee temporary serializations to coexist despite accepted serial materialization.
 
 ## 25. D3 reopen triggers
 
@@ -1697,13 +1710,13 @@ Implementation is complete only when the assembled candidate proves all of the f
 8. One-shot locked disclosure is never reopened; representation-only repair preserves current predecessor reclosure/attempt identity when applicable; historical older-executable P7 evidence remains historical.
 
 8a. A first locked reveal re-establishes the exact current qualification binding and captured CV/final-plan/final-seed assessment parents, and is authorized under a short P5/P7/writer critical section that proves its deployment-dependent prerequisites still correspond to the exact current P5 model publication **and deployed-realization set**; terminal `release_qualified` exposure requires the matching release index.
-9. P5/P7 disk admission, anchored no-follow creation/authentication, full directory-entry + file fsync/no-clobber durability, resource retirement and reconciled P5/models-root storage ownership remain within existing owners; the accepted global TRAIN scheduler is unchanged.
+9. P5/P7 disk admission, anchored no-follow creation/authentication, descriptor-relative mutable-locator replacement, full directory-entry + file fsync/no-clobber durability, resource retirement and reconciled P5/models-root storage ownership remain within existing owners; the accepted global TRAIN scheduler is unchanged.
 10. `train-production` directly prints authoritative usable model paths/SHA/target head, and current documentation consistently distinguishes checkpoint, P5 full model and P7 deployment artifact.
 11. MPA-0 affected regression and bounded real-owner selected-checkpoint publication pass; MH-1 passes the lightweight source/head/reconstruction/publication checks, while long campaign/GPU/MD qualification remains deferred.
 
 Any failed item above is an implementation NO-PASS. Local helper names, exact private temp names and equivalent no-clobber primitives remain D4 choices.
 
-> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-16 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
+> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-17 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
 
 
 ## 27. Current-implementation review closure (Revision 2)
