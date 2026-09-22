@@ -4,9 +4,9 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reviewed
 created_date: 2026-09-21
-revision: 15
+revision: 16
 reviewed_date: 2026-09-22
-workplan_review_status: pass-after-complete-parent-cas-review
+workplan_review_status: pass-after-serialization-runtime-compatibility-review
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -18,7 +18,7 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER COMPLETE P5-PARENT CAS REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER SERIALIZATION-RUNTIME COMPATIBILITY REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
 
 This cycle closes two adjacent product-readiness gaps without changing D1 scientific or D2 numerical authority:
 
@@ -185,7 +185,17 @@ It deliberately excludes `model_relative_path`, timestamps, the operator project
 
 This derived digest is not a second scientific member identity. `FinalProductionPublicationDecision.member_digest` remains the sole checkpoint/member-selection identity; `model_artifact_set_digest` identifies only the exact serialized representation consumed by deployment descendants.
 
-`serialization_format`, serializer/runtime version and exporter identity are provenance/compatibility metadata, not automatic currentness tokens. A source-code or Torch/MACE version change does not by itself force reserialization of an already-authenticated full model whose bytes, state, architecture, dtype, heads and supported format remain valid. If the current loader/exporter can no longer consume that format safely, downstream use is unavailable/blocking; do not silently rewrite historical product bytes merely to make the old record look current.
+`serialization_format`, serializer/runtime version and serializer identity are **representation-compatibility metadata**, not scientific/member identity and not part of `model_artifact_set_digest`. A source-code, Python, Torch, MACE or e3nn runtime change does not by itself force reserialization; it forces a compatibility decision before consequential reuse when the recorded serializer/runtime material no longer proves the current loader boundary.
+
+Reuse the existing MACE runtime-freeze/version/source-compatibility owners where applicable rather than inventing a second dependency probe. `train-production` create-or-verify is the sole producer-side repair owner:
+
+- when recorded runtime/format compatibility is still positively established, SHA/state/architecture/head/dtype authentication is sufficient;
+- when the loader/runtime boundary changed or compatibility is otherwise uncertain, descriptor-authenticate + trusted-stage the existing full model, load it through the current supported loader, reconstruct the exact selected checkpoint through the native provider, and require exact state/architecture/head/dtype/inference-mode equality;
+- if that proof passes, reuse the exact existing model bytes; no reserialization is justified;
+- if the old pickle cannot load but the selected checkpoint still reconstructs the exact same accepted portable state/architecture/head/dtype, publish a **fresh successor representation** at a new immutable locator with zero TRAIN2/EVAL2; preserve the old record/bytes as history;
+- if provider reconstruction itself no longer proves the same learned state/architecture semantics, fail closed and route the upstream challenge. Never call that a serialization repair.
+
+Downstream consumers never rewrite P5 product bytes. They fail closed on unsupported/incompatible representation; P7 may proceed only after its own authenticated load/export path proves the exact current source state. Ordinary read-only `status` does not deserialize the pickle and therefore reports durable byte/product currentness, not an independent claim that an arbitrary changed local loader can consume it; when recorded runtime metadata differs from the current supported runtime surface, status may expose that as a compatibility/reclosure advisory rather than pretending the mismatch was tested.
 
 The record is subordinate to the existing decision:
 
@@ -400,7 +410,7 @@ For each expected product relation:
 
 File existence is never validity. Corrupt, missing or unsupported representation bytes are recoverable only when exact selected-checkpoint lineage remains authentic; they grant no authority to retrain, rerank or mutate the old decision.
 
-A model publication reused across a **predecessor executable/source-tree change** receives one additional compatibility proof before the new predecessor reclosure is allowed to become current:
+A model publication reused across a **predecessor executable/source-tree change**, or encountered by `train-production` after a recorded serializer/runtime compatibility change, receives one additional compatibility proof before it is accepted as directly reusable:
 
 1. descriptor-authenticate the recorded old model bytes/size;
 2. stage those authenticated bytes into trusted private scratch;
@@ -408,9 +418,9 @@ A model publication reused across a **predecessor executable/source-tree change*
 4. reconstruct the exact selected checkpoint through the native provider;
 5. require the reloaded object's full-state digest, execution-architecture digest, head inventory/target head, learned dtype and inference mode to equal the selected provider realization and recorded product metadata.
 
-If the old pickle is no longer loadable but the selected checkpoint still reconstructs to the **same** accepted state/architecture/head/dtype, rebuild only the full-model representation into a fresh immutable locator and continue reclosure with zero TRAIN2/EVAL2. If current provider reconstruction no longer proves the same state/architecture semantics, fail closed and route the upstream challenge; do not silently call that a serialization repair.
+If the old pickle is no longer loadable but the selected checkpoint still reconstructs to the **same** accepted state/architecture/head/dtype, rebuild only the full-model representation into a fresh immutable locator and continue representation reclosure with zero TRAIN2/EVAL2. This applies whether the trigger was mdstats predecessor-source drift or the serialized-model loader/runtime boundary. If current provider reconstruction no longer proves the same state/architecture semantics, fail closed and route the upstream challenge; do not silently call that a serialization repair.
 
-Ordinary read-only `status` does not perform this executable deserialization. It relies on the fact that current predecessor reclosure could only have been published after the compatibility proof.
+Ordinary read-only `status` does not perform this executable deserialization. For predecessor-source reclosure, it relies on the fact that a new current reclosure could only have been published after the compatibility proof. For a dependency/runtime-only change that does not alter predecessor source identity, status may report the durable product as current while explicitly marking loader compatibility as unverified/advisory until a consequential consumer or `train-production` performs the proof; it must not claim that a changed loader was tested.
 
 At minimum authenticate decision/member/order, representative checkpoint SHA, evaluation state + returned evaluated-state digest, target head, architecture digest, exact full-state digest, model SHA/size and serialization-format compatibility. Reuse existing state-digest owners; define no third tensor hash.
 
@@ -505,6 +515,8 @@ PRODUCTION_REQUIRED
 ```
 
 - COMPLETE admits no TRAIN2/EVAL2 and verifies/reuses the product.
+
+- On a consequential `train-production` invocation, COMPLETE verification includes the runtime/serialization compatibility rule above whenever recorded compatibility material differs from the current supported loader surface. A byte/SHA match alone may not suppress that proof.
 - RECLOSURE admits no TRAIN2/EVAL2.
 - If only predecessor reclosure is stale, reuse valid model bytes and build only a new reclosure.
 - If only representation is stale/corrupt/incompatible while predecessor reclosure remains current, preserve the exact predecessor-reclosure object/digest and rebuild only the representation. This keeps `QualificationInputBinding` / attempt identity unchanged for a representation-only successor.
@@ -1429,6 +1441,9 @@ Acceptance:
 | corrupt deterministic canonical leaf reproducing same model SHA | successor uses fresh artifact locator; no overwrite and no permanent wedge |
 | predecessor code change + still-loadable old model | current-runtime load/provider equivalence passes; bytes may be reused with new reclosure |
 | predecessor code change + old pickle un-loadable but same checkpoint semantics | rebuild representation only at fresh locator; zero TRAIN2/EVAL2 |
+
+| Torch/MACE/e3nn/Python loader boundary changes, old pickle still loads identically | reuse exact bytes after current-loader/provider equivalence proof; no TRAIN2/EVAL2 |
+| loader boundary changes, old pickle no longer loads but checkpoint semantics identical | publish fresh successor representation only; historical bytes preserved; zero TRAIN2/EVAL2 |
 | predecessor code change + provider architecture/state drift | fail closed/upstream challenge; never relabel as serialization repair |
 | wrong decision/member/order binding | fail closed |
 | missing selected checkpoint | fail closed |
@@ -1555,6 +1570,8 @@ private-temp vs immutable-orphan recovery tests
 
 same-model-SHA corrupted-leaf -> fresh-locator successor recovery test
 code-change reclosure load/reuse vs representation-rebuild vs provider-drift fail-closed tests
+
+serializer/runtime-version drift load-reuse vs representation-only rebuild tests
 P5 publication disk-reserve/actual-size-recheck/ENOSPC/fsync-failure tests
 status SHA-corruption/coherent-reclosure-pointer/workspace-relocation tests
 
@@ -1648,6 +1665,8 @@ NO-PASS if any remains true:
 70. Public lifecycle/status or P7 session admission can combine a final decision pointer from one instant with final-plan/CV or final-seed assessment-position locators from another, and still report/execute it as current.
 71. The coherent snapshot captures only fixed pointer kinds and leaves dynamic `assessment_position:*` rows to later independent reads.
 72. P7 terminal/release publication or first locked reveal CAS-checks the final-decision pointer but not the exact captured CV/final-plan/final-seed assessment parents, allowing a stale decision to survive a parent-locator advance.
+73. `train-production` treats a changed Python/Torch/MACE/e3nn serialization-loader boundary as irrelevant merely because model bytes/SHA are unchanged, or downstream code rewrites historical P5 product bytes instead of failing closed / invoking producer-owned representation reclosure.
+74. Loader incompatibility is repaired by retraining/re-EVAL2 even though the exact selected checkpoint reconstructs the same accepted state/architecture/head/dtype.
 
 ## 25. D3 reopen triggers
 
@@ -1671,7 +1690,7 @@ Implementation is complete only when the assembled candidate proves all of the f
 1. Every frozen selected size has exact P5 decision membership plus a reloadable, descriptor-authenticated, no-clobber full MACE `.model` representation for every published member, with a fresh locator mechanism that cannot wedge same-SHA repair.
 2. Representation comes from the exact selected checkpoint/provider state, never trainer terminal output, with live/EMA/state/architecture/head/dtype equivalence and bounded supported-consumer usability.
 3. One publication-set lock plus one atomic CampaignStore product-pointer transaction makes decision/model/reclosure visibility crash-consistent and restart-safe.
-4. Legacy completed campaigns reclose with zero TRAIN2/EVAL2 and independently reuse a still-valid model publication or still-current predecessor reclosure when only the other descendant is stale.
+4. Legacy completed campaigns reclose with zero TRAIN2/EVAL2 and independently reuse a still-valid model publication or still-current predecessor reclosure when only the other descendant is stale; serialized-loader/runtime drift is resolved by current-loader equivalence proof or representation-only successor publication, never retraining.
 5. Public lifecycle/status reports COMPLETE only after decision + completion + authenticated model publication + current predecessor reclosure for every selected size, from one coherent owner snapshot that also captures CV/final-plan and every required assessment-position parent.
 6. P7 admission starts from one coherent captured **complete P5 parent graph** (including final plan/CV/assessment positions); P7 keeps checkpoint reconstruction as scientific reference, consumes descriptor-authenticated P5 model bytes only for deployment, descriptor-authenticates deployed ML-IAP receipt/bytes before execution, binds deployment-dependent evidence **and terminal/release currentness** to the exact deployed-realization set, versions the deployment-source identity, invalidates only deployment-dependent evidence for representation changes, and re-establishes both the exact qualification binding **and captured P5 parent-locator set** before CAS-fencing terminal/release publication.
 7. `qualification status` and general lifecycle share one observational P7 currentness owner for current executable/predecessor/model-representation dependencies touched by this cycle.
@@ -1684,7 +1703,7 @@ Implementation is complete only when the assembled candidate proves all of the f
 
 Any failed item above is an implementation NO-PASS. Local helper names, exact private temp names and equivalent no-clobber primitives remain D4 choices.
 
-> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-15 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
+> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-16 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
 
 
 ## 27. Current-implementation review closure (Revision 2)
