@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 from pathlib import Path
 
@@ -36,7 +35,6 @@ from mdstats.training_data.campaign_post_selection_runtime import (
     resolve_current_final_production_publication,
 )
 from mdstats.training_data.post_selection_model_products import (
-    campaign_models_root,
     resolve_current_final_production_model_publication,
 )
 from mdstats.training_data.post_selection_model_publication import (
@@ -479,3 +477,190 @@ def test_storage_owner_certifies_the_exact_published_models(published):
     )
     assert record.content_digest in publication_view.state_identity
     assert record.model_artifact_set_digest in publication_view.state_identity
+
+
+def _pointer_set(store, binding) -> dict[str, str | None]:
+    from mdstats.training_data.post_selection_store import (
+        POINTER_FINAL_PUBLICATION,
+        POINTER_PREDECESSOR_RECLOSURE,
+    )
+
+    return {
+        kind: read_current_post_selection_pointer(store, binding=binding, kind=kind)
+        for kind in (
+            POINTER_FINAL_MODEL_PUBLICATION,
+            POINTER_PREDECESSOR_RECLOSURE,
+            POINTER_FINAL_PUBLICATION,
+        )
+    }
+
+
+@pytest.mark.parametrize("fail_at", [1, 2])
+def test_product_pointer_set_is_all_old_or_all_new(published, monkeypatch, fail_at):
+    """A crash at any logical pointer write must never strand a hybrid set.
+
+    Three separate transactions would leave a window in which the model and
+    reclosure pointers had advanced while the decision pointer had not - a
+    product state no observer could describe truthfully. Injecting a failure at
+    each logical write position is what proves the window does not exist.
+    """
+
+    from mdstats.training_data import post_selection_store as pss
+
+    config, _workspace, harness = published
+    _cfg, paths, store = load_context(config)
+    try:
+        _revision, bindings, _pointers = campaign_owner_snapshot(store)
+        binding = bindings[0]
+        before = _pointer_set(store, binding)
+    finally:
+        store.close()
+    assert all(value is not None for value in before.values())
+
+    original = pss.publish_current_post_selection_pointer_set
+
+    def failing(campaign_store, *, binding, rows):
+        """Run the real helper, but crash at the chosen logical write."""
+
+        writes = {"count": 0}
+        real_execute = None
+
+        class _Proxy:
+            def __init__(self, db):
+                self._db = db
+
+            def execute(self, sql, *args, **kwargs):
+                if sql.strip().upper().startswith("INSERT OR REPLACE INTO META"):
+                    writes["count"] += 1
+                    if writes["count"] >= fail_at:
+                        raise RuntimeError(
+                            f"injected crash at pointer write {fail_at}"
+                        )
+                return self._db.execute(sql, *args, **kwargs)
+
+            def __getattr__(self, name):
+                return getattr(self._db, name)
+
+        import contextlib
+
+        real_transaction = campaign_store.exclusive_transaction
+
+        @contextlib.contextmanager
+        def proxied():
+            with real_transaction() as db:
+                yield _Proxy(db)
+
+        class _Shim:
+            def __getattr__(self, name):
+                return getattr(campaign_store, name)
+
+            exclusive_transaction = staticmethod(proxied)
+
+        assert real_execute is None
+        return original(_Shim(), binding=binding, rows=rows)
+
+    monkeypatch.setattr(pss, "publish_current_post_selection_pointer_set", failing)
+
+    # Put the two subordinate rows into a distinct, recognizable prior state so
+    # both of them genuinely have to move.  The decision row stays valid, which
+    # is what keeps this a representation reclosure rather than a retrain.
+    from mdstats.training_data.post_selection_store import (
+        POINTER_FINAL_PUBLICATION,
+        POINTER_PREDECESSOR_RECLOSURE,
+    )
+
+    stale = {
+        POINTER_FINAL_MODEL_PUBLICATION: "a" * 64,
+        POINTER_PREDECESSOR_RECLOSURE: "b" * 64,
+    }
+    _cfg, paths, store = load_context(config)
+    try:
+        with store.exclusive_transaction() as db:
+            for kind, value in stale.items():
+                db.execute(
+                    "INSERT OR REPLACE INTO meta(key,value) VALUES (?,?)",
+                    (f"post_selection:{binding.content_digest}:{kind}", value),
+                )
+    finally:
+        store.close()
+
+    with pytest.raises(Exception, match="injected crash"):
+        run_train_production(config, harness)
+
+    _cfg, paths, store = load_context(config)
+    try:
+        after = _pointer_set(store, binding)
+    finally:
+        store.close()
+    # Wholly old: not one of the two pending rows was installed, whichever
+    # logical write the crash landed on.
+    assert after[POINTER_FINAL_MODEL_PUBLICATION] == stale[
+        POINTER_FINAL_MODEL_PUBLICATION
+    ]
+    assert after[POINTER_PREDECESSOR_RECLOSURE] == stale[POINTER_PREDECESSOR_RECLOSURE]
+    assert after[POINTER_FINAL_PUBLICATION] == before[POINTER_FINAL_PUBLICATION]
+
+    monkeypatch.undo()
+    assert run_train_production(config, harness) == 0
+    _cfg, paths, store = load_context(config)
+    try:
+        repaired = _pointer_set(store, binding)
+    finally:
+        store.close()
+    # ... and wholly new afterwards.
+    assert all(value is not None for value in repaired.values())
+    assert repaired[POINTER_FINAL_MODEL_PUBLICATION] != stale[
+        POINTER_FINAL_MODEL_PUBLICATION
+    ]
+    assert repaired[POINTER_PREDECESSOR_RECLOSURE] != stale[
+        POINTER_PREDECESSOR_RECLOSURE
+    ]
+    assert repaired[POINTER_FINAL_PUBLICATION] == before[POINTER_FINAL_PUBLICATION]
+
+
+def test_disk_reserve_refuses_publication_before_any_pointer_moves(
+    published, monkeypatch
+):
+    """A shortfall aborts recoverably; the previous product stays current."""
+
+    import shutil
+
+    from mdstats.training_data import post_selection_model_products as products
+
+    config, _workspace, harness = published
+    _cfg, paths, store = load_context(config)
+    try:
+        _revision, bindings, _pointers = campaign_owner_snapshot(store)
+        binding = bindings[0]
+        before = _pointer_set(store, binding)
+        key = (
+            f"post_selection:{binding.content_digest}:"
+            f"{POINTER_FINAL_MODEL_PUBLICATION}"
+        )
+        with store.exclusive_transaction() as db:
+            db.execute("DELETE FROM meta WHERE key=?", (key,))
+    finally:
+        store.close()
+
+    real_usage = shutil.disk_usage
+
+    def starved(path):
+        usage = real_usage(path)
+        return type(usage)(usage.total, usage.used, 1)
+
+    monkeypatch.setattr(products.shutil, "disk_usage", starved)
+    with pytest.raises(Exception, match="below the configured"):
+        run_train_production(config, harness)
+    monkeypatch.undo()
+
+    _cfg, paths, store = load_context(config)
+    try:
+        after = _pointer_set(store, binding)
+    finally:
+        store.close()
+    assert after[POINTER_FINAL_MODEL_PUBLICATION] is None
+    for kind, value in before.items():
+        if kind != POINTER_FINAL_MODEL_PUBLICATION:
+            assert after[kind] == value
+
+    assert run_train_production(config, harness) == 0
