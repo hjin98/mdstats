@@ -396,3 +396,61 @@ def test_a_write_failure_leaves_no_published_entry(tmp_path, monkeypatch):
     assert published == [], "a failed serialization published nothing"
     # Only the attempt's own private temp is removed; nothing else is touched.
     assert list((tmp_path / "models" / relative).glob("*.tmp")) == []
+
+
+# -- publication-set coordination -------------------------------------------
+
+
+def test_one_decision_set_lock_serializes_concurrent_committee_builders(tmp_path):
+    """Per-member locks would let two builders assemble a mixed artifact set.
+
+    Full PyTorch model serialization is not byte-deterministic, so two
+    concurrent builders of the same committee cannot converge by content
+    address the way immutable JSON evidence does. The lock is therefore derived
+    from the decision identity, which is known *before* any serialization, not
+    from a model SHA that only exists afterwards.
+    """
+
+    import threading
+
+    from mdstats.training_data.post_selection_model_products import (
+        model_publication_set_lock,
+    )
+
+    paths = type("P", (), {"internal": tmp_path / ".mdstats"})()
+    binding = type("B", (), {"campaign_generation": 1})()
+    context = type(
+        "C", (), {"paths": paths, "selected": type("S", (), {"binding": binding})()}
+    )()
+    decision = type("D", (), {"content_digest": _A})()
+
+    order: list[str] = []
+    inside = threading.Event()
+    release = threading.Event()
+
+    def holder():
+        with model_publication_set_lock(context, decision):
+            order.append("holder-in")
+            inside.set()
+            release.wait(timeout=10.0)
+            order.append("holder-out")
+
+    def waiter():
+        inside.wait(timeout=10.0)
+        order.append("waiter-blocked")
+        release.set()
+        with model_publication_set_lock(context, decision):
+            order.append("waiter-in")
+
+    one = threading.Thread(target=holder)
+    two = threading.Thread(target=waiter)
+    one.start()
+    two.start()
+    one.join(timeout=20.0)
+    two.join(timeout=20.0)
+    assert order.index("holder-out") < order.index("waiter-in")
+
+    # The coordination namespace is owner-internal, never in the operator
+    # models tree where it would look like a product.
+    assert (tmp_path / ".mdstats").exists()
+    assert not (tmp_path / "models").exists()

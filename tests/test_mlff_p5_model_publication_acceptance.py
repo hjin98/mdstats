@@ -930,3 +930,85 @@ def test_publication_never_sources_the_trainer_terminal_model():
     # ... and the native reconstruction is never given the override seam.
     assert "allow_forward_override=False" in code
     assert "allow_forward_override=True" not in code
+
+
+def test_a_stale_classification_cannot_commit_after_currentness_moves(
+    published, monkeypatch
+):
+    """Classification is an admission hint, never commit authority.
+
+    A size can be classified before another size's TRAIN wave and act minutes
+    later. Everything consequential therefore re-resolves under the
+    publication-set lock rather than trusting the snapshot it was planned on.
+    """
+
+    from mdstats.training_data import post_selection_product_recovery as recovery
+    from mdstats.training_data.campaign_post_selection import PostSelectionError
+
+    config, _workspace, harness = published
+    decision, record, _paths = _resolved(config)
+
+    real = recovery.replayable_decision_candidate
+    calls = {"count": 0}
+
+    def drifting(context):
+        calls["count"] += 1
+        resolved = real(context)
+        if calls["count"] == 1 or resolved is None:
+            return resolved
+        # The second resolution is the one taken under the lock; make it look
+        # as though the decision advanced while this size waited.
+        from dataclasses import replace
+
+        return replace(resolved, target_head_name="another_head")
+
+    monkeypatch.setattr(recovery, "replayable_decision_candidate", drifting)
+    runs = len(harness.runs), len(harness.evaluations)
+    with pytest.raises(PostSelectionError, match="changed after recovery classification"):
+        run_train_production(config, harness)
+    monkeypatch.undo()
+    assert (len(harness.runs), len(harness.evaluations)) == runs
+
+    # Nothing stale was committed; the product is still the one that was there.
+    _decision, after, _paths = _resolved(config)
+    assert after.content_digest == record.content_digest
+    assert _decision.content_digest == decision.content_digest
+
+
+def test_a_parameter_shell_checkpoint_cannot_source_a_published_model(
+    published, monkeypatch
+):
+    """Blocking condition 21, at the real reconstruction owner.
+
+    The bounded forward-override/parameter-shell seam exists so tests can
+    substitute expensive numerical forwards. It is not a model, and a product
+    serialized from it would be a fixture shipped as science.
+    """
+
+    from mdstats.training_data._common import TrainingDataInputError
+    from mdstats.training_data import post_selection_model_products as products
+
+    config, _workspace, harness = published
+    decision, record, _paths = _resolved(config)
+
+    real = products.selected_representative_provider
+
+    def shell_only(context, **kwargs):
+        assert kwargs["allow_forward_override"] is False, (
+            "publication must never request the bounded override seam"
+        )
+        raise TrainingDataInputError(
+            "A pinned MACE TRAIN2 state_dict is required for no-override "
+            "target-size evaluation; synthetic parameter-shell reconstruction is "
+            "not a production fallback."
+        )
+
+    monkeypatch.setattr(products, "current_runtime_compatibility_established", lambda r: False)
+    monkeypatch.setattr(products, "selected_representative_provider", shell_only)
+    with pytest.raises(TrainingDataInputError, match="not a production fallback"):
+        run_train_production(config, harness)
+    monkeypatch.undo()
+
+    _decision, after, _paths = _resolved(config)
+    assert after.content_digest == record.content_digest
+    assert _decision.content_digest == decision.content_digest
