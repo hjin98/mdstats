@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 
@@ -664,3 +665,186 @@ def test_disk_reserve_refuses_publication_before_any_pointer_moves(
             assert after[kind] == value
 
     assert run_train_production(config, harness) == 0
+
+
+def test_loader_runtime_drift_reuses_identical_bytes_after_an_equivalence_proof(
+    published, monkeypatch
+):
+    """A changed Torch/MACE surface forces a proof, not a reserialization.
+
+    Byte/SHA equality cannot answer "does this still load here?". When the
+    recorded serializer/runtime no longer positively establishes the current
+    loader, the producer owes a real load plus native-provider equivalence
+    before it may call the existing product reusable - and if that proof
+    passes, no reserialization is justified.
+    """
+
+    from mdstats.training_data import post_selection_model_products as products
+
+    config, _workspace, harness = published
+    _decision, before, _paths = _resolved(config)
+
+    real_metadata = products.serialization_runtime_metadata
+    proofs: list[str] = []
+    real_proof = products.prove_existing_representation_reusable
+
+    def drifted_runtime():
+        payload = dict(real_metadata())
+        payload["torch"] = "0.0.0-not-the-recorded-runtime"
+        return payload
+
+    def recording_proof(context, record, decision):
+        proofs.append(record.content_digest)
+        return real_proof(context, record, decision)
+
+    monkeypatch.setattr(products, "serialization_runtime_metadata", drifted_runtime)
+    monkeypatch.setattr(
+        products, "prove_existing_representation_reusable", recording_proof
+    )
+    runs = len(harness.runs), len(harness.evaluations)
+    assert run_train_production(config, harness) == 0
+    monkeypatch.undo()
+
+    assert (len(harness.runs), len(harness.evaluations)) == runs, (
+        "a loader-compatibility question is never answered by retraining"
+    )
+    _decision, after, _paths = _resolved(config)
+    # The proof passed, so the exact existing bytes are reused.
+    assert after.model_artifact_set_digest == before.model_artifact_set_digest
+    assert [m.model_sha256 for m in after.members] == [
+        m.model_sha256 for m in before.members
+    ]
+
+
+def test_unloadable_representation_rebuilds_only_the_representation(
+    published, monkeypatch
+):
+    """Zero TRAIN2/EVAL2 when the pickle dies but the checkpoint is unchanged."""
+
+    from mdstats.training_data import post_selection_model_products as products
+
+    config, _workspace, harness = published
+    decision, before, _paths = _resolved(config)
+
+    def unloadable(context, record, decision):
+        raise products.ModelRepresentationIncompatible(
+            "simulated serialization-runtime incompatibility"
+        )
+
+    monkeypatch.setattr(
+        products, "prove_existing_representation_reusable", unloadable
+    )
+    monkeypatch.setattr(
+        products,
+        "current_runtime_compatibility_established",
+        lambda record: False,
+    )
+    runs = len(harness.runs), len(harness.evaluations)
+    assert run_train_production(config, harness) == 0
+    monkeypatch.undo()
+
+    assert (len(harness.runs), len(harness.evaluations)) == runs
+    _decision, after, paths = _resolved(config)
+    # A fresh successor representation of the *same* decision and members.
+    assert after.final_publication_decision_digest == decision.content_digest
+    assert after.member_ids == before.member_ids
+    assert after.content_digest != before.content_digest
+    # The historical bytes are preserved, not rewritten.
+    for member in before.members:
+        assert (Path(paths.models) / member.model_relative_path).is_file()
+
+
+def test_provider_state_drift_fails_closed_instead_of_laundering_it(
+    published, monkeypatch
+):
+    """A changed learned state is lineage corruption, not a serialization repair."""
+
+    from mdstats.training_data import post_selection_model_products as products
+    from mdstats.training_data.campaign_post_selection import PostSelectionError
+
+    config, _workspace, harness = published
+
+    real_realize = products.realize_portable_publication_model
+
+    def drifting_realize(provider, *, target_head_name):
+        model, realization = real_realize(provider, target_head_name=target_head_name)
+        from dataclasses import replace
+
+        return model, replace(realization, state_sha256="9" * 64)
+
+    monkeypatch.setattr(
+        products, "current_runtime_compatibility_established", lambda record: False
+    )
+    monkeypatch.setattr(products, "realize_portable_publication_model", drifting_realize)
+    with pytest.raises(PostSelectionError, match="upstream scientific/provider change"):
+        run_train_production(config, harness)
+    monkeypatch.undo()
+    assert run_train_production(config, harness) == 0
+
+
+def test_workspace_relocation_with_identical_bytes_preserves_deployment_identity(
+    published, tmp_path
+):
+    """Paths are locators; deployment currentness is byte/state identity."""
+
+    import shutil
+
+    config, workspace, _harness = published
+    _decision, record, paths = _resolved(config)
+    before = record.model_artifact_set_digest
+
+    moved = tmp_path / "relocated-models"
+    shutil.copytree(Path(paths.models), moved)
+    for member in record.members:
+        assert (moved / member.model_relative_path).read_bytes() == (
+            Path(paths.models) / member.model_relative_path
+        ).read_bytes()
+    # The artifact-set identity is derived from member byte/state identity
+    # only, so an intact relocation changes nothing numerical.
+    assert record.model_artifact_set_digest == before
+    assert all(
+        member.model_relative_path in str(moved / member.model_relative_path)
+        for member in record.members
+    )
+
+
+def test_projection_replacement_refuses_a_planted_symlink(published, tmp_path):
+    """The convenience projection is written relative to an authenticated fd."""
+
+    from mdstats.training_data.model_artifact_trust import ModelArtifactTrustError
+    from mdstats.training_data.post_selection_model_products import (
+        write_publication_projection,
+    )
+
+    config, _workspace, _harness = published
+    decision, record, paths = _resolved(config)
+    context, _paths, store = _context(config)
+    try:
+        from mdstats.training_data.post_selection_reclosure import (
+            resolve_current_predecessor_reclosure,
+        )
+
+        reclosure = resolve_current_predecessor_reclosure(context, decision=decision)
+        level = (
+            Path(paths.models)
+            / "production"
+            / f"g{decision.binding.campaign_generation}"
+        )
+        size_directory = level / f"N_{decision.binding.n_selected}"
+        preserved = size_directory.rename(
+            size_directory.with_name(size_directory.name + ".kept")
+        )
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        os.symlink(outside, size_directory)
+        try:
+            with pytest.raises(ModelArtifactTrustError):
+                write_publication_projection(
+                    context, decision=decision, record=record, reclosure=reclosure
+                )
+            assert not any(outside.iterdir()), "the write escaped the model root"
+        finally:
+            size_directory.unlink()
+            preserved.rename(size_directory)
+    finally:
+        store.close()
