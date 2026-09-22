@@ -4,9 +4,9 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reviewed
 created_date: 2026-09-21
-revision: 17
+revision: 18
 reviewed_date: 2026-09-22
-workplan_review_status: pass-after-final-implementation-precision-review
+workplan_review_status: pass-after-locked-activation-lineage-review
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -18,7 +18,7 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER FINAL IMPLEMENTATION-PRECISION REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER LOCKED-ACTIVATION LINEAGE REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
 
 This cycle closes two adjacent product-readiness gaps without changing D1 scientific or D2 numerical authority:
 
@@ -741,7 +741,7 @@ Do not invalidate all P7 evidence merely because the full-model pickle bytes/pat
 
 ### D3-15 — Preserve irreversible locked disclosure
 
-`LockedActivationRecord`, its cohort-generation identity, and the append-only locked-reveal index remain unchanged by this feature.
+`LockedActivationRecord` schema, its cohort-generation identity, and the append-only locked-reveal index remain unchanged by this feature. The activation record continues to bind the exact prerequisite component-evidence digests present at first reveal; those prerequisite digests may now transitively bind P5/deployed representation identity for deployment-dependent prerequisites.
 
 The selective-reuse rules in D3-14/D3-15 apply only while the ordinary `QualificationInputBinding` itself is unchanged — including the executable source-tree digest, environment, specification, evidence roles and predecessor reclosure.
 
@@ -759,7 +759,7 @@ dtype
 
 Therefore an already-revealed locked cohort is never opened again:
 
-- an existing authentic locked activation/result remains evidence for the unchanged scientific checkpoint product;
+- an existing authentic locked activation/result remains the immutable history/evidence of the unchanged scientific checkpoint product and the exact prerequisites that authorized its first reveal;
 - a changed deployment representation triggers only deployment-dependent requalification;
 - if activation occurred but the locked result was interrupted, the same activation may resume under the existing one-shot rules;
 - the append-only reveal index continues to block any attempt to manufacture a fresh locked test.
@@ -786,7 +786,7 @@ Schema evolution is explicit:
 
 - new terminal record/release-index schemas are versioned successors (v2 or equivalent);
 - old v1 objects remain readable as historical immutable evidence;
-- a v1 terminal/release object lacking model-artifact-set identity cannot be reported as the current release verdict once the new P5 product boundary is active;
+- a v1 terminal/release object lacking model-artifact-set **and deployment-realization-set** identity cannot be reported as the current release verdict once the new P5/deployment representation boundary is active;
 - **do not manufacture cross-executable compatibility:** this implementation changes the mdstats executable source-tree digest, so pre-implementation P7 component evidence is ordinarily bound to an older `QualificationInputBinding` and cannot become current merely because its scientific checkpoint is unchanged;
 - the append-only locked reveal history remains binding across that executable-currentness change, so an old revealed cohort never becomes fresh;
 - selective reuse of checkpoint-only/locked component evidence is allowed only for representation-only successors created under the **same current qualification binding** (for example, rebuilding corrupted serialized product bytes without changing source/spec/environment);
@@ -926,7 +926,7 @@ Because model representation is deliberately outside `QualificationInputBinding`
 Extend the existing qualification pointer-publication owner with expected-current P5 fences:
 
 - qualification **plan identity/currentness** remains scientific-binding-only and does not acquire model serialization identity;
-- `LockedActivationRecord` identity likewise remains model-independent. However, the **first irreversible reveal / initial activation-pointer admission** additionally CAS-checks the exact current P5 model-publication pointer as prerequisite freshness under D3-17D. That admission fence is not stored in activation identity and never makes a revealed cohort fresh again;
+- do not add a direct `model_artifact_set_digest` or model-path field to the scientific qualification binding, locked cohort-generation identity, or reveal-index key. `LockedActivationRecord.content_digest` nevertheless continues to include its existing `prerequisite_component_digests`; when those prerequisites are deployment-dependent, the activation record therefore **transitively records** the exact P5/deployed representation that authorized first reveal. The D3-17D model/realization CAS is an admission fence, not a new cohort identity, and never makes a revealed cohort fresh again;
 - terminal `ProductionQualificationRecord` and `ReleaseEvidenceIndex` publication additionally require the current P5 model-publication pointer to equal the exact model-publication record digest consumed by the session;
 - the same transaction requires the current final-publication decision pointer and predecessor-reclosure pointer to equal the session's exact scientific predecessors;
 - it also requires the current CV plan/acceptance, final-plan pointer, and every required final-seed `assessment_position:*` locator to equal the exact captured P5 parent snapshot admitted into the session. A decision pointer that has not moved does **not** rescue it when one of those parents has advanced.
@@ -1666,7 +1666,7 @@ NO-PASS if any remains true:
 61. The normative documentation set omits `mlff_storage_management_spec.md` even though exact P5 product ownership under `models/` changes.
 62. P7 session construction can combine P5 decision/reclosure pointers from one CampaignStore moment with a model-publication pointer from another before any component runs.
 63. The implementation creates a second qualification-binding/currentness algorithm instead of factoring the existing identity owners for admission/commit/reveal revalidation.
-64. `LockedActivationRecord` remains model-independent but first reveal is implemented without the D3-17D model-publication prerequisite CAS, or model serialization identity is incorrectly injected into the activation identity itself.
+64. The locked **cohort/reveal identity** is made representation-specific, or `LockedActivationRecord` stops recording exact prerequisite component digests, or first reveal is implemented without the D3-17D P5 model/deployment-realization prerequisite CAS.
 65. A rebuilt deployed ML-IAP artifact can have different bytes under the same deployment identity while old deployment-parity/dynamics evidence remains current.
 66. Corrupt deployed output is repaired by overwriting a previously receipted artifact instead of publishing a fresh immutable realization locator.
 67. P5 model files or touched P7 deployed artifacts are fsynced without durably fsyncing newly-created containing directory entries before dependent pointers/evidence become current.
@@ -1707,7 +1707,7 @@ Implementation is complete only when the assembled candidate proves all of the f
 5. Public lifecycle/status reports COMPLETE only after decision + completion + authenticated model publication + current predecessor reclosure for every selected size, from one coherent owner snapshot that also captures CV/final-plan and every required assessment-position parent.
 6. P7 admission starts from one coherent captured **complete P5 parent graph** (including final plan/CV/assessment positions); P7 keeps checkpoint reconstruction as scientific reference, consumes descriptor-authenticated P5 model bytes only for deployment, descriptor-authenticates deployed ML-IAP receipt/bytes before execution, binds deployment-dependent evidence **and terminal/release currentness** to the exact deployed-realization set, versions the deployment-source identity, invalidates only deployment-dependent evidence for representation changes, and re-establishes both the exact qualification binding **and captured P5 parent-locator set** before CAS-fencing terminal/release publication.
 7. `qualification status` and general lifecycle share one observational P7 currentness owner for current executable/predecessor/model-representation dependencies touched by this cycle.
-8. One-shot locked disclosure is never reopened; representation-only repair preserves current predecessor reclosure/attempt identity when applicable; historical older-executable P7 evidence remains historical.
+8. One-shot locked disclosure is never reopened; the cohort/reveal identity remains representation-independent while the immutable activation record preserves the exact prerequisite evidence that authorized first reveal; representation-only repair preserves current predecessor reclosure/attempt identity when applicable; historical older-executable P7 evidence remains historical.
 
 8a. A first locked reveal re-establishes the exact current qualification binding and captured CV/final-plan/final-seed assessment parents, and is authorized under a short P5/P7/writer critical section that proves its deployment-dependent prerequisites still correspond to the exact current P5 model publication **and deployed-realization set**; terminal `release_qualified` exposure requires the matching release index.
 9. P5/P7 disk admission, anchored no-follow creation/authentication, descriptor-relative mutable-locator replacement, full directory-entry + file fsync/no-clobber durability, resource retirement and reconciled P5/models-root storage ownership remain within existing owners; the accepted global TRAIN scheduler is unchanged.
@@ -1716,7 +1716,7 @@ Implementation is complete only when the assembled candidate proves all of the f
 
 Any failed item above is an implementation NO-PASS. Local helper names, exact private temp names and equivalent no-clobber primitives remain D4 choices.
 
-> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-17 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
+> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-18 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
 
 
 ## 27. Current-implementation review closure (Revision 2)
