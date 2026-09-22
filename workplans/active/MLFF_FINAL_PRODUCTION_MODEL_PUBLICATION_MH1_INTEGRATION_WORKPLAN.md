@@ -4,9 +4,9 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reviewed
 created_date: 2026-09-21
-revision: 10
+revision: 11
 reviewed_date: 2026-09-22
-workplan_review_status: pass-after-final-exhaustive-convergence-review
+workplan_review_status: pass-after-final-invariant-matrix-review
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -18,7 +18,7 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 ## 0. Disposition
 
-**PASS AS IMPLEMENTATION WORKPLAN AFTER FINAL EXHAUSTIVE CONVERGENCE REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
+**PASS AS IMPLEMENTATION WORKPLAN AFTER FINAL INVARIANT-MATRIX REVIEW / FROZEN FOR D4. No Serious Challenge is active.**
 
 This cycle closes two adjacent product-readiness gaps without changing D1 scientific or D2 numerical authority:
 
@@ -797,6 +797,18 @@ reference predictions <-> deployed predictions
 
 This preserves a discriminating deployment-parity oracle.
 
+### D3-17 admission rule — capture one coherent P5 product snapshot
+
+Consequential P7 session construction must not resolve the decision/reclosure and subordinate model publication in separate live pointer reads. At session admission:
+
+1. capture the selected binding plus `POINTER_FINAL_PUBLICATION`, `POINTER_PREDECESSOR_RECLOSURE`, and `POINTER_FINAL_MODEL_PUBLICATION` in one CampaignStore read transaction (reuse `campaign_owner_snapshot(...)` or a narrower helper with identical transaction semantics);
+2. require the post-selection context selected binding to equal the captured binding;
+3. authenticate the decision, predecessor reclosure, and model-publication immutable objects named by those captured pointers, including actual model bytes;
+4. construct the scientific `QualificationInputBinding` from the captured decision/reclosure and resolve the subordinate deployment representation from the captured model publication;
+5. if any captured object does not mutually agree, abort/retry session admission before executing a component.
+
+Do not reread a live P5 pointer during that session construction. Later representation/scientific drift is handled by the terminal/release/first-reveal CAS fences, not by mixing two P5 moments into one attempt.
+
 Before deployment, verify:
 
 ```text
@@ -864,6 +876,8 @@ Extend the existing qualification pointer-publication owner with expected-curren
 - the same transaction also requires the current final-publication decision pointer and predecessor-reclosure pointer to equal the session's exact scientific predecessors.
 
 Before those pointer writes, re-establish the **current `QualificationInputBinding` identity** through the existing identity owners (selected publication/predecessor, executable, environment, specification, evidence roles/resource scope) and require exact equality with the session binding. Then perform the P5-pointer comparisons inside the same `CampaignStore.exclusive_transaction()` that writes the P7 pointer.
+
+Factor this as one bounded identity-only resolver shared with first-reveal revalidation. It must reuse the same constructors/identities as `build_qualification_session(...)` but must not publish a reference request, open/modify attempt state, construct a provider/model, or create a second qualification-binding algorithm. Session admission may still build the ordinary full session outside critical sections.
 
 If the qualification binding or any expected P5 pointer changed, the immutable P7 object remains historical but the current pointer write fails. This is a CAS fence, not a new lock or new attempt identity. Reuse/refactor the existing fresh-session/current-binding owner; do not invent a parallel binding algorithm.
 
@@ -1005,9 +1019,9 @@ The existing `campaign_store:models` view currently blanket-labels `paths.models
 - active P7 attempt references include the exact P5 model paths as well as checkpoints;
 - unrelated legacy files already under `models/` remain ambiguous/protected unless another real owner certifies them; this cycle adds no cleanup authority.
 
-The new internal P5 model-publication lock namespace is owner-known coordination infrastructure and is never a storage action candidate. Storage integration tests must prove report/cleanup/archive/dedup cannot mutate a live publication lock, private in-flight serialization, current model product, or inert full-SHA orphan.
+The new internal P5 model-publication lock namespace is owner-known coordination infrastructure and is never a storage action candidate. Storage integration tests must prove report/cleanup/archive/dedup cannot mutate a live publication lock, private in-flight serialization, current model product, or inert full-SHA+locator orphan.
 
-Because canonical product files are immutable/versioned and `CampaignPaths.models` is already durable scientific evidence, superseded model bytes may accumulate. This cycle does **not** add a cleanup/retention authority merely to reclaim them. Preserve them under the existing models-root owner; if long-horizon accumulation becomes material, route that as a separate storage-policy change rather than deleting historical products by pathname heuristics.
+Because canonical product files are immutable/versioned and `CampaignPaths.models` is a protected campaign container while exact current products are P5-owned child artifacts, superseded model bytes may accumulate. This cycle does **not** add a cleanup/retention authority merely to reclaim them. Retain ambiguous/historical bytes conservatively under that container/P5 boundary; if long-horizon accumulation becomes material, route a separate storage-policy change rather than deleting historical products by pathname heuristics.
 
 ## 14. Trainer terminal artifacts
 
@@ -1285,6 +1299,8 @@ Acceptance:
 Acceptance:
 
 - scientific `QualificationInputBinding` remains checkpoint-based;
+
+- P7 session admission captures decision + predecessor reclosure + model-publication pointers in one coherent CampaignStore snapshot and authenticates only those captured P5 objects;
 - current P5 model-publication and predecessor pointers come from the same captured observation snapshot;
 - deployment parity/dynamics component identity includes current model-artifact-set; checkpoint-only components do not;
 - terminal/release successor schemas bind model-artifact-set digest;
@@ -1320,8 +1336,7 @@ Acceptance:
 
 Acceptance:
 
-- current model products remain protected by existing models-root owner;
-
+- current model products remain protected by the models-root container **and** exact P5-owned child-artifact views;
 - storage ownership distinguishes protected models-root layout from exact P5-owned current model artifacts; P5 publication state identity advances with the model-artifact set;
 - publication private temp/lock paths have explicit owners and no generic cleanup authority is added;
 - current docs describe decision/checkpoint/full-model/deployment boundaries consistently;
@@ -1350,7 +1365,7 @@ Acceptance:
 | pointer-set fault at write 1/2/3 | all old pointers or all new pointers, never hybrid |
 | projection failure after DB commit | product remains authoritative/current; projection later repairable |
 | private temp crash residue | removed/rebuilt without treating it as authority |
-| immutable unreferenced full-SHA model | inert, not auto-deleted/deserialized; reusable only after independent expected-SHA reconstruction |
+| immutable unreferenced full-SHA+locator model | inert, not auto-deleted/deserialized; reusable only after independent expected-SHA reconstruction |
 | wrong/corrupt current model bytes | consumers fail closed; train-production may publish immutable successor |
 
 | corrupt deterministic canonical leaf reproducing same model SHA | successor uses fresh artifact locator; no overwrite and no permanent wedge |
@@ -1359,7 +1374,7 @@ Acceptance:
 | predecessor code change + provider architecture/state drift | fail closed/upstream challenge; never relabel as serialization repair |
 | wrong decision/member/order binding | fail closed |
 | missing selected checkpoint | fail closed |
-| immutable destination collision | exact bytes -> reuse; mismatch -> fail; never overwrite |
+| chosen immutable locator collision | exact expected bytes -> reuse; mismatch -> choose fresh locator; never overwrite |
 | digest-prefix collision attempt | impossible by canonical full/collision-proof identity |
 | intermediate/final symlink substitution | descriptor/no-follow authentication rejects |
 
@@ -1370,6 +1385,8 @@ Acceptance:
 | train-production completion output | every committed size/member prints canonical model path, SHA and target head; never trainer terminal model |
 | same-byte workspace relocation | product/deployment currentness unchanged |
 | P7 reference/deployment split | checkpoint provider remains reference; deployment consumes authenticated P5 model bytes |
+
+| P7 admission pointer race | one captured P5 product snapshot; no hybrid old decision/reclosure + new model-publication session |
 | P7 deployment identity collision | full/collision-proof deployment identity root; no `[:16]` authoritative namespace |
 
 | deployed artifact/receipt symlink or byte mutation | no-follow receipt/artifact authentication rejects before LAMMPS execution |
@@ -1428,6 +1445,8 @@ checkpoint authentication/provider reconstruction
 multi-size integration
 campaign lifecycle/status coherence
 P7 publication/provider/deployment intake
+
+P7 coherent P5 product-snapshot admission race tests
 P7 deployment-identity successor/full-root/receipt migration and per-member reuse
 
 P7 deployed-artifact/receipt no-follow mutation/symlink/trusted-execution-staging tests
@@ -1529,6 +1548,8 @@ NO-PASS if any remains true:
 59. P7 re-authenticates the P5 source model safely but still trusts a deployed ML-IAP artifact/receipt via symlink-following or hash-then-reopen pathname checks before LAMMPS execution.
 60. Terminal/release or first locked activation can publish/reveal after the current qualification binding (specification/executable/environment/evidence roles/resource scope) has drifted, even when P5 pointers themselves remain unchanged.
 61. The normative documentation set omits `mlff_storage_management_spec.md` even though exact P5 product ownership under `models/` changes.
+62. P7 session construction can combine P5 decision/reclosure pointers from one CampaignStore moment with a model-publication pointer from another before any component runs.
+63. The implementation creates a second qualification-binding/currentness algorithm instead of factoring the existing identity owners for admission/commit/reveal revalidation.
 
 ## 25. D3 reopen triggers
 
@@ -1554,7 +1575,7 @@ Implementation is complete only when the assembled candidate proves all of the f
 3. One publication-set lock plus one atomic CampaignStore product-pointer transaction makes decision/model/reclosure visibility crash-consistent and restart-safe.
 4. Legacy completed campaigns reclose with zero TRAIN2/EVAL2 and independently reuse a still-valid model publication or still-current predecessor reclosure when only the other descendant is stale.
 5. Public lifecycle/status reports COMPLETE only after decision + completion + authenticated model publication + current predecessor reclosure for every selected size, from one coherent owner snapshot.
-6. P7 keeps checkpoint reconstruction as scientific reference, consumes descriptor-authenticated P5 model bytes only for deployment, descriptor-authenticates deployed ML-IAP receipt/bytes before execution, versions the deployment-source identity, invalidates only deployment-dependent evidence for representation changes, and re-establishes the exact qualification binding before CAS-fencing terminal/release publication.
+6. P7 admission starts from one coherent captured P5 product snapshot; P7 keeps checkpoint reconstruction as scientific reference, consumes descriptor-authenticated P5 model bytes only for deployment, descriptor-authenticates deployed ML-IAP receipt/bytes before execution, versions the deployment-source identity, invalidates only deployment-dependent evidence for representation changes, and re-establishes the exact qualification binding before CAS-fencing terminal/release publication.
 7. `qualification status` and general lifecycle share one observational P7 currentness owner for current executable/predecessor/model-representation dependencies touched by this cycle.
 8. One-shot locked disclosure is never reopened; representation-only repair preserves current predecessor reclosure/attempt identity when applicable; historical older-executable P7 evidence remains historical.
 
@@ -1565,7 +1586,7 @@ Implementation is complete only when the assembled candidate proves all of the f
 
 Any failed item above is an implementation NO-PASS. Local helper names, exact private temp names and equivalent no-clobber primitives remain D4 choices.
 
-> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-10 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
+> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. Where historical wording conflicts with Sections 0-26, the current Revision-11 normative contract above controls. Earlier findings remain useful only as superseded rationale/evidence.
 
 
 ## 27. Current-implementation review closure (Revision 2)
@@ -1847,6 +1868,4 @@ No remaining finding requires a D1/D2 change. No long real MH-1 campaign/GPU qua
 
 ## 38. Revision-10 verdict
 
-**PASS AS WORKPLAN / D3->D4 HANDOFF READY.**
-
-The current normative contract is Sections 0-26. Implementation Review must treat any violation of Section 24 or any failed item in Section 26 as NO-PASS.
+Revision 10 was an intermediate convergence candidate. Revision 11 preserves its trust/recovery architecture and closes the final coherent-admission and internal-consistency findings below.
