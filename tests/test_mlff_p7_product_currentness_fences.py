@@ -253,3 +253,62 @@ def test_locked_cohort_reveal_history_is_representation_independent():
     assert LOCKED_ACTIVATION_SCHEMA.endswith(".v1"), (
         "the locked activation schema is unchanged by this cycle"
     )
+
+
+def test_the_scientific_binding_stays_checkpoint_based():
+    """Blocking condition 13, as a structural fact about the binding."""
+
+    from mdstats.training_data.qualification.binding import QualificationInputBinding
+
+    fields = set(QualificationInputBinding.__dataclass_fields__)
+    for forbidden in (
+        "model_artifact_set_digest",
+        "model_publication_digest",
+        "model_relative_path",
+        "model_sha256",
+        "deployment_realization_set_digest",
+    ):
+        assert forbidden not in fields, (
+            f"{forbidden} in the whole binding would stale every component - "
+            "including the one-shot locked test - when only serialization changed"
+        )
+    # What it does identify is unchanged.
+    assert {
+        "selected_binding_digest",
+        "publication_digest",
+        "publication_member_digest",
+        "executable",
+        "environment",
+        "specification",
+        "evidence_roles",
+    } <= fields
+
+
+def test_checkpoint_only_components_do_not_reserve_model_staging(session_bundle):
+    """Blocking condition 51: resource semantics follow actual dependency."""
+
+    from mdstats.training_data.qualification.components import (
+        COMPONENT_CALIBRATION,
+        COMPONENT_DEPLOYMENT_PARITY,
+        COMPONENT_DYNAMICS,
+        COMPONENT_LOCKED_TEST,
+        COMPONENT_PHYSICAL_PES,
+        COMPONENT_RELAXATION,
+    )
+
+    _config, _cfg, _paths, _store, session, _harness = session_bundle
+    model_bytes = sum(
+        int(member.model_size_bytes) for member in session.model_publication.members
+    )
+    deployment = session.required_incremental_headroom_bytes(
+        COMPONENT_DEPLOYMENT_PARITY
+    )
+    assert deployment >= 3 * model_bytes
+    assert session.required_incremental_headroom_bytes(COMPONENT_DYNAMICS) == deployment
+    for component in (
+        COMPONENT_PHYSICAL_PES,
+        COMPONENT_RELAXATION,
+        COMPONENT_CALIBRATION,
+        COMPONENT_LOCKED_TEST,
+    ):
+        assert session.required_incremental_headroom_bytes(component) != deployment
