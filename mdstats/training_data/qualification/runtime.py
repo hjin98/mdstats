@@ -1484,6 +1484,7 @@ class QualificationSession:
         *,
         extra: Mapping[str, Any] | None = None,
         capability_digest: str | None = None,
+        bind_deployment_realization: bool = True,
     ) -> str:
         """Identity of the exact inputs consumed by one component.
 
@@ -1518,7 +1519,9 @@ class QualificationSession:
             payload["reference_geometry_identities"] = sorted(
                 str(key) for key in bundle.observations
             )
-        if component_name in _DEPLOYMENT_DEPENDENT_COMPONENTS:
+        if component_name in _DEPLOYMENT_DEPENDENT_COMPONENTS and (
+            bind_deployment_realization
+        ):
             # Only components that actually consume the deployed artifact bind
             # the serialized representation.  Checkpoint-only components -
             # physical PES, relaxation, calibration and the locked test - keep
@@ -1894,7 +1897,35 @@ def _waiting_evidence(session: QualificationSession, component: str, detail: str
             "reference_protocol_identity": session.reference_request.protocol_identity,
             "reference_request_path": str(session.reference_root),
         },
-        component_input_digest=session.component_input_digest(component, None),
+        # Waiting is the *absence* of evidence: nothing was deployed and
+        # nothing was executed, so resolving - and therefore building - an
+        # invocation realization set here would be a side effect of reporting
+        # that a component cannot run yet.
+        component_input_digest=session.component_input_digest(
+            component, None, bind_deployment_realization=False
+        ),
+    )
+
+
+def _waiting_reason(component: str, bundle: Any | None, session: Any) -> str | None:
+    """Why this component cannot run yet, or ``None`` when it can."""
+
+    if bundle is not None or component not in _REFERENCE_DEPENDENT_COMPONENTS:
+        return None
+    root = session.reference_root
+    if component == COMPONENT_PHYSICAL_PES:
+        return (
+            "Local PES qualification is waiting for the external reference "
+            f"bundle requested under {root!s}."
+        )
+    if component == COMPONENT_RELAXATION:
+        return (
+            "Relaxation qualification is waiting for matched external "
+            f"reference relaxations requested under {root!s}."
+        )
+    return (
+        "Dynamics qualification is waiting for authenticated reference-"
+        f"relaxed geometries requested under {root!s}."
     )
 
 
@@ -1915,6 +1946,17 @@ def execute_nonlocked_components(
     recorder = session.resource_recorder
     results: list[QualificationComponentEvidence] = []
     for component in session.plan.planned_components:
+        # Decide *whether* a component can run before computing what it would
+        # consume.  A deployment-dependent component that is waiting for an
+        # external reference deploys nothing, and resolving the invocation's
+        # realization set for it would build artifacts in order to say so.
+        waiting = _waiting_reason(component, bundle, session)
+        if waiting is not None:
+            results.append(_waiting_evidence(session, component, waiting))
+            recorder.record_component(
+                component, started=_utc_stamp(), elapsed=0.0, reused=False
+            )
+            continue
         expected_input_digest = session.component_input_digest(component, bundle)
         existing = session.completed_component(component, expected_input_digest)
         if existing is not None:
@@ -1933,38 +1975,11 @@ def execute_nonlocked_components(
             if component == COMPONENT_DEPLOYMENT_PARITY:
                 evidence = qualify_deployment_parity(session)
             elif component == COMPONENT_PHYSICAL_PES:
-                evidence = (
-                    qualify_physical_pes(session, bundle)
-                    if bundle is not None
-                    else _waiting_evidence(
-                        session,
-                        component,
-                        "Local PES qualification is waiting for the external reference "
-                        f"bundle requested under {session.reference_root!s}.",
-                    )
-                )
+                evidence = qualify_physical_pes(session, bundle)
             elif component == COMPONENT_RELAXATION:
-                evidence = (
-                    qualify_relaxation(session, bundle)
-                    if bundle is not None
-                    else _waiting_evidence(
-                        session,
-                        component,
-                        "Relaxation qualification is waiting for matched external "
-                        f"reference relaxations requested under {session.reference_root!s}.",
-                    )
-                )
+                evidence = qualify_relaxation(session, bundle)
             elif component == COMPONENT_DYNAMICS:
-                evidence = (
-                    qualify_dynamics(session, bundle)
-                    if bundle is not None
-                    else _waiting_evidence(
-                        session,
-                        component,
-                        "Dynamics qualification is waiting for authenticated reference-"
-                        f"relaxed geometries requested under {session.reference_root!s}.",
-                    )
-                )
+                evidence = qualify_dynamics(session, bundle)
             elif component == COMPONENT_CALIBRATION:
                 evidence = qualify_calibration(session)
             else:  # pragma: no cover - enabled_components filters the vocabulary

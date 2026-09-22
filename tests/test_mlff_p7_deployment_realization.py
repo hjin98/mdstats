@@ -371,3 +371,29 @@ def test_a_receipt_advance_cannot_switch_a_frozen_invocation(session_bundle):
     finally:
         session._deployment_cache.clear()
         session._frozen_realization_set = None
+
+
+def test_waiting_evidence_deploys_nothing(session_bundle):
+    """Reporting that a component cannot run yet is not an execution.
+
+    A deployment-dependent component waiting for an external reference
+    consumes no deployed bytes, so resolving - and therefore building - the
+    invocation's realization set in order to describe that state would make
+    an observation-shaped answer a side effect.
+    """
+
+    from mdstats.training_data.qualification.components import COMPONENT_DYNAMICS
+
+    _config, _paths, _store, session, _harness = session_bundle
+    session._deployment_cache.clear()
+    session._frozen_realization_set = None
+    waiting_digest = session.component_input_digest(
+        COMPONENT_DYNAMICS, None, bind_deployment_realization=False
+    )
+    assert session._frozen_realization_set is None, "waiting froze a realization set"
+
+    executing_digest = session.component_input_digest(COMPONENT_DYNAMICS, None)
+    assert session._frozen_realization_set is not None
+    # Executing identity binds the representation; waiting identity cannot,
+    # because there is nothing it ran against.
+    assert executing_digest != waiting_digest
