@@ -106,7 +106,6 @@ from .runtime_capability import (
 from .resource_scope import resource_scope_digest, resource_scope_payload
 from .spec import enabled_components, resolve_qualification_spec_identity
 from .store import (
-    _atomic_write_json,
     QualificationEvidenceStore,
     POINTER_LOCKED_ACTIVATION,
     POINTER_QUALIFICATION_PLAN,
