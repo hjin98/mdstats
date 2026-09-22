@@ -4,11 +4,11 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reopened
 created_date: 2026-09-21
-revision: 24
+revision: 25
 reviewed_date: 2026-09-22
-workplan_review_status: workplan-review-pass-reopened-implementation-no-pass
-workplan_review_basis: ec1df80d80fe6faa8bdc597addbc60f8adbf5853
-implementation_review_candidate: c9b4a713511329988d26311c8b6bb5ef79f0bed1
+workplan_review_status: implementation-review-no-pass-reopened-2
+workplan_review_basis: 7a440afdc7d2c4a38910bab3c16d3856ff1522a9
+implementation_review_candidate: bd8ecf447a0209a22101c1d458f7e164c03d2d45
 implementation_review_domain: D4
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
@@ -23,7 +23,9 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 **IMPLEMENTATION REVIEW NO-PASS / REOPENED FOR D4 REPAIR. Revision-22 D3 remains coherent and frozen; no Serious Challenge is active.**
 
-**REVISION-24 WORKPLAN REVIEW PASS.** Exhaustive re-review of the reopened repair contract closes the remaining plan-level ambiguity at the authenticated-anchor/private-scratch boundary and at first-reveal activation-pointer recovery. The implementation itself remains NO-PASS until the complete Revision-23 + Revision-24 D4 repair contract and assembled-candidate evidence pass.
+**REVISION-25 IMPLEMENTATION REVIEW NO-PASS.** Candidate `bd8ecf447a0209a22101c1d458f7e164c03d2d45` materially closes the original late-P5 replay, P7 descriptor-read/execution staging, exact frozen-realization, and co-fenced first-reveal mechanics, but genuine D4 blockers remain at the live configuration-binding fence, durability-recovery seam, private-scratch retirement boundary, MH-1 real provider seam, and executable acceptance evidence. Revision-22 D3 remains coherent; no Serious Challenge is active.
+
+Revision 24 remains the accepted reopened repair architecture. Revision 25 is a narrow mandatory implementation-repair delta; it does not authorize redesign.
 
 Independent Review of assembled candidate `c9b4a713511329988d26311c8b6bb5ef79f0bed1` found blocking D4 violations at the publication-currentness, durability/trust, P7 realization/execution, qualification-binding fence, and MH-1 lightweight-evidence boundaries. The implementation must repair the existing owners directly; no new selection rule, currentness database, publication registry, deployment registry, scheduler, trainer, wrapper hierarchy, or cleanup authority is authorized.
 
@@ -1782,6 +1784,9 @@ NO-PASS if any remains true:
 86. A first locked reveal appends irreversible history under the required fence but publishes/repairs its current activation pointer later outside the same canonical binding + exact P5-parent CAS, allowing a stale activation to become current after authorization drift.
 87. A frozen P7 realization set records only a digest while later execution can re-resolve a mutable receipt/build path and consume different bytes under that digest.
 88. Real-MH1 evidence is claimed from raw-foundation or generic-tiny-model serialization without exercising the current MH-1 post-selection current-format selected-checkpoint provider seam when real bytes are available, or without accurately reporting their unavailability.
+89. A terminal/release/first-reveal current-binding fence resolves qualification specification or other binding-relevant configuration from the session's stale in-memory `context.cfg` instead of the authoritative current normalized `campaign.toml`, so a configuration edit made after session admission can publish under an obsolete binding.
+90. A directory entry or mutable deployment receipt whose required parent-directory fsync previously failed can be accepted on a later retry merely because the pathname/bytes still exist, without a later successful durability fence before authoritative pointer/component publication.
+91. Invocation-private P7 build/execution scratch is recursively deleted by pathname after its name can have been replaced, transferring this invocation's cleanup authority to a same-name foreign directory rather than retiring only the exact directory it created.
 
 ## 25. D3 reopen triggers
 
@@ -1807,18 +1812,18 @@ Implementation is complete only when the assembled candidate proves all of the f
 3. One publication-set lock plus one atomic CampaignStore product-pointer transaction makes decision/model/reclosure visibility crash-consistent and restart-safe, with the exact current P5 scientific parent graph replayed under the common generation barrier immediately before commit and required to reproduce the decision being published.
 4. Legacy completed campaigns reclose with zero TRAIN2/EVAL2 and independently reuse a still-valid model publication or still-current predecessor reclosure when only the other descendant is stale; serialized-loader/runtime drift is resolved by current-loader equivalence proof or representation-only successor publication, never retraining.
 5. Public lifecycle/status reports COMPLETE only after decision + completion + authenticated model publication + current predecessor reclosure for every selected size, from one coherent owner snapshot that also captures CV/final-plan and assessment-position parents; each required final-seed parent is current only at the exact canonical locator key derived from its immutable run evidence.
-6. P7 admission starts from one coherent captured **complete P5 parent graph** (including final plan/CV/assessment positions); P7 keeps checkpoint reconstruction as scientific reference, consumes descriptor-authenticated P5 model bytes only for deployment, freezes the exact ordered artifact locator/SHA/deployment/realization tuple per member for each consequential invocation, never follows a newer receipt after freeze, makes every deployment-dependent component and terminal/release provenance agree on that same set without making mutable scratch exposure-time authority, versions the deployment-source identity, invalidates only deployment-dependent evidence for representation changes, and re-establishes both the exact canonical qualification binding **inside the actual publication critical section** and captured P5 parent-locator set before CAS-fencing terminal/release publication.
+6. P7 admission starts from one coherent captured **complete P5 parent graph** (including final plan/CV/assessment positions); P7 keeps checkpoint reconstruction as scientific reference, consumes descriptor-authenticated P5 model bytes only for deployment, freezes the exact ordered artifact locator/SHA/deployment/realization tuple per member for each consequential invocation, never follows a newer receipt after freeze, makes every deployment-dependent component and terminal/release provenance agree on that same set without making mutable scratch exposure-time authority, versions the deployment-source identity, invalidates only deployment-dependent evidence for representation changes, and re-establishes both the exact canonical qualification binding **inside the actual publication critical section from the authoritative current normalized campaign configuration, not a session-frozen mapping**, and captured P5 parent-locator set before CAS-fencing terminal/release publication.
 7. `qualification status` and general lifecycle share one observational P7 currentness owner for current executable/predecessor/model-representation dependencies touched by this cycle.
 8. One-shot locked disclosure is never reopened; the cohort/reveal identity remains representation-independent while the immutable activation record preserves the exact prerequisite evidence that authorized first reveal; representation-only repair preserves current predecessor reclosure/attempt identity when applicable; historical older-executable P7 evidence remains historical.
 
 8a. A first locked reveal re-establishes the exact current qualification binding and captured CV/final-plan/final-seed assessment parents, and is authorized under a short P5/P7/writer critical section that proves its immutable prerequisite evidence still corresponds to the exact current P5 model publication; reveal-history append and activation-pointer publication both occur within that authorization window. Crash recovery after history-but-before-pointer never re-reveals and repairs the pointer only under the same binding/P5 fences. The activation records the exact prerequisite evidence digests, including any realization identity those evidence records exercised. Terminal `release_qualified` exposure requires the matching release index and never depends on retained attempt scratch.
-9. P5/P7 disk admission, authenticated-anchor/no-follow creation/authentication, create-exclusive owner-private temp/scratch semantics, descriptor-relative mutable-locator replacement, full directory-entry + file fsync/no-clobber durability, resource retirement and reconciled P5/models-root storage ownership remain within existing owners; no trust helper self-creates an anchor through an unchecked pathname walk, and the accepted global TRAIN scheduler is unchanged.
+9. P5/P7 disk admission, authenticated-anchor/no-follow creation/authentication, create-exclusive owner-private temp/scratch semantics, descriptor-relative mutable-locator replacement, full directory-entry + file fsync/no-clobber durability, **retry-time durability reclosure after any prior failed directory fsync**, owner-identity-safe private-scratch retirement, resource retirement and reconciled P5/models-root storage ownership remain within existing owners; no trust helper self-creates an anchor through an unchecked pathname walk, and the accepted global TRAIN scheduler is unchanged.
 10. `train-production` directly prints authoritative usable model paths/SHA/target head, and current documentation consistently distinguishes checkpoint, P5 full model and P7 deployment artifact.
 11. MPA-0 affected regression and bounded real-owner selected-checkpoint publication pass; MH-1 passes the lightweight source/head/current post-selection selected-checkpoint-provider/publication checks (or real-byte unavailability is explicitly recorded without misclaiming a real pass), while long campaign/GPU/MD qualification remains deferred.
 
 Any failed item above is an implementation NO-PASS. Local helper names, exact private temp names and equivalent no-clobber primitives remain D4 choices.
 
-> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. For the reopened implementation, Sections 0-26 **plus Sections 26A-26B** are normative. Section 26A is the mandatory D4 repair delta over the still-binding Revision-22 architecture as refined by Revision 24; Section 26B records the exhaustive reopened-plan convergence review. If older wording conflicts with a Revision-24 refinement, the Revision-24 wording controls. Earlier review-history wording is rationale/evidence only.
+> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. For the reopened implementation, Sections 0-26 **plus Sections 26A-26C** are normative. Section 26A is the original mandatory D4 repair delta over the still-binding Revision-22 architecture as refined by Revision 24; Section 26B records the exhaustive reopened-plan convergence review; Section 26C is the mandatory Revision-25 implementation repair delta. Revision-25 wording controls where it narrows or strengthens the repair after observing candidate `bd8ecf447a0209a22101c1d458f7e164c03d2d45`. Earlier review-history wording is rationale/evidence only.
 
 
 
@@ -2132,6 +2137,205 @@ Revision-24 independently re-read the reopened plan against:
 **PASS AS REOPENED REPAIR WORKPLAN.** The plan is now implementer-ready and has no known remaining D3/D4 specification gap within the bounded scope.
 
 This does **not** pass the implementation. Candidate `c9b4a713511329988d26311c8b6bb5ef79f0bed1` remains NO-PASS until IR23-B1..B6, IR24-B7..B8 and IR23-E1 are satisfied on one assembled repair candidate. Long production MH-1/GPU/MD qualification remains intentionally deferred exactly as stated in Sections 15-16.
+
+## 26C. Revision-25 implementation Review reopen — mandatory residual D4 repair
+
+### Review basis and disposition
+
+Reviewed assembled repair candidate:
+
+```text
+bd8ecf447a0209a22101c1d458f7e164c03d2d45
+```
+
+Implementation handoff / Revision-24 plan head:
+
+```text
+7a440afdc7d2c4a38910bab3c16d3856ff1522a9
+```
+
+**NO-PASS. No Serious Challenge.** Revision-22 D3 remains coherent and the repair remains D4-local.
+
+The candidate materially improves the implementation and provisionally closes the code shape of:
+
+- IR23-B1: exact P5 parent replay now occurs under the generation publication barrier before the product pointer-set commit;
+- IR23-B3: receipt/cache reads are descriptor-relative and real deployed execution stages authenticated ML-IAP bytes;
+- IR23-B4: the invocation freezes exact per-member deployment identity, realization, locator and SHA and refuses missing/corrupt frozen bytes rather than following a newer receipt;
+- IR24-B8: first reveal history and locked-activation pointer publication now share one P5 -> P7 -> writer-exclusion authorization window.
+
+Those closures still require the assembled executable evidence in IR25-E1. The blockers below remain genuine implementation defects or missing required evidence.
+
+### IR25-B1 — the "current" qualification binding still reads session-frozen configuration — BLOCKING
+
+Observed candidate:
+
+- `resolve_canonical_qualification_binding(...)` is correctly shared by session admission and the late fences;
+- `require_current_qualification_binding(session)`, however, invokes it with `context.cfg`;
+- `context.cfg` is the mapping parsed when the qualification command/session was constructed;
+- the canonical CLI configuration owner reads and normalizes `campaign.toml` through the existing configuration loader at command entry, but an external edit to `campaign.toml` during a long qualification invocation does not mutate the already-held mapping.
+
+Therefore the actual terminal/release/first-reveal fence can still accept:
+
+```text
+session admitted under specification S1
+    -> campaign.toml edited to S2
+    -> late fence re-resolves "current" specification from context.cfg == S1
+    -> binding equality passes
+    -> terminal/release pointer or first reveal can publish under obsolete S1
+```
+
+This is the exact configuration/specification drift case required by D3-17B/D3-17D, blocking conditions 60/63/89, and completion criteria 6/8a.
+
+Required repair:
+
+1. Keep one canonical binding constructor. Do not add a second binding algorithm.
+2. Factor/reuse the existing campaign configuration parsing + normalization owner so the late fence can read the **authoritative current `context.paths.config` / campaign TOML with no layout creation or other side effect**.
+3. At session admission, the constructor may consume the command's already-current normalized config. At terminal/release/first-reveal fencing, reload the authoritative config at the latest safe point inside the existing P5/P7 publication critical section and derive the same binding-relevant identities from that current normalized mapping.
+4. Re-resolve at least the qualification specification and every configuration-owned input that participates in the existing binding/resource/environment identity. Do not compare the entire TOML indiscriminately: configuration fields outside the binding's accepted semantics must not spuriously stale P7.
+5. If the pure current binding differs from `session.binding`, abort before terminal/release pointer publication or irreversible first reveal.
+6. Do not build a fresh `QualificationSession`, publish a reference request, construct providers/models, or call a consequential `paths.ensure()` from this fence.
+
+Required falsification:
+
+- construct a session under S1, edit a binding-relevant qualification setting in the actual campaign TOML after admission and immediately before terminal pointer publication; no terminal pointer moves;
+- repeat at release publication;
+- repeat before first reveal; no reveal history or activation pointer is created;
+- edit a configuration field intentionally outside P7 binding semantics and prove it does not create a false binding change.
+
+### IR25-B2 — durability failure can be "recovered" by existence without a later successful durability fence — BLOCKING
+
+The candidate correctly propagates required fsync errors, but recovery after such an error is incomplete.
+
+Two concrete counterexamples remain.
+
+**A. Deterministic directory-chain retry**
+
+`_open_or_create_directory(...)` fsyncs the containing directory only in the branch where this invocation successfully executes `mkdir`. If:
+
+```text
+mkdir deterministic publication/deployment component succeeds
+    -> required fsync(containing_directory) fails
+    -> invocation aborts, directory entry remains visible
+    -> retry opens the existing directory
+    -> no containing-directory fsync occurs
+    -> product pointer/component evidence later publishes
+```
+
+the retry has never established the durability proof that the previous attempt failed to establish.
+
+**B. Deployment receipt replace-before-fsync retry**
+
+`_advance_deployment_receipt(...)` may successfully `os.replace` the stable receipt and then fail the required deployment-root directory fsync. The invocation correctly raises, but the new canonical receipt remains visible. A later invocation can authenticate/reuse that receipt and artifact without first successfully fsyncing the deployment root, then publish dependent component evidence.
+
+The rule is not "an fsync error was once raised"; it is "every authoritative descendant is admitted only after the required durability transition has been successfully established."
+
+Required repair:
+
+1. Reuse the existing trust/publication owner; do not add a durability journal or registry.
+2. For write-side `create=True` directory-chain assurance, a successfully opened deterministic component must leave its containing authenticated parent successfully fsynced before the create/ensure operation is considered durability-closed, whether the component was newly created in this invocation or is residue from a prior interrupted attempt.
+3. Keep read-only authentication paths free of gratuitous write/durability work; this retry reclosure belongs only to consequential publication/build paths.
+4. Before accepting a current deployment receipt for consequential reuse after a prior/unknown interruption, successfully fsync the already-authenticated deployment-root directory (or perform an engineering-equivalent owner-local durability reclosure) before any component evidence may depend on that receipt.
+5. A failure of this retry-time durability reclosure aborts again with no product pointer/component evidence change.
+6. Projection-only `publication.json` retains its existing non-authoritative post-commit repair semantics.
+
+Required falsification:
+
+- inject failure on parent fsync immediately after a deterministic P5 directory `mkdir`; retry without deleting that directory; the retry may commit only after a later successful containing-directory fsync;
+- repeat for the P7 deployment-identity directory;
+- inject failure after deployment-receipt `os.replace` but before root-directory fsync; on retry, prove no deployment-dependent evidence is published until a successful root-directory durability fence occurs;
+- inject that retry-time fsync failure too and prove prior current product/evidence remains intact.
+
+### IR25-B3 — private P7 scratch retirement still transfers cleanup authority by pathname — BLOCKING
+
+Revision 24 prohibited unowned recursive scratch deletion. The candidate fixed predictable scratch naming, but both execution staging and deployment build cleanup still end with pathname-based:
+
+```python
+shutil.rmtree(scratch, ignore_errors=True)
+```
+
+The scratch name was originally created by this invocation, but the destructive call does not prove that the pathname still names the same created directory. A same-name replacement installed before `finally` inherits deletion authority.
+
+Required repair:
+
+1. Do not add another recursive-cleanup implementation.
+2. Remove the local pathname `shutil.rmtree` authority from the touched P7 owner.
+3. Prefer routing retirement through the repository's existing descriptor-relative/certified removal mechanics while binding the exact invocation-created directory identity under its authenticated parent.
+4. If immediate safe recursive retirement is not available without creating duplicate machinery, leave the private directory as inert attempt-owned residue and let the already-authorized P7/released-attempt storage owner reclaim it later. Safety takes precedence over eager cleanup.
+5. Cleanup must never delete a replacement symlink, directory, mount or other foreign node under the old scratch name.
+
+Required falsification:
+
+- after the invocation creates execution scratch, replace its parent entry with a foreign directory containing a sentinel before cleanup; the sentinel survives;
+- repeat for deployment-build scratch;
+- normal unchanged owner-private scratch still retires through the accepted owner or remains conservatively retained for later authorized cleanup;
+- no second recursive remover is introduced.
+
+### IR25-B4 — real MH-1 post-selection selected-checkpoint provider seam remains unproved — BLOCKING EVIDENCE GAP
+
+IR23-B6 remains open.
+
+The implementation commit did not change the MH-1 integration test surface. Current real-MH1 coverage still:
+
+- inspects the raw foundation model for `mace_mh_1 / omat_pbe`;
+- loads the raw `mace-mh-1.model`, wraps it in a trivial provider object, and sends that raw foundation model through the publication serializer;
+- proves canonical `[pt_head, target_head]` publication only on a generic tiny-MACE fixture.
+
+It still does **not** drive the real/current MH-1 path through:
+
+```text
+MH-1 foundation / omat_pbe
+    -> current post-selection materialization
+    -> canonical [pt_head, target_head] realization
+    -> current-format bounded selected checkpoint
+    -> authenticate_post_selection_provider(..., allow_forward_override=False)
+    -> provider-returned portable model
+    -> P5 save/reload
+```
+
+Required repair/evidence remains exactly IR23-B6/Revision-24:
+
+1. Reuse the real current foundation/materialization/checkpoint/provider owners; no MH-1 production special case.
+2. When real MH-1 bytes/runtime are available, cross the exact seam above and assert canonical head order/index 1, provider state digest, execution-architecture digest, learned dtype and publication reload equivalence.
+3. When real bytes/runtime are unavailable, report that evidence unavailable honestly and still execute a bounded structural current-owner path that uses the actual MH-1 family configuration/materialization/checkpoint/provider machinery rather than substituting a generic tiny-model serializer claim.
+4. Long TRAIN/CV/production/GPU/MD qualification remains deferred.
+
+### IR25-E1 — assembled-candidate acceptance is still absent and required falsifications are not encoded — BLOCKING FOR CLOSEOUT
+
+For exact candidate `bd8ecf447a0209a22101c1d458f7e164c03d2d45`:
+
+- GitHub exposes no combined status checks for the commit;
+- GitHub exposes no Actions workflow run for the exact head;
+- the implementation commit modifies four production modules and **no tests**;
+- therefore the Revision-24 falsification requirements added after the prior candidate are not demonstrated merely by pre-existing tests.
+
+Before the next Review, add/repair executable acceptance at the real owners for at least:
+
+1. final-seed assessment, final-plan and CV-parent advance after expensive P5 materialization but before generation-barrier commit;
+2. P5/P7 fsync-failure retry where the deterministic directory already exists;
+3. receipt `replace` success + directory-fsync failure + retry;
+4. exact frozen R1 deletion/corruption followed by receipt/build advancement to R2 — the same invocation must refuse R2;
+5. actual campaign-TOML specification drift after session admission at terminal, release and first-reveal fences;
+6. crash after reveal-history append but before activation-pointer publication, with both unchanged-parent idempotent repair and drifted-parent refusal/no-second-reveal;
+7. post-creation execution/build scratch replacement before cleanup;
+8. the MH-1 selected-checkpoint provider seam in IR25-B4.
+
+Then execute and report the exact focused suites already listed in IR23-E1 plus the complete materially affected regression, collection/compile/static checks and documentation build required by Sections 23 and 26A. Record exact pass/fail/skip counts and reasons.
+
+The deliberately deferred long MH-1/GPU/MD campaign is not part of this evidence gate.
+
+### Revision-25 acceptance / stop conditions
+
+The next candidate is Review-ready only when:
+
+1. IR25-B1 current binding uses the authoritative current normalized campaign configuration at the actual terminal/release/reveal fence;
+2. IR25-B2 proves durability again on retries after a prior failed directory/receipt fsync before any authoritative descendant is published;
+3. IR25-B3 removes pathname-recursive private scratch cleanup authority or routes it through the existing exact-owner removal boundary;
+4. IR25-B4 crosses the current MH-1 selected-checkpoint provider seam when real bytes/runtime permit, with truthful unavailability otherwise;
+5. IR25-E1's focused and affected executable evidence is present for one exact assembled candidate;
+6. the provisionally repaired IR23-B1/B3/B4 and IR24-B8 behaviors remain intact;
+7. no second binding algorithm, durability registry, cleanup recursion, deployment registry, scheduler, trainer or family-specific production path is introduced.
+
+If implementation evidence instead demonstrates one of Section 25's D3 reopen triggers, stop and raise a Serious Challenge. Nothing observed in candidate `bd8ecf447a0209a22101c1d458f7e164c03d2d45` currently does so.
 
 ## 27. Current-implementation review closure (Revision 2)
 
