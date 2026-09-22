@@ -565,6 +565,14 @@ def qualify_dynamics(
             "protected_topology_source": "authenticated_reference_relaxed_bond_graph",
         },
         payload={
+            # Dynamics executes the deployed artifact, so its evidence records
+            # the exact serialized P5 representation and the exact deployed
+            # realization set it ran against.  A terminal reduction refuses to
+            # combine this with parity evidence from a different set.
+            "model_artifact_set_digest": session.model_artifact_set_digest,
+            "deployment_realization_set_digest": (
+                session.freeze_deployment_realization_set()
+            ),
             "reference_bundle_digest": bundle.content_digest,
             "members": member_results,
         },

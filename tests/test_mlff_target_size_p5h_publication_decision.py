@@ -249,8 +249,13 @@ def test_p5h_missing_representative_evidence_fails_closed(tmp_path: Path):
         context.evidence_store.object_path(
             evidence.monitor_metric_record_digest
         ).unlink()
-        with pytest.raises(PostSelectionError, match="not current evidence"):
+        # Which owner notices first depends on the run's candidate set, and both
+        # are the same fail-closed answer.  What the claim needs is that the
+        # decision refuses and names the exact unreadable record rather than
+        # re-deriving it from the run root.
+        with pytest.raises(PostSelectionError) as failure:
             decide_final_production_publication(context, completion)
+        assert evidence.representative_record_digest[:12] in str(failure.value)
     finally:
         store.close()
 

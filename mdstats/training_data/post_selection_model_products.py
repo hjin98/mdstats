@@ -238,7 +238,12 @@ def realize_portable_publication_model(provider: Any, *, target_head_name: str) 
             "never published."
         )
     heads = tuple(str(value) for value in (getattr(model, "heads", ()) or ()))
-    if heads and str(target_head_name) not in heads:
+    # A multihead product must actually expose the published target head: an
+    # artifact exported from the replay or foundation head is a different
+    # product.  A single-head model has no head to choose between, which is the
+    # same rule the provider owner applies when it decides whether to pin a
+    # calculator head.
+    if len(heads) > 1 and str(target_head_name) not in heads:
         raise ModelPublicationError(
             f"The published target head {target_head_name!r} is absent from the "
             f"reconstructed model, whose heads are {list(heads)}."
@@ -380,7 +385,7 @@ def _verify_reloaded_product(
                 f"The reloaded product's head inventory {list(heads)} differs from the "
                 f"serialized model's {list(realization.head_inventory)}."
             )
-        if heads and str(target_head_name) not in heads:
+        if len(heads) > 1 and str(target_head_name) not in heads:
             raise ModelPublicationError(
                 "The reloaded product does not expose the published target head."
             )
@@ -749,7 +754,8 @@ def prove_existing_representation_reusable(
                 name for name, (left, right) in representation.items() if left != right
             )
             if bad or (
-                reloaded_heads and str(decision.target_head_name) not in reloaded_heads
+                len(reloaded_heads) > 1
+                and str(decision.target_head_name) not in reloaded_heads
             ):
                 raise ModelRepresentationIncompatible(
                     f"The existing published model for {member.member_id} loads but "
