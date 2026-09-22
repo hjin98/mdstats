@@ -1163,8 +1163,41 @@ def post_selection_views(
             continue
         if decision is None:
             continue
+        model_publication = None
+        try:
+            from ..post_selection_model_products import (
+                resolve_current_final_production_model_publication,
+            )
+
+            model_publication = resolve_current_final_production_model_publication(
+                context, decision
+            )
+        except Exception as exc:
+            # Unresolved product representation means retention, never an
+            # inference that existing model files are disposable.
+            unresolved.append(
+                (
+                    OWNER_P5,
+                    f"current published model representation for N={n_selected} "
+                    f"could not be authenticated: {exc}",
+                )
+            )
+        if model_publication is None:
+            unresolved.append(
+                (
+                    OWNER_P5,
+                    f"N={n_selected} has a current final-production decision but no "
+                    "resolvable published model representation; existing model files "
+                    "are retained until `train-production` recloses the product",
+                )
+            )
         _publication_views(
-            views, paths, decision, current_generation, publication_id
+            views,
+            paths,
+            decision,
+            current_generation,
+            publication_id,
+            model_publication=model_publication,
         )
     return views, tuple(unresolved)
 
@@ -1175,8 +1208,17 @@ def _publication_views(
     decision: Any,
     current_generation: int,
     publication_id: str,
+    *,
+    model_publication: Any = None,
 ) -> None:
-    """Append one selected size's current publication artifacts."""
+    """Append one selected size's current publication artifacts.
+
+    Two representations, two artifact kinds: the frozen representative
+    checkpoints are the scientific/restart lineage, and the published full
+    ``.model`` files are the usable product.  Both are exact P5-owned current
+    artifacts; the models root above them stays a protected container that owns
+    neither.
+    """
     from ..post_selection_store import post_selection_root
 
     member_ids: list[str] = []
@@ -1209,6 +1251,33 @@ def _publication_views(
                 requires=(f"p5:objects:g{current_generation}",),
             )
         )
+    if model_publication is not None:
+        models_root = _absolute(paths.models)
+        for member in model_publication.members:
+            artifact_id = (
+                f"p5:published_model:{member.member_id}:{member.model_sha256}"
+            )
+            member_ids.append(artifact_id)
+            views.append(
+                OwnerArtifactView(
+                    owner=OWNER_P5,
+                    artifact_id=artifact_id,
+                    path=models_root / member.model_relative_path,
+                    artifact_class=ArtifactClass.DURABLE_SCIENTIFIC_EVIDENCE,
+                    detail=(
+                        "current published full MACE model of a production member; "
+                        "the selected representative checkpoint materialized as the "
+                        "usable product, re-authenticated by SHA-256 at this exact "
+                        "immutable path"
+                    ),
+                    generation=current_generation,
+                    current=True,
+                    restart_required=True,
+                    immutable=True,
+                    hot_path_required=True,
+                    requires=(f"p5:objects:g{current_generation}",),
+                )
+            )
     reported = {view.artifact_id for view in views}
     requires = [item for item in member_ids]
     for candidate in (
@@ -1233,7 +1302,9 @@ def _publication_views(
             container_only=True,
             coverage=SubtreeCoverage.CONTAINER,
             # The publication's own identity: a same-generation republication
-            # changes this even when every path and byte stays the same.
+            # changes this even when every path and byte stays the same, and a
+            # same-decision *representation* advance changes it too, so a stale
+            # storage plan built before a model successor is never reused.
             state_identity="|".join(
                 str(value)
                 for value in (
@@ -1241,6 +1312,16 @@ def _publication_views(
                     decision.member_digest,
                     decision.completion_digest,
                     decision.final_plan_digest,
+                    (
+                        "no-model-representation"
+                        if model_publication is None
+                        else model_publication.content_digest
+                    ),
+                    (
+                        "no-model-artifact-set"
+                        if model_publication is None
+                        else model_publication.model_artifact_set_digest
+                    ),
                 )
             ),
             requires=tuple(requires),
@@ -1999,7 +2080,13 @@ def workspace_family_views(paths: Any, control_plane: StorageControlPlane) -> li
         _absolute(paths.models): (
             "campaign_store:models",
             ArtifactClass.DURABLE_SCIENTIFIC_EVIDENCE,
-            "current production model evidence",
+            # Deliberately a protected campaign *layout container*, not a
+            # product identity.  P5 is the semantic owner of the exact current
+            # published models and certifies them as its own child artifacts;
+            # this view grants no product currentness and no recursive deletion
+            # authority, and unexpected descendants stay conservatively retained.
+            "protected campaign model container; exact current production model "
+            "artifacts are owned and certified by P5",
         ),
         _absolute(paths.runs): (
             "campaign_store:runs",

@@ -955,8 +955,43 @@ def _qualification_step(
                 f"missing, unreadable, or does not reproduce its own identity "
                 f"({_short(record_digest)})",
             )
+        # The compact lifecycle path used to interpret a terminal record on its
+        # own, while `qualification status` applied extra checks.  Two public
+        # observers that can disagree about whether a campaign is released is a
+        # semantic duplication, not a performance optimization, so both now ask
+        # the same owner.  Generic lifecycle stays config-independent and simply
+        # omits the specification comparison.
+        from .qualification.observation import (
+            release_currentness_failure,
+            terminal_currentness_failure,
+        )
+        from .qualification.record import ReleaseEvidenceIndex
+
+        stale = terminal_currentness_failure(paths, binding, pointers, record, store)
+        if stale is not None:
+            return step(
+                LifecycleObservationState.WAITING,
+                f"the published terminal qualification record is historical: {stale}. "
+                "Rerun `qualification run` under the current product and executable",
+            )
         verdict = str(record.verdict.value) or "unknown"
         release = "release evidence published" if release_digest else "no release index"
+        if verdict == "release_qualified":
+            release_index = (
+                None
+                if release_digest is None
+                else _authenticated(
+                    store, release_digest, ReleaseEvidenceIndex.from_dict
+                )
+            )
+            release_failure = release_currentness_failure(record, release_index)
+            if release_failure is not None:
+                return step(
+                    LifecycleObservationState.WAITING,
+                    "the terminal record claims release qualification but "
+                    f"{release_failure}; rerun `qualification run` to repair the "
+                    "release exposure",
+                )
         # Only `rejected` and `release_qualified` are terminal verdicts.
         # `waiting_for_reference` and `incomplete` are truthful *nonterminal*
         # product states: qualification has run and has said, correctly, that it

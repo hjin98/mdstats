@@ -2426,12 +2426,39 @@ def resolve_current_qualification_plan(
     )
 
 
+def attempt_referenced_paths(session: QualificationSession) -> list[str]:
+    """Exactly what an active attempt still needs on disk.
+
+    Both representations, because the attempt genuinely consumes both: the
+    representative checkpoints feed the independent scientific reference
+    provider, and the P5 published models are the deployment source.  Naming
+    the model paths here makes storage-dependency reporting truthful; it does
+    not make representation part of ``QualificationInputBinding``, and the
+    current products remain independently protected by the P5/models-root
+    owners.
+    """
+
+    from ..post_selection_model_products import campaign_models_root
+
+    referenced = [
+        str(checkpoint_path_for_member(session.context, member))
+        for member in session.publication.members
+    ]
+    if session.model_publication is not None:
+        models_root = campaign_models_root(session.context)
+        referenced.extend(
+            str(models_root / member.model_relative_path)
+            for member in session.model_publication.members
+        )
+    return referenced
+
+
 def run_qualification(
     session: QualificationSession, campaign_store: Any, paths: Any
 ) -> tuple[ProductionQualificationRecord, tuple[QualificationComponentEvidence, ...]]:
     """Execute/resume nonlocked qualification and publish the current record."""
 
-    referenced = [str(checkpoint_path_for_member(session.context, member)) for member in session.publication.members]
+    referenced = attempt_referenced_paths(session)
     acquire_attempt_reference(
         paths,
         session.context.selected.binding,
@@ -2590,10 +2617,7 @@ def activate_locked_test(
     # The retention reference is acquired before any prerequisite work, so an
     # interruption inside the activation path cannot leave the exact artifacts
     # this attempt still needs reclaimable.
-    referenced = [
-        str(checkpoint_path_for_member(session.context, member))
-        for member in session.publication.members
-    ]
+    referenced = attempt_referenced_paths(session)
     acquire_attempt_reference(
         paths,
         session.context.selected.binding,
