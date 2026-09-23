@@ -2,279 +2,451 @@
 
 *A concise method paper for a physics audience*
 
-**Central idea.** Molecular-dynamics trajectories contain many correlated and physically redundant frames. `mdstats` therefore does not choose training configurations by uniform subsampling. It describes the frozen training population through several complementary physical feature spaces and constructs one deterministic ordering whose prefixes progressively cover those spaces. A configuration is useful when it represents a region that is not yet adequately represented.
+**Central idea.** The `mdstats` MLFF workflow does not treat stored molecular-dynamics (MD) frames as independent observations and does not choose training configurations by uniform subsampling. It first converts eligible trajectories into autocorrelation-aware **correlation units**, protects additional relations that would make a train/evaluation split leak information, constructs the exact target-training population, and only then builds one deterministic multi-view ordering whose prefixes progressively cover the physically relevant variation of that population.
 
-## 1. Purpose and notation
+## 1. End-to-end preparation of the target-training population
+
+The target-size experiment is downstream of several preparation steps. Conceptually,
+
+```text
+source trajectories + canonical labels
+        -> eligible canonical frames
+        -> autocorrelation-aware correlation units
+        -> protected-relation closure and outer evidence roles
+        -> neutral DEVELOPMENT population U_size
+        -> exact protected split U_size = P_train dot-union M3
+        -> multi-view feature reference on exact P_train
+        -> one complete order pi_train
+        -> nested training sets T_N = pi_train[:N].
+```
+
+This ordering matters scientifically. Evaluation, calibration, locked-test, and later cross-validation evidence are separated before target membership is constructed, so they cannot leak backward into the training-set ladder.
 
 Let
 
-[
-P_{mathrm{train}}={x_1,ldots,x_n}
-]
+\[
+U_{\mathrm{size}}=P_{\mathrm{train}}\mathbin{\dot\cup}M_3
+\]
 
-be the complete population of configurations already assigned to target-model training by the upstream data split. This population is frozen before target-size model training begins. Held-out evaluation data, later cross-validation results, and outcomes of candidate model training do not influence membership selection.
+be the exact target-size development split. Here, \(M_3\) is the largest P3 model-selection reserve and \(P_{\mathrm{train}}\) is the sole domain from which target-training subsets are constructed. The target-size ladder is therefore not a resampling of the entire trajectory archive.
 
-The size ladder is not produced by running a separate selector for every requested size. Instead, `mdstats` constructs one deterministic permutation
+## 2. Why MD frames must first be grouped statistically
 
-[
-pi_{mathrm{train}}=igl(x_{(1)},x_{(2)},ldots,x_{(n)}igr),
-]
+Adjacent MD frames are serially correlated. If a trajectory is saved much more frequently than its slow physical degrees of freedom decorrelate, then many stored configurations describe essentially the same local state. Treating those frames as independent would cause densely sampled trajectory segments to dominate both data splitting and feature-space coverage.
 
-and defines the training set of size (N) as the prefix
+For a stationary scalar observable \(X_t\), the normalized autocorrelation is
 
-[
-T_N=pi_{mathrm{train}}[:N].
-]
+\[
+\rho(k)=
+\frac{\operatorname{Cov}(X_t,X_{t+k})}
+     {\operatorname{Var}(X_t)},
+\]
 
-Hence, for (N_a<N_b),
+and the integrated autocorrelation time is
 
-[
-T_{N_a}subset T_{N_b}.
-]
+\[
+\tau_{\mathrm{int}}
+=\frac{1}{2}+\sum_{k=1}^{k^\star}\rho(k).
+\]
 
-The learning-curve experiment is therefore nested: increasing (N) retains all earlier configurations and adds new ones chosen to improve representation of the available training population.
+The corresponding diagnostic effective number of samples is
 
-## 2. Why one geometric descriptor is not enough
+\[
+N_{\mathrm{eff}}
+=\min\!\left(N,\frac{N}{2\tau_{\mathrm{int}}}\right).
+\]
+
+For an uncorrelated sequence under this convention, \(\tau_{\mathrm{int}}=1/2\), so \(N_{\mathrm{eff}}=N\). A larger \(\tau_{\mathrm{int}}\) indicates increasing temporal redundancy. Importantly, this is a **diagnostic of serial correlation in the chosen observables**, not proof that all slow structural variables have become independent.
+
+### 2.1 How `mdstats` estimates the correlation time
+
+For a finite sequence \(x_0,\ldots,x_{N-1}\) with mean \(\bar x\), `mdstats` uses the unbiased finite-sequence autocovariance
+
+\[
+\widehat\gamma(k)=
+\frac{1}{N-k}
+\sum_{t=0}^{N-k-1}
+(x_t-\bar x)(x_{t+k}-\bar x),
+\]
+
+and
+
+\[
+\widehat\rho(k)=\frac{\widehat\gamma(k)}{\widehat\gamma(0)}.
+\]
+
+The noisy long-lag tail is truncated using Geyer's initial-positive-sequence rule: adjacent lag pairs are retained while
+
+\[
+\widehat\rho(2m-1)+\widehat\rho(2m)>0.
+\]
+
+If \(K_+\) is the retained lag set,
+
+\[
+\widehat\tau_{\mathrm{int}}
+=
+\max\!\left(
+\frac12,
+\frac12+\sum_{k\in K_+}\widehat\rho(k)
+\right).
+\]
+
+No autocorrelation is computed across a source gap, a continuation reset, or an excluded interval. Thus an apparently adjacent frame number does not create correlation evidence across a discontinuity in the physical trajectory record.
+
+### 2.2 From correlation time to a complete-frame block length
+
+For each source run and each contiguous eligible segment, the configured correlation observables are analyzed. Let \(j\) index observables and \(r\) index contiguous segments. The most conservative accepted time is
+
+\[
+\tau_{\max}=\max_{j,r}\widehat\tau_{j,r}.
+\]
+
+With correlation multiplier \(m_{\mathrm{corr}}>0\) and minimum block length \(L_{\min}\), the nominal correlation-aware block length is
+
+\[
+L_{\mathrm{corr}}
+=
+\max\!\left(1,\left\lceil m_{\mathrm{corr}}\tau_{\max}\right\rceil\right),
+\qquad
+L=\max(L_{\min},L_{\mathrm{corr}}).
+\]
+
+All lengths are in **stored-frame units**. If frames are written every \(\Delta t_{\mathrm{save}}\), a block of \(L\) frames corresponds approximately to \(L\Delta t_{\mathrm{save}}\) of trajectory time.
+
+For a contiguous eligible run of \(n>L\) frames, `mdstats` does not drop a remainder. Instead,
+
+\[
+B=\max\!\left(1,\left\lfloor\frac{n}{L}\right\rfloor\right)
+\]
+
+blocks are formed. Writing \(n=qB+r\), the first \(r\) blocks contain \(q+1\) frames and the remaining blocks contain \(q\). Every eligible frame is retained exactly once.
+
+> **Current default policy binding.** The current neutral implementation uses \(m_{\mathrm{corr}}=2\) and \(L_{\min}=32\) stored frames. Its default autocorrelation channels are energy per atom, force-component RMS, pressure, instantaneous temperature, and cell volume, when each channel is available for the run; if none of those channels is complete, cell volume is used as the fallback observable. These are current configurable policy/default bindings, not universal physical constants.
+
+### 2.3 What exactly is a correlation unit?
+
+The block plan is only the first step. The neutral data-preparation layer then enforces the current physical **condition identity**
+
+\[
+\kappa(x)=
+(\text{composition},\text{temperature condition},\text{strain class},
+\text{regime},\text{user labels}).
+\]
+
+A final unit cannot cross a condition boundary. Blocks are therefore split where this identity changes. Conversely, if a recognized protected event spans neighboring blocks, those blocks are merged so the entire event remains indivisible. A protected event that itself crosses a declared condition boundary is treated as inconsistent input rather than silently split.
+
+The resulting **correlation unit** is therefore an indivisible, contiguous, complete-frame interval tied to one source run and one condition, constructed from autocorrelation-aware block evidence and enlarged when necessary to preserve a protected event. Each eligible frame belongs to exactly one such unit.
+
+A correlation unit is **not automatically claimed to be an independent physical realization**. `mdstats` separately records the strongest available independence evidence: independent replicas, independent structural realizations, independent thermodynamic runs, purged temporal blocks, slow-state-not-decorrelated evidence, or insufficient-independence evidence. This distinction prevents a finite temporal spacing rule from being mistaken for proof of full phase-space decorrelation.
+
+## 3. Correlation units are not the same as protected components
+
+Correlation-unit membership is only one way that two frames can be scientifically unsafe to separate. Let the protected relation be the union
+
+\[
+R_{\mathrm{prot}}
+=R_{\mathrm{corr}}
+\cup R_{\mathrm{dup}}
+\cup R_{\mathrm{event}}
+\cup R_{\mathrm{replica}}
+\cup R_{\mathrm{realization}},
+\]
+
+where the terms represent, respectively,
+
+1. membership in the same correlation unit;
+2. exact-geometry duplication;
+3. membership in the same protected event window;
+4. condition-scoped replica lineage across distinct runs; and
+5. condition-scoped structural-realization lineage across distinct runs.
+
+The actual no-split relation is the transitive closure
+
+\[
+\sim_{\mathrm{prot}}
+=\operatorname{TC}(R_{\mathrm{prot}}).
+\]
+
+Thus, if frame \(a\) shares a correlation unit with \(b\), and \(b\) is an exact duplicate of \(c\), then \(a,b,c\) belong to one indivisible protected component even if no direct \(a\)-\(c\) relation was recorded.
+
+> **Two different objects are used later.** The **correlation unit** is the autocorrelation-aware temporal/statistical block and is the unit balanced by the coverage measure. The larger **protected component** is the connected component of all accepted no-split relations and is the object that cannot be divided across incompatible evidence roles or across the \(P_{\mathrm{train}}/M_3\) boundary.
+
+## 4. From protected units to the exact `P_train` population
+
+### 4.1 Outer evidence roles are assigned before target selection
+
+The neutral statistical substrate assigns complete units to protected outer roles rather than splitting individual frames. These roles include development, outer monitor, uncertainty calibration, locked interpolation test, purge, and exclusion.
+
+The current construction deterministically places monitor/calibration/locked anchors where the available conditions support them, purges neighboring same-run units according to the role policy, and leaves the remaining admissible units as **DEVELOPMENT** evidence. This ensures that outer evidence is separated before target-size membership is selected.
+
+Only exact eligible DEVELOPMENT frames with canonical training labels enter
+
+\[
+U_{\mathrm{size}}.
+\]
+
+The target-training selector never draws from the outer monitor, calibration, locked-test, purged, or excluded populations.
+
+### 4.2 Exact protected split into `P_train` and `M3`
+
+The protected relation is projected onto \(U_{\mathrm{size}}\), and its connected components are computed. Those components are indivisible allocation units.
+
+`mdstats` must construct an evaluation reserve containing **exactly** \(M_3\) frames. If protected component \(j\) contains \(w_j\) frames, the allocation is an exact 0/1 subset-sum problem. With reachable cardinalities \(R_j\),
+
+\[
+R_0=\{0\},
+\qquad
+R_j
+=
+R_{j-1}
+\cup
+\{r+w_j:r\in R_{j-1},\ r+w_j\le M_3\}.
+\]
+
+Components are processed in a deterministic order that balances component size and represented condition identity; the accepted first-predecessor rule fixes one exact membership when several solutions exist. If exact \(M_3\) cardinality is impossible without splitting a protected component, preparation fails rather than weakening the protection rule.
+
+The selected components form \(M_3\); their complement forms
+
+\[
+P_{\mathrm{train}}=U_{\mathrm{size}}\setminus M_3.
+\]
+
+This is the frozen target-order domain. From this point onward, all selector-specific feature fitting, scaling, neighborhoods, coverage, and ordering are constructed on exact \(P_{\mathrm{train}}\) only.
+
+## 5. One nested training-set ladder
+
+Let
+
+\[
+P_{\mathrm{train}}=\{x_1,\ldots,x_n\}.
+\]
+
+`mdstats` constructs one deterministic permutation
+
+\[
+\pi_{\mathrm{train}}
+=
+\bigl(x_{(1)},x_{(2)},\ldots,x_{(n)}\bigr),
+\]
+
+and defines the training set of size \(N\) as
+
+\[
+T_N=\pi_{\mathrm{train}}[:N].
+\]
+
+Therefore,
+
+\[
+N_a<N_b
+\quad\Longrightarrow\quad
+T_{N_a}\subset T_{N_b}.
+\]
+
+The learning-curve experiment is nested: increasing \(N\) retains all earlier configurations and adds new ones chosen to improve physical representation. No independent per-\(N\) selector is run.
+
+## 6. Multi-view construction of the physical feature space
 
 For atomistic data there is no unique scalar notion of "distance between configurations." Two structures can be similar in pair distances but different in angular order; they can have similar geometry but very different forces, pressure, or strain. A single concatenated descriptor can also mix quantities with unrelated physical meanings and scales.
 
-`mdstats` therefore uses a **multi-view representation**. For each required feature family (m), a configuration (x) is mapped to its own feature vector
+`mdstats` therefore uses a **multi-view representation**. For each required feature family \(m\), a configuration \(x\) is mapped to its own feature vector
 
-[
-mathbf f_m(x)=igl(f_{m1}(x),ldots,f_{md_m}(x)igr).
-]
-
-Each family is interpreted independently.
+\[
+\mathbf f_m(x)
+=
+\bigl(f_{m1}(x),\ldots,f_{md_m}(x)\bigr).
+\]
 
 | Physical view | Representative information |
 | --- | --- |
 | Local structure | Pair distance, radial environment, coordination, connectivity, chemical environment, local density, angular environment, and orientational order. |
-| Pair geometry | Minimum pair distance, mean nearest-neighbor distance, maximum nearest-neighbor distance, and coordination statistics for applicable pair rules. |
-| Target response | Force statistics, energy per atom, temperature, hydrostatic and deviatoric strain, pressure, and stress-deviator magnitude when defined. |
-| Profile-specific evidence | Accepted continuous selection features and discrete environment classes when an active material/profile provider supplies them. |
-| Foundation-model weakness | Energy and force residuals when the target-size protocol itself uses an authenticated frozen foundation model. |
+| Pair geometry | Minimum pair distance, mean and maximum nearest-neighbor distance, and coordination statistics for applicable pair rules. |
+| Target response | Force statistics, energy per atom, temperature, hydrostatic/deviatoric strain, pressure, and stress-deviator magnitude when defined. |
+| Profile-specific evidence | Accepted continuous selection features and discrete environment classes supplied by an active material/profile provider. |
+| Foundation-model weakness | Energy and force residuals only when target-size training itself uses an authenticated frozen foundation model. |
 
-This separation is important: the selector asks whether the chosen subset represents the population in **each physically meaningful view**, rather than assuming that one global Euclidean distance captures all relevant variation.
+Each family is interpreted independently; one well-covered physical view cannot compensate for a poorly covered one.
 
-### 2.1 Robust scaling inside each feature family
+### 6.1 Robust scaling inside each family
 
-Coordinates within a family may have different magnitudes and units. For feature coordinate (j), `mdstats` determines a robust scale (s_j), using the interquartile range when it is non-degenerate,
+For feature coordinate \(j\), a robust scale \(s_j\) is taken from the interquartile range when non-degenerate,
 
-[
+\[
 s_j=Q_j(0.75)-Q_j(0.25),
-]
+\]
 
-with broader-quantile and variance-based fallbacks for nearly constant coordinates.
+with broader-quantile and variance-based fallbacks for nearly constant coordinates. The normalized family distance is
 
-The normalized distance within family (m) is
-
-[
+\[
 d_m(a,b)=
-sqrt{
-rac{1}{d_m}
-sum_{j=1}^{d_m}
-left(
-rac{f_{mj}(a)-f_{mj}(b)}{s_j}
-ight)^2
+\sqrt{
+\frac{1}{d_m}
+\sum_{j=1}^{d_m}
+\left(
+\frac{f_{mj}(a)-f_{mj}(b)}{s_j}
+\right)^2
 }.
-]
+\]
 
-The factor (1/d_m) prevents a family from becoming more influential merely because it contains more coordinates. Constant optional scalar features are omitted because they contain no discriminatory information.
+The factor \(1/d_m\) prevents a family from gaining influence merely by having more coordinates.
 
-## 3. Coverage as a local covering problem
+## 7. Coverage as a local covering problem
 
-The key question is not whether the selected configurations are globally far apart. It is whether the selected set supplies a representative for most of the physical states present in (P_{mathrm{train}}).
+For a witness \(w\) in feature family \(m\), `mdstats` defines an adaptive local radius \(r_m(w)\): the smallest distance containing approximately
 
-For a reference configuration, or **witness**, (w) in feature family (m), `mdstats` defines a local radius (r_m(w)). The radius is adaptive: it is the smallest distance that contains approximately
+\[
+\beta=\frac{1}{128}
+\]
 
-[
-eta=rac{1}{128}
-]
+of the remaining correlation-balanced reference mass. Dense regions therefore receive smaller neighborhoods and sparse regions larger ones.
 
-of the remaining correlation-balanced reference mass around (w). Dense regions therefore receive smaller neighborhoods and sparse regions larger ones.
+A candidate configuration \(c\) represents witness \(w\) when
 
-A candidate configuration (c) represents witness (w) in family (m) when
-
-[
+\[
 A_m(w,c)=1
-quadLongleftrightarrowquad
-d_m(w,c)le r_m(w),
-]
+\quad\Longleftrightarrow\quad
+d_m(w,c)\le r_m(w),
+\]
 
-up to the prescribed small numerical tolerance. For a selected set (S), define the number of selected representatives of (w) as
+up to the prescribed numerical tolerance. For selected set \(S\),
 
-[
-n_m(w;S)=sum_{cin S}A_m(w,c).
-]
+\[
+n_m(w;S)=\sum_{c\in S}A_m(w,c).
+\]
 
-The witness is covered whenever (n_m(w;S)>0).
+The witness is covered when \(n_m(w;S)>0\).
 
-### 3.1 Correlation-balanced reference mass
+### 7.1 Correlation-balanced reference mass
 
-Molecular-dynamics trajectories often oversample slowly evolving regions simply because many adjacent frames were saved there. Counting every frame equally would make those regions dominate the coverage measure.
+Now the earlier correlation-unit construction becomes directly relevant. Let \(g(w)\) be the P1 correlation-unit identity of witness \(w\), let \(G_m\) be the represented units in family \(m\), and let \(n_{m,g}\) be the number of participating witnesses from unit \(g\). The witness weight is
 
-The upstream data preparation therefore assigns frames to correlation units. Let (g(w)) denote the correlation unit of witness (w), let (G_m) be the represented correlation units in family (m), and let (n_{m,g}) be the number of participating witnesses from unit (g). The witness weight is
+\[
+\omega_m(w)
+=
+\frac{1}{|G_m|\,n_{m,g(w)}}.
+\]
 
-[
-omega_m(w)=rac{1}{|G_m|,n_{m,g(w)}}.
-]
+Hence every represented correlation unit receives exactly the same total mass in that feature family, regardless of how many stored frames it contains. Frames inside a unit divide that mass.
 
-Thus every represented correlation unit receives the same total mass, while its frames share that mass. This turns coverage into a measure of represented physical population rather than stored-frame frequency.
+The covered mass is
 
-The covered mass of selected set (S) in family (m) is
+\[
+C_m(S)
+=
+\sum_{w\in W_m}
+\omega_m(w)\,
+\mathbf 1\!\left[n_m(w;S)>0\right].
+\]
 
-[
-C_m(S)=
-sum_{win W_m}
-omega_m(w),mathbf 1!left[n_m(w;S)>0ight].
-]
+The hard baseline is
 
-The required baseline is
+\[
+\boxed{
+C_m(S)\ge 0.95
+\qquad
+\text{for every required feature family}
+}.
+\]
 
-[
-oxed{C_m(S)ge 0.95qquad	ext{for every required feature family}.}
-]
+Thus 95% coverage means that at least 95% of the **correlation-balanced reference mass** in each physical view has a selected representative inside its local neighborhood. It does not mean 95% model accuracy, 95% confidence, or 95% of raw trajectory frames.
 
-In words, at least 95% of the correlation-balanced reference population in every physical view must have a selected representative inside its local neighborhood.
+### 7.2 Protecting physically important tails and discrete support
 
-> **What 95% coverage does and does not mean.** It means that 95% of the weighted training population is locally represented in a given feature family. It does **not** mean 95% model accuracy, 95% confidence, or 95% of raw trajectory frames.
+High mass coverage alone can miss important extremes. For an extent-bearing channel \(j\), define
 
-### 3.2 Protecting the tails of important distributions
-
-High mass coverage alone can miss physically important extremes. For selected extent-bearing channels, `mdstats` therefore also requires support of the lower and upper tails.
-
-For channel (j),
-
-[
+\[
 L_j=Q_j(0.01),
-qquad
+\qquad
 U_j=Q_j(0.99).
-]
+\]
 
 The selected set must satisfy
 
-[
-min_{xin S} f_j(x)le L_j,
-qquad
-max_{xin S} f_j(x)ge U_j.
-]
+\[
+\min_{x\in S}f_j(x)\le L_j,
+\qquad
+\max_{x\in S}f_j(x)\ge U_j.
+\]
 
-The method therefore protects, for example, rare short or long distances, unusual coordination, large-force states, or extreme strain/stress values when those channels are part of the active evidence.
+Discrete **hard support obligations** additionally require representation of applicable thermodynamic conditions, structural-event classes, active profile environment classes, both extent sides, and each represented current P1 correlation unit. These requirements cannot be traded away for better average coverage elsewhere.
 
-Discrete requirements are handled by analogous **hard support obligations**: represented thermodynamic conditions, structural-event classes, profile environment classes, protected correlation units, and explicit project-defined categories can require one or more selected members. These obligations cannot be traded away in exchange for better average coverage elsewhere.
+## 8. How coverage is achieved algorithmically
 
-## 4. How coverage is achieved algorithmically
+The selector builds \(\pi_{\mathrm{train}}\) one configuration at a time. For candidate \(c\), the newly covered mass in family \(m\) is
 
-The selector builds (pi_{mathrm{train}}) one configuration at a time. At each step, it evaluates what each remaining candidate would add to the current prefix (S).
+\[
+G_m(c)
+=
+\sum_{\substack{w:\,A_m(w,c)=1\\n_m(w;S)=0}}
+\omega_m(w).
+\]
 
-For candidate (c), the amount of previously uncovered mass that it would newly cover in family (m) is
+A large \(G_m(c)\) means that \(c\) fills a genuine hole in the current representation.
 
-[
-G_m(c)=
-sum_{substack{w:,A_m(w,c)=1\n_m(w;S)=0}}
-omega_m(w).
-]
+### 8.1 Stage 1: satisfy obligations and fill the weakest-covered view
 
-A large (G_m(c)) means that (c) fills a genuine hole in the current representation of that family.
-
-### 4.1 Stage 1: satisfy missing requirements and fill the weakest-covered view
-
-While any hard obligation is unsatisfied or any required family has (C_m<0.95), candidates are prioritized lexicographically:
+While any hard obligation is unsatisfied or any required family has \(C_m<0.95\), candidates are prioritized lexicographically to:
 
 1. satisfy as many currently missing hard obligations as possible;
-2. identify the least-covered required feature family and maximize new coverage in that family;
+2. maximize new coverage in the least-covered required feature family;
 3. maximize new coverage summed over all families;
-4. favor correlation units that are currently underrepresented in the selected prefix;
-5. prefer broader representative utility and sparse diversity;
-6. use a stable frame identity only as the final deterministic tie-breaker.
+4. favor correlation units currently underrepresented in the prefix;
+5. prefer broader representative utility and sparse diversity; and
+6. use stable frame identity only as the final deterministic tie-breaker.
 
-The important point is that the algorithm is **bottleneck driven**: it preferentially improves the physical view that is currently furthest from adequate coverage. A family that is already well represented cannot compensate for another family that remains poorly represented.
+The algorithm is therefore **bottleneck driven**: a well-covered family cannot compensate for a poorly covered family.
 
-### 4.2 Stage 2: densify the already covered manifold
+### 8.2 Stage 2: densify the covered manifold
 
-After all hard requirements and 95% family-coverage thresholds are satisfied, selection continues using a diminishing-returns representative utility
+After all hard requirements and family thresholds pass, selection continues using diminishing-return representative utility
 
-[
-R(c)=
-sum_msum_{w:A_m(w,c)=1}
-rac{omega_m(w)}{n_m(w;S)+1}.
-]
+\[
+R(c)
+=
+\sum_m\sum_{w:A_m(w,c)=1}
+\frac{\omega_m(w)}{n_m(w;S)+1}.
+\]
 
-The denominator gives the intended behavior:
+The first representative of a region is most valuable; the second is still useful; additional representatives contribute progressively less. Selection therefore changes smoothly from filling missing regions to increasing sampling density over the already covered physical manifold.
 
-- representing an uncovered witness is maximally useful;
-- providing a second representative is still useful, but less so;
-- adding another representative to an already dense region contributes progressively less.
+## 9. Configured sizes, qualification, and physical interpretation
 
-Thus the ordering naturally changes from *covering missing regions* to *increasing sampling density across the covered physical manifold*.
+Requested target sizes \(N_1<N_2<\cdots<N_K\) are prefixes of the same master order. Limited deterministic repair may alter only the newly added shell near a configured boundary; earlier configured prefixes remain immutable.
 
-Conceptually, the construction is
+Each configured prefix is then independently qualified. It may enter target-size model training only if the exact prefix exists, required labels are usable, every required feature family passes coverage, all required lower/upper extents are represented, and all hard support obligations reach their minima.
 
-```text
-Frozen P_train
-    -> physical feature families f_m(x)
-    -> adaptive local neighborhoods A_m(w,c)
-    -> coverage and hard-support state C_m(S)
-    -> coverage-progressive candidate selection
-    -> one complete master order pi_train
-    -> nested training sets T_N = pi_train[:N].
-```
+The method therefore constructs an increasingly fine **cover of the accessible training population** while preserving leakage control upstream. A useful configuration does at least one of three things: supplies mandatory support, covers a previously unrepresented region, or increases representation density in a sparsely represented region.
 
-## 5. Configured size ladder and independent qualification
+Three quantities must remain distinct:
 
-The requested target sizes (N_1<N_2<cdots<N_K) are read from the same master order. Near a configured boundary, a limited deterministic repair may replace a configuration only within the newly added shell. Earlier configured prefixes remain immutable. A replacement is admissible only if it preserves hard obligations, does not reduce required-family coverage, and improves the accepted global representation objective.
+\[
+\boxed{
+\text{number of configurations}
+\;\neq\;
+\text{coverage of physical variation}
+\;\neq\;
+\text{MLFF prediction accuracy}
+}.
+\]
 
-Each configured prefix is then independently re-evaluated from the underlying coverage definitions. A prefix may enter the target-size learning experiment only if:
+Coverage is a property of training-set membership. Prediction accuracy is measured later on independent evaluation evidence. The resulting experiment is therefore:
 
-- the exact prefix exists and its training labels are usable;
-- every required feature family satisfies (C_mge0.95);
-- every required lower/upper extent is represented; and
-- every hard support obligation satisfies its minimum count.
+> *As the number of training configurations increases, while protected dependence is respected and multi-view physical coverage remains balanced, how much additional predictive accuracy does the MLFF gain?*
 
-Because the prefixes are nested and these criteria are positive support conditions, qualification is monotone under fixed definitions: a larger prefix cannot legitimately lose coverage that a smaller prefix already possessed.
+## 10. Authority and external scientific context
 
-## 6. Physical interpretation
+This summary is explanatory and non-authoritative. The upstream statistical/data-preparation semantics and the target-order semantics are owned by the accepted/current authority chain, principally:
 
-The procedure can be viewed as constructing an increasingly fine **cover of the accessible training manifold**. The word *manifold* here should not be read as implying one exact low-dimensional mathematical surface. Rather, the population is examined through several complementary projections corresponding to distinct physically meaningful observables and structural descriptors.
+- `docs/methods/mlff_scientific_method.md` and `docs/methods/mlff_numerical_algorithmic_method.md` for correlation, protected dependence, evidence roles, and the exact \(U_{\mathrm{size}}\to P_{\mathrm{train}}+M_3\) split;
+- `docs/methods/mlff_target_training_order_scientific_method.md` and `docs/methods/mlff_target_training_order_numerical_algorithmic_method.md` for multi-view coverage, obligations, ordering, repair, and qualification;
+- `docs/specs/sampling/shared_sampling_primitives_spec.md` and `docs/specs/training_data/mlff_data5_partition_roles_spec.md` for the implemented sampling/partition contracts summarized here.
 
-A useful training configuration therefore does at least one of three things:
+External literature provides scientific context but does **not** define the project-specific `mdstats` thresholds, feature families, split rules, or ordering semantics.
 
-1. supplies mandatory support for a physical condition or rare category;
-2. covers a region of one or more feature spaces that has no adequate representative yet; or
-3. increases representation density in regions that are covered but still sparsely represented.
-
-This construction deliberately keeps three quantities separate:
-
-[
-oxed{
-	ext{number of configurations}
-;
-eq;
-	ext{coverage of physical variation}
-;
-eq;
-	ext{MLFF prediction accuracy}
-}
-]
-
-Coverage is a property of the *training-set membership*. It asks whether the available training population is physically represented. Prediction accuracy is measured later, after training, using the independent evaluation procedure. The coverage selector therefore does not decide which target size gives the best machine-learned force field (MLFF); it ensures that the learning-curve comparison is scientifically meaningful.
-
-The resulting experiment can be stated succinctly:
-
-> *As the number of training configurations increases, while maintaining nested membership and balanced multi-view coverage of the available physical population, how much additional predictive accuracy does the MLFF gain?*
-
-That is the role of the `mdstats` target-training ordering: to make increasing (N) correspond primarily to adding new physical information and progressively finer representation, rather than merely adding more correlated trajectory frames.
-
-## 7. Authority and external context
-
-This summary is explanatory and non-authoritative. The exact `mdstats` scientific and numerical definitions are owned by:
-
-- `docs/methods/mlff_target_training_order_scientific_method.md`;
-- `docs/methods/mlff_target_training_order_numerical_algorithmic_method.md`.
-
-The following external sources provide broader scientific context for machine-learned interatomic potentials, atomic-environment representations, and data-selection strategies. They do **not** define the project-specific `mdstats` coverage threshold, adaptive-neighborhood mass, hard obligations, or ordering rules.
-
-1. J. Behler and M. Parrinello, "Generalized Neural-Network Representation of High-Dimensional Potential-Energy Surfaces," *Physical Review Letters* **98**, 146401 (2007). https://doi.org/10.1103/PhysRevLett.98.146401
-2. A. P. Bartok, R. Kondor, and G. Csanyi, "On representing chemical environments," *Physical Review B* **87**, 184115 (2013). https://doi.org/10.1103/PhysRevB.87.184115
-3. V. L. Deringer, M. A. Caro, and G. Csanyi, "Machine Learning Interatomic Potentials as Emerging Tools for Materials Science," *Advanced Materials* **31**, 1902765 (2019). https://doi.org/10.1002/adma.201902765
-4. E. V. Podryabinkin and A. V. Shapeev, "Active learning of linearly parametrized interatomic potentials," *Computational Materials Science* **140**, 171-180 (2017). https://doi.org/10.1016/j.commatsci.2017.08.031
+1. H. Flyvbjerg and H. G. Petersen, "Error Estimates on Averages of Correlated Data," *Journal of Chemical Physics* **91**, 461-466 (1989). https://doi.org/10.1063/1.457480
+2. C. J. Geyer, "Practical Markov Chain Monte Carlo," *Statistical Science* **7**, 473-483 (1992). https://doi.org/10.1214/ss/1177011137
+3. J. Behler and M. Parrinello, "Generalized Neural-Network Representation of High-Dimensional Potential-Energy Surfaces," *Physical Review Letters* **98**, 146401 (2007). https://doi.org/10.1103/PhysRevLett.98.146401
+4. A. P. Bartok, R. Kondor, and G. Csanyi, "On representing chemical environments," *Physical Review B* **87**, 184115 (2013). https://doi.org/10.1103/PhysRevB.87.184115
+5. V. L. Deringer, M. A. Caro, and G. Csanyi, "Machine Learning Interatomic Potentials as Emerging Tools for Materials Science," *Advanced Materials* **31**, 1902765 (2019). https://doi.org/10.1002/adma.201902765
+6. E. V. Podryabinkin and A. V. Shapeev, "Active learning of linearly parametrized interatomic potentials," *Computational Materials Science* **140**, 171-180 (2017). https://doi.org/10.1016/j.commatsci.2017.08.031
