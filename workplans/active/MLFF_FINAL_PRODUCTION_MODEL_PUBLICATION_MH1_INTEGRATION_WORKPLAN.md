@@ -4,11 +4,11 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reopened
 created_date: 2026-09-21
-revision: 26
+revision: 27
 reviewed_date: 2026-09-23
-workplan_review_status: implementation-review-no-pass-reopened-3
-workplan_review_basis: b98d481c0f81f9de4e19bf66b3f5fec92f404104
-implementation_review_candidate: b98d481c0f81f9de4e19bf66b3f5fec92f404104
+workplan_review_status: implementation-review-no-pass-evidence-only-reopened-4
+workplan_review_basis: 73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
+implementation_review_candidate: 73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
 implementation_review_domain: D4
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
@@ -22,6 +22,8 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 ## 0. Disposition
 
 **IMPLEMENTATION REVIEW NO-PASS / REOPENED FOR D4 REPAIR. Revision-22 D3 remains coherent and frozen; no Serious Challenge is active.**
+
+**REVISION-27 IMPLEMENTATION REVIEW: CODE-CONFORMANCE PASS, CLOSEOUT NO-PASS FOR EXECUTABLE EVIDENCE ONLY.** Candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` closes the remaining Revision-26 production-code and test-specification gaps without adding a second binding algorithm, durability mechanism, cleanup owner, scheduler, trainer, or MH-1 production fork. No new production-code repair is authorized unless executable acceptance exposes a real failure. The sole blocking closeout obligation is now IR27-E1: execute and durably report the required focused + materially affected acceptance against this exact executable candidate (or an evidence-only descendant whose importable source tree is identical). Revision-22 D3 remains coherent; no Serious Challenge is active.
 
 **REVISION-26 IMPLEMENTATION REVIEW NO-PASS.** Candidate `b98d481c0f81f9de4e19bf66b3f5fec92f404104` directly repairs the Revision-25 durability-retry and pathname-recursive scratch defects and adds the required bounded MH-1 current-owner seam, but the late qualification-binding fence is still only partially current: it reloads the authoritative TOML while continuing to take binding-bearing learned-model dtype and device from the session-frozen post-selection context. Exact-head executable acceptance is also not available. Revision 26 therefore reopens only those residual D4 obligations; it does not authorize D3 redesign or rework of already-conforming owners.
 
@@ -1825,7 +1827,7 @@ Implementation is complete only when the assembled candidate proves all of the f
 
 Any failed item above is an implementation NO-PASS. Local helper names, exact private temp names and equivalent no-clobber primitives remain D4 choices.
 
-> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. For the reopened implementation, Sections 0-26 **plus Sections 26A-26D** are normative. Section 26A is the original mandatory D4 repair delta over the still-binding Revision-22 architecture as refined by Revision 24; Section 26B records the exhaustive reopened-plan convergence review; Section 26C is the Revision-25 implementation repair delta; Section 26D is the mandatory Revision-26 residual implementation repair and closeout delta. Revision-26 wording controls where it narrows or strengthens the repair after observing candidate `b98d481c0f81f9de4e19bf66b3f5fec92f404104`. Earlier review-history wording is rationale/evidence only.
+> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. For the reopened implementation, Sections 0-26 **plus Sections 26A-26E** are normative. Section 26A is the original mandatory D4 repair delta over the still-binding Revision-22 architecture as refined by Revision 24; Section 26B records the exhaustive reopened-plan convergence review; Section 26C is the Revision-25 implementation repair delta; Section 26D is the Revision-26 residual implementation repair and closeout delta; Section 26E is the mandatory Revision-27 evidence-only closeout delta. Revision-27 wording controls where it narrows or strengthens closeout after observing candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`. Earlier review-history wording is rationale/evidence only.
 
 
 
@@ -2457,6 +2459,168 @@ The next candidate is Review-ready only when all of the following are true:
 7. No new binding algorithm, currentness database, durability journal, cleanup subsystem, deployment registry, scheduler, trainer, wrapper hierarchy, or family-specific production path is introduced.
 
 If implementation evidence exposes a Section-25 D3 reopen trigger, stop and raise a Serious Challenge. Nothing observed in `b98d481c0f81f9de4e19bf66b3f5fec92f404104` does so.
+
+
+## 26E. Revision-27 implementation Review — code-conformance pass, executable-evidence closeout still open
+
+### Review basis and disposition
+
+Reviewed assembled repair candidate:
+
+```text
+73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
+```
+
+Parent review/workplan state:
+
+```text
+8e46bdb7bda1d4a870f5d9fbb2015ad10195bfff
+```
+
+**CODE-CONFORMANCE PASS / CLOSEOUT NO-PASS FOR EVIDENCE ONLY. No Serious Challenge.** Independent source review reconstructs the Revision-26 obligations against the assembled candidate and finds no remaining production-code blocker. Revision-22 D3 remains coherent and frozen.
+
+This disposition is intentionally narrow: do **not** modify conforming production owners merely because repository-hosted CI is absent. The remaining work is realization of the already-specified acceptance evidence. If that evidence fails, repair the real existing owner exposed by the failure and rerun; otherwise close the plan without another production patch.
+
+### IR27-C1 — Revision-26 current-binding defect is closed in code shape
+
+Candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` factors the existing post-selection device interpretation into `resolve_post_selection_device(config)` and changes `resolve_post_selection_method_policies(...)` to consume that same owner. `resolve_canonical_qualification_binding(cfg, ...)` now derives:
+
+```python
+current_dtype = resolve_binary_model_dtype(cfg)
+current_device = resolve_post_selection_device(cfg)
+```
+
+and supplies those values to both `capture_environment_fingerprint(...)` and `_qualification_resource_scope(...)`.
+
+Consequences:
+
+1. session admission and late terminal/release/first-reveal fencing share one `QualificationInputBinding` constructor;
+2. learned-model dtype comes from the existing binary-precision authority;
+3. device comes from the same post-selection configuration owner used by executable method-policy resolution;
+4. the late fence still reloads the authoritative normalized campaign TOML through `_load_config(..., ensure=False)`;
+5. selected P5 binding/publication/reclosure/evidence-role facts remain captured product ancestry rather than being spuriously rebuilt from configuration.
+
+The added drift acceptance parameterizes specification, valid dtype and device edits and preserves the unrelated-TOML-field negative control. No second P7 binding/configuration algorithm was introduced.
+
+**IR26-B1 is CLOSED IN CODE SHAPE, pending execution of IR27-E1.**
+
+### IR27-C2 — retry-durability negative evidence specification is now complete
+
+The deterministic-directory test now injects:
+
+```text
+initial mkdir succeeds
+ -> containing-directory fsync fails
+ -> deterministic directory remains visible
+ -> retry-time fsync fails again
+ -> create=True descent still raises
+ -> later successful retry may proceed
+```
+
+The deployment-receipt test now injects:
+
+```text
+receipt replace succeeds
+ -> deployment-root fsync fails
+ -> receipt remains visible
+ -> retry-time root fsync fails
+ -> receipt reuse raises and returns no usable artifact
+ -> later successful retry may proceed
+```
+
+These exercise the exact fail-closed helper boundaries before dependent publication can proceed; existing owner-level publication/currentness tests retain the descendant-pointer assertions. The implementation still uses the existing trust/publication owner and has no durability journal/registry.
+
+**Revision-26 retry-fsync evidence-specification gap is CLOSED IN CODE SHAPE, pending execution of IR27-E1.**
+
+### IR27-C3 — bounded MH-1 provider/publication equivalence evidence is now complete in specification
+
+The bounded structural MH-1 test still truthfully distinguishes its locally constructed MH-1-family fixture from conditionally available real `mace-mh-1.model` bytes. It crosses the current owner chain:
+
+```text
+mace_mh_1 / omat_pbe
+ -> current post-selection materialization
+ -> native TRAIN2 current-format checkpoint
+ -> authenticate_post_selection_provider(..., allow_forward_override=False)
+ -> canonical [pt_head, target_head]
+ -> portable P5 realization
+ -> durable publication
+ -> reload
+```
+
+The strengthened assertions now bind:
+
+- provider architecture to the authenticated TRAIN2 summary architecture;
+- the provider-returned evaluated EMA parameter identity to the actual provider parameters using the existing TRAIN2 digest owner;
+- portable full-state identity to the same authenticated provider model;
+- portable/reloaded architecture to the authenticated provider/summary architecture;
+- learned dtype through provider -> portable realization -> reload;
+- canonical target-head index 1 and inference/eval mode after reload.
+
+The evaluated EMA parameter digest and the portable full-state digest are deliberately **not** equated: they are different existing identity schemas with different semantic coverage. Both are instead proved against the same authenticated provider state. This preserves owner semantics and avoids inventing a third digest.
+
+**Revision-26 MH-1 equivalence evidence-specification gap is CLOSED IN CODE SHAPE, pending execution of IR27-E1.**
+
+### IR27-C4 — provisionally closed prior owners remain intact
+
+The narrow Revision-27 delta does not modify the production owners previously reviewed for:
+
+- late P5 generation-barrier parent replay and atomic product-pointer commit;
+- descriptor-authenticated P5/P7 executable artifact reads/staging;
+- immutable deployment locators and frozen realization-set refusal;
+- retry-time directory/receipt durability reclosure;
+- owner-safe conservative P7 scratch retirement;
+- release-index-gated terminal exposure;
+- first-reveal history + activation-pointer publication/recovery in one P5 -> P7 -> writer authorization window;
+- the accepted global production TRAIN scheduler.
+
+No source-level regression or D3 reopen trigger was identified in the reviewed delta.
+
+### IR27-E1 — exact assembled-candidate executable acceptance is the sole remaining blocker
+
+For exact executable candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`, repository-hosted evidence currently reports:
+
+```text
+commit statuses : 0
+check runs       : 0
+Actions runs     : 0
+```
+
+This repository's only GitHub Actions workflow is documentation-path filtered, so absence of an Actions run for a code-only commit is **not itself a test failure**. It also does not satisfy the workplan's executable-acceptance requirement. Test source specifies an oracle; it does not prove the oracle ran successfully.
+
+The independent Review environment could inspect the repository but could not obtain a runnable checkout, so it cannot substitute an unrecorded local run for this gate.
+
+**Required closeout action — evidence only:**
+
+1. Check out exact code candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` (or an evidence-only descendant with identical importable `mdstats/**/*.py` source).
+2. Run the focused suites required by IR23-E1/IR25-E1, including at minimum:
+   ```text
+   tests/test_mlff_p5_model_publication_owners.py
+   tests/test_mlff_p5_model_publication_acceptance.py
+   tests/test_mlff_p7_deployment_realization.py
+   tests/test_mlff_p7_product_currentness_fences.py
+   tests/test_mlff_mh1_publication_integration.py
+   ```
+3. Run the materially affected suites for P5 publication/reclosure/currentness, global production scheduling and multi-size finalization, coherent lifecycle observation, P7 post-production/locked/release behavior, storage owner/integration behavior, MACE execution/selected-checkpoint provider behavior, and the maintained collection/compile/static/documentation checks required by Sections 23 and 26A.
+4. Durably record:
+   - exact executable candidate SHA/source-tree identity;
+   - exact commands;
+   - pass/fail/skip counts;
+   - every skip reason;
+   - environment/dependency facts needed to interpret skips.
+5. Real-MH1-byte tests may be skipped only when the real model/runtime is genuinely unavailable and the skip says so. The bounded structural current-owner MH-1 test must execute when its pinned CPU dependencies are available.
+6. Long production MH-1, GPU and MD qualification remain intentionally deferred and are **not** part of this closeout gate.
+7. Do **not** change production code to manufacture CI/evidence. If all required acceptance passes, archive/close this workplan. If a required test fails, repair the existing owner demonstrated by that failure and reopen only the affected obligation.
+
+### Revision-27 final acceptance / stop conditions
+
+The plan closes when IR27-E1 supplies one coherent executable evidence set and no required test exposes a genuine blocker. At that point:
+
+- D1/D2 remain unchanged;
+- Revision-22 D3 remains accepted;
+- the current D4 implementation is conforming;
+- long target-hardware/production qualification remains deferred exactly as already authorized.
+
+Until IR27-E1 exists, the correct disposition is **NO-PASS FOR CLOSEOUT EVIDENCE ONLY**, not another implementation-repair cycle.
 
 ## 27. Current-implementation review closure (Revision 2)
 
