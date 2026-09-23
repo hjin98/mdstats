@@ -22,7 +22,6 @@ import hashlib
 import json
 import os
 import secrets
-import shutil
 import threading
 
 import numpy as np
@@ -664,20 +663,19 @@ class QualificationSession:
                 directory_fd, locator, expected_sha256=artifact_sha
             )
         scratch = self._create_execution_scratch(prefix)
-        try:
-            with stage_authenticated_model(
-                root,
-                locator,
-                expected_sha256=artifact_sha,
-                expected_size_bytes=authenticated.size_bytes,
-                scratch_directory=scratch,
-                filename="deployment-mliap.pt",
-            ) as staged:
-                yield staged
-        finally:
-            # This directory was created by this invocation, and only this
-            # invocation is allowed to retire its execution scratch.
-            shutil.rmtree(scratch, ignore_errors=True)
+        with stage_authenticated_model(
+            root,
+            locator,
+            expected_sha256=artifact_sha,
+            expected_size_bytes=authenticated.size_bytes,
+            scratch_directory=scratch,
+            filename="deployment-mliap.pt",
+        ) as staged:
+            yield staged
+        # Do not recursively remove ``scratch`` by pathname.  If its entry was
+        # replaced after creation, that would delete a foreign node.
+        # Attempt-private execution residue remains inert for the existing
+        # released-attempt/storage owner to retire under its own boundary.
 
     def freeze_deployment_realization_set(self) -> str:
         """Resolve and freeze one ordered realization set for this invocation.
@@ -866,6 +864,18 @@ class QualificationSession:
                         "The deployed-artifact receipt's realization digest does not "
                         "describe the bytes it names."
                     )
+                # A previous invocation may have replaced this receipt and then
+                # failed before fencing the deployment-root directory.  Visible
+                # bytes are not a durability proof; consequential reuse must
+                # successfully re-close that exact directory before evidence can
+                # depend on the receipt.
+                try:
+                    os.fsync(directory_fd)
+                except OSError as exc:
+                    raise QualificationLineageError(
+                        "The deployed-artifact receipt is visible but its containing "
+                        f"directory has not passed a durability fence ({exc.strerror})."
+                    ) from exc
         except ModelArtifactTrustError as exc:
             raise QualificationLineageError(
                 f"The deployment root {root!s} could not be authenticated: {exc}"
@@ -1002,14 +1012,12 @@ class QualificationSession:
         from ..post_selection_model_publication import fresh_locator_token
 
         source_member = self.published_model_member(member)
-        scratch_created = False
         scratch_fd: int | None = None
         with open_publication_directory(root, "", create=False) as root_fd:
             scratch_name, scratch_fd_value = create_private_directory(root_fd, ".build")
             scratch_fd = os.dup(scratch_fd_value)
             os.close(scratch_fd_value)
             scratch = root / scratch_name
-        scratch_created = True
         try:
             with stage_authenticated_model(
                 campaign_models_root(self.context),
@@ -1094,8 +1102,10 @@ class QualificationSession:
                     os.close(scratch_fd)
                 except OSError:
                     pass
-            if scratch_created:
-                shutil.rmtree(scratch, ignore_errors=True)
+            # Do not recursively remove ``scratch`` by pathname.  If its entry
+            # was replaced after creation, that would delete a foreign node.
+            # Attempt-private build residue remains inert for the existing P7
+            # released-attempt/storage owner to retire under its own boundary.
 
     def _element_types(self, atoms: Any) -> tuple[str, ...]:
         from ase.data import chemical_symbols
@@ -2326,9 +2336,17 @@ def require_current_qualification_binding(session: QualificationSession) -> None
     """
 
     context = session.context
+    # Admission may legitimately use the command's already-normalized mapping,
+    # but a long-running qualification must fence against an operator editing
+    # the authoritative campaign TOML after admission.  Reuse the canonical
+    # CLI loader without ``ensure`` so this identity-only check neither creates
+    # layout nor constructs a second configuration/binding algorithm.
+    from .._campaign_cli_core import _load_config
+
+    current_cfg, _current_paths = _load_config(context.paths.config, ensure=False)
     current, _specification, _environment, _roles, _resources, _scope, _material = (
         resolve_canonical_qualification_binding(
-            context.cfg,
+            current_cfg,
             context,
             session.publication,
             session.predecessor_reclosure,

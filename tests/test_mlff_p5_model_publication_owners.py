@@ -358,7 +358,39 @@ def test_directory_creation_is_fsynced_through_the_whole_chain(tmp_path, monkeyp
     # Re-descending an existing chain creates nothing and syncs nothing.
     with open_publication_directory(root, "production/g1/N_8/decision-x", create=True):
         pass
-    assert synced == []
+    # A retry also closes every deterministic component before a caller may
+    # publish a dependent leaf.  Existing visibility is not a durability proof
+    # after an interrupted create.
+    assert len(synced) >= 4
+
+
+def test_interrupted_directory_create_is_refenced_on_retry(tmp_path, monkeypatch):
+    """A failed parent fence cannot be bypassed by reopening visible residue."""
+
+    import mdstats.training_data.model_artifact_trust as trust
+
+    real_fsync = os.fsync
+    calls = 0
+
+    def fail_component_fence(fd):
+        nonlocal calls
+        calls += 1
+        # The anchor is created and fenced first; the deterministic child is
+        # then visible when its containing-directory fence fails.
+        if calls == 2:
+            raise OSError(5, "Input/output error")
+        return real_fsync(fd)
+
+    monkeypatch.setattr(trust.os, "fsync", fail_component_fence)
+    root = tmp_path / "models"
+    with pytest.raises(ModelArtifactTrustError, match="made durable"):
+        with open_publication_directory(root, "production", create=True):
+            pass
+    assert (root / "production").is_dir()
+
+    monkeypatch.setattr(trust.os, "fsync", real_fsync)
+    with open_publication_directory(root, "production", create=True):
+        pass
 
 
 def test_a_write_failure_leaves_no_published_entry(tmp_path, monkeypatch):

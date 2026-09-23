@@ -820,6 +820,100 @@ def test_r11b6_resume_after_locked_evidence_does_not_reopen_the_cohort(tmp_path:
     assert _current(config, counted).verdict is QualificationVerdict.RELEASE_QUALIFIED
 
 
+def test_r11b6_reveal_history_before_activation_pointer_is_repaired_without_reopen(
+    tmp_path: Path, monkeypatch
+):
+    """A crash after immutable reveal history still repairs one activation."""
+
+    from mdstats.training_data.qualification import runtime as runtime_module
+    from mdstats.training_data.qualification.runtime import (
+        locked_cohort_already_revealed,
+        resolve_current_locked_activation,
+    )
+    from mdstats.training_data.qualification.store import (
+        POINTER_LOCKED_ACTIVATION,
+        locked_reveal_path,
+    )
+
+    config, _workspace, harness = _campaign(tmp_path)
+    assert _qualify_nonlocked(config, harness) == 0
+
+    original_pointer_publish = runtime_module.publish_current_qualification_pointer
+
+    def crash_after_reveal(campaign_store, **kwargs):
+        if kwargs.get("kind") == POINTER_LOCKED_ACTIVATION:
+            raise RuntimeError("crash after locked reveal history")
+        return original_pointer_publish(campaign_store, **kwargs)
+
+    monkeypatch.setattr(
+        runtime_module,
+        "publish_current_qualification_pointer",
+        crash_after_reveal,
+    )
+    with pytest.raises(RuntimeError, match="crash after locked reveal history"):
+        _activate(config, harness)
+
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        opened = locked_cohort_already_revealed(session, paths)
+        assert opened is not None
+        # History was committed, but the currentness-fenced pointer was not.
+        assert resolve_current_locked_activation(store, paths, session.context) is None
+        reveal_path = locked_reveal_path(
+            paths, session.context.selected.binding, opened.cohort_generation_identity
+        ).parent
+        reveal_files = list(reveal_path.glob("*.json"))
+        assert len(reveal_files) == 1
+        reveal_bytes = reveal_files[0].read_bytes()
+    finally:
+        store.close()
+
+    # A changed binding cannot reuse the disclosed cohort while the repair is
+    # still incomplete; the durable reveal remains a hard one-shot boundary.
+    original_config = config.read_text(encoding="utf-8")
+    changed_config = original_config.replace(
+        "probe_configurations = 2", "probe_configurations = 3", 1
+    )
+    config.write_text(changed_config, encoding="utf-8")
+    try:
+        drifted = fx.QualificationHarness()
+        fx.attach_labels(drifted, config)
+        with pytest.raises(
+            QualificationActivationError, match="different product or|permanent"
+        ):
+            _activate(config, drifted)
+    finally:
+        config.write_text(original_config, encoding="utf-8")
+        monkeypatch.setattr(
+            runtime_module,
+            "publish_current_qualification_pointer",
+            original_pointer_publish,
+        )
+
+    resumed = fx.QualificationHarness()
+    fx.attach_labels(resumed, config)
+    assert _activate(config, resumed) == 0
+    assert resumed.locked_evaluations == 1
+
+    _cfg, paths, store, session = fx.load_session(config, resumed)
+    try:
+        repaired = resolve_current_locked_activation(store, paths, session.context)
+        assert repaired is not None
+        assert repaired.content_digest == opened.content_digest
+        assert (
+            locked_cohort_already_revealed(session, paths).content_digest
+            == opened.content_digest
+        )
+        reveal_path = locked_reveal_path(
+            paths, session.context.selected.binding, opened.cohort_generation_identity
+        ).parent
+        reveal_files = list(reveal_path.glob("*.json"))
+        assert len(reveal_files) == 1
+        assert reveal_files[0].read_bytes() == reveal_bytes
+    finally:
+        store.close()
+
+
 def test_r11b6_revealed_cohort_stays_revealed_after_a_currentness_change(tmp_path: Path):
     config, _workspace, harness = _campaign(tmp_path)
     assert _qualify_nonlocked(config, harness) == 0

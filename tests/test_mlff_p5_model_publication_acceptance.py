@@ -35,6 +35,7 @@ from mdstats.training_data.campaign_post_selection_runtime import (
     build_post_selection_context,
     resolve_current_final_production_publication,
 )
+from mdstats.training_data.campaign_post_selection import PostSelectionError
 from mdstats.training_data.post_selection_model_products import (
     resolve_current_final_production_model_publication,
 )
@@ -617,6 +618,148 @@ def test_product_pointer_set_is_all_old_or_all_new(published, monkeypatch, fail_
         POINTER_PREDECESSOR_RECLOSURE
     ]
     assert repaired[POINTER_FINAL_PUBLICATION] == before[POINTER_FINAL_PUBLICATION]
+
+
+@pytest.mark.parametrize(
+    "advanced_parent",
+    ("final_plan", "cv_plan", "cv_acceptance", "final_seed_assessment"),
+)
+def test_p5_parent_advance_after_materialization_blocks_pointer_commit(
+    published, monkeypatch, advanced_parent
+):
+    """Expensive model work never authorizes a stale generation commit."""
+
+    from dataclasses import replace
+
+    from mdstats.training_data import post_selection_model_products as products
+    from mdstats.training_data.post_selection_cv_acceptance import CvCampaignAcceptance
+    from mdstats.training_data.post_selection_cv_plan import PostSelectionCvPlan
+    from mdstats.training_data.post_selection_execution import PostSelectionRunEvidence
+    from mdstats.training_data.post_selection_production import FinalProductionPlan
+    from mdstats.training_data.post_selection_store import (
+        POINTER_ASSESSMENT_POSITION,
+        POINTER_CV_ACCEPTANCE,
+        POINTER_CV_PLAN,
+        POINTER_FINAL_PLAN,
+        POINTER_FINAL_MODEL_PUBLICATION,
+        POINTER_FINAL_PUBLICATION,
+        read_current_post_selection_pointer,
+        publish_current_post_selection_pointer,
+    )
+
+    config, _workspace, _harness = published
+    context, _paths, campaign_store = _context(config)
+    try:
+        decision = resolve_current_final_production_publication(context)
+        before = _pointer_set(campaign_store, context.selected.binding)
+        evidence_store = context.evidence_store
+        parent_kind = {
+            "final_plan": POINTER_FINAL_PLAN,
+            "cv_plan": POINTER_CV_PLAN,
+            "cv_acceptance": POINTER_CV_ACCEPTANCE,
+            "final_seed_assessment": POINTER_ASSESSMENT_POSITION,
+        }[advanced_parent]
+        parent_position = None
+        if advanced_parent == "final_seed_assessment":
+            required, failure = required_final_seed_locators(
+                context.selected.binding, decision, evidence_store
+            )
+            assert failure is None and required
+            parent_key, parent_digest = sorted(required.items())[0]
+            parent_position = parent_key.rsplit(":", 1)[-1]
+        else:
+            parent_digest = read_current_post_selection_pointer(
+                campaign_store,
+                binding=context.selected.binding,
+                kind=parent_kind,
+            )
+        assert parent_digest is not None
+        original_materialize = products.materialize_model_publication
+        advanced_digest = None
+
+        def materialize_then_advance(current_context, current_decision):
+            nonlocal advanced_digest
+            record = original_materialize(current_context, current_decision)
+            # This is the real race boundary: P5 materialization has completed,
+            # but the generation barrier has not yet admitted any pointer set.
+            if advanced_parent == "final_plan":
+                current_parent = evidence_store.get(
+                    parent_digest, FinalProductionPlan.from_dict
+                )
+                successor = replace(
+                    current_parent, planned_epochs=current_parent.planned_epochs + 1
+                )
+            elif advanced_parent == "cv_plan":
+                current_parent = evidence_store.get(
+                    parent_digest, PostSelectionCvPlan.from_dict
+                )
+                successor = replace(
+                    current_parent, common_monitor_record_digest="e" * 64
+                )
+            elif advanced_parent == "cv_acceptance":
+                current_parent = evidence_store.get(
+                    parent_digest, CvCampaignAcceptance.from_dict
+                )
+                successor = replace(
+                    current_parent,
+                    cross_fold_dispersion=(current_parent.cross_fold_dispersion or 0.0)
+                    + 1.0e-6,
+                )
+            else:
+                current_parent = evidence_store.get(
+                    parent_digest, PostSelectionRunEvidence.from_dict
+                )
+                successor = replace(
+                    current_parent,
+                    checkpoint_rejection_reasons=(
+                        tuple(current_parent.checkpoint_rejection_reasons)
+                        + ("late-parent",)
+                    ),
+                )
+            advanced_digest = successor.content_digest
+            evidence_store.put(successor)
+            publish_current_post_selection_pointer(
+                campaign_store,
+                binding=context.selected.binding,
+                kind=parent_kind,
+                position=parent_position,
+                content_digest=advanced_digest,
+            )
+            return record
+
+        monkeypatch.setattr(
+            products, "materialize_model_publication", materialize_then_advance
+        )
+        with pytest.raises(
+            PostSelectionError, match="parent graph|pointer advanced|assessment position"
+        ):
+            products.publish_final_production_model_products(
+                context, campaign_store, decision
+            )
+        after = _pointer_set(campaign_store, context.selected.binding)
+        assert after[POINTER_FINAL_PUBLICATION] == before[POINTER_FINAL_PUBLICATION]
+        assert (
+            after[POINTER_FINAL_MODEL_PUBLICATION]
+            == before[POINTER_FINAL_MODEL_PUBLICATION]
+        )
+        assert read_current_post_selection_pointer(
+            campaign_store,
+            binding=context.selected.binding,
+            kind=parent_kind,
+            position=parent_position,
+        ) == advanced_digest
+    finally:
+        monkeypatch.setattr(
+            products, "materialize_model_publication", original_materialize
+        )
+        publish_current_post_selection_pointer(
+            campaign_store,
+            binding=context.selected.binding,
+            kind=parent_kind,
+            position=parent_position,
+            content_digest=parent_digest,
+        )
+        campaign_store.close()
 
 
 def test_disk_reserve_refuses_publication_before_any_pointer_moves(

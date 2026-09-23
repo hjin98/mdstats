@@ -439,6 +439,121 @@ def test_p7_assembled_integration_through_real_parser_and_owners(tmp_path: Path,
         store.close()
 
 
+def test_p7_late_fences_reload_campaign_toml_at_terminal_release_and_reveal(
+    tmp_path: Path, monkeypatch
+):
+    """Admission's mapping cannot authorize a later edited campaign TOML."""
+
+    from mdstats.training_data.qualification import runtime as runtime_module
+    from mdstats.training_data.qualification.runtime import (
+        locked_cohort_already_revealed,
+        resolve_current_release_evidence,
+    )
+    from mdstats.training_data.qualification.store import (
+        POINTER_QUALIFICATION_RECORD,
+        read_current_qualification_pointer,
+    )
+
+    config, _workspace, harness = _campaign(tmp_path)
+    original_config = config.read_text(encoding="utf-8")
+    changed_config = original_config.replace(
+        "probe_configurations = 2", "probe_configurations = 3", 1
+    )
+
+    assert _run_to_waiting(config, harness) == 0
+    waiting = _current_record(config, harness)
+    assert waiting is not None
+    _supply_reference(config, harness)
+
+    original_terminal = runtime_module.publish_qualification_record
+
+    def drift_before_terminal(*args, **kwargs):
+        config.write_text(changed_config, encoding="utf-8")
+        return original_terminal(*args, **kwargs)
+
+    monkeypatch.setattr(
+        runtime_module, "publish_qualification_record", drift_before_terminal
+    )
+    try:
+        with pytest.raises(QualificationLineageError, match="drifted"):
+            fx.run_qualification_command(config, "run", harness=harness)
+    finally:
+        monkeypatch.setattr(
+            runtime_module, "publish_qualification_record", original_terminal
+        )
+        config.write_text(original_config, encoding="utf-8")
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        assert read_current_qualification_pointer(
+            store,
+            binding=session.context.selected.binding,
+            kind=POINTER_QUALIFICATION_RECORD,
+        ) == waiting.content_digest
+    finally:
+        store.close()
+
+    assert fx.run_qualification_command(config, "run", harness=harness) == 0
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        release_before = resolve_current_release_evidence(
+            store, paths, session.context
+        )
+    finally:
+        store.close()
+    assert release_before is not None
+
+    original_release = runtime_module.publish_release_evidence
+
+    def drift_before_release(*args, **kwargs):
+        config.write_text(changed_config, encoding="utf-8")
+        return original_release(*args, **kwargs)
+
+    monkeypatch.setattr(runtime_module, "publish_release_evidence", drift_before_release)
+    try:
+        with pytest.raises(QualificationLineageError, match="drifted"):
+            fx.run_qualification_command(config, "run", harness=harness)
+    finally:
+        monkeypatch.setattr(runtime_module, "publish_release_evidence", original_release)
+        config.write_text(original_config, encoding="utf-8")
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        release_after = resolve_current_release_evidence(
+            store, paths, session.context
+        )
+    finally:
+        store.close()
+    assert release_after is not None
+    assert release_after.content_digest == release_before.content_digest
+
+    original_binding_check = runtime_module.require_current_qualification_binding
+
+    def drift_before_reveal(session):
+        config.write_text(changed_config, encoding="utf-8")
+        return original_binding_check(session)
+
+    monkeypatch.setattr(
+        runtime_module, "require_current_qualification_binding", drift_before_reveal
+    )
+    try:
+        with pytest.raises(QualificationLineageError, match="drifted"):
+            fx.run_qualification_command(
+                config, "activate-locked", harness=harness, confirm=True
+            )
+    finally:
+        monkeypatch.setattr(
+            runtime_module,
+            "require_current_qualification_binding",
+            original_binding_check,
+        )
+        config.write_text(original_config, encoding="utf-8")
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        assert resolve_current_locked_activation(store, paths, session.context) is None
+        assert locked_cohort_already_revealed(session, paths) is None
+    finally:
+        store.close()
+
+
 # ---------------------------------------------------------------------------
 # 9.2 identity / currentness negative tests
 # ---------------------------------------------------------------------------

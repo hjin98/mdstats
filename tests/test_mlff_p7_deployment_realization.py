@@ -121,6 +121,45 @@ def test_identical_byte_rebuild_preserves_the_realization_set(session_bundle):
     assert session.freeze_deployment_realization_set() == first
 
 
+@pytest.mark.parametrize("mutation", ["delete", "corrupt"])
+def test_frozen_r1_refuses_receipt_advance_to_r2(session_bundle, mutation):
+    """A frozen invocation never follows a newer receipt after R1 is lost."""
+
+    _config, _paths, _store, session, _harness = session_bundle
+    member = _member(session)
+    session._deployment_cache.clear()
+    session._frozen_realization_set = None
+    session.freeze_deployment_realization_set()
+    path, sha = session.deployed_artifact(member)
+    original = path.read_bytes()
+    root = session._deployment_root(member)
+    receipt = root / "deployment-receipt.json"
+    receipt_before = receipt.read_bytes()
+    successor = root / "deployment-mliap-r2.pt"
+    successor.write_bytes(original + b"r2")
+    successor_sha = hashlib.sha256(successor.read_bytes()).hexdigest()
+    payload = json.loads(receipt_before.decode("utf-8"))
+    payload["artifact_relative_name"] = successor.name
+    payload["artifact_sha256"] = successor_sha
+    payload["deployment_realization_digest"] = session.deployment_realization_digest(
+        session.deployment_identity(member), successor_sha
+    )
+    receipt.write_text(json.dumps(payload), encoding="utf-8")
+    if mutation == "delete":
+        path.unlink()
+    else:
+        path.write_bytes(original + b"corrupt-r1")
+    try:
+        with pytest.raises(QualificationLineageError, match="frozen deployment artifact"):
+            session.deployed_artifact(member)
+    finally:
+        path.write_bytes(original)
+        receipt.write_bytes(receipt_before)
+        successor.unlink()
+        session._deployment_cache.clear()
+        session._frozen_realization_set = None
+
+
 def test_changed_deployed_bytes_change_the_realization_set(session_bundle):
     _config, _paths, _store, session, _harness = session_bundle
     member = _member(session)
@@ -174,6 +213,93 @@ def test_receipt_and_artifact_are_authenticated_no_follow(session_bundle, tmp_pa
     session._deployment_cache.clear()
     session._frozen_realization_set = None
     session.deployed_artifact(member)
+
+
+def test_receipt_replace_before_directory_fsync_requires_retry_fence(
+    session_bundle, monkeypatch
+):
+    """A visible post-replace receipt is not reusable until its root is re-fenced."""
+
+    from mdstats.training_data.qualification import runtime as runtime_module
+
+    _config, _paths, _store, session, _harness = session_bundle
+    member = _member(session)
+    session._deployment_cache.clear()
+    session._frozen_realization_set = None
+    path, sha = session.deployed_artifact(member)
+    root = session._deployment_root(member)
+    identity = session.deployment_identity(member)
+
+    real_fsync = os.fsync
+    calls = 0
+
+    def fail_after_receipt_replace_preparation(fd):
+        nonlocal calls
+        calls += 1
+        # The receipt file is durable before os.replace; the second fence is
+        # the deployment-root directory fence after the stable-name advance.
+        if calls == 2:
+            raise OSError(5, "Input/output error")
+        return real_fsync(fd)
+
+    monkeypatch.setattr(runtime_module.os, "fsync", fail_after_receipt_replace_preparation)
+    with pytest.raises(OSError, match="Input/output error"):
+        session._advance_deployment_receipt(
+            member, identity, root, artifact_name=path.name, sha=sha
+        )
+    assert (root / "deployment-receipt.json").is_file()
+
+    monkeypatch.setattr(runtime_module.os, "fsync", real_fsync)
+    assert session._reuse_published_artifact(member, identity, root) == (path, sha)
+
+
+def test_replaced_execution_scratch_does_not_delete_foreign_sentinel(session_bundle):
+    """Scratch replacement before exit cannot transfer recursive cleanup authority."""
+
+    _config, _paths, _store, session, _harness = session_bundle
+    member = _member(session)
+    with session._staged_deployment_artifact(member, prefix=".replacement") as staged:
+        scratch = staged.parent
+        displaced = scratch.with_name(scratch.name + ".displaced")
+        scratch.rename(displaced)
+        scratch.mkdir()
+        sentinel = scratch / "foreign-sentinel"
+        sentinel.write_bytes(b"must survive")
+    assert sentinel.read_bytes() == b"must survive"
+
+
+def test_replaced_build_scratch_does_not_delete_foreign_sentinel(session_bundle):
+    """Deployment-build scratch has the same conservative retirement boundary."""
+
+    _config, _paths, _store, session, _harness = session_bundle
+    member = _member(session)
+    exporter = session.deployment_exporter
+
+    def replace_after_export(source_path, output_directory, **kwargs):
+        artifact = exporter(source_path, output_directory, **kwargs)
+        scratch = Path(output_directory)
+        displaced = scratch.with_name(scratch.name + ".displaced")
+        scratch.rename(displaced)
+        scratch.mkdir()
+        (scratch / "foreign-sentinel").write_bytes(b"must survive")
+        return artifact
+
+    session.deployment_exporter = replace_after_export
+    session._deployment_cache.clear()
+    session._frozen_realization_set = None
+    try:
+        with pytest.raises(Exception):
+            session.deployed_artifact(member)
+        assert (session._deployment_root(member) / ".build").exists() or any(
+            item.name.startswith(".build")
+            for item in session._deployment_root(member).iterdir()
+        )
+        sentinels = list(session._deployment_root(member).glob(".build*/*foreign-sentinel"))
+        assert sentinels and sentinels[0].read_bytes() == b"must survive"
+    finally:
+        session.deployment_exporter = exporter
+        session._deployment_cache.clear()
+        session._frozen_realization_set = None
 
 
 def test_reclaimed_scratch_rebuilds_without_treating_absence_as_corruption(

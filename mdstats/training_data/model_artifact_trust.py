@@ -366,32 +366,46 @@ def _open_or_create_directory(name: str, *, dir_fd: int) -> int:
     """Open one child directory no-follow, creating it if it is absent."""
 
     try:
-        return open_directory_nofollow(name, dir_fd=dir_fd)
+        child_fd: int | None = open_directory_nofollow(name, dir_fd=dir_fd)
     except FileNotFoundError:
-        pass
+        child_fd = None
     except NamespaceAmbiguity as exc:
         raise ModelArtifactTrustError(
             f"Publication path component {name!r} is not a plain directory: {exc}"
         ) from exc
-    try:
-        os.mkdir(name, 0o755, dir_fd=dir_fd)
-    except FileExistsError:
-        pass
-    except OSError as exc:
-        raise ModelArtifactTrustError(
-            f"Publication path component {name!r} could not be created ({exc.strerror})."
-        ) from exc
-    else:
-        # Directory creation is part of durability, not only containment: the
-        # new directory *entry* must survive a crash before any pointer names
-        # a file inside it.
+    if child_fd is None:
         try:
-            os.fsync(dir_fd)
+            os.mkdir(name, 0o755, dir_fd=dir_fd)
+        except FileExistsError:
+            # An interrupted create may have left the deterministic component
+            # visible after its containing-directory fsync failed.  It is not
+            # durability-closed merely because the entry can be opened on a
+            # retry; the consequential create path fences it again below.
+            pass
         except OSError as exc:
             raise ModelArtifactTrustError(
-                f"The containing directory for publication component {name!r} "
-                f"could not be made durable ({exc.strerror})."
+                f"Publication path component {name!r} could not be created ({exc.strerror})."
             ) from exc
+
+    # Directory creation is part of durability, not only containment.  A
+    # create=True descent therefore re-fences the containing entry whether this
+    # invocation installed it or is re-closing residue from an interrupted
+    # invocation.  Read-only create=False descent never calls this helper.
+    try:
+        os.fsync(dir_fd)
+    except OSError as exc:
+        if child_fd is not None:
+            try:
+                os.close(child_fd)
+            except OSError:
+                pass
+        raise ModelArtifactTrustError(
+            f"The containing directory for publication component {name!r} "
+            f"could not be made durable ({exc.strerror})."
+        ) from exc
+
+    if child_fd is not None:
+        return child_fd
     try:
         return open_directory_nofollow(name, dir_fd=dir_fd)
     except (FileNotFoundError, NamespaceAmbiguity) as exc:

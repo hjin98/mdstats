@@ -141,6 +141,41 @@ def test_binding_drift_before_publication_is_refused(session_bundle, monkeypatch
     assert replace is not None
 
 
+def test_current_binding_reload_rejects_campaign_toml_drift_without_false_stale(
+    session_bundle,
+):
+    """Late fences read the authoritative TOML, while unrelated fields stay inert."""
+
+    from mdstats.training_data.qualification import runtime as rt
+
+    config, _cfg, _paths, _store, session, _harness = session_bundle
+    original = config.read_text(encoding="utf-8")
+    try:
+        # This field is parsed by the current canonical loader but is outside
+        # the binding/resource/environment identities.  It must not spuriously
+        # stale an in-flight P7 session.
+        config.write_text(
+            original + '\n[unrelated]\nmarker = "late-fence-probe"\n',
+            encoding="utf-8",
+        )
+        rt.require_current_qualification_binding(session)
+
+        # A qualification specification field is binding-relevant.  The
+        # session remains admitted under the old value, so the late fence must
+        # refuse before any terminal/release/reveal owner can publish.
+        config.write_text(
+            original.replace(
+                "minimum_frames = 1", "minimum_frames = 2", 1
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(QualificationLineageError, match="drifted"):
+            rt.require_current_qualification_binding(session)
+    finally:
+        config.write_text(original, encoding="utf-8")
+    rt.require_current_qualification_binding(session)
+
+
 def test_release_claim_requires_its_matching_index(session_bundle):
     """A crash between the terminal record and its index is not a release."""
 
