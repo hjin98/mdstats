@@ -388,6 +388,22 @@ def test_interrupted_directory_create_is_refenced_on_retry(tmp_path, monkeypatch
             pass
     assert (root / "production").is_dir()
 
+    retry_calls = 0
+
+    def fail_retry_fence(_fd):
+        nonlocal retry_calls
+        retry_calls += 1
+        raise OSError(5, "Input/output error")
+
+    # Visible deterministic residue is not enough: a second durability failure
+    # must still block the dependent caller rather than being treated as a
+    # successful re-open.
+    monkeypatch.setattr(trust.os, "fsync", fail_retry_fence)
+    with pytest.raises(ModelArtifactTrustError, match="made durable"):
+        with open_publication_directory(root, "production", create=True):
+            pass
+    assert retry_calls == 1
+
     monkeypatch.setattr(trust.os, "fsync", real_fsync)
     with open_publication_directory(root, "production", create=True):
         pass

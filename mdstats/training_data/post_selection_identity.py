@@ -226,6 +226,18 @@ def _table(config: Mapping[str, Any], *path: str) -> Mapping[str, Any]:
     return current
 
 
+def resolve_post_selection_device(config: Mapping[str, Any]) -> str:
+    """Resolve the shared post-selection device from campaign configuration.
+
+    This is intentionally the same configuration-only owner used by method
+    policy resolution.  Late qualification currentness fences must resolve
+    binding-bearing configuration from their supplied current configuration,
+    not from the session's admission-frozen policy object.
+    """
+
+    return str(_table(config, "training").get("device", "cuda"))
+
+
 def _positive_int(value: Any, *, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise TrainingDataInputError(f"{name} must be an integer.")
@@ -2115,7 +2127,7 @@ def resolve_post_selection_method_policies(
         training_mode=training_mode,
         acceleration_backend=acceleration_backend,
         checkpoint_interval_epochs=int(training.get("checkpoint_interval_epochs", 1)),
-        device=str(training.get("device", "cuda")),
+        device=resolve_post_selection_device(config),
         mace_architecture=mace_architecture,
         mace_architecture_digest=mace_architecture_digest,
         default_dtype=default_dtype,
@@ -2387,6 +2399,7 @@ __all__ = [
     "resolve_post_selection_head_names",
     "resolve_post_selection_method_identity",
     "resolve_post_selection_method_policies",
+    "resolve_post_selection_device",
     "resolve_post_selection_replay_training_label_mode",
     "resolve_shared_optimizer_settings",
 ]

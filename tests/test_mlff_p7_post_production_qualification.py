@@ -439,8 +439,9 @@ def test_p7_assembled_integration_through_real_parser_and_owners(tmp_path: Path,
         store.close()
 
 
+@pytest.mark.parametrize("drift_kind", ["specification", "dtype", "device"])
 def test_p7_late_fences_reload_campaign_toml_at_terminal_release_and_reveal(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, drift_kind
 ):
     """Admission's mapping cannot authorize a later edited campaign TOML."""
 
@@ -456,9 +457,19 @@ def test_p7_late_fences_reload_campaign_toml_at_terminal_release_and_reveal(
 
     config, _workspace, harness = _campaign(tmp_path)
     original_config = config.read_text(encoding="utf-8")
-    changed_config = original_config.replace(
-        "probe_configurations = 2", "probe_configurations = 3", 1
-    )
+    if drift_kind == "specification":
+        changed_config = original_config.replace(
+            "probe_configurations = 2", "probe_configurations = 3", 1
+        )
+    elif drift_kind == "dtype":
+        changed_config = original_config.replace(
+            "[training]\n", '[training]\ndtype = "float64"\n', 1
+        )
+    else:
+        changed_config = original_config.replace(
+            'device = "cpu"', 'device = "cpu:0"', 1
+        )
+    assert changed_config != original_config
 
     assert _run_to_waiting(config, harness) == 0
     waiting = _current_record(config, harness)

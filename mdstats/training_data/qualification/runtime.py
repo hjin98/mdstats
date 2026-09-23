@@ -35,6 +35,8 @@ from .._common import (
 )
 from ..campaign_post_selection import PostSelectionError
 from ..post_selection_store import post_selection_publication_barrier
+from ..post_selection_identity import resolve_post_selection_device
+from ..training_settings import resolve_binary_model_dtype
 from .binding import (
     EvidenceRoleMembership,
     QualificationInputBinding,
@@ -410,13 +412,20 @@ def resolve_canonical_qualification_binding(
     """Resolve the one current P7 binding from the owners used at admission."""
 
     specification = resolve_qualification_spec_identity(cfg)
+    # These two values are configuration-owned parts of the binding.  Resolve
+    # them from the configuration supplied to this constructor so a late fence
+    # cannot silently reuse admission-frozen method policy after campaign.toml
+    # changed.  The remaining context facts below are realized P5/P7 parents,
+    # not a second interpretation of configuration.
+    current_dtype = resolve_binary_model_dtype(cfg)
+    current_device = resolve_post_selection_device(cfg)
     environment = capture_environment_fingerprint(
-        default_dtype=str(context.method_policies.default_dtype),
-        device=str(context.method_policies.device),
+        default_dtype=current_dtype,
+        device=current_device,
     )
     resources, resource_scope, resource_digest = _qualification_resource_scope(
         cfg,
-        device=str(context.method_policies.device),
+        device=current_device,
         requested_workers=case_workers,
     )
     executable = resolve_executable_candidate_identity()

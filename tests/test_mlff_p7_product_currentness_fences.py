@@ -141,15 +141,33 @@ def test_binding_drift_before_publication_is_refused(session_bundle, monkeypatch
     assert replace is not None
 
 
+@pytest.mark.parametrize("drift_kind", ["specification", "dtype", "device"])
 def test_current_binding_reload_rejects_campaign_toml_drift_without_false_stale(
-    session_bundle,
+    session_bundle, drift_kind
 ):
-    """Late fences read the authoritative TOML, while unrelated fields stay inert."""
+    """Late fences use current binding fields while unrelated fields stay inert."""
 
     from mdstats.training_data.qualification import runtime as rt
 
     config, _cfg, _paths, _store, session, _harness = session_bundle
     original = config.read_text(encoding="utf-8")
+    if drift_kind == "specification":
+        changed_config = original.replace(
+            "minimum_frames = 1", "minimum_frames = 2", 1
+        )
+    elif drift_kind == "dtype":
+        # The binary precision resolver is the canonical learned-model dtype
+        # surface.  Admission remains float32; this is a valid float64
+        # configuration that must produce a different current binding.
+        changed_config = original.replace(
+            "[training]\n", '[training]\ndtype = "float64"\n', 1
+        )
+    else:
+        # Use the same [training].device owner with a CPU-only spelling that
+        # needs no accelerator to fingerprint.
+        changed_config = original.replace(
+            'device = "cpu"', 'device = "cpu:0"', 1
+        )
     try:
         # This field is parsed by the current canonical loader but is outside
         # the binding/resource/environment identities.  It must not spuriously
@@ -160,15 +178,10 @@ def test_current_binding_reload_rejects_campaign_toml_drift_without_false_stale(
         )
         rt.require_current_qualification_binding(session)
 
-        # A qualification specification field is binding-relevant.  The
+        # A binding-relevant field is changed in the actual campaign TOML.  The
         # session remains admitted under the old value, so the late fence must
         # refuse before any terminal/release/reveal owner can publish.
-        config.write_text(
-            original.replace(
-                "minimum_frames = 1", "minimum_frames = 2", 1
-            ),
-            encoding="utf-8",
-        )
+        config.write_text(changed_config, encoding="utf-8")
         with pytest.raises(QualificationLineageError, match="drifted"):
             rt.require_current_qualification_binding(session)
     finally:

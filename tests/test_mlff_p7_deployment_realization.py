@@ -249,6 +249,20 @@ def test_receipt_replace_before_directory_fsync_requires_retry_fence(
         )
     assert (root / "deployment-receipt.json").is_file()
 
+    retry_calls = 0
+
+    def fail_retry_fence(_fd):
+        nonlocal retry_calls
+        retry_calls += 1
+        raise OSError(5, "Input/output error")
+
+    # The receipt is visible after the failed replace, but a second failed
+    # reclosure fence must keep it from becoming a dependency of qualification.
+    monkeypatch.setattr(runtime_module.os, "fsync", fail_retry_fence)
+    with pytest.raises(QualificationLineageError, match="durability fence"):
+        session._reuse_published_artifact(member, identity, root)
+    assert retry_calls == 1
+
     monkeypatch.setattr(runtime_module.os, "fsync", real_fsync)
     assert session._reuse_published_artifact(member, identity, root) == (path, sha)
 

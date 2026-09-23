@@ -440,8 +440,11 @@ legacy_normalized = true
         from mdstats.training_data.target_size_execution.evaluation import (
             EVALUATION_MODEL_STATE_EMA,
         )
+        from mdstats.training_data.train2_runtime import _tensor_state_digest
         from mdstats.training_data.model_features import (
             mace_model_execution_architecture_digest,
+            mace_model_state_digest,
+            mace_model_state_dict_clone,
         )
 
         provider, evaluated_digest = authenticate_post_selection_provider(
@@ -461,8 +464,21 @@ legacy_normalized = true
             "pt_head",
             "target_head",
         )
-        assert mace_model_execution_architecture_digest(provider.model) == (
-            summary.model_architecture_digest
+        provider_architecture = mace_model_execution_architecture_digest(provider.model)
+        provider_state = mace_model_state_digest(
+            mace_model_state_dict_clone(provider.model)
+        )
+        assert provider_architecture == summary.model_architecture_digest
+        # The provider returns the exact live/EMA boundary digest separately
+        # from the shared full-state digest used by the publication owner.
+        # Both identities must remain tied to the same authenticated provider;
+        # the latter is the complete object state that can be serialized.
+        assert evaluated_digest == _tensor_state_digest(
+            tuple(
+                tensor
+                for _name, tensor in provider.model.named_parameters()
+            ),
+            schema="mdstats.train2-ema-state.v1",
         )
 
         from mdstats.training_data.model_artifact_trust import authenticate_model_artifact
@@ -477,6 +493,15 @@ legacy_normalized = true
         )
         assert realization.head_inventory == ("pt_head", "target_head")
         assert realization.head_inventory.index("target_head") == 1
+        assert realization.state_sha256 == provider_state
+        assert realization.execution_architecture_digest == (
+            provider_architecture
+        ) == summary.model_architecture_digest
+        assert {
+            str(tensor.dtype).replace("torch.", "")
+            for _name, tensor in provider.model.named_parameters()
+            if torch.is_floating_point(tensor)
+        } == {realization.dtype}
         publication_context = type(
             "C",
             (),
@@ -501,6 +526,23 @@ legacy_normalized = true
             realization=realization,
             target_head_name="target_head",
         )
+        reloaded = torch.load(
+            tmp_path / "models" / placed.relative_path,
+            map_location="cpu",
+            weights_only=False,
+        )
+        assert mace_model_state_digest(mace_model_state_dict_clone(reloaded)) == (
+            realization.state_sha256
+        )
+        assert mace_model_execution_architecture_digest(reloaded) == (
+            summary.model_architecture_digest
+        )
+        assert {
+            str(tensor.dtype).replace("torch.", "")
+            for _name, tensor in reloaded.named_parameters()
+            if torch.is_floating_point(tensor)
+        } == {realization.dtype}
+        assert not reloaded.training
     finally:
         if provider is not None:
             from mdstats.training_data.post_selection_model_products import retire_provider
