@@ -4,11 +4,11 @@ workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
 status: active-reopened
 created_date: 2026-09-21
-revision: 25
-reviewed_date: 2026-09-22
-workplan_review_status: implementation-review-no-pass-reopened-2
-workplan_review_basis: 7a440afdc7d2c4a38910bab3c16d3856ff1522a9
-implementation_review_candidate: bd8ecf447a0209a22101c1d458f7e164c03d2d45
+revision: 26
+reviewed_date: 2026-09-23
+workplan_review_status: implementation-review-no-pass-reopened-3
+workplan_review_basis: b98d481c0f81f9de4e19bf66b3f5fec92f404104
+implementation_review_candidate: b98d481c0f81f9de4e19bf66b3f5fec92f404104
 implementation_review_domain: D4
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
@@ -22,6 +22,8 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 ## 0. Disposition
 
 **IMPLEMENTATION REVIEW NO-PASS / REOPENED FOR D4 REPAIR. Revision-22 D3 remains coherent and frozen; no Serious Challenge is active.**
+
+**REVISION-26 IMPLEMENTATION REVIEW NO-PASS.** Candidate `b98d481c0f81f9de4e19bf66b3f5fec92f404104` directly repairs the Revision-25 durability-retry and pathname-recursive scratch defects and adds the required bounded MH-1 current-owner seam, but the late qualification-binding fence is still only partially current: it reloads the authoritative TOML while continuing to take binding-bearing learned-model dtype and device from the session-frozen post-selection context. Exact-head executable acceptance is also not available. Revision 26 therefore reopens only those residual D4 obligations; it does not authorize D3 redesign or rework of already-conforming owners.
 
 **REVISION-25 IMPLEMENTATION REVIEW NO-PASS.** Candidate `bd8ecf447a0209a22101c1d458f7e164c03d2d45` materially closes the original late-P5 replay, P7 descriptor-read/execution staging, exact frozen-realization, and co-fenced first-reveal mechanics, but genuine D4 blockers remain at the live configuration-binding fence, durability-recovery seam, private-scratch retirement boundary, MH-1 real provider seam, and executable acceptance evidence. Revision-22 D3 remains coherent; no Serious Challenge is active.
 
@@ -1823,7 +1825,7 @@ Implementation is complete only when the assembled candidate proves all of the f
 
 Any failed item above is an implementation NO-PASS. Local helper names, exact private temp names and equivalent no-clobber primitives remain D4 choices.
 
-> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. For the reopened implementation, Sections 0-26 **plus Sections 26A-26C** are normative. Section 26A is the original mandatory D4 repair delta over the still-binding Revision-22 architecture as refined by Revision 24; Section 26B records the exhaustive reopened-plan convergence review; Section 26C is the mandatory Revision-25 implementation repair delta. Revision-25 wording controls where it narrows or strengthens the repair after observing candidate `bd8ecf447a0209a22101c1d458f7e164c03d2d45`. Earlier review-history wording is rationale/evidence only.
+> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. For the reopened implementation, Sections 0-26 **plus Sections 26A-26D** are normative. Section 26A is the original mandatory D4 repair delta over the still-binding Revision-22 architecture as refined by Revision 24; Section 26B records the exhaustive reopened-plan convergence review; Section 26C is the Revision-25 implementation repair delta; Section 26D is the mandatory Revision-26 residual implementation repair and closeout delta. Revision-26 wording controls where it narrows or strengthens the repair after observing candidate `b98d481c0f81f9de4e19bf66b3f5fec92f404104`. Earlier review-history wording is rationale/evidence only.
 
 
 
@@ -2336,6 +2338,125 @@ The next candidate is Review-ready only when:
 7. no second binding algorithm, durability registry, cleanup recursion, deployment registry, scheduler, trainer or family-specific production path is introduced.
 
 If implementation evidence instead demonstrates one of Section 25's D3 reopen triggers, stop and raise a Serious Challenge. Nothing observed in candidate `bd8ecf447a0209a22101c1d458f7e164c03d2d45` currently does so.
+
+
+## 26D. Revision-26 implementation Review reopen — residual current-binding and closeout repair
+
+### Review basis and disposition
+
+Reviewed assembled repair candidate:
+
+```text
+b98d481c0f81f9de4e19bf66b3f5fec92f404104
+```
+
+**NO-PASS. No Serious Challenge.** Revision-22 D3 remains coherent and the remaining repair is D4-local. The candidate improves the implementation by changing the existing trust/qualification owners directly rather than adding a registry, scheduler, cleanup subsystem, or MH-1 production fork.
+
+The core protected outcome remains:
+
+```text
+current P5 scientific product
+    -> exact authenticated selected-checkpoint model representation
+    -> coherent captured P5 parent graph
+    -> P7 exact deployed realization set
+    -> terminal/release/first-reveal commit only under the current qualification binding
+```
+
+### IR26-B1 — late binding reloads current TOML but still consumes stale method-policy fields — BLOCKING
+
+Revision 25 required the terminal/release/first-reveal fence to rebuild the existing qualification binding from the authoritative current normalized campaign configuration. Candidate `b98d481c0f81f9de4e19bf66b3f5fec92f404104` now calls:
+
+```python
+current_cfg, _current_paths = _load_config(context.paths.config, ensure=False)
+resolve_canonical_qualification_binding(
+    current_cfg,
+    context,
+    session.publication,
+    session.predecessor_reclosure,
+    ...
+)
+```
+
+but `resolve_canonical_qualification_binding(...)` still obtains two binding-bearing configuration inputs from the **session-frozen** context:
+
+```python
+capture_environment_fingerprint(
+    default_dtype=str(context.method_policies.default_dtype),
+    device=str(context.method_policies.device),
+)
+_qualification_resource_scope(
+    current_cfg,
+    device=str(context.method_policies.device),
+    ...
+)
+```
+
+At admission, `context.method_policies` was itself resolved from the then-current campaign configuration by `resolve_post_selection_method_policies(cfg, config_dir=paths.config_dir)`. Therefore a later accepted configuration edit that changes the resolved learned-model dtype or `[training].device` can leave the late-fence binding unchanged even though `EnvironmentFingerprint` and the resource-scope identity explicitly bind those values.
+
+The added TOML-drift tests change a qualification-specification field (`probe_configurations`), which is correctly re-read from `current_cfg`; they do not falsify the stale method-policy path.
+
+This violates the still-binding Revision-25 IR25-B1 contract, blocking condition 89, and completion criteria 6/8a. It is a D4 concretization defect, not a D3 ownership defect.
+
+Required repair:
+
+1. Keep exactly one `QualificationInputBinding` constructor. Do not add a P7-specific shadow binding or a list of ad hoc "fields to compare."
+2. Alter the existing canonical binding path so **every configuration-owned value that contributes to the binding is derived from the `cfg` argument supplied to that constructor**, not from `context.cfg` or `context.method_policies` captured at admission.
+3. Reuse the existing canonical binary-precision resolver for learned-model dtype. For device, reuse or factor the existing `[training].device` resolution used by `resolve_post_selection_method_policies`; do not create a second interpretation with different defaults/normalization.
+4. Preserve the already-captured scientific/P5 facts that are not configuration-owned P7 inputs: selected binding, authenticated publication, predecessor reclosure, and neutral evidence-role membership remain fenced by their existing P5 parent/currentness owners.
+5. Do not rebuild a full `PostSelectionContext` or `QualificationSession`, inspect/reload the foundation model, create layout, publish a request, or construct a provider merely to perform this identity fence.
+6. Keep the call at the existing terminal/release/first-reveal critical sections. Any mismatch must abort before pointer publication or irreversible reveal.
+
+Required falsification:
+
+- admit under one valid learned-model dtype, edit the actual campaign TOML to another valid dtype through the same canonical precision surface, and prove terminal publication is refused with the previous terminal pointer unchanged;
+- repeat at release publication;
+- repeat before first reveal and prove neither reveal history nor activation pointer is created;
+- independently mutate `[training].device` between admission and the same fences and prove the current binding changes/refuses;
+- retain the existing unrelated-TOML-field control proving fields outside qualification-binding semantics do not false-stale the attempt.
+
+### IR26-E1 — exact assembled-candidate executable acceptance is absent — BLOCKING FOR CLOSEOUT
+
+For exact candidate `b98d481c0f81f9de4e19bf66b3f5fec92f404104`, GitHub currently exposes:
+
+```text
+commit statuses : 0
+check runs       : 0
+Actions runs     : 0
+```
+
+Repository test source is evidence-producing code, not evidence that the candidate executed successfully. Revision-25 IR25-E1 therefore remains open for closeout.
+
+The candidate now encodes most of the required falsifications, including P5 parent advance, deterministic-directory retry, frozen-realization refusal, TOML specification drift, reveal-history crash recovery, scratch replacement, and the bounded MH-1 current-owner seam. Two acceptance holes still need explicit closure before the final run:
+
+1. **Retry-time fsync failure itself.** The new deterministic-directory and deployment-receipt tests prove a later successful retry fence, but do not inject failure of that retry-time fence and prove that no product/component pointer/evidence advances. Add the negative half required by IR25-B2 for both the directory-chain and receipt-reuse paths.
+2. **MH-1 provider equivalence assertions.** The bounded structural MH-1 test accurately records that real `mace-mh-1.model` bytes are unavailable and crosses the current materialization/TRAIN2/provider path with `allow_forward_override=False`. Strengthen that same test to assert the provider's evaluated state digest equals the portable realization state digest, the portable realization execution-architecture digest equals the authenticated provider/summary architecture, and the learned dtype is preserved through publication reload. Do not add another MH-1 fixture or production path.
+
+After IR26-B1 and the two evidence holes above are repaired, execute the exact focused suites from IR23-E1/IR25-E1 plus all materially affected regression, collection/compile/static checks and documentation build required by Sections 23 and 26A. Record the exact candidate SHA, commands, pass/fail/skip counts, and environment-dependent skip reasons. The real MH-1 foundation tests may remain explicitly skipped when bytes/runtime are unavailable; long MH-1/GPU/MD qualification remains deferred.
+
+### Provisional closures retained from candidate b98d481c0f81
+
+Subject to the assembled executable regression above, Review finds no remaining code-shape blocker in these Revision-25 items:
+
+- **IR25-B2 durability retry:** `_open_or_create_directory(..., create=True)` now fsyncs the authenticated containing directory whether the deterministic child was newly created or already visible residue, and consequential deployment-receipt reuse fsyncs the authenticated deployment root before returning the receipt/artifact.
+- **IR25-B3 private scratch retirement:** local pathname `shutil.rmtree` was removed from both execution staging and deployment build. Replacement-name sentinels are preserved; inert residue is left to the already-existing released-attempt/storage owner rather than creating a new remover.
+- **IR25-B4 structural MH-1 seam:** the new bounded test drives `mace_mh_1 / omat_pbe` through current post-selection materialization, native TRAIN2 checkpoint state, `authenticate_post_selection_provider(..., allow_forward_override=False)`, canonical `[pt_head, target_head]`, and P5 save/reload. It truthfully distinguishes the locally constructed MH-1-shaped structural fixture from conditionally available real MH-1 bytes.
+- The provisionally closed Revision-23/24 owners remain structurally intact: late P5 parent replay under the generation barrier, descriptor-authenticated deployed execution, frozen realization-set refusal, and co-fenced reveal-history/activation publication.
+
+Do not rewrite these paths while repairing IR26-B1/E1 unless a new falsification demonstrates an actual regression.
+
+### Revision-26 acceptance / stop conditions
+
+The next candidate is Review-ready only when all of the following are true:
+
+1. `resolve_canonical_qualification_binding` no longer reads any configuration-owned binding value from session-frozen method-policy/config state when invoked as a currentness fence.
+2. Binding-relevant learned dtype and device edits after admission are refused at terminal, release and first reveal, while unrelated edits remain inert.
+3. Retry-time directory/receipt fsync failure is itself tested to abort without authoritative descendant movement.
+4. The bounded MH-1 current-owner seam proves evaluated state, execution architecture and learned dtype equivalence through reload, with real-byte unavailability represented only as an explicit skip/unavailable fact.
+5. One exact assembled candidate has executable focused + materially affected regression evidence with exact pass/fail/skip accounting.
+6. Previously provisionally closed durability, scratch, frozen-realization, current-parent, and one-shot-reveal behavior remains intact.
+7. No new binding algorithm, currentness database, durability journal, cleanup subsystem, deployment registry, scheduler, trainer, wrapper hierarchy, or family-specific production path is introduced.
+
+If implementation evidence exposes a Section-25 D3 reopen trigger, stop and raise a Serious Challenge. Nothing observed in `b98d481c0f81f9de4e19bf66b3f5fec92f404104` does so.
 
 ## 27. Current-implementation review closure (Revision 2)
 
