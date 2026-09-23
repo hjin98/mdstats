@@ -4,26 +4,6 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 ## Current active MLFF work
 
-### Final-production model publication + lightweight MH-1 integration
-
-Branch: `design/mlff-final-production-model-publication-mh1-integration`
-
-Canonical workplan:
-
-- `workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`
-
-Revision 27 is **CODE-CONFORMANCE PASS / CLOSEOUT NO-PASS FOR EXECUTABLE EVIDENCE ONLY** against assembled candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`. The Revision-26 current-binding defect is closed in code shape: dtype/device now resolve from the current supplied configuration through the same canonical owners used at admission; retry-fsync negative tests and the bounded MH-1 provider/publication equivalence specification are also complete. No new production-code repair is authorized unless executable acceptance exposes a real failure. Revision-22 D3 remains coherent and frozen; no Serious Challenge is active.
-
-The sole remaining blocker is exact-candidate executable acceptance: GitHub exposes no status/check/Actions run for `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`, and the review environment could not execute a checkout. Run and durably report the focused + materially affected suites and maintained compile/static/docs checks with exact pass/fail/skip accounting. Long production MH-1/GPU/MD qualification remains deferred.
-
-Revision 26 (prior review) was **IMPLEMENTATION REVIEW NO-PASS / REOPENED FOR RESIDUAL D4 REPAIR** against assembled candidate `bd8ecf447a0209a22101c1d458f7e164c03d2d45`. Revision-22 D3 remains coherent and frozen; no Serious Challenge is active. The Revision-24 repair architecture remains accepted; Revision 25 is a narrow implementation delta.
-
-The implementation correctly established most of the intended owner split—P5 decision versus subordinate full-model representation, exact selected-checkpoint reconstruction, model publication schema/paths, coherent observation, P7 checkpoint reference versus deployment source, storage child ownership, and lightweight MH-1 scaffolding—but independent Review found genuine blockers at the remaining trust/currentness boundaries. Mandatory closeout authority is Sections 26A-26E of the canonical workplan, with Revision-25 residual repair instructions controlling where they narrow/strengthen the prior delta.
-
-Candidate `bd8ecf...` provisionally closes the late-P5 replay, descriptor-authenticated deployed execution, exact frozen-realization, and co-fenced first-reveal code paths. Residual blocking scope is now narrower: (1) late P7 binding revalidation must reload the authoritative current normalized campaign configuration rather than session-frozen `context.cfg`; (2) retries after failed P5/P7 directory or deployment-receipt fsync must establish a later successful durability fence before pointer/component publication; (3) local pathname `shutil.rmtree` of build/execution scratch must be removed or routed through the existing exact-owner descriptor-relative cleanup boundary; (4) MH-1 evidence must still cross the real current post-selection selected-checkpoint provider seam; and (5) the required focused/affected executable acceptance—including the new race/failure injections—must actually run for one exact assembled candidate. Long real MH-1 campaign/GPU/MD qualification remains deferred.
-
-For exact candidate `bd8ecf447a0209a22101c1d458f7e164c03d2d45`, no GitHub status check or Actions run is visible, and the repair commit changed production code without adding the Revision-24-required falsification tests. Exact post-repair focused/affected commands, results and environment-dependent skip reasons remain a closeout requirement.
-
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
 Branch: `design/mlff-pi-train-fps-diversity-restoration`
@@ -49,6 +29,13 @@ The proposed method restores the final mature multi-view semantics under current
 **No D1/D2 promotion has occurred.** Independent D1/D2 falsification and stakeholder human ratification remain mandatory before accepted-current method-paper promotion and before R2 begins. The current UID-capable product method therefore remains under **SERIOUS CHALLENGE**.
 
 ## Recently closed MLFF work
+
+The final-production model publication + lightweight MH-1 integration cycle on branch `design/mlff-final-production-model-publication-mh1-integration` closed **PASS** under Protocol 6.4 at exact executable candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`, with evidence-only descendant `37746668d7125a1946b0a1a5d0f938c7b2a899a7` and identical importable source-tree manifest. The five mandatory focused suites returned 89 passing tests and two justified locked-real-MH-1 skips; the bounded structural current-owner MH-1 seam passed. Current P5/P7/lifecycle/storage/MACE/static/package/documentation-builder evidence is recorded, and superseded test oracles are diagnosed rather than repaired. Long real MH-1/GPU/CUDA-performance/LAMMPS/MLIAP/MD qualification remains deferred to the actual campaign and final release.
+
+Final closure records:
+
+- `workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`;
+- `workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_2026-09-23.md`.
 
 The final-production global TRAIN scheduler repair on branch `design/mlff-production-global-train-scheduler-repair` closed **PASS** under Protocol 6.4 at reviewed candidate `62d42da57f948f70bbd50ec338435c3a82b22d49`. Final production now normalizes recovery collection-wide, executes only remaining TRAIN_REQUIRED positions through one existing adaptive TRAIN scheduler wave, and retains serial/fail-fast EVAL2/assessment/publication in frozen selected-size order. Exact CampaignStore collection-signature admission linearization, authenticated restart/reuse, and zero-safe/backoff semantics remain intact. Production-scale RAM/VRAM adequacy is deferred to actual runs and target-hardware GPU qualification to the final release package.
 

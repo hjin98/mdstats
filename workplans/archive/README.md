@@ -4,6 +4,15 @@ Retain completed or explicitly superseded workplans here only when their impleme
 
 An archived plan may retain the status metadata it had at the moment it was superseded. Its location under `workplans/archive/` is the lifecycle authority; such internal status fields are historical snapshot content, not an active-work declaration.
 
+## 2026-09-23 final-production model publication + lightweight MH-1 closeout
+
+The Revision-27 executable-evidence gate closed **PASS** at exact candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`, with evidence-only descendant `37746668d7125a1946b0a1a5d0f938c7b2a899a7` and identical importable `mdstats/**/*.py` source identity. The mandatory focused suites returned 89 passing tests and two explicitly unavailable locked-real-MH-1 skips; the bounded structural current-owner MH-1 seam passed. Affected current-owner P5/P7/lifecycle/storage/MACE/static/package/documentation-builder evidence is recorded in the closure report. Superseded synthetic/API/documentation oracles were executed, diagnosed, and excluded without production repair. Long real MH-1, GPU/CUDA-performance, production LAMMPS/MLIAP, and MD qualification remains deferred to the actual campaign/final release.
+
+Archived records:
+
+- `MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`;
+- `MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_2026-09-23.md`.
+
 The target-size screen/production Repair-1 chain was superseded by later exact-boundary work and is retained here as historical engineering lineage:
 
 - `MLFF_TARGET_SIZE_SCREEN_PRODUCTION_DECOUPLING_REPAIR1_WORKPLAN.md`

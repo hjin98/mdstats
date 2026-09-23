@@ -2,11 +2,11 @@
 kind: implementation-workplan
 workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
-status: active-reopened
+status: closed-pass
 created_date: 2026-09-21
 revision: 27
 reviewed_date: 2026-09-23
-workplan_review_status: implementation-review-no-pass-evidence-only-reopened-4
+workplan_review_status: implementation-review-pass-closeout
 workplan_review_basis: 73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
 implementation_review_candidate: 73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
 implementation_review_domain: D4
@@ -21,9 +21,9 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 ## 0. Disposition
 
-**IMPLEMENTATION REVIEW NO-PASS / REOPENED FOR D4 REPAIR. Revision-22 D3 remains coherent and frozen; no Serious Challenge is active.**
+**IMPLEMENTATION REVIEW PASS / CLOSED. Revision-22 D3 remains coherent and frozen; no Serious Challenge is active.** The exact Revision-27 executable acceptance record is archived in `workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_2026-09-23.md`.
 
-**REVISION-27 IMPLEMENTATION REVIEW: CODE-CONFORMANCE PASS, CLOSEOUT NO-PASS FOR EXECUTABLE EVIDENCE ONLY.** Candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` closes the remaining Revision-26 production-code and test-specification gaps without adding a second binding algorithm, durability mechanism, cleanup owner, scheduler, trainer, or MH-1 production fork. No new production-code repair is authorized unless executable acceptance exposes a real failure. The sole blocking closeout obligation is now IR27-E1: execute and durably report the required focused + materially affected acceptance against this exact executable candidate (or an evidence-only descendant whose importable source tree is identical). Revision-22 D3 remains coherent; no Serious Challenge is active.
+**REVISION-27 IMPLEMENTATION REVIEW: PASS / CLOSEOUT COMPLETE.** Candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` closes the remaining Revision-26 production-code and test-specification gaps without adding a second binding algorithm, durability mechanism, cleanup owner, scheduler, trainer, or MH-1 production fork. IR27-E1 was executed against the exact candidate-equivalent executable source tree and durably recorded in the closure report cited above. The bounded current-owner acceptance is green; only explicitly documented environment-dependent and superseded-oracle cases remain outside the closeout gate. Revision-22 D3 remains coherent; no Serious Challenge is active.
 
 **REVISION-26 IMPLEMENTATION REVIEW NO-PASS.** Candidate `b98d481c0f81f9de4e19bf66b3f5fec92f404104` directly repairs the Revision-25 durability-retry and pathname-recursive scratch defects and adds the required bounded MH-1 current-owner seam, but the late qualification-binding fence is still only partially current: it reloads the authoritative TOML while continuing to take binding-bearing learned-model dtype and device from the session-frozen post-selection context. Exact-head executable acceptance is also not available. Revision 26 therefore reopens only those residual D4 obligations; it does not authorize D3 redesign or rework of already-conforming owners.
 
@@ -2620,7 +2620,25 @@ The plan closes when IR27-E1 supplies one coherent executable evidence set and n
 - the current D4 implementation is conforming;
 - long target-hardware/production qualification remains deferred exactly as already authorized.
 
-Until IR27-E1 exists, the correct disposition is **NO-PASS FOR CLOSEOUT EVIDENCE ONLY**, not another implementation-repair cycle.
+Before the evidence recorded in Section 26F existed, the correct disposition was **NO-PASS FOR CLOSEOUT EVIDENCE ONLY**, not another implementation-repair cycle. Section 26F supersedes that temporary disposition.
+
+## 26F. IR27-E1 executable acceptance and closeout — PASS
+
+IR27-E1 is closed against the exact executable candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`. The current branch head used for the evidence-only descendant is `37746668d7125a1946b0a1a5d0f938c7b2a899a7`; the importable `mdstats/**/*.py` source tree is identical to the candidate: 429 Python files and source-manifest SHA-256 `e988e6aa1742d1eb930e043331b53c18c37572869863d1ba4d317755f73db86f` at both refs. No importable production source was changed for closeout.
+
+The complete command ledger, exact suite accounting, environment facts, skip reasons, stale-oracle diagnoses, package hashes, and documentation-builder JSON are preserved in:
+
+```text
+workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_2026-09-23.md
+```
+
+The five mandatory focused suites passed with `89 passed, 2 skipped`. The bounded current-owner MH-1 seam executed and passed; the two skips require the unavailable locked real `mace-mh-1.model` bytes/runtime and explicitly defer real MH-1 campaign qualification. The affected current P5 publication/reclosure/currentness, global TRAIN/multi-size, lifecycle/status, P7 realization/currentness/post-production, storage, MACE execution, collection/import/compile/static, packaging, native-build, and documentation-builder checks are recorded in the closure report. The current-owner acceptance is **PASS**.
+
+The report also records historical or superseded test oracles that were executed but not counted as current-owner blockers: synthetic parameter-shell legacy-root tests after the native checkpoint publication boundary; scheduler tests expecting fresh TRAIN/EVAL2 after a current `PRODUCT_COMPLETE`; pre-facade campaign CLI warning tests; assembled tests using superseded P5 APIs; the foreign-materialization-field/static `iterdir()` heuristics; and pre-renewal D3 manual/graph/PDF assertions. None exposes a failure in the accepted D1/D2/D3 authority or in the current executable owners, and no repair was made for them.
+
+Long production MH-1 TRAIN2/CV, GPU/CUDA-performance, LAMMPS/MLIAP production qualification, and MD validation remain explicitly deferred to the actual campaign/final-release qualification. This closeout does not claim any of those deferred qualifications.
+
+**IR27-E1 disposition: PASS. Implementation Review: PASS. Workplan: CLOSED.**
 
 ## 27. Current-implementation review closure (Revision 2)
 
