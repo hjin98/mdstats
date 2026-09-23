@@ -19,6 +19,8 @@ Tracked Markdown/PDF sibling pairs under `docs/` are ordinary PDF publications. 
 
 `docs/build_pdfs.py` is the publication driver. It discovers existing direct `X.md` -> `X.pdf` pairs and reads `docs/pdf_publications.json` for new publications and nontrivial source graphs. To introduce a PDF before its sibling PDF exists, declare that source/target explicitly in `pdf_publications.json`.
 
+Presentation-managed Markdown/PDF pairs that must not be passed through the generic renderer can be listed under `manual` in `docs/pdf_publications.json`. The builder excludes those pairs from direct-pair autodiscovery; their subtree instructions own rendering and visual QA. This is used for `docs/summary/`, where mathematical typesetting and publication-quality presentation are part of the human-facing contract.
+
 The MLFF architecture is composite rather than a direct editable pair: canonical chapter sources under `arch_manuals/mlff_training_data/` are assembled by `tools/build_mlff_architecture_manual.py`, then the derived `arch_manuals/mlff_training_data_architecture.md` is rendered to PDF. Derived Markdown/PDF outputs must not be edited independently.
 
 Local maintenance commands include:

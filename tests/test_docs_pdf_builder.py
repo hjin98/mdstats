@@ -31,7 +31,7 @@ class DocsPdfBuilderTests(unittest.TestCase):
                 "from": "markdown", "pdf_engine": "typst",
                 "papersize": "us-letter", "margin": "0.75in"
             },
-            "direct": [], "composite": []
+            "direct": [], "composite": [], "manual": []
         }
         (self.repo / "docs/pdf_publications.json").write_text(json.dumps(config))
         (self.repo / ".github/workflows/docs-build.yml").write_text("name: test\n")
@@ -79,6 +79,16 @@ class DocsPdfBuilderTests(unittest.TestCase):
         (self.repo / "docs/README.md").write_text("index changed\n")
         head = self._commit("readme")
         self.assertEqual(self._plan(self.base, head)["targets"], [])
+
+    def test_manual_publication_is_not_autodiscovered(self):
+        config = json.loads((self.repo / "docs/pdf_publications.json").read_text())
+        config["manual"].append({"source": "docs/a.md", "target": "docs/a.pdf"})
+        (self.repo / "docs/pdf_publications.json").write_text(json.dumps(config))
+        base2 = self._commit("manual publication")
+        (self.repo / "docs/a.md").write_text("# A manually rendered\n")
+        head = self._commit("manual source change")
+        plan = self._plan(base2, head)
+        self.assertNotIn("docs/a.pdf", {x["target"] for x in plan["targets"]})
 
     def test_explicit_new_publication_builds_first_pdf(self):
         config = json.loads((self.repo / "docs/pdf_publications.json").read_text())

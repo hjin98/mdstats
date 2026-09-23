@@ -26,6 +26,7 @@ Every summary must be:
 - **Refined and easily digestible.** Prefer a coherent narrative, informative section titles, short paragraphs, and equations that advance the explanation. Avoid walls of jargon, exhaustive implementation inventories, and amendment-style prose.
 - **Well written.** Use precise scientific English, stable terminology, and clean notation. Expand non-obvious abbreviations at first explanatory use.
 - **Self-contained for its stated scope.** Include the background and definitions needed to understand every material concept used later in the paper. Do not depend on hidden chat context or undocumented project knowledge.
+- **Visually publication-quality.** The PDF is part of the communication contract, not a mechanical afterthought. Typography, hierarchy, mathematical typesetting, spacing, tables, callouts, diagrams, headers/footers, and page breaks must be deliberately composed for comfortable reading.
 
 ## Background and definitions
 
@@ -75,25 +76,52 @@ Use the minimum structure that preserves clarity. A good default is:
 
 Adapt this structure to D3/D4 topics rather than forcing mathematical sections where architecture or interface semantics are the real subject.
 
+## Visual presentation standard
+
+The current MLFF training-coverage summary establishes the preferred visual character for this documentation family: restrained scientific-paper styling, generous whitespace, a clear title hierarchy, calm serif body typography, blue section headings, compact well-aligned tables, shaded explanatory callouts where they add value, centered display mathematics, simple diagrams, unobtrusive running headers, and page numbers.
+
+Treat that as a **quality reference**, not a rigid pixel template. New summaries may vary when their content calls for it, but they must remain equally polished and readable.
+
+Required presentation rules:
+
+- Mathematical expressions must be rendered as real typeset mathematics. Never ship raw TeX commands, broken Unicode substitutions, malformed delimiters, fragmented sums/fractions/radicals, or equations whose visual structure changes the intended mathematics.
+- Display equations must have adequate whitespace, correct alignment, legible subscripts/superscripts, and sensible line breaking. Verify the rendered equation against the source definition, not merely that the PDF build succeeded.
+- Use visual hierarchy to reduce cognitive load: title/subtitle, section headings, explanatory callouts, tables, and diagrams should each have a distinct but restrained role.
+- Prefer a professional scientific-document typeface and comfortable body size. Do not shrink text to force a page count.
+- Use color sparingly and consistently. Section color or light callout shading is appropriate; decorative or high-saturation styling is not.
+- Tables must have deliberate column widths, readable wrapping, sufficient cell padding, and no clipped rows. Avoid dense full-grid styling unless it materially improves comprehension.
+- Diagrams should explain a concept or flow, not decorate the page. Labels must remain readable at normal fit-to-page viewing.
+- Maintain generous margins and natural vertical rhythm. Avoid stranded headings, large accidental whitespace, crowded bottoms of pages, or paragraph/table splits that damage comprehension.
+- Headers, footers, page numbers, hyperlinks, and references must be visually subordinate to the scientific content but professionally composed.
+- The first page should read as a deliberate publication front page rather than a raw Markdown export.
+
+A generic renderer is acceptable only if its output meets these standards. **Do not accept renderer convenience as a reason to degrade equations or presentation.** If the generic repository Markdown renderer cannot preserve the required mathematics or visual quality, use an appropriate high-quality typesetting path and preserve the resulting PDF as the presentation-managed publication.
+
 ## Markdown/PDF publication contract
 
-For a summary publication, keep a sibling pair:
+For each summary publication keep the natural pair:
 
 ```text
 <name>.md
 <name>.pdf
 ```
 
-Treat the Markdown as the editable source and the PDF as its rendered publication. Do not independently edit the PDF to create semantics absent from the Markdown.
+Treat the Markdown as the editable semantic source and the PDF as its human-facing rendered publication. Do not independently add scientific content to the PDF that is absent from the Markdown.
+
+Summary PDFs whose presentation is deliberately managed outside the generic Markdown renderer must be listed in the `manual` section of `docs/pdf_publications.json`. The repository PDF builder must then leave that pair untouched rather than replacing it with a lower-fidelity generic rendering.
 
 After changing a summary Markdown file:
 
-1. rebuild the sibling PDF using the repository documentation publication workflow where available;
-2. visually inspect every rendered PDF page;
-3. verify equations, tables, links, references, figure labels, line wrapping, and page breaks;
-4. fix clipping, overlap, broken glyphs, excessive density, or awkward pagination before completion.
+1. re-read the applicable current authority before editing substantive claims;
+2. update the Markdown source;
+3. render the PDF using a typesetting path capable of meeting the visual standard above;
+4. render the resulting PDF to page images and inspect **every page** at normal reading scale and at 100% where equations/tables are dense;
+5. compare every substantive displayed equation against the Markdown/source authority;
+6. verify tables, links, references, figure labels, line wrapping, headers/footers, and page breaks;
+7. fix clipping, overlap, broken glyphs, malformed mathematics, excessive density, awkward pagination, or weak visual hierarchy before completion;
+8. keep the Markdown and PDF synchronized in substantive content.
 
-The Markdown and PDF must communicate the same substantive content even when typography differs.
+A PDF build that merely exits successfully is **not** publication acceptance.
 
 ## Completion check
 
@@ -108,4 +136,7 @@ Before declaring a summary complete, verify all of the following:
 - no material authority semantics were lost or invented during compression;
 - internal authority sources are identified;
 - external references are relevant, verified, and clearly separated from project-specific authority;
-- the Markdown/PDF pair is synchronized and the final PDF has passed visual QA.
+- every displayed equation is mathematically and visually correct;
+- the PDF has deliberate scientific-publication styling rather than generic export appearance;
+- every PDF page has passed visual QA with no clipping, overlap, malformed math, broken glyphs, weak table layout, or awkward page break;
+- the Markdown/PDF pair is synchronized.

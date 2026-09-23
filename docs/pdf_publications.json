@@ -7,11 +7,12 @@
     "papersize": "us-letter",
     "typst_binary": "mace-dependencies/typst-x86_64-unknown-linux-musl.tar.xz"
   },
-  "direct": [
+  "direct": [],
+  "composite": [],
+  "manual": [
     {
       "source": "docs/summary/mdstats_mlff_training_coverage_method.md",
       "target": "docs/summary/mdstats_mlff_training_coverage_method.pdf"
     }
-  ],
-  "composite": []
+  ]
 }
