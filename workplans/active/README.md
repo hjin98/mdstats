@@ -21,6 +21,8 @@ Stage-A numerical evidence analysis:
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_EVIDENCE_ANALYSIS.md` — authentic failed-doctor evidence confirms the descriptor absolute-floor defect, finite-sample force-tail instability, and tail-metric redundancy.
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_ORDER_PROCESS_DIAGNOSTIC_ANALYSIS.md` — MH-1 counterbalanced fresh-process evidence.
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_MPA0_DIAGNOSTIC_ANALYSIS.md` — MPA-0 cross-family realization; absolute force scale differs by ~5-6x but the stochastic decomposition is structurally similar, and MPA-0 additionally falsifies the generic `1e-6` energy floor. No replacement criterion is yet accepted.
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE.md` — proposed Stage-B D2 overlay. It replaces forward-only TRAIN2 threshold thinking with reference-anchored physical-output plus optimizer-gradient operator equivalence, while preserving source/DATA6 and projection siblings. **Not accepted; independent Review required.**
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_B_STATUS.md` — Stage-B handoff/status and mandatory falsification questions.
 
 Formal workplan review:
 

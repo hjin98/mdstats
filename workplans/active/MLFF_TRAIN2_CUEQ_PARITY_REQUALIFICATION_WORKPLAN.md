@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 10
+revision: 11
 reviewed_date: 2026-09-24
-workplan_review_status: PASS_AS_WORKPLAN_AFTER_R9_REPAIR
-workplan_review_basis: 293bc8e3fcdb0cdda6a22608d2a280fdd7a97ab4
+workplan_review_status: PASS_AS_WORKPLAN_AFTER_STAGE_B_SCOPE_REPAIR
+workplan_review_basis: 24734c8113dfaeaba4ae32c2bb0b80f3c0c72e82
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -48,6 +48,12 @@ The observed failure is not sufficient evidence that CuEq is scientifically or n
 The strongest immediate **adequacy counterexample candidate** is the descriptor channel: the current absolute cross-backend ceiling is smaller than the maximum observed same-backend FP32 descriptor variability on both backends in this target-host realization. That fact alone is not a mathematical contradiction—an independently justified cross-backend bound could in principle be tighter than same-backend extrema—but, combined with the policy's MPA-0-only calibration history, preserved hard selection outcomes, and absence of a current cross-family D2 derivation, it is sufficient to challenge transportability and numerical justification.
 
 This review also confirmed an authority-provenance defect that must be resolved before changing any tolerance. The accepted Protocol-6.4 D2 kernel is `a759e81...`, importing exact source `a4824d2...`; it states that backend-observed discrepancy or an unlisted tolerance cannot create a new numerical-equivalence relation. Direct inspection of the exact accepted source finds no CuEq-specific relation and no FP32 parity rule. The Rev86 CuEq parity document is now classified by the current D4 specification index as historical/backend-qualification material rather than a current semantic owner. Therefore the current CuEq acceleration-equivalence family is **not source-closed as accepted D2 authority under the current Protocol-6.4 kernel**. The immediate adequacy challenge is specific to the TRAIN2 FP32 doctor relation, but the same formalization omission also covers the current source-side inference relation, FP64 CuEq relations, and the trained-state CuEq -> portable-e3nn projection/evaluation relation used after checkpoint authentication. This cycle must source-close the complete supported acceleration-equivalence family by role, dtype, and model-state applicability. Numerical changes outside the challenged TRAIN2 FP32 member are not authorized unless those siblings are independently falsified.
+
+Stage-A closure on the same target host now adds fresh MPA-0 evidence under the frozen 20-process counterbalanced design. The cross-family result strengthens the challenge rather than suggesting a larger threshold: absolute FP32 discrepancy changes by roughly a factor of 5-6 between MH-1 and MPA-0 while the normalized stochastic decomposition remains similar, and MPA-0 ordinary self-repeatability also crosses the Rev86 fixed `1e-6` energy floor.
+
+Stage-B protected-consequence analysis then exposed a second, more fundamental adequacy defect. Every current TRAIN2 admission path in `acceleration.py` judges **calculator forward observables**. FP32 Rev86 adds repeated E/F/stress/descriptor/FPS statistics; FP64 uses the one-shot calculator relation. Neither path exercises the optimizer-consumed parameter gradient produced by the backend-specific training forward/backward graph. A forward-only calculator record therefore cannot, by itself, establish that `run_train` under e3nn and pure CuEq realize the same training operator. This is an operator-domain gap, not evidence that CuEq gradients are wrong.
+
+Consequently the changed D2 member is no longer described as “choose a better FP32 forward threshold.” The repair must source-close the TRAIN2 **training-operator** relation. FP32 remains the observed/falsified numerical regime. FP64 forward tolerances are not relaxed, but FP64 CuEq TRAIN2 may not be promoted as a source-closed training-equivalence member solely from its existing forward-only witness; Gate C must either qualify the same operator consequence for FP64 or explicitly narrow current CuEq TRAIN2 support to the qualified dtype.
 
 The current runtime behavior remains the fail-closed baseline until a replacement relation is accepted. D3/D4 MUST continue to fail closed under the existing policy in the meantime. No threshold widening, retry-until-pass behavior, silent e3nn fallback, or MH-1-specific bypass is authorized.
 
@@ -143,7 +149,7 @@ The repair MUST preserve all of the following:
 4. **No silent fallback.** Explicitly requested CuEq may not silently execute TRAIN2 under e3nn.
 5. **Selection identity remains hard.** Deterministic selection fingerprints must agree wherever selection is a governed parity observable.
 6. **Reference/candidate identity remains exact.** e3nn and pure-CuEq probes must bind the same selected-head model state, structures, dtype, descriptor definition, FPS procedure, and all other numerically material inputs except the deliberate backend realization.
-7. **FP32 scope is explicit.** This work does not relax FP64 authority.
+7. **FP32 is the observed numerical challenge; TRAIN2 operator scope is dtype-complete.** This cycle must not relax the existing FP64 calculator tolerances. However, protected-consequence review has shown that forward-only evidence cannot establish a training operator for either dtype. FP64 CuEq TRAIN2 therefore requires operator source closure/qualification before it can remain a supported training-equivalence member; otherwise support must be narrowed explicitly rather than silently inheriting the old forward-only gate.
 8. **No family-specific exception without D2 justification.** Do not add an `if MH-1` tolerance branch merely because this realization failed.
 9. **No auto-calibration from the candidate being judged.** A candidate run may supply repeatability evidence under a predeclared method, but its observed cross discrepancy cannot directly set its own acceptance bound.
 9A. **Adjacent parity relations are formalization-frozen.** Source-side FP32/FP64 CuEq relations and the trained-state CuEq -> portable-e3nn projection/EVAL2 relation must be brought under explicit D2 source closure because the accepted kernel omitted the acceleration-equivalence surface, but their numerical tolerances/semantics are not changed by this TRAIN2 doctor incident absent separate falsification evidence.
@@ -152,8 +158,8 @@ The repair MUST preserve all of the following:
 12. **Existing explicit e3nn TRAIN2 path remains admissible.** The current generated campaign split is source/DATA6/evaluation `e3nn` and TRAIN2 `cueq`. This repair must not silently rewrite that accepted generated policy merely to avoid a challenged CuEq gate. A production run that must proceed without the challenged CuEq relation may explicitly set `training_backend = "e3nn"`; that operational override is not a generated-default change.
 13. **Authority isolation is hard.** Unrelated proposed D1/D2/D3 renewal artifacts on the repository head are evidence/candidate state only and cannot become parents by path precedence.
 13A. **The missing D2 relation is a confirmed closure obligation.** The accepted D2 source does not define CuEq/FP32 parity. D4's Rev86 rule may remain the conservative executable guard during repair, but it cannot be cited as accepted numerical authority until this cycle supplies the source-closed D2 relation through the normal acceptance process.
-14. **Parity preflight and CUEQ-PHASE1 have distinct scopes.** Instantaneous E/F/stress/descriptor/FPS evidence is the current per-selected-head/runtime admission screen for a CuEq TRAIN2 realization, including the generated TRAIN2 `cueq` path. CUEQ-PHASE1 remains valuable paired-training/FINAL-GPU1 evidence, but Revision 60 changed generated campaign policy without retroactively changing the immutable CUEQ-PHASE1 records. Do not falsely make historical phase-1 completion a blanket prerequisite for every current CuEq TRAIN2 realization, and do not claim doctor parity makes the historical phase-1 record pass.
-15. **Every parity channel needs a protected consequence.** No internal quantity remains a hard gate merely because it was historically measured; D2 must state which scientific/numerical downstream invariant it protects.
+14. **Current doctor admission and CUEQ-PHASE1 have distinct scopes, and current doctor evidence is not yet an adequate training-operator proof.** Rev60/Rev61 made the selected-head doctor surface the current fail-closed realization admission path for generated TRAIN2 `cueq`, while CUEQ-PHASE1 remains valuable paired-training/FINAL-GPU1 evidence. Stage-B protected-consequence analysis now establishes that the doctor's forward E/F/stress/descriptor/FPS witness is insufficient to prove the backend-specific backward/gradient operator. Repair that admission proposition directly; do not falsely make historical phase-1 completion a blanket prerequisite for every current realization, and do not claim a repaired doctor relation retroactively makes the historical phase-1 record pass.
+15. **Every parity channel needs a protected consequence.** No internal quantity remains a hard gate merely because it was historically measured; D2 must state which scientific/numerical downstream invariant it protects. In particular, invariant descriptors/FPS are not TRAIN2 training inputs and therefore cannot remain a TRAIN2 hard gate merely by inheritance from source/DATA6 calculator qualification. Optimizer-consumed loss/gradient semantics are a protected TRAIN2 consequence and must be covered.
 16. **Channel dimensions/scales are explicit.** Energy/atom, force, stress, and latent descriptors have different units/scales. A shared numerical absolute ceiling across unlike channels is inadmissible without an explicit normalization/error derivation.
 17. **Qualification currentness is authenticated.** Neither a source-side nor TRAIN2 stored CuEq realization can remain current solely because backend/device/dtype/checkpoint match; consequential reuse must bind the currently accepted parity-policy/method identity and applicable runtime/model evidence.
 18. **Historical records are immutable but non-self-authorizing.** An old record carrying `passed=true` remains historical evidence after a policy/method change and cannot authorize current CuEq use without the accepted remap/requalification rule.
@@ -204,7 +210,9 @@ This cycle does not:
 
 The D2 question is:
 
-> When may two FP32 TRAIN2 execution backends be treated as numerically equivalent for the scientific decisions that consume their outputs, despite backend- and run-level floating-point reduction variability?
+> When may e3nn and pure-CuEq TRAIN2 execution be treated as the same numerical **training operator** for the scientific method, despite backend- and run-level floating-point variability?
+
+For FP32 this includes the challenged physical-output arithmetic **and** the optimizer-consumed backward gradient. For any other dtype retained as supported CuEq TRAIN2, the same protected training-operator consequence must be source-closed even when its existing forward calculator tolerance remains numerically unchanged.
 
 The replacement must discriminate:
 
@@ -271,7 +279,7 @@ PEM coverage is partial. Absence of a specific historical parity family is not e
 The workplan SHALL preserve the distinction among:
 
 1. **runtime/capability identity** — CUEQ-DEP1 and MACE/Torch/CUDA/source compatibility;
-2. **current campaign admission** — the selected-head doctor parity/repeatability rule under review here, which authorizes a specific CuEq TRAIN2 realization fail-closed, including the generated TRAIN2 `cueq` path;
+2. **current campaign admission** — the selected-head doctor surface currently authorizes a specific CuEq TRAIN2 realization fail-closed, including the generated TRAIN2 `cueq` path, but its existing forward-only parity/repeatability witness is under adequacy challenge because it does not exercise the backend-specific training gradient;
 3. **historical/paired training qualification evidence** — CUEQ-PHASE1 short and representative full e3nn-vs-CuEq trajectories with hard-decision preservation;
 4. **release/end-to-end certification** — PERF-CERT1/FINAL-GPU1 where applicable.
 
@@ -536,35 +544,48 @@ Do not count several tests sharing the same generated expected values as indepen
 
 ### Stage B — Bounded D2 candidate method
 
-1. Define one D2 acceleration-equivalence family with explicit role/dtype/**model-state** applicability. Preserve existing source-side FP32/FP64 and trained-state projection numerical relations unless separately challenged; isolate the TRAIN2 FP32 doctor criterion as the changed/challenged member.
-2. State the exact proposition of the current doctor TRAIN2 parity admission gate and its relationship to starting-checkpoint state, optimizer-reachable trained states, native CuEq -> portable-e3nn projection/EVAL2, historical CUEQ-PHASE1, Rev60 generated TRAIN2 policy, the explicit e3nn override, and FINAL-GPU1.
-3. Define every governed observable/channel, unit/normalization, downstream protected consequence, and the model-state/architecture domain over which each relation is claimed to hold.
-4. Define the experimental units and whether the TRAIN2 FP32 method is a finite-sample functional or a population estimator.
-5. Define the equivalence statistics per justified TRAIN2 FP32 channel, including exact quantile/order-statistic semantics.
-6. Define absolute catastrophic guards and protections against inflated/near-zero self-noise.
-7. Define exact selection identity/robustness requirements.
-8. Define warm-up, repeat, evaluation-order, process-replication, probe-corpus, and insufficiency semantics before seeing acceptance outcomes.
-9. Define generic-vs-regime applicability explicitly, including model-state applicability. Any parameterization must follow a semantically meaningful scale/architecture/runtime coordinate, not a model-family or checkpoint exception table chosen from failures.
-10. Define the policy/method digest and realization applicability binding so evidence cannot cross incompatible methods/runtimes/model-state domains.
-11. Define old-record currentness/remap semantics and whether record/schema versions must advance.
-12. Separate three propositions that historical code/tests currently blur: starting-checkpoint CuEq admission, CuEq behavior over optimizer-reachable trained states, and trained-state CuEq -> portable-e3nn projection/EVAL2 equivalence. Reuse one relation only if D2 proves their validity domains coincide; otherwise name the bounded relations separately without duplicating runtime machinery.
-13. Produce a bounded D2 overlay against the exact accepted parent; do not edit an unrelated unaccepted canonical-path renewal.
-14. Write the proposed D2 authority before changing D4 product thresholds.
+1. Define one D2 acceleration-equivalence family with explicit role/dtype/model-state applicability. Preserve source/DATA6 calculator relations and trained-state projection relations unless separately challenged; isolate TRAIN2 as a **training-operator** member rather than another calculator-inference alias.
+2. State the exact proposition of current doctor admission and its relationship to the starting checkpoint, the backend-specific forward/backward graph, optimizer-consumed gradients, reachable trained states, native CuEq -> portable-e3nn projection/EVAL2, CUEQ-PHASE1, Rev60 generated TRAIN2 policy, the explicit e3nn override, and FINAL-GPU1.
+3. Define every governed observable, unit/normalization and protected consequence. Descriptor/FPS parity remains hard only where source/DATA6 selection actually consumes it; it is not a TRAIN2 gate unless a current TRAIN2 consumer is identified.
+4. Define the TRAIN2 experimental unit as the **fresh process**. Repeats within one process are nested measurements. The replacement is a predeclared finite-sample qualification functional, not a claim that all-pairs differences are independent population samples.
+5. For each continuous TRAIN2 observable vector, define the e3nn reference centroid, e3nn finite-sample variability, CuEq centroid bias, CuEq variability, and order-cell conditional bias directly. Do not retain redundant p99/p99.9/max tail gates unless an independent protected consequence requires them.
+6. Anchor stochastic acceptance to **e3nn-only repeatability**, never to a candidate-inflated pooled denominator. The proposed candidate may permit a systematic backend centroid displacement no larger than one e3nn reference RMS variability and a CuEq total stochastic variance no larger than twice the e3nn reference variance. The factor-two variance budget means backend-specific stochastic variance may be no larger than the accepted reference variance; it is a predeclared structural budget, not fitted from the observed CuEq cross discrepancy.
+7. Apply that relation to physical TRAIN2 forward channels actually consumed by the objective and, critically, to the scalar objective and canonical optimizer-consumed parameter-gradient vector for every active objective/head branch. Gradient shape/order is canonical by named trainable parameter order; the gradient is captured after the accepted objective/reduction/accumulation/clipping semantics and immediately before optimizer mutation.
+8. Require gradient directional adequacy: the e3nn global gradient centroid must be nonzero for a qualifying probe, and each reference/candidate factorial-cell gradient centroid must remain in the same open half-space as that e3nn centroid. A zero/ambiguous reference gradient is an insufficient probe, not a convenient pass.
+9. Bind the probe to the real TRAIN2 objective: exact checkpoint/head set, labels, E0, objective weights, masks, replay/target branch, dtype and batch/exposure semantics. Every active branch that can reach the optimizer requires at least one predeclared probe batch.
+10. Cover model-state applicability explicitly. `S0` is the exact starting checkpoint. A full TRAIN2-operator claim also requires at least one authenticated non-initial `S1` state of each materially distinct claimed architecture/head topology, obtained independently of candidate acceptance (for example, a reference-e3nn bounded adaptation state or still-applicable authenticated trained-state evidence). `S0` evidence alone may establish entry execution but cannot be represented as proof over reachable trained states.
+11. Use the already frozen counterbalanced qualification design unless independent review falsifies it: 4 construction/evaluation-order cells, 5 fresh processes/cell, 1 discarded warm-up and 3 retained observations/process, with exact state reset for every retained training-operator observation. This cardinality was frozen before the Stage-A outcomes and is not selected from a passing candidate.
+12. Define exact zero-reference-variance behavior. If e3nn finite-sample variance is zero for a governed vector, CuEq must have zero variance and zero global/cell centroid bias for that vector; otherwise the relation fails. No epsilon is selected from the candidate.
+13. Keep non-finite values, shape/head/objective/runtime mismatch and unsupported applicability as hard fail-closed outcomes.
+14. Separate qualification from routine admission. The multi-process experiment establishes a current runtime/model/operator qualification record. Routine doctor may perform a cheaper bound execution witness and authenticate that record, but the cheap witness cannot recreate, widen or substitute for the D2 qualification relation.
+15. Bind qualification currentness to all arithmetic-relevant CUEQ-DEP1/runtime coordinates, MACE/Torch/CUDA/CuEq versions/source identity, device/runtime precision flags, dtype, architecture/head topology, objective identity, probe-state class and D2 method digest.
+16. Source-close unchanged siblings explicitly:
+    - source/DATA6 FP32: componentwise `rtol=1e-5, atol=1e-6` for energy/force/stress/descriptors plus exact FPS fingerprint under the existing selection policy;
+    - source/DATA6 FP64: componentwise `rtol=1e-10, atol=1e-12` plus exact FPS fingerprint;
+    - TRAIN2 FP64 forward calculator guard retains those existing FP64 numerical values, but a forward-only record is no longer sufficient to claim a training operator;
+    - trained-state CuEq -> portable-e3nn projection retains exact canonical portable-shell architecture authentication and the existing post-projection calculator relation.
+17. Define policy/method digest, record currentness, historical-readability/remap semantics and the exact relation between the new operator qualification and existing CampaignStore realization records.
+18. Produce a bounded D2 overlay against the accepted `a759e81.../a4824d2...` parent. Do not edit the unrelated proposed canonical-path renewal merely because it occupies `docs/methods/` on branch head.
+19. Write and freeze the proposed D2 authority before changing D4 product thresholds or doctor admission logic.
 
-**Gate B:** candidate method must be source/definition closed, dimensionally/semantically coherent, statistically identifiable at its evidence cardinality, and free of constants selected merely because they pass the new MH-1 observation.
+**Gate B:** candidate method must be source/definition closed, dimensionally/semantically coherent, operator-complete for every TRAIN2 dtype it claims to support, statistically identifiable at its evidence cardinality, and free of constants selected merely because they admit the Stage-A MH-1/MPA-0 observations.
 
 ### Stage C — Independent numerical falsification
 
 Exercise the frozen candidate method against:
 
-- authenticated current MPA-0 target-host evidence (fresh if raw historical GPU evidence is unavailable);
-- authenticated current MH-1 target-host evidence;
+- fresh candidate-bound MPA-0 target-host evidence;
+- fresh candidate-bound MH-1 target-host evidence;
+- exact starting state `S0` and at least one independently obtained non-initial `S1` state for every materially distinct claimed architecture/head topology;
+- actual TRAIN2 target/replay/head/property branches that can reach the optimizer;
+- physical forward-channel and optimizer-consumed loss/gradient vectors under the frozen finite-sample functional;
 - an evidence corpus adequate for the claimed validity domain;
-- synthetic/adversarial counterexamples from Section 4.6;
-- predeclared independent process/order realizations sufficient for the chosen estimator semantics;
-- applicable deterministic-control diagnostics without substituting them for ordinary production-path evidence.
+- synthetic/adversarial counterexamples from Section 4.6, including candidate variance inflation, cell-specific bias cancellation, gradient-direction reversal, descriptor-only drift, wrong head/objective/state/runtime, and zero-reference-variance cases;
+- predeclared independent process/order realizations sufficient for the chosen finite-sample semantics;
+- applicable deterministic-control diagnostics without substituting them for ordinary production-path evidence;
+- FP64 training-operator evidence if CuEq FP64 TRAIN2 remains in supported scope; otherwise an explicit support narrowing with no claim that the historical forward-only FP64 record proves training equivalence.
 
-Freeze the number of repetitions before inspection. A candidate that merely admits both real regimes but cannot reject systematic disagreement is not acceptable; a candidate whose pass/fail flips under the predeclared realizations without a defined probabilistic decision rule is also not acceptable.
+Freeze the number of repetitions before inspection. A candidate that merely admits both real regimes but cannot reject systematic disagreement or candidate-only variance inflation is not acceptable. A candidate whose global average passes only because opposite order-cell biases cancel is not acceptable. Because the proposed relation is a finite-sample qualification functional rather than a p-value estimator, its exact process/repeat/cardinality and boundary semantics are part of D2 identity; rerun-until-pass is forbidden.
 
 **Gate C:** immutable composed D2 candidate, fresh independent D2 Review, and explicit stakeholder ratification of that exact reviewed target.
 
@@ -676,9 +697,9 @@ The workplan may close only when all of the following hold:
 - the current Serious Challenge has been resolved by an accepted D2 criterion/formalization or falsified by evidence showing the original relation remains adequate;
 - the original MH-1 observation exists as durable, applicability-qualified evidence or its unavailability is explicitly recorded and a reproduction is distinguished from it;
 - MPA-0 evidence used for any generic claim is raw/authenticated or freshly re-realized; prose/test fixtures alone do not carry raw-evidence force;
-- generic-vs-regime/runtime/hardware/model **and model-state** scope is explicit, including whether a starting-checkpoint witness supports an operator-level relation over reachable trained states;
+- generic-vs-regime/runtime/hardware/model **and model-state** scope is explicit; starting-checkpoint-only evidence is never represented as proof over reachable trained states, and every supported TRAIN2 dtype has a source-closed backend-specific training-operator consequence;
 - the parity gate's exact current-admission proposition and its claim-boundary relationship to CUEQ-PHASE1, Rev60, current generated defaults, and FINAL-GPU1 are explicit;
-- channel units/scales/protected consequences and descriptor semantics are explicit;
+- channel units/scales/protected consequences and descriptor semantics are explicit; TRAIN2 operator qualification covers optimizer-consumed loss/gradient semantics and does not retain descriptor/FPS as a hard TRAIN2 gate without a real TRAIN2 consumer;
 - estimator dependence, quantile definition/resolution, order/warm-up/process effects and uncertainty/finite-sample semantics are closed;
 - probe-domain adequacy is established for the claim being made;
 - adversarial false-pass/false-fail/currentness cases are closed;
