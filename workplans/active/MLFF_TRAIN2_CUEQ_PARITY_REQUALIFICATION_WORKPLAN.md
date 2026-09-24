@@ -7,7 +7,7 @@ created_date: 2026-09-24
 revision: 10
 reviewed_date: 2026-09-24
 workplan_review_status: PASS_AS_WORKPLAN_AFTER_R9_REPAIR
-workplan_review_basis: 275840e74a67f435975773b51981ec8727f3b48c
+workplan_review_basis: 293bc8e3fcdb0cdda6a22608d2a280fdd7a97ab4
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
