@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 6
+revision: 7
 reviewed_date: 2026-09-24
-workplan_review_status: PASS_AS_WORKPLAN_AFTER_R5_REPAIR
-workplan_review_basis: c14c153c2c44bd52e6c2532a201819dd3f2ba673
+workplan_review_status: PASS_AS_WORKPLAN_AFTER_R6_REPAIR
+workplan_review_basis: 8b1f701c91c3875a654bd699ab4a37b23414f862
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -15,7 +15,10 @@ basis_commit: af89c30ca5304c4dd71ff82b779db973ce0006f8
 highest_potentially_affected_domain: D2
 d1_change_expected: false
 human_ratification_required_for_d2_mutation: true
-production_default_during_repair: e3nn
+current_generated_source_backend: e3nn
+current_generated_train2_backend: cueq
+repair_safe_source_backend: e3nn
+repair_safe_train2_backend: e3nn
 ---
 
 # MLFF TRAIN2 CuEq FP32 backend-parity requalification — D2 -> D3/D4 workplan
@@ -66,7 +69,7 @@ Determine and freeze a scientifically defensible FP32 TRAIN2 backend-equivalence
 
 `D2 — numerical algorithm/method`.
 
-This is not initially a D4 doctor bug. The current doctor correctly realizes the accepted gate. D3/D4 modification is downstream work only after the D2 criterion is accepted, unless independent evidence first proves that the observed metrics themselves are incorrectly computed.
+This is not initially a D4 doctor metric bug. The current doctor correctly realizes the **current executable D4 gate**, but that gate is not source-closed as accepted D2 authority. D3/D4 numerical-threshold modification is downstream work only after the D2 relation is accepted, unless independent evidence first proves that the observed metrics themselves are incorrectly computed.
 
 ### Current normative/evidence owners
 
@@ -146,7 +149,7 @@ The repair MUST preserve all of the following:
 9A. **Adjacent parity relations are formalization-frozen.** Source/DATA6 FP32 and FP64 CuEq relations must be brought under explicit D2 source closure because the accepted kernel omitted the entire acceleration-parity surface, but their numerical tolerances/semantics are not changed by this TRAIN2 incident absent separate falsification evidence.
 10. **Uncertainty must be represented honestly.** Repeated-pair statistics built from a small number of repeated evaluations are dependent observations; all-pairs cardinality must not be interpreted as an independent-sample count.
 11. **Accepted currentness is explicit.** Any changed parity-policy identity must invalidate/remap dependent preflight, handoff, qualification, cache, and provenance records exactly where they bind the old policy digest.
-12. **Existing e3nn production path remains admissible.** The repair may not destabilize the current default MH-1 e3nn campaign path.
+12. **Existing explicit e3nn TRAIN2 path remains admissible.** The current generated campaign split is source/DATA6/evaluation `e3nn` and TRAIN2 `cueq`. This repair must not silently rewrite that accepted generated policy merely to avoid a challenged CuEq gate. A production run that must proceed without the challenged CuEq relation may explicitly set `training_backend = "e3nn"`; that operational override is not a generated-default change.
 13. **Authority isolation is hard.** Unrelated proposed D1/D2/D3 renewal artifacts on the repository head are evidence/candidate state only and cannot become parents by path precedence.
 13A. **The missing D2 relation is a confirmed closure obligation.** The accepted D2 source does not define CuEq/FP32 parity. D4's Rev86 rule may remain the conservative executable guard during repair, but it cannot be cited as accepted numerical authority until this cycle supplies the source-closed D2 relation through the normal acceptance process.
 14. **Parity preflight and CUEQ-PHASE1 have distinct scopes.** Instantaneous E/F/stress/descriptor/FPS evidence is the current per-selected-head/runtime admission screen for explicit CuEq TRAIN2. CUEQ-PHASE1 remains valuable paired-training/FINAL-GPU1 evidence, but Revision 60 explicitly changed campaign policy without retroactively changing the immutable CUEQ-PHASE1 records. Do not falsely make historical phase-1 completion a blanket prerequisite for every current explicit CuEq campaign, and do not claim doctor parity makes the historical phase-1 record pass.
@@ -160,7 +163,7 @@ The repair MUST preserve all of the following:
 
 For this repair cycle:
 
-- treat the Rev86 `1e-6/1.25` relation as the **current executable fail-closed rule**, while separately resolving whether it is valid accepted D2 authority;
+- treat the Rev86 `1e-6/1.25` relation as the **current executable fail-closed D4 rule** while this cycle supplies the already-confirmed missing accepted-D2 source closure;
 
 - use the real MH-1 target-host observation as a falsification input, not as the new tolerance source;
 - compare at least the historically relevant MPA-0/default and MH-1/omat_pbe regimes before claiming a generic replacement policy;
@@ -492,7 +495,7 @@ Do not count several tests sharing the same generated expected values as indepen
 12. Confirm that current user-facing/runtime documentation consistently describes explicit opt-in CuEq as doctor-qualified without falsely rewriting immutable CUEQ-PHASE1/FINAL-GPU1 records.
 13. If a pure D4 metric defect explains part of the observed failure, repair that owner separately and rerun measurement evidence, but still close the independently confirmed missing-D2 relation and stale-realization currentness gaps.
 
-**Gate A:** proceed to D2 replacement/formalization only when evidence provenance is sufficient, D4 measurement defects are partitioned, the parent authority is unambiguous, and either (a) the accepted relation remains materially challenged or (b) an explicit missing D2 relation must be formally supplied.
+**Gate A:** proceed to the D2 candidate only when evidence provenance is sufficient, D4 measurement defects are partitioned, the parent authority is unambiguous, and the confirmed missing CuEq acceleration-equivalence family can be specified without importing an unresolved lower-level contradiction.
 
 ### Stage B — Bounded D2 candidate method
 
@@ -540,7 +543,7 @@ Only after Gate C:
 7. update optimizer/training identity only according to the accepted D3 projection; do not force retraining merely because a representation changed, and do not reuse a genuinely changed execution realization;
 8. regenerate/rebind FINAL-GPU1 preflight/handoff artifacts rather than mutating a release-pinned handoff whose integrity contract forbids source edits;
 9. update policy-digest/currentness dependencies and stale-stage behavior;
-10. preserve no-silent-fallback and default-e3nn behavior;
+10. preserve no-silent-fallback and the current generated phase split: source/DATA6/evaluation `e3nn`, TRAIN2 `cueq`; a temporary explicit `training_backend="e3nn"` repair-time override must not be confused with changing the generated default;
 11. preserve the claim boundaries of CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 without inventing them as universal prerequisites for explicit current CuEq admission;
 12. add focused positive/negative tests that exercise the real numerical owner and independent oracles rather than duplicating expected logic in fixtures.
 
@@ -644,17 +647,20 @@ The workplan may close only when all of the following hold:
 - complete affected CPU regression passes;
 - required target-host requalification passes for every regime claimed by the accepted relation;
 - no required check is merely deferred while an unqualified CuEq production claim is made;
-- workplan closure does not rewrite CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 status; current explicit CuEq campaign admission follows the accepted current campaign-policy lineage, while generated defaults remain separately owned;
+- workplan closure does not rewrite CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 status; current CuEq TRAIN2 admission follows the accepted current campaign-policy lineage, whose generated split is source `e3nn` / TRAIN2 `cueq`; generated-default ownership remains separate from the parity relation itself;
 - user-facing/runtime documentation must describe those distinct claims consistently and must not either (a) pretend a doctor pass retroactively passes historical release gates or (b) invent a historical release gate as a universal prerequisite that the later accepted project policy explicitly decoupled.
 
-Until closure, the safe campaign disposition is:
+Until closure, a production MH-1 run that must proceed **without exercising the challenged CuEq TRAIN2 relation** must override both sides explicitly:
 
 ```toml
 [acceleration]
 backend = "e3nn"
+training_backend = "e3nn"
+only_cueq = false
+require_available = true
 ```
 
-for production MH-1 runs that must proceed without the challenged CuEq equivalence claim.
+Setting only `backend = "e3nn"` is insufficient for a phase-separated campaign because the current generated `training_backend` remains `cueq`. This is a bounded operational override for the affected run, not authority to change the generated campaign default.
 
 
 ## 9. Historical R1 exhaustive workplan-review closure — superseded by R2/R3/R4/R5
@@ -702,7 +708,7 @@ The review also sharpened the selection-evidence limitation: with the reported t
 
 The Revision-3 plan was subjected to a final historical-authority adversarial check. That check found that R2 had over-constrained current CuEq execution by treating the still-deferred CUEQ-PHASE1 record as a blanket production prerequisite.
 
-Revision 60 (`CUEQ-DEFAULT1`, mdstats 0.20.193a0) explicitly records a stakeholder/project policy change: phase-separated TRAIN2 CuEq became the generated campaign policy at that time, while the immutable CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 records retained their original meanings and were **not** retroactively changed. Revision 61 then used selected-head doctor parity as the fail-closed training realization gate. Later CONFIG1 moved the generated MH-1 default back to e3nn, but explicit CuEq remained an opt-in path.
+Revision 60 (`CUEQ-DEFAULT1`, mdstats 0.20.193a0) explicitly records a stakeholder/project policy change: phase-separated TRAIN2 CuEq became the generated campaign policy at that time, while the immutable CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 records retained their original meanings and were **not** retroactively changed. Revision 61 then used selected-head doctor parity as the fail-closed training realization gate. R3 incorrectly interpreted later CONFIG1 source-backend language as moving the complete generated TRAIN2 default back to e3nn. Current source and regression tests show the generated phase split remained source `e3nn` / TRAIN2 `cueq`; Revision 7 corrects that mistaken R3 interpretation.
 
 Revision 4 therefore:
 
@@ -739,3 +745,27 @@ The terminal consistency pass found one residual wording error: the opening stil
 Earlier R1-R4 closure sections are retained only as historical review chronology and are explicitly labeled superseded.
 
 **R5 disposition: PASS AS WORKPLAN after Revision-6 repair.** No remaining semantic contradiction or plan-level blocker was found in the terminal consistency pass.
+
+
+## 14. R6 generated phase-split / safe-override correction
+
+A further independent pass checked the workplan's policy statements against the actual user-facing generator and current regression tests rather than relying on CONFIG1 prose alone.
+
+That pass found a material plan defect:
+
+- `_config_template(...)` defaults `acceleration_backend="e3nn"` and `training_acceleration_backend="cueq"`;
+- the `init` parser defaults `--backend e3nn` and `--training-backend cueq`;
+- `tests/test_mlff_cueq_train_default1.py::test_init_defaults_training_to_cueq_but_source_to_e3nn` and the generated-policy test explicitly protect that phase split;
+- CONFIG1 tests asserting `cfg["acceleration"]["backend"] == "e3nn"` constrain the **source** backend and do not prove that TRAIN2 defaults to e3nn.
+
+Therefore the earlier R3/R5 shorthand “current generated MH-1 default remains e3nn” was materially ambiguous/incorrect for this TRAIN2 workplan. More importantly, the previous repair-time TOML example set only `backend="e3nn"`; in a phase-separated generated configuration that leaves `training_backend="cueq"` and therefore does **not** avoid the challenged TRAIN2 relation.
+
+Revision 7 closes the defect by:
+
+1. recording the current generated split explicitly as source `e3nn` / TRAIN2 `cueq`;
+2. preserving that accepted generated policy as outside this numerical-relation repair unless separately reopened;
+3. defining the bounded repair-time safe override as both `backend="e3nn"` and `training_backend="e3nn"`;
+4. correcting residual “accepted gate” wording to “current executable D4 gate,” because accepted D2 source closure is precisely what this cycle must supply;
+5. removing the dead Gate-A branch that spoke of a possibly already-accepted CuEq relation after source inspection had already confirmed the relation is missing.
+
+**R6 disposition: PASS AS WORKPLAN after Revision-7 repair.** No remaining plan-level blocker is known after reconciling the workplan with the actual generated phase-separated configuration and current tests.
