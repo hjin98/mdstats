@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 7
+revision: 8
 reviewed_date: 2026-09-24
-workplan_review_status: PASS_AS_WORKPLAN_AFTER_R6_REPAIR
-workplan_review_basis: 8b1f701c91c3875a654bd699ab4a37b23414f862
+workplan_review_status: PASS_AS_WORKPLAN_AFTER_R7_REPAIR
+workplan_review_basis: 44b4d22a70b197201bf185510531151188f6a6a5
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -51,7 +51,7 @@ This review also confirmed an authority-provenance defect that must be resolved 
 
 The current runtime behavior remains the fail-closed baseline until a replacement relation is accepted. D3/D4 MUST continue to fail closed under the existing policy in the meantime. No threshold widening, retry-until-pass behavior, silent e3nn fallback, or MH-1-specific bypass is authorized.
 
-Operationally, the accepted safe production route during this repair is the existing explicit `e3nn` TRAIN2 path. CuEq remains opt-in and non-authorizing when its parity gate fails.
+Operationally, the accepted safe route for a run that must avoid the challenged relation is the existing explicit `e3nn` TRAIN2 override. The generated TRAIN2 backend remains `cueq`, but it is fail-closed: when its doctor parity gate fails, the campaign cannot proceed under that CuEq realization and no silent e3nn fallback is permitted.
 
 ## 1. Outcome and authority
 
@@ -271,7 +271,7 @@ The workplan SHALL preserve the distinction among:
 3. **historical/paired training qualification evidence** — CUEQ-PHASE1 short and representative full e3nn-vs-CuEq trajectories with hard-decision preservation;
 4. **release/end-to-end certification** — PERF-CERT1/FINAL-GPU1 where applicable.
 
-The authority evolution matters. CUEQ-PHASE1 originally deferred positive accelerator training authorization. Revision 60 (`CUEQ-DEFAULT1`) was an explicit stakeholder/project policy change that made phase-separated CuEq TRAIN2 the generated policy at that time while explicitly preserving the old CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 records and their `generated_default_change_authorized=false` semantics. Later MH-1 CONFIG1 work returned the generated campaign default to e3nn, but current README/runtime behavior still supports **explicit opt-in CuEq** subject to doctor qualification.
+The authority evolution matters. CONFIG1 established the canonical MH-1/`omat_pbe` foundation and source-side `e3nn` policy. CUEQ-PHASE1 then supplied a separate paired-training qualification contract. Revision 60 (`CUEQ-DEFAULT1`) was the later explicit stakeholder/project policy change that phase-separated the campaign and made TRAIN2 `cueq` the generated training backend while preserving source/DATA6/evaluation `e3nn` and leaving the old CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 records immutable. Current generator/tests still protect that split.
 
 Therefore:
 
@@ -440,7 +440,7 @@ At minimum construct or reuse tests that must fail:
 13. quantile-interpolation/cardinality edge case, especially p99.9 with small force-component count;
 14. latent descriptor rescaling that leaves protected selection unchanged, to test whether an absolute descriptor gate is actually invariant to representation;
 15. stale stored `TrainingAccelerationRealizationRecord` created under an old policy that would otherwise be accepted by backend/device/dtype/checkpoint checks alone;
-16. authority-evolution case showing that Rev60 explicit CuEq policy, current e3nn generated default, doctor admission, and historical CUEQ-PHASE1/FINAL-GPU1 state remain distinct rather than being collapsed into one boolean.
+16. authority-evolution case showing that CONFIG1 source-side `e3nn`, Rev60 generated TRAIN2 `cueq`, doctor admission, explicit e3nn TRAIN2 override, and historical CUEQ-PHASE1/FINAL-GPU1 state remain distinct rather than being collapsed into one boolean.
 
 ### 4.7 Historical evidence is evidence, not authority
 
@@ -491,8 +491,8 @@ Do not count several tests sharing the same generated expected values as indepen
 8. Audit metric semantics: energy/atom, stress convention, descriptor construction, FPS policy, absolute-vs-rtol stable-channel ambiguity, NumPy percentile method, finiteness, and pair counts.
 9. Falsify fixed backend-order, warm-up, process-state, corpus-size, and small-tail-resolution effects with bounded diagnostics.
 10. Treat the stored-realization currentness defect in Section 4.8 as confirmed at the direct loader boundary and trace whether any upstream stage fence happens to compensate for it; repair the direct consequential-use owner regardless of incidental call ordering.
-11. Reconstruct the authority evolution from CUEQ-PHASE1 through Rev60 CUEQ-DEFAULT1 to current CONFIG1/e3nn-generated-default behavior. Record precisely which claims belong to doctor admission, paired-training evidence, generated defaults, and FINAL-GPU1.
-12. Confirm that current user-facing/runtime documentation consistently describes explicit opt-in CuEq as doctor-qualified without falsely rewriting immutable CUEQ-PHASE1/FINAL-GPU1 records.
+11. Reconstruct the authority evolution in actual chronological/semantic order: CONFIG1 foundation/source-side `e3nn` -> CUEQ-PHASE1 paired-training evidence contract -> Rev60 phase-separated generated TRAIN2 `cueq` policy -> Rev61+ doctor parity hardening -> current generated split. Record precisely which claims belong to source policy, TRAIN2 generated policy, doctor admission, paired-training evidence, explicit e3nn override, and FINAL-GPU1.
+12. Confirm that current user-facing/runtime documentation consistently describes generated TRAIN2 `cueq` as doctor-qualified/fail-closed, preserves source-side `e3nn`, and does not falsely rewrite immutable CUEQ-PHASE1/FINAL-GPU1 records.
 13. If a pure D4 metric defect explains part of the observed failure, repair that owner separately and rerun measurement evidence, but still close the independently confirmed missing-D2 relation and stale-realization currentness gaps.
 
 **Gate A:** proceed to the D2 candidate only when evidence provenance is sufficient, D4 measurement defects are partitioned, the parent authority is unambiguous, and the confirmed missing CuEq acceleration-equivalence family can be specified without importing an unresolved lower-level contradiction.
@@ -769,3 +769,25 @@ Revision 7 closes the defect by:
 5. removing the dead Gate-A branch that spoke of a possibly already-accepted CuEq relation after source inspection had already confirmed the relation is missing.
 
 **R6 disposition: PASS AS WORKPLAN after Revision-7 repair.** No remaining plan-level blocker is known after reconciling the workplan with the actual generated phase-separated configuration and current tests.
+
+
+## 15. R7 live-policy wording closure
+
+After Revision 7 corrected the safe TOML and top-level generated split, a line-by-line contradiction sweep found three remaining **operative** statements that still encoded the same obsolete interpretation:
+
+- the opening called CuEq TRAIN2 “opt-in,” although current generated campaigns default TRAIN2 to `cueq`;
+- Section 3.5 still claimed later CONFIG1 returned the complete generated campaign default to e3nn, reversing the actual authority chronology;
+- the Stage-A counterexample and authority-reconstruction steps still referred to a “current e3nn generated default.”
+
+Revision 8 repairs all three. The live authority narrative is now consistent:
+
+```text
+CONFIG1: canonical MH-1/omat_pbe + source-side e3nn
+CUEQ-PHASE1: paired-training qualification evidence contract
+Rev60 CUEQ-DEFAULT1: generated TRAIN2 cueq, source side stays e3nn
+Rev61+: selected-head doctor parity hardens the CuEq TRAIN2 realization gate
+current generator/tests: source e3nn / TRAIN2 cueq
+repair-time containment when needed: explicit TRAIN2 e3nn override
+```
+
+**R7 disposition: PASS AS WORKPLAN after Revision-8 repair.** The operative workplan now contains no known generated-backend-policy contradiction.

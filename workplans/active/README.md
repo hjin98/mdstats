@@ -14,7 +14,8 @@ Canonical workplan:
 
 Formal workplan review:
 
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R6.md` — **PASS AS WORKPLAN after Revision-7 repair**; supersedes R5/R4/R3/R2/R1. The D2 numerical challenge itself remains open.
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R7.md` — **PASS AS WORKPLAN after Revision-8 repair**; supersedes R6/R5/R4/R3/R2/R1. The D2 numerical challenge itself remains open.
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R6.md` — historical sixth review.
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R5.md` — historical fifth review.
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R4.md` — historical fourth review.
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R3.md` — historical third review.
