@@ -152,7 +152,7 @@ The repair MUST preserve all of the following:
 12. **Existing explicit e3nn TRAIN2 path remains admissible.** The current generated campaign split is source/DATA6/evaluation `e3nn` and TRAIN2 `cueq`. This repair must not silently rewrite that accepted generated policy merely to avoid a challenged CuEq gate. A production run that must proceed without the challenged CuEq relation may explicitly set `training_backend = "e3nn"`; that operational override is not a generated-default change.
 13. **Authority isolation is hard.** Unrelated proposed D1/D2/D3 renewal artifacts on the repository head are evidence/candidate state only and cannot become parents by path precedence.
 13A. **The missing D2 relation is a confirmed closure obligation.** The accepted D2 source does not define CuEq/FP32 parity. D4's Rev86 rule may remain the conservative executable guard during repair, but it cannot be cited as accepted numerical authority until this cycle supplies the source-closed D2 relation through the normal acceptance process.
-14. **Parity preflight and CUEQ-PHASE1 have distinct scopes.** Instantaneous E/F/stress/descriptor/FPS evidence is the current per-selected-head/runtime admission screen for explicit CuEq TRAIN2. CUEQ-PHASE1 remains valuable paired-training/FINAL-GPU1 evidence, but Revision 60 explicitly changed campaign policy without retroactively changing the immutable CUEQ-PHASE1 records. Do not falsely make historical phase-1 completion a blanket prerequisite for every current explicit CuEq campaign, and do not claim doctor parity makes the historical phase-1 record pass.
+14. **Parity preflight and CUEQ-PHASE1 have distinct scopes.** Instantaneous E/F/stress/descriptor/FPS evidence is the current per-selected-head/runtime admission screen for a CuEq TRAIN2 realization, including the generated TRAIN2 `cueq` path. CUEQ-PHASE1 remains valuable paired-training/FINAL-GPU1 evidence, but Revision 60 changed generated campaign policy without retroactively changing the immutable CUEQ-PHASE1 records. Do not falsely make historical phase-1 completion a blanket prerequisite for every current CuEq TRAIN2 realization, and do not claim doctor parity makes the historical phase-1 record pass.
 15. **Every parity channel needs a protected consequence.** No internal quantity remains a hard gate merely because it was historically measured; D2 must state which scientific/numerical downstream invariant it protects.
 16. **Channel dimensions/scales are explicit.** Energy/atom, force, stress, and latent descriptors have different units/scales. A shared numerical absolute ceiling across unlike channels is inadmissible without an explicit normalization/error derivation.
 17. **Qualification currentness is authenticated.** A stored CuEq realization cannot remain current solely because backend/device/dtype/checkpoint match; it must bind the currently accepted parity-policy/method identity and applicable runtime evidence.
@@ -232,7 +232,7 @@ At minimum inspect and close:
 - parity/repeatability/policy/realization record schemas and serializers;
 - CampaignStore stage/currentness admission so a pre-change doctor pass cannot survive an authority-policy change;
 - focused CuEq parity tests, especially `tests/test_mlff_cueq_train_noise_normalized_parity.py`, DIAG3 tests, default1 tests, FINAL-GPU1 tests, and specification tests;
-- MH-1 campaign-default tests to ensure e3nn remains the default;
+- MH-1 campaign-default tests to ensure the current generated phase split remains source/DATA6/evaluation `e3nn` and TRAIN2 `cueq`;
 - frozen release/audit records only as historical evidence; never rewrite them to look current;
 - current D3 architecture/dependency documentation and semantic-evolution notes if D2 authority changes.
 
@@ -275,10 +275,10 @@ The authority evolution matters. CONFIG1 established the canonical MH-1/`omat_pb
 
 Therefore:
 
-- do not require a positive historical CUEQ-PHASE1 record as an invented prerequisite for every current explicit CuEq campaign;
+- do not require a positive historical CUEQ-PHASE1 record as an invented prerequisite for every current CuEq TRAIN2 realization;
 - do not interpret a repaired doctor parity pass as retroactively making CUEQ-PHASE1/FINAL-GPU1 pass;
 - when this work affects a release qualification that explicitly includes those gates, reconcile them under their own contracts;
-- keep current generated-default policy separate from explicit opt-in authorization.
+- keep generated TRAIN2 policy, doctor realization admission, and explicit e3nn override as separate claims.
 
 The D2 candidate must explicitly state the proposition proved by the instantaneous parity gate: bounded numerical admission of the exact selected-head/runtime CuEq realization under current campaign policy. CUEQ-PHASE1 remains useful stronger evidence about multi-epoch trajectory behavior and a falsification source, but it is not silently promoted into the current campaign admission owner.
 
@@ -544,7 +544,7 @@ Only after Gate C:
 8. regenerate/rebind FINAL-GPU1 preflight/handoff artifacts rather than mutating a release-pinned handoff whose integrity contract forbids source edits;
 9. update policy-digest/currentness dependencies and stale-stage behavior;
 10. preserve no-silent-fallback and the current generated phase split: source/DATA6/evaluation `e3nn`, TRAIN2 `cueq`; a temporary explicit `training_backend="e3nn"` repair-time override must not be confused with changing the generated default;
-11. preserve the claim boundaries of CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 without inventing them as universal prerequisites for explicit current CuEq admission;
+11. preserve the claim boundaries of CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 without inventing them as universal prerequisites for current CuEq TRAIN2 doctor admission;
 12. add focused positive/negative tests that exercise the real numerical owner and independent oracles rather than duplicating expected logic in fixtures.
 
 ### Stage E — Assembled acceptance
@@ -565,7 +565,7 @@ Run and retain exact candidate identities for:
 
 CPU skips cannot stand in for mandatory target-host evidence. GPU evidence may be deferred only for a claim explicitly left unqualified; a CuEq production authorization may not be closed PASS with its required runtime check skipped.
 
-Long paired training trajectories are **not required merely to prove the current instantaneous parity admission relation**. Current explicit CuEq campaign policy was decoupled from the immutable historical CUEQ-PHASE1 record by Rev60, so this workplan must not invent a new phase-1 prerequisite. If the user's target-host run is also intended to produce CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 evidence, execute those existing gates under their own contracts after parity admission rather than redefining them inside this workplan.
+Long paired training trajectories are **not required merely to prove the current instantaneous parity admission relation**. Rev60 decoupled generated CuEq TRAIN2 campaign policy from the immutable historical CUEQ-PHASE1 record, so this workplan must not invent a new phase-1 prerequisite. If the user's target-host run is also intended to produce CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 evidence, execute those existing gates under their own contracts after parity admission rather than redefining them inside this workplan.
 
 ## 6. Reopen, simplification, and human triggers
 
@@ -620,7 +620,7 @@ On accepted D2 formalization/change:
 8. project realization-digest changes onto TRAIN2 roots. Preserve e3nn roots. For CuEq roots, distinguish an actual changed execution realization from a non-consumed admission-policy representation before deciding reuse/retraining;
 9. regenerate any FINAL-GPU1 preflight/handoff/release-side artifact whose integrity contract binds the old policy; never edit a sealed handoff in place;
 10. preserve frozen release/audit/SHA records as historical evidence;
-11. reconcile CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 state separately where those release/evidence claims are in scope—parity acceptance alone does not rewrite their immutable status, and their pending status does not by itself revoke Rev60/current explicit-opt-in campaign policy;
+11. reconcile CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 state separately where those release/evidence claims are in scope—parity acceptance alone does not rewrite their immutable status, and their pending status does not by itself revoke the later Rev60 generated TRAIN2 `cueq` campaign policy;
 12. reconcile PEM only if this episode establishes a qualifying new failure family, success application, notice, or materially changes an existing lesson;
 13. record the evidence-quality and transportability failure that caused the old MPA-0-derived rule to be challenged so the same threshold-tuning cycle is not repeated.
 
@@ -791,3 +791,20 @@ repair-time containment when needed: explicit TRAIN2 e3nn override
 ```
 
 **R7 disposition: PASS AS WORKPLAN after Revision-8 repair.** The operative workplan now contains no known generated-backend-policy contradiction.
+
+
+## 16. R8 live claim-boundary cleanup
+
+The post-R7 scan intentionally excluded superseded review history and inspected only operative Sections 0-8. It found five residual phrases that still treated CuEq TRAIN2 as an “explicit opt-in” path or described “e3nn” as the undifferentiated campaign default.
+
+Revision 9 replaces those with the exact current split and claim boundaries:
+
+- generated source/DATA6/evaluation = `e3nn`;
+- generated TRAIN2 = `cueq`;
+- doctor parity = fail-closed realization admission for CuEq TRAIN2;
+- explicit `training_backend="e3nn"` = repair-time/reference override;
+- CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 = separate immutable evidence/release claims.
+
+It also strengthens affected regression requirements so “campaign default” tests must assert the full two-backend split, not merely the source-side CONFIG1 field.
+
+**R8 disposition: PASS AS WORKPLAN after Revision-9 repair.** No live Section 0-8 backend-policy ambiguity is known.
