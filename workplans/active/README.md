@@ -14,7 +14,8 @@ Canonical workplan:
 
 Formal workplan review:
 
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R8.md` — **PASS AS WORKPLAN after Revision-9 repair**; supersedes R7/R6/R5/R4/R3/R2/R1. The D2 numerical challenge itself remains open.
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R9.md` — **PASS AS WORKPLAN after Revision-10 repair**; supersedes R8/R7/R6/R5/R4/R3/R2/R1. The D2 numerical challenge itself remains open.
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R8.md` — historical eighth review.
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R7.md` — historical seventh review.
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R6.md` — historical sixth review.
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R5.md` — historical fifth review.
@@ -25,7 +26,7 @@ Formal workplan review:
 
 A real MACE-MH-1 / `omat_pbe` RTX 3090 doctor realization challenged the current executable TRAIN2 FP32 noise-normalized backend-equivalence rule: force-tail ratios narrowly exceeded the generic ratio ceiling and, more importantly, cross-backend descriptor variation exceeded the absolute `1e-6` stable-channel ceiling while same-backend descriptor repeatability itself reached roughly `1.8-1.9e-6`. The cycle therefore starts at D2 and preserves the current fail-closed/no-silent-fallback D3/D4 behavior until a replacement numerical relation passes fresh independent falsification and stakeholder ratification.
 
-The repair must not tune constants to the observed failure. It must formally source-close the current CuEq acceleration-equivalence family by role/dtype, reconstruct the MPA-0 and MH-1 evidence basis, account for dependence in the current repeated all-pairs statistics, test adversarial false-pass/false-fail cases, repair stale realization currentness, and redesign only the challenged TRAIN2 FP32 member unless another member is independently falsified. The current generated phase split is source/DATA6/evaluation `e3nn` with TRAIN2 `cueq`; a production run that must avoid the challenged TRAIN2 relation must explicitly override `training_backend = "e3nn"`. This workplan repairs the missing D2 authority behind the gate without rewriting separate CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 claims or silently changing the generated backend policy.
+The repair must not tune constants to the observed failure. It must source-close the CuEq acceleration-equivalence family by role/dtype/model-state domain, reconstruct the MPA-0 and MH-1 evidence basis, account for dependence in repeated all-pairs statistics, test adversarial false-pass/false-fail cases, repair source-side and TRAIN2 realization currentness, and redesign only the challenged TRAIN2 FP32 doctor member unless another member is independently falsified. The generated phase split remains source-side `e3nn` with TRAIN2 `cueq`; after authenticated CuEq checkpoint state transfer, P5 EVAL2 executes the canonical portable `e3nn` provider and must identify that numerical forward correctly. A production run that must avoid the challenged TRAIN2 relation must explicitly override `training_backend = "e3nn"`.
 
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
