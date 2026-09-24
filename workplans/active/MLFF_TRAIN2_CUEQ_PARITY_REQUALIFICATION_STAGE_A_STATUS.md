@@ -3,7 +3,7 @@ kind: stage-status
 protocol_version: 6.4.0
 workplan: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md
 stage: A
-status: partial-blocked-on-fresh-mpa0-cross-family-evidence
+status: passed-ready-for-stage-b
 date: 2026-09-24
 branch: design/mlff-train2-cueq-parity-requalification
 repository_review_head: 872d35d0f905ae5adf16a6ecf5c82fdd5f28375b
@@ -18,7 +18,7 @@ accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 
 **PARTIAL / NOT YET THROUGH GATE A.**
 
-The repository-side authority, currentness, implementation, and historical-evidence reconstruction required by Stage A is now sufficiently closed to identify the exact remaining evidence dependency. Gate A has now received and authenticated the durable target-host CampaignStore snapshot from the observed MACE-MH-1 / `omat_pbe` RTX 3090 failure. The bounded fresh-process/order diagnostic has now been executed and analyzed. It confirms that the observed discrepancy contains both a small backend-centered component and material fresh-process/order covariance, so the current single-process all-pairs reducer cannot cleanly identify a stable backend effect. The remaining Gate-A blocker is fresh raw MPA-0 target-host evidence under the same frozen diagnostic design before this cycle may retain the current generic MPA-0/MH-1 TRAIN2 FP32 scope. The original MPA-0 workstation distributions are not preserved as a raw repository artifact.
+The repository-side authority, currentness, implementation, and historical-evidence reconstruction required by Stage A is now sufficiently closed to identify the exact remaining evidence dependency. Gate A has now received and authenticated the durable target-host CampaignStore snapshot from the observed MACE-MH-1 / `omat_pbe` RTX 3090 failure. The bounded fresh-process/order diagnostic has now been executed and analyzed for both MH-1 and MPA-0 under the same frozen 20-process 2x2 design. The cross-family evidence confirms a common stochastic structure with strongly family-dependent absolute scale, so the current single-process all-pairs reducer and fixed stable-channel floor are not adequate generic D2 semantics. The Stage-A evidence obligations are complete. Gate A is PASS and Stage B may now freeze a bounded D2 candidate before any fresh Stage-C acceptance realization.
 
 The console transcript is discovery evidence only. It is not promoted into durable numerical qualification evidence.
 
@@ -286,21 +286,91 @@ Descriptor evidence differs from force: the descriptor centroid separation is `4
 
 No decisive monotonic drift across the three retained pair positions was found. The diagnostic therefore does not justify increasing warm-up count merely to make the result pass.
 
-## A10. Gate-A remaining obligation
+## A10. MPA-0 cross-family evidence result
 
-The fresh-process/order question is closed. Gate A now has one numerical evidence blocker:
+The user-supplied MPA-0 artifact
 
-1. obtain fresh raw **MPA-0** evidence under the same frozen 2x2 fresh-process design before preserving a generic MPA-0/MH-1 TRAIN2 FP32 relation.
+`mlff_train2_cueq_stage_a_mpa0_order_process_diagnostic.json`
 
-This is mandatory because the current executable policy is generic while the only raw target-host evidence now available is MH-1; historical MPA-0 workstation numbers survive only as secondary prose/test-fixture evidence.
+has raw-file SHA-256
 
-The MPA-0 run must use the same analysis contract and may not be rerun selectively based on outcome. Only after both family realizations are available may Stage B freeze a cross-family D2 statistic/parameter family. No threshold or ratio may be changed before that gate closes.
+`b3f08aeab0118d03364e1c33c3a9665c4a93c78a11d01c540a333bc50782f3be`
 
-Until these are complete, no tolerance or acceptance constant may be changed and the current doctor remains fail-closed.
+and canonical content digest
+
+`f2bca742e8215bffb7299eef6f13e6d1378de3298e2c40760a4e70e66e7bea5d`.
+
+The aggregate canonical digest and all 20 child-process digests recompute exactly. The artifact binds the locked MACE-MPA-0-medium checkpoint SHA-256
+
+`75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638`
+
+and repeats the same frozen three-structure corpus, GPU, FP32 dtype, 2x2 construction/evaluation-order design, 5 processes/cell, one warm-up, three retained pairs, no early stopping, and clean mdstats source head used for the MH-1 diagnostic.
+
+Detailed analysis is recorded in:
+
+`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_MPA0_DIAGNOSTIC_ANALYSIS.md`.
+
+Cross-family force comparison:
+
+| quantity | MH-1 | MPA-0 | MPA-0 / MH-1 |
+| --- | ---: | ---: | ---: |
+| e3nn fresh-process radius | 1.5945e-7 | 9.0134e-7 | 5.65 |
+| CuEq fresh-process radius | 1.6520e-7 | 9.1972e-7 | 5.57 |
+| backend centroid separation | 9.5935e-8 | 3.8643e-7 | 4.03 |
+| paired force RMS discrepancy | 4.0393e-7 | 2.2614e-6 | 5.60 |
+| centroid separation / pooled process radius | 0.591 | 0.424 | — |
+
+The absolute force scale is therefore strongly model-family dependent, while the normalized systematic backend component is sub-unity in both families.
+
+The hierarchical squared-discrepancy decomposition is also similar:
+
+- MH-1 force paired discrepancy variance: 5.64% stable backend centroid, 34.40% process-level differential state, 59.96% within-process differential state;
+- MPA-0: 2.92% stable backend centroid, 35.28% process-level differential state, 61.80% within-process differential state.
+
+The paired-force RMS divided by pooled fresh-process radius is about 2.46 for MH-1 and 2.44 for MPA-0. With three retained observations per process this is close to `sqrt(6)`, consistent with the dominant paired discrepancy arising from realization-level stochastic arithmetic rather than a family-specific deterministic CuEq offset.
+
+The factorial force decomposition is likewise cross-family consistent:
+
+| source | MH-1 | MPA-0 |
+| --- | ---: | ---: |
+| construction order | 5.41% | 6.88% |
+| evaluation order | 4.96% | 5.53% |
+| interaction | 5.23% | 8.25% |
+| replicate/time block | 20.63% | 16.86% |
+| residual process variation | 63.77% | 62.48% |
+
+This supports one family-generic stochastic **structure**, not one family-independent absolute error scale.
+
+MPA-0 also falsifies the generic fixed `1e-6` stable-channel interpretation beyond descriptors:
+
+- CuEq-self energy pair maxima exceed `1e-6` in 5/60 within-process self pairs;
+- cross-backend energy maxima exceed `1e-6` in 25/180 within-process cross pairs;
+- the cross and CuEq-self energy extrema share the same FP32-scale quantized levels, so the absolute ceiling does not distinguish backend disagreement from ordinary realization variability.
+
+Stress remains below `1e-6` in all observed self/cross pairs.
+
+MPA-0 force components above `1e-5` occur in e3nn-self (2/2700), CuEq-self (2/2700), cross (5/8100), and paired cross (3/2700) comparisons. Therefore `1e-5` component exceedance is not a valid standalone backend-failure predicate; it may remain diagnostic or participate only in a repeatability-aware catastrophic guard.
+
+Descriptor behavior is again semantically different from physical outputs. MPA-0 descriptor backend-centroid separation is `4.1138e-8`, with process radii about `1.70e-8`, so the latent-coordinate shift is more systematic than in MH-1. Nevertheless the complete three-structure inter-descriptor distance ordering is identical between e3nn and CuEq in all 20 same-process comparisons. This reinforces that descriptor **geometry/decision preservation** is the governed quantity, not an arbitrary raw coordinate maximum.
+
+### Gate-A disposition
+
+**PASS.**
+
+The required raw MH-1 and MPA-0 target-host realizations now exist under one frozen diagnostic design. They establish enough evidence to formulate a generic D2 candidate without inventing family-specific thresholds:
+
+1. absolute FP32 discrepancy scales are model-family dependent;
+2. stochastic decomposition structure is reproducibly similar across families;
+3. fixed stable-channel absolute floors are not generic repeatability semantics;
+4. single-process all-pairs tail ratios confound process/order state, stochastic spread, systematic backend shift and extreme-order statistics;
+5. descriptor latent coordinates require downstream geometry/decision semantics rather than raw-coordinate tolerance;
+6. fresh Stage-C realizations remain required after the Stage-B candidate is frozen.
+
+No current CuEq realization is authorized by this Gate-A pass; the existing doctor remains fail-closed until Gate C and downstream D3/D4 closure.
 
 ## A11. Repository-side Stage-A result
 
-Repository-side Stage A and the MH-1 target-host diagnostic are complete. No additional architecture search or new runtime subsystem is currently justified. Gate A remains open only because a generic current relation cannot be re-authorized from one model family when its historical MPA-0 raw evidence is unavailable.
+Repository-side Stage A plus fresh MH-1 and MPA-0 target-host diagnostics are complete. No additional architecture search or new runtime subsystem is justified before Stage B. The next owner is D2: freeze a source-closed candidate relation, then subject that immutable candidate to fresh independent Stage-C falsification.
 
 The likely next numerical-design focus, once raw arrays are available, is:
 

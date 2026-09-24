@@ -14,12 +14,13 @@ Canonical workplan:
 
 Current execution status:
 
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_STATUS.md` — the RTX 3090 MH-1 snapshot and the predeclared 20-process 2x2 construction/evaluation-order diagnostic are both authenticated and analyzed. The process/order question is closed; Gate A is now blocked only on fresh raw MPA-0 evidence before retaining a generic MPA-0/MH-1 TRAIN2 FP32 relation.
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_STATUS.md` — **Gate A PASS**. Authenticated MH-1 and MPA-0 target-host realizations under the same frozen 20-process design establish the cross-family stochastic structure needed to formulate Stage B; no current CuEq realization is authorized yet.
 
 Stage-A numerical evidence analysis:
 
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_EVIDENCE_ANALYSIS.md` — authentic failed-doctor evidence confirms the descriptor absolute-floor defect, finite-sample force-tail instability, and tail-metric redundancy.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_ORDER_PROCESS_DIAGNOSTIC_ANALYSIS.md` — the counterbalanced 20-process diagnostic shows that the force backend-centered component is smaller than fresh-process variation and materially condition-dependent; descriptor geometry remains stable despite a systematic latent-coordinate shift. No replacement criterion is yet accepted.
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_ORDER_PROCESS_DIAGNOSTIC_ANALYSIS.md` — MH-1 counterbalanced fresh-process evidence.
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_MPA0_DIAGNOSTIC_ANALYSIS.md` — MPA-0 cross-family realization; absolute force scale differs by ~5-6x but the stochastic decomposition is structurally similar, and MPA-0 additionally falsifies the generic `1e-6` energy floor. No replacement criterion is yet accepted.
 
 Formal workplan review:
 
