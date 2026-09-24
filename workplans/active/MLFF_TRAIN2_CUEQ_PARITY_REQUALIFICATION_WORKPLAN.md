@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 4
+revision: 5
 reviewed_date: 2026-09-24
-workplan_review_status: PASS_AS_WORKPLAN_AFTER_R3_REPAIR
-workplan_review_basis: 5072371da0bbb1693504590db5f2ea9f22dd5be0
+workplan_review_status: PASS_AS_WORKPLAN_AFTER_R4_REPAIR
+workplan_review_basis: 272bc2bab5e7b05c7a4ad4b34e51f56d0d50befa
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -44,7 +44,7 @@ The observed failure is not sufficient evidence that CuEq is scientifically or n
 
 The strongest immediate **adequacy counterexample candidate** is the descriptor channel: the current absolute cross-backend ceiling is smaller than the maximum observed same-backend FP32 descriptor variability on both backends in this target-host realization. That fact alone is not a mathematical contradiction—an independently justified cross-backend bound could in principle be tighter than same-backend extrema—but, combined with the policy's MPA-0-only calibration history, preserved hard selection outcomes, and absence of a current cross-family D2 derivation, it is sufficient to challenge transportability and numerical justification.
 
-This review also confirmed an authority-provenance defect that must be resolved before changing any tolerance. The accepted Protocol-6.4 D2 kernel is `a759e81...`, importing exact source `a4824d2...`; it states that backend-observed discrepancy or an unlisted tolerance cannot create a new numerical-equivalence relation. Direct inspection of the exact accepted source finds no CuEq-specific relation and no FP32 parity rule. The Rev86 CuEq parity document is now classified by the current D4 specification index as historical/backend-qualification material rather than a current semantic owner. Therefore CUEQ-REPEAT1-PARITY1 is **not source-closed as accepted D2 authority under the current Protocol-6.4 kernel**. This cycle must formally supply and qualify the missing bounded D2 relation (or prove that another already-accepted owner, not yet identified, legitimately supplies it and reconcile that conflict).
+This review also confirmed an authority-provenance defect that must be resolved before changing any tolerance. The accepted Protocol-6.4 D2 kernel is `a759e81...`, importing exact source `a4824d2...`; it states that backend-observed discrepancy or an unlisted tolerance cannot create a new numerical-equivalence relation. Direct inspection of the exact accepted source finds no CuEq-specific relation and no FP32 parity rule. The Rev86 CuEq parity document is now classified by the current D4 specification index as historical/backend-qualification material rather than a current semantic owner. Therefore the current CuEq acceleration-equivalence family is **not source-closed as accepted D2 authority under the current Protocol-6.4 kernel**. The immediate adequacy challenge is specific to TRAIN2 FP32, but the same formalization omission also covers the existing source/DATA6 FP32 relation and FP64 CuEq relation. This cycle must formally source-close the current role/dtype family. Numerical changes outside TRAIN2 FP32 are not authorized unless those existing relations are independently falsified.
 
 The current runtime behavior remains the fail-closed baseline until a replacement relation is accepted. D3/D4 MUST continue to fail closed under the existing policy in the meantime. No threshold widening, retry-until-pass behavior, silent e3nn fallback, or MH-1-specific bypass is authorized.
 
@@ -54,7 +54,7 @@ Operationally, the accepted safe production route during this repair is the exis
 
 ### Protected outcome
 
-Determine and freeze a scientifically defensible FP32 TRAIN2 backend-equivalence method that:
+Determine and freeze a scientifically defensible FP32 TRAIN2 backend-equivalence method, while formally source-closing the adjacent current CuEq acceleration-equivalence family, such that:
 
 1. distinguishes systematic e3nn/CuEq disagreement from ordinary realization-level FP32 variability;
 2. applies coherently across every foundation/model family and head that the authority claims to cover;
@@ -143,6 +143,7 @@ The repair MUST preserve all of the following:
 7. **FP32 scope is explicit.** This work does not relax FP64 authority.
 8. **No family-specific exception without D2 justification.** Do not add an `if MH-1` tolerance branch merely because this realization failed.
 9. **No auto-calibration from the candidate being judged.** A candidate run may supply repeatability evidence under a predeclared method, but its observed cross discrepancy cannot directly set its own acceptance bound.
+9A. **Adjacent parity relations are formalization-frozen.** Source/DATA6 FP32 and FP64 CuEq relations must be brought under explicit D2 source closure because the accepted kernel omitted the entire acceleration-parity surface, but their numerical tolerances/semantics are not changed by this TRAIN2 incident absent separate falsification evidence.
 10. **Uncertainty must be represented honestly.** Repeated-pair statistics built from a small number of repeated evaluations are dependent observations; all-pairs cardinality must not be interpreted as an independent-sample count.
 11. **Accepted currentness is explicit.** Any changed parity-policy identity must invalidate/remap dependent preflight, handoff, qualification, cache, and provenance records exactly where they bind the old policy digest.
 12. **Existing e3nn production path remains admissible.** The repair may not destabilize the current default MH-1 e3nn campaign path.
@@ -215,6 +216,7 @@ from:
 At minimum inspect and close:
 
 - accepted D1/D2 kernels and exact imported source target at `a759e81.../a4824d2...`, plus any accepted successor resolved before promotion;
+- current role/dtype acceleration parity family: source/DATA6 FP32, selected-head TRAIN2 FP32, source/DATA6 FP64, and TRAIN2 FP64, with only TRAIN2 FP32 numerically challenged by this incident;
 - the unrelated proposed D1/D2 renewal currently occupying canonical paths on `main@af89c30...`, for composition/conflict only;
 - `docs/specs/training_data/README.md` authority classification;
 - historical `docs/specs/training_data/mlff_cueq_train_noise_normalized_parity_spec.md`, Rev83-86 notes, CUEQ-DEFAULT1/HF1/HF2 evidence, and DIAG3 records;
@@ -235,13 +237,13 @@ At minimum inspect and close:
 
 Unless new evidence contradicts them:
 
-- source/DATA6 acceleration parity authority;
-- FP64 parity;
 - CUEQ-PHASE1 paired-training scientific qualification semantics;
 - TRAIN2/EVAL2 model-architecture authentication;
 - production scheduler/resource budgeting;
 - replay-retention and checkpoint-admissibility method;
 - final-production publication and P7 deployment ownership.
+
+The **numerical values** of source/DATA6 FP32 and FP64 CuEq parity are presumed unchanged unless separately falsified, but they are not listed as unaffected authorities because the same accepted-D2 source-closure omission applies to them. Include them in the D2 acceleration-equivalence family formalization without using the TRAIN2 failure as a reason to relax them.
 
 “Unaffected” means semantically unaffected, not automatically reusable evidence. A shared runtime/source/policy digest may still make an evidence record stale-dependent; perform the explicit impact projection rather than either invalidating everything or reusing everything.
 
@@ -478,7 +480,7 @@ Do not count several tests sharing the same generated expected values as indepen
 
 1. Authenticate/export the existing failed-doctor CampaignStore evidence before rerunning anything.
 2. Resolve the exact accepted D1/D2 parent (`a759e81.../a4824d2...` at plan opening) and separately identify unrelated proposed renewals on repository head.
-3. Record the confirmed source-closure result: the accepted D2 source contains no CuEq/FP32 parity rule, while the current D4 index classifies parity diagnostics/hotfix material as non-semantic history. Treat CUEQ-REPEAT1-PARITY1 as a conservative executable guard/historical evidence, not accepted D2 authority, unless a distinct already-accepted owner is produced and conflict-reconciled.
+3. Record the confirmed source-closure result: the accepted D2 source contains no CuEq parity relation at any dtype/role, while the current D4 index classifies parity diagnostics/hotfix material as non-semantic history. Inventory the current source/DATA6 and TRAIN2 FP32/FP64 relations. Treat their D4/historical specifications as executable guards/evidence, not accepted D2 authority, until the role/dtype family is source-closed.
 4. Reconstruct every dependent policy digest/currentness edge through doctor, stored realization, optimizer/training identity, CUEQ-PHASE1, PERF-CERT1 and FINAL-GPU1.
 5. Perform the bounded historical CuEq parity/HAS review and classify evidence by provenance: raw realization, derived summary, synthetic fixture, or prose-only claim.
 6. Search for the original MPA-0 DIAG3 workstation artifact. If unavailable, do not promote the hardcoded summary fixture into raw evidence.
@@ -494,18 +496,19 @@ Do not count several tests sharing the same generated expected values as indepen
 
 ### Stage B — Bounded D2 candidate method
 
-1. State the exact proposition of the current doctor parity admission gate and its relationship to historical CUEQ-PHASE1, Rev60 explicit policy authorization, current generated-default policy, and FINAL-GPU1.
-2. Define every governed observable/channel, unit/normalization, and downstream protected consequence.
-3. Define the experimental units and whether the method is a finite-sample functional or a population estimator.
-4. Define the equivalence statistics per justified channel, including exact quantile/order-statistic semantics.
-5. Define absolute catastrophic guards and protections against inflated/near-zero self-noise.
-6. Define exact selection identity/robustness requirements.
-7. Define warm-up, repeat, evaluation-order, process-replication, probe-corpus, and insufficiency semantics before seeing acceptance outcomes.
-8. Define generic-vs-regime applicability explicitly. Any parameterization must follow a semantically meaningful scale/architecture/runtime coordinate, not a model-family exception table chosen from failures.
-9. Define the policy/method digest and realization applicability binding so evidence cannot cross incompatible methods/runtimes.
-10. Define old-record currentness/remap semantics and whether record/schema versions must advance.
-11. Produce a bounded D2 overlay against the exact accepted parent; do not edit an unrelated unaccepted canonical-path renewal.
-12. Write the proposed D2 authority before changing D4 product thresholds.
+1. Define one D2 acceleration-equivalence family with explicit role/dtype applicability. Preserve existing source/DATA6 FP32 and FP64 numerical relations unless separately challenged; isolate the TRAIN2 FP32 method as the changed/challenged member.
+2. State the exact proposition of the current doctor TRAIN2 parity admission gate and its relationship to historical CUEQ-PHASE1, Rev60 explicit policy authorization, current generated-default policy, and FINAL-GPU1.
+3. Define every governed observable/channel, unit/normalization, and downstream protected consequence.
+4. Define the experimental units and whether the TRAIN2 FP32 method is a finite-sample functional or a population estimator.
+5. Define the equivalence statistics per justified TRAIN2 FP32 channel, including exact quantile/order-statistic semantics.
+6. Define absolute catastrophic guards and protections against inflated/near-zero self-noise.
+7. Define exact selection identity/robustness requirements.
+8. Define warm-up, repeat, evaluation-order, process-replication, probe-corpus, and insufficiency semantics before seeing acceptance outcomes.
+9. Define generic-vs-regime applicability explicitly. Any parameterization must follow a semantically meaningful scale/architecture/runtime coordinate, not a model-family exception table chosen from failures.
+10. Define the policy/method digest and realization applicability binding so evidence cannot cross incompatible methods/runtimes.
+11. Define old-record currentness/remap semantics and whether record/schema versions must advance.
+12. Produce a bounded D2 overlay against the exact accepted parent; do not edit an unrelated unaccepted canonical-path renewal.
+13. Write the proposed D2 authority before changing D4 product thresholds.
 
 **Gate B:** candidate method must be source/definition closed, dimensionally/semantically coherent, statistically identifiable at its evidence cardinality, and free of constants selected merely because they pass the new MH-1 observation.
 
@@ -623,7 +626,7 @@ On accepted D2 formalization/change:
 The workplan may close only when all of the following hold:
 
 - the accepted D1/D2 parent and any overlapping successor authority are explicitly resolved;
-- the confirmed Rev86 source-closure gap is closed by an accepted bounded D2 relation (or a distinct already-accepted owner is produced and conflict-reconciled);
+- the confirmed acceleration-parity source-closure gap is closed by an accepted role/dtype D2 family covering every current CuEq parity relation that remains supported; only TRAIN2 FP32 may change numerically without separate falsification of the siblings;
 - the current Serious Challenge has been resolved by an accepted D2 criterion/formalization or falsified by evidence showing the original relation remains adequate;
 - the original MH-1 observation exists as durable, applicability-qualified evidence or its unavailability is explicitly recorded and a reproduction is distinguished from it;
 - MPA-0 evidence used for any generic claim is raw/authenticated or freshly re-realized; prose/test fixtures alone do not carry raw-evidence force;
@@ -709,3 +712,17 @@ Revision 4 therefore:
 - keeps generated-default policy, explicit opt-in admission, paired-training evidence, and FINAL-GPU1 release qualification as distinct semantic claims.
 
 **R3 disposition: PASS AS WORKPLAN after Revision-4 repair.** R2 is superseded on this authority-evolution point. No remaining plan-level blocker is known after the final historical check.
+
+
+## 12. R4 full acceleration-parity source-closure correction
+
+The final source-closure audit generalized the D2 omission correctly: the accepted source contains no CuEq-specific relation at all, not merely no TRAIN2 FP32 rule. Therefore source/DATA6 FP32 and FP64 CuEq parity are also D4/historical relations lacking explicit accepted-D2 source closure.
+
+Revision 5 closes this without turning the MH-1 TRAIN2 failure into permission to alter unrelated tolerances:
+
+- D2 must define/source-close the current acceleration-equivalence family by role and dtype;
+- source/DATA6 FP32 and FP64 relations retain their current numerical semantics unless separately falsified;
+- the substantive numerical redesign/falsification remains bounded to TRAIN2 FP32;
+- downstream D3/D4 can then bind each realization to an explicit accepted D2 member rather than an unlisted D4 constant.
+
+**R4 disposition: PASS AS WORKPLAN after Revision-5 repair.** No known parity-authority surface is left outside the plan, and no unaffected numerical sibling is silently relaxed.

@@ -14,13 +14,14 @@ Canonical workplan:
 
 Formal workplan review:
 
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R3.md` — **PASS AS WORKPLAN after Revision-4 repair**; supersedes R2/R1. The D2 numerical challenge itself remains open.
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R4.md` — **PASS AS WORKPLAN after Revision-5 repair**; supersedes R3/R2/R1. The D2 numerical challenge itself remains open.
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R3.md` — historical third review.
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R2.md` — historical second review.
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R1.md` — historical first review.
 
 A real MACE-MH-1 / `omat_pbe` RTX 3090 doctor realization challenged the accepted TRAIN2 FP32 noise-normalized backend-equivalence criterion: force-tail ratios narrowly exceeded the generic ratio ceiling and, more importantly, cross-backend descriptor variation exceeded the absolute `1e-6` stable-channel ceiling while same-backend descriptor repeatability itself reached roughly `1.8-1.9e-6`. The cycle therefore starts at D2 and preserves the current fail-closed/no-silent-fallback D3/D4 behavior until a replacement numerical relation passes fresh independent falsification and stakeholder ratification.
 
-The repair must not tune constants to the observed failure. It must formally supply the missing source-closed D2 parity relation, reconstruct the MPA-0 and MH-1 evidence basis, account for dependence in the current repeated all-pairs statistics, test adversarial false-pass/false-fail cases, repair stale realization currentness, and freeze one coherent generic or explicitly parameterized parity family. The current generated MH-1 default remains e3nn. Explicit CuEq remains an opt-in path whose selected-head/runtime realization must pass the doctor parity gate; this workplan repairs the missing D2 authority behind that gate without rewriting separate CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 claims.
+The repair must not tune constants to the observed failure. It must formally source-close the current CuEq acceleration-equivalence family by role/dtype, reconstruct the MPA-0 and MH-1 evidence basis, account for dependence in the current repeated all-pairs statistics, test adversarial false-pass/false-fail cases, repair stale realization currentness, and redesign only the challenged TRAIN2 FP32 member unless another member is independently falsified. The current generated MH-1 default remains e3nn. Explicit CuEq remains an opt-in path whose selected-head/runtime realization must pass the doctor parity gate; this workplan repairs the missing D2 authority behind that gate without rewriting separate CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 claims.
 
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
