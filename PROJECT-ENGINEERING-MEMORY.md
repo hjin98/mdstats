@@ -817,31 +817,6 @@ applications:
         conclusion: SUPPORTS_BOUNDED_CLAIM
         evidence:
           - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_HARDENING_WORKPLAN.md"
-```
-
-## Current notices
-
-### NT-001 — P5 TRAIN2/EVAL2 CuEq architecture-authentication recurrence investigation (retired)
-
-```yaml pem-notice
-id: NT-001
-state: RETIRED
-summary: A real P5 cross-validation run completed TRAIN2 but failed before EVAL2 on CuEq architecture authentication. The repair (replay-head element table, converter device type, and dependency-native state transfer into the canonical portable e3nn shell, with fail-closed guards unchanged) was closed PASS by independent Protocol 6.3 review and integrated into accepted main at 4eabe2ae. Retired on that accepted-base change as the closure directed; no FF-001 recurrence occurrence is added, because the strict accepted-repair chronology for recurrence membership was not established.
-normative_status: NON_AUTHORITATIVE
-owner: NONE
-applicability:
-  - P5 cross-validate
-  - TRAIN2 completed EVAL2 authentication failed
-  - CuEq architecture digest mismatch
-binding_health: HEALTHY
-evidence:
-  - "hjin98/mdstats@4eabe2ae9783c7ff92f3a1093c37502a01380812:workplans/archive/MLFF_P5_TRAIN2_EVAL2_CUEQ_ARCHITECTURE_RECURRENCE_REPAIR_WORKPLAN.md"
-  - "hjin98/mdstats@4eabe2ae9783c7ff92f3a1093c37502a01380812:workplans/archive/MLFF_P5_TRAIN2_EVAL2_CUEQ_ARCHITECTURE_RECURRENCE_INDEPENDENT_REVIEW_REOPEN.md"
-  - "hjin98/mdstats@4eabe2ae9783c7ff92f3a1093c37502a01380812:workplans/archive/MLFF_P5_TRAIN2_EVAL2_CUEQ_ARCHITECTURE_RECURRENCE_FINAL_REVIEW_CLOSURE.md"
-review_trigger:
-  type: accepted_base_change
-  basis: 4eabe2ae9783c7ff92f3a1093c37502a01380812
-  resolution: RETIRED
   - id: A04
     episode_identity: "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5"
     lifecycle_context: bounded P5 publication -> P7 deployment/MH-1 integration review
@@ -869,7 +844,32 @@ review_trigger:
           - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md"
           - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_mh1_publication_integration.py"
           - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_p7_r11_repair_acceptance.py"
-          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_p7_r12_repair_acceptance.py"
+          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_p7_r12_repair_acceptance.py"```
+
+## Current notices
+
+### NT-001 — P5 TRAIN2/EVAL2 CuEq architecture-authentication recurrence investigation (retired)
+
+```yaml pem-notice
+id: NT-001
+state: RETIRED
+summary: A real P5 cross-validation run completed TRAIN2 but failed before EVAL2 on CuEq architecture authentication. The repair (replay-head element table, converter device type, and dependency-native state transfer into the canonical portable e3nn shell, with fail-closed guards unchanged) was closed PASS by independent Protocol 6.3 review and integrated into accepted main at 4eabe2ae. Retired on that accepted-base change as the closure directed; no FF-001 recurrence occurrence is added, because the strict accepted-repair chronology for recurrence membership was not established.
+normative_status: NON_AUTHORITATIVE
+owner: NONE
+applicability:
+  - P5 cross-validate
+  - TRAIN2 completed EVAL2 authentication failed
+  - CuEq architecture digest mismatch
+binding_health: HEALTHY
+evidence:
+  - "hjin98/mdstats@4eabe2ae9783c7ff92f3a1093c37502a01380812:workplans/archive/MLFF_P5_TRAIN2_EVAL2_CUEQ_ARCHITECTURE_RECURRENCE_REPAIR_WORKPLAN.md"
+  - "hjin98/mdstats@4eabe2ae9783c7ff92f3a1093c37502a01380812:workplans/archive/MLFF_P5_TRAIN2_EVAL2_CUEQ_ARCHITECTURE_RECURRENCE_INDEPENDENT_REVIEW_REOPEN.md"
+  - "hjin98/mdstats@4eabe2ae9783c7ff92f3a1093c37502a01380812:workplans/archive/MLFF_P5_TRAIN2_EVAL2_CUEQ_ARCHITECTURE_RECURRENCE_FINAL_REVIEW_CLOSURE.md"
+review_trigger:
+  type: accepted_base_change
+  basis: 4eabe2ae9783c7ff92f3a1093c37502a01380812
+  resolution: RETIRED
+
 ```
 
 ## Coverage and maintenance note
