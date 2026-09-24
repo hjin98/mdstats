@@ -18,7 +18,7 @@ jobs:
       OMP_NUM_THREADS: "2"
       MKL_NUM_THREADS: "2"
       OPENBLAS_NUM_THREADS: "2"
-      EVIDENCE_BASE: a382c118a62dc32f52536efe7b8aa08dc38f18f5
+      EVIDENCE_BASE: 14c191f2a97c22c4ea27b27015e780fba051a9d5
       EVIDENCE_REPORT: qualification/mlff-publication-closeout/actions-validation-report.md
     steps:
       - name: Checkout exact evidence descendant
