@@ -4,6 +4,16 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 ## Current active MLFF work
 
+### Final-production model publication + lightweight MH-1 integration — Revision 28 evidence closure
+
+Branch: `design/mlff-final-production-model-publication-mh1-integration`
+
+Canonical workplan:
+
+- `workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`
+
+Revision 28 is **PRODUCT-CODE PASS / WORKPLAN NO-PASS FOR EVIDENCE-SPECIFICATION IMPACT CLOSURE**. Executable candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` remains conforming and no Serious Challenge is active. The attempted Revision-27 closeout was reopened because several tests diagnosed as superseded/stale were left as ordinary auto-collected failing specifications. The remaining work is test/evidence-owner retirement or remapping plus successor affected acceptance and the explicit PEM closeout-learning assessment. No production-code change is authorized unless a corrected current oracle exposes a genuine defect. Long real MH-1/GPU/CUDA-performance/LAMMPS/MLIAP/MD qualification remains deferred.
+
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
 Branch: `design/mlff-pi-train-fps-diversity-restoration`
@@ -29,13 +39,6 @@ The proposed method restores the final mature multi-view semantics under current
 **No D1/D2 promotion has occurred.** Independent D1/D2 falsification and stakeholder human ratification remain mandatory before accepted-current method-paper promotion and before R2 begins. The current UID-capable product method therefore remains under **SERIOUS CHALLENGE**.
 
 ## Recently closed MLFF work
-
-The final-production model publication + lightweight MH-1 integration cycle on branch `design/mlff-final-production-model-publication-mh1-integration` closed **PASS** under Protocol 6.4 at exact executable candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`, with evidence-only descendant `37746668d7125a1946b0a1a5d0f938c7b2a899a7` and identical importable source-tree manifest. The five mandatory focused suites returned 89 passing tests and two justified locked-real-MH-1 skips; the bounded structural current-owner MH-1 seam passed. Current P5/P7/lifecycle/storage/MACE/static/package/documentation-builder evidence is recorded, and superseded test oracles are diagnosed rather than repaired. Long real MH-1/GPU/CUDA-performance/LAMMPS/MLIAP/MD qualification remains deferred to the actual campaign and final release.
-
-Final closure records:
-
-- `workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`;
-- `workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_2026-09-23.md`.
 
 The final-production global TRAIN scheduler repair on branch `design/mlff-production-global-train-scheduler-repair` closed **PASS** under Protocol 6.4 at reviewed candidate `62d42da57f948f70bbd50ec338435c3a82b22d49`. Final production now normalizes recovery collection-wide, executes only remaining TRAIN_REQUIRED positions through one existing adaptive TRAIN scheduler wave, and retains serial/fail-fast EVAL2/assessment/publication in frozen selected-size order. Exact CampaignStore collection-signature admission linearization, authenticated restart/reuse, and zero-safe/backoff semantics remain intact. Production-scale RAM/VRAM adequacy is deferred to actual runs and target-hardware GPU qualification to the final release package.
 

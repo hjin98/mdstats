@@ -2,15 +2,17 @@
 kind: implementation-qualification-closure
 workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
-status: closed-pass
+status: superseded-review-no-pass
 closed_date: 2026-09-23
-implementation_review: PASS
+implementation_review: SUPERSEDED_BY_REVISION_28_NO_PASS
 candidate_sha: 73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
 evidence_head: 37746668d7125a1946b0a1a5d0f938c7b2a899a7
 source_manifest_sha256: e988e6aa1742d1eb930e043331b53c18c37572869863d1ba4d317755f73db86f
 ---
 
 # IR27-E1 executable acceptance and closeout
+
+> **Independent Review reassessment (Revision 28):** the execution observations and command ledger below remain historical evidence, but the final PASS/lifecycle-closure assessment is superseded. Several tests classified below as stale/superseded were left as ordinary auto-collected failing specifications. Protocol 6.4 requires those evidence specifications to be retired, remapped, or otherwise reconciled at their evidence owner before repository/lifecycle closure. Product-code conformance remains provisionally accepted; the active workplan contains the exact evidence-only repair contract.
 
 ## Disposition
 
@@ -192,4 +194,4 @@ Deferred by the governing workplan and not counted as closeout blockers:
 - production LAMMPS/ML-IAP qualification on target hardware;
 - production MD validation.
 
-The executed bounded structural MH-1 seam and current P5/P7/storage/currentness evidence do not expose a D1, D2, D3, or current D4 owner failure. **Implementation Review: PASS. IR27-E1: PASS. Workplan: CLOSED.**
+The executed bounded structural MH-1 seam and current P5/P7/storage/currentness evidence do not expose a D1, D2, D3, or current D4 owner failure. **Historical Revision-27 assessment: PASS / CLOSED — SUPERSEDED by Revision-28 independent Review. Product-code conformance remains accepted; workplan/lifecycle closure is reopened for evidence-specification impact closure.**

@@ -2,12 +2,12 @@
 kind: implementation-workplan
 workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
-status: closed-pass
+status: active-reopened
 created_date: 2026-09-21
-revision: 27
+revision: 28
 reviewed_date: 2026-09-23
-workplan_review_status: implementation-review-pass-closeout
-workplan_review_basis: 73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
+workplan_review_status: implementation-review-no-pass-evidence-specification-reopened
+workplan_review_basis: e9a1140c9bfffa29f75bba4317989afe49c6bef3
 implementation_review_candidate: 73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
 implementation_review_domain: D4
 branch: design/mlff-final-production-model-publication-mh1-integration
@@ -20,6 +20,8 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 # MLFF final-production model publication + lightweight MH-1 integration — D3 -> D4 workplan
 
 ## 0. Disposition
+
+**REVISION-28 INDEPENDENT IMPLEMENTATION REVIEW: PRODUCT-CODE PASS / WORKPLAN NO-PASS FOR EVIDENCE-SPECIFICATION IMPACT CLOSURE.** Candidate executable source `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` remains conforming and Revision-22 D3 remains coherent; no Serious Challenge is active. The attempted Revision-27 closeout at evidence/archive head `e9a1140c9bfffa29f75bba4317989afe49c6bef3` is reopened because several tests diagnosed as superseded/stale were left as ordinary auto-collected failing `tests/test_*.py` specifications. Protocol 6.4 does not permit lifecycle closure while materially affected stale evidence remains active as apparent current confidence. No production-code repair is authorized unless a remapped current oracle exposes a genuine defect.
 
 **IMPLEMENTATION REVIEW PASS / CLOSED. Revision-22 D3 remains coherent and frozen; no Serious Challenge is active.** The exact Revision-27 executable acceptance record is archived in `workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_2026-09-23.md`.
 
@@ -1827,7 +1829,7 @@ Implementation is complete only when the assembled candidate proves all of the f
 
 Any failed item above is an implementation NO-PASS. Local helper names, exact private temp names and equivalent no-clobber primitives remain D4 choices.
 
-> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. For the reopened implementation, Sections 0-26 **plus Sections 26A-26E** are normative. Section 26A is the original mandatory D4 repair delta over the still-binding Revision-22 architecture as refined by Revision 24; Section 26B records the exhaustive reopened-plan convergence review; Section 26C is the Revision-25 implementation repair delta; Section 26D is the Revision-26 residual implementation repair and closeout delta; Section 26E is the mandatory Revision-27 evidence-only closeout delta. Revision-27 wording controls where it narrows or strengthens closeout after observing candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`. Earlier review-history wording is rationale/evidence only.
+> **Review-history note:** Sections 27 onward are chronology of earlier workplan reviews. For the reopened implementation, Sections 0-26 **plus Sections 26A-26E** are normative. Section 26A is the original mandatory D4 repair delta over the still-binding Revision-22 architecture as refined by Revision 24; Section 26B records the exhaustive reopened-plan convergence review; Section 26C is the Revision-25 implementation repair delta; Section 26D is the Revision-26 residual implementation repair and closeout delta; Section 26E is the Revision-27 evidence-only closeout delta; Section 26F preserves the attempted closeout realization/assessment; Section 26G is the mandatory Revision-28 evidence-specification impact-closure delta. Revision-27 wording controls where it narrows or strengthens closeout after observing candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`. Earlier review-history wording is rationale/evidence only.
 
 
 
@@ -2639,6 +2641,113 @@ The report also records historical or superseded test oracles that were executed
 Long production MH-1 TRAIN2/CV, GPU/CUDA-performance, LAMMPS/MLIAP production qualification, and MD validation remain explicitly deferred to the actual campaign/final-release qualification. This closeout does not claim any of those deferred qualifications.
 
 **IR27-E1 disposition: PASS. Implementation Review: PASS. Workplan: CLOSED.**
+
+
+## 26G. Revision-28 independent Review reopen — retire/remap stale active evidence before lifecycle closure
+
+### Review basis and disposition
+
+Reviewed evidence/archive candidate:
+
+```text
+e9a1140c9bfffa29f75bba4317989afe49c6bef3
+```
+
+Executable subject retained from Revision 27:
+
+```text
+73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
+```
+
+The evidence-only descendants from the executable candidate through `e9a1140c9bfffa29f75bba4317989afe49c6bef3` modify no importable `mdstats/**/*.py` production source. Independent source review therefore retains the Revision-27 conclusion that the product implementation is conforming.
+
+**NO-PASS FOR WORKPLAN/LIFECYCLE CLOSEOUT. No Serious Challenge.** The blocker is evidence-specification impact closure, not product behavior.
+
+Protocol 6.4 distinguishes a stale failing observation from a current product failure, but it also requires stale evidence specifications to be retired, remapped, or clearly marked at their evidence owner rather than left as apparent current confidence. A material concretization change must close affected evidence by preserving still-valid tests, remapping tests whose governed claim survives under a new execution/API boundary, or retiring tests whose claim itself is superseded. An ordinary auto-collected `test_*` that is known to fail under current accepted behavior is not retired merely because a closeout Markdown file explains why it failed.
+
+The attempted Revision-27 closeout executed several affected suites and then recorded red results as “superseded oracles” while leaving those tests unchanged and normally collectible. That leaves future full/affected regression predictably red and makes the repository's current evidence surface disagree with the closeout claim.
+
+### IR28-E1 — stale/superseded red tests remain active — BLOCKING
+
+The Revision-27 execution record itself reports the following unresolved active-red surfaces:
+
+1. **Global production scheduler / post-publication recovery**
+   - `tests/test_mlff_production_global_train_scheduler.py`
+   - three executed failures:
+     - `test_an_incompatible_profile_on_a_sealed_position_does_not_block_the_wave`
+     - `test_rollover_before_the_finalization_admission_starts_no_eval2`
+     - `test_finalization_admitted_first_still_cannot_publish_stale_results`
+   - two explicitly deselected legacy-root cases must also receive an explicit current-evidence disposition rather than remaining indefinitely outside the command:
+     - `test_terminal_but_unsealed_legacy_roots_seal_before_the_wave_is_sized`
+     - `test_corrupt_sealed_root_fails_before_any_sibling_trainer`
+
+   The accepted publication integration introduced a current `PRODUCT_COMPLETE` boundary and representation reclosure path above historical run-root/scheduler assumptions. Preserve the still-current scheduler claims—single global TRAIN wave, exact collection-signature admission, no stale publication, authenticated recovery—while remapping or retiring assertions that require fresh TRAIN/EVAL2 or historical-root authority after the current product boundary already proves completion.
+
+2. **P7 real deployment-owner tests**
+   - `tests/test_mlff_p7_r11_repair_acceptance.py::test_r11b2_real_runtime_gate_blocks_rather_than_passing`
+   - `tests/test_mlff_p7_r12_repair_acceptance.py::test_r12b11_frozen_publication_member_drives_the_real_deployment_owners`
+
+   The first uses a generic one-head `Default` fixture while asking the current canonical `target_head` deployment owner to accept it; the second explicitly feeds `checkpoint_path_for_member(...)` to deployment even though accepted current P7 deployment consumes the P5 published full-model representation. Remap these tests to the current full-model/current-head owner chain or retire the obsolete path. Do not weaken the real-runtime blocking claim.
+
+3. **Superseded campaign/MACE API tests**
+   - `tests/test_mlff_mace_compatibility.py`
+   - `tests/test_mlff_mace_execution_semantics_assembled.py`
+
+   Revision-27 reports failures caused by removed pre-facade `command_evaluate` / old `main()` patching and superseded `evaluate_post_selection_dataset(run_plan=...)` / tuple-unpack interfaces. For every failing case, decide whether its underlying claim is still current. If current, remap it through the present facade/owner API. If the claim is obsolete, remove/retire the test. Do not restore deprecated APIs merely to satisfy the harness.
+
+4. **Superseded warning/document-generation assertions**
+   - `tests/test_mlff_campaign_warning_domain_specification.py`
+   - `tests/test_mlff_doc_arch1_specification.py`
+   - `tests/test_mlff_data0_architecture_specification.py`
+   - `tests/test_mlff_data9a6b_architecture_consistency_specification.py`
+
+   Assertions requiring retired revision text, pre-renewal current-manual/graph/PDF identities, or historical aggregate-manual wording must be redirected to historical snapshot ownership when the historical claim remains useful, or retired. Current-document tests must assert the current canonical owners rather than an intentionally superseded generation.
+
+5. **Downstream integration closure**
+   - `tests/test_mlff_downstream_integration_closure.py`
+
+   Reconcile the two reported failures independently:
+   - the unsupported serialized `run_identity` injection must either be remapped to a currently representable/currently governed corruption case or retired if the field no longer exists in current schema;
+   - the AST heuristic that treats accepted lease-owned `any(root.path.iterdir())` empty-root classification as a forbidden second authority must be narrowed to the actual prohibited semantic pattern, or retired if the current stronger owner tests supersede it.
+
+Required repair discipline:
+
+- **Do not edit production code merely to make these tests green.**
+- First reconstruct each test's governed claim against current D1/D2/D3/D4 authority.
+- If the claim remains current but the execution dependency/API/fixture is stale, alter the test/fixture to exercise the current real owner.
+- If the claim itself is superseded, delete/retire the test; Git history and the Revision-27 execution record preserve the historical observation.
+- Do not blanket-skip, blanket-xfail, loosen assertions, or add compatibility wrappers solely for test preservation.
+- Prefer deletion or direct remapping over adding another test compatibility layer.
+
+### IR28-E2 — successor executable acceptance after evidence remap — BLOCKING
+
+After IR28-E1 is resolved:
+
+1. Re-run the five mandatory focused Revision-27 suites unchanged.
+2. Re-run **without exclusion filters** every file listed in IR28-E1 that remains a current test file after retirement/remapping.
+3. Re-run the maintained P5/P7/lifecycle/storage/MACE/static/package/documentation checks from the Revision-27 ledger that are materially affected by the evidence edits.
+4. Require zero unclassified failures. Environment-dependent real-MH1/GPU/LAMMPS/MLIAP skips remain acceptable only under the existing explicit deferral/unavailability rules.
+5. Record exact commands and pass/fail/skip counts in a successor closeout assessment. Preserve the Revision-27 execution observations as historical; supersede only their final applicability/closeout assessment.
+6. If a remapped current oracle exposes a genuine product failure, stop treating this as evidence-only work, repair the earliest existing owner directly, and rerun the affected evidence. Do not reopen D3 unless the failure demonstrates a Section-25 D3 reopen condition.
+
+### IR28-L1 — closeout-learning / PEM assessment must be explicit
+
+This workplan activated Project Engineering Memory and recorded a HAS containing SP-001 through SP-004 and FF-001 through FF-005. Before final lifecycle closure, perform the Protocol-6.4 closeout-learning assessment against the unchanged accepted PEM basis.
+
+At minimum decide explicitly whether this distinct publication/P7/MH-1 intervention constitutes a new evaluated application episode for any already-current success pattern (especially SP-001 authenticated owner consolidation, SP-002 fail-closed identity boundaries, SP-003 durable immutable reuse, and SP-004 real-owner integration), or whether the observed results are merely additional surfaces/reruns of an already-recorded episode. Update PEM only if its admission threshold is actually met; otherwise record the no-update disposition and rationale. Do not promote the workplan or test results into authority.
+
+### Revision-28 acceptance / stop conditions
+
+The workplan may close only when:
+
+1. every Revision-27 red/deselected stale-oracle surface above has an owner-local disposition: remapped/current and green, or retired because its claim is superseded;
+2. no known superseded current `test_*` remains auto-collected as a predictable failure;
+3. focused + affected acceptance passes with only previously authorized environment-dependent skips;
+4. the successor closeout record supersedes the Revision-27 PASS assessment without rewriting its raw observations;
+5. the closeout-learning/PEM assessment is explicit and any required PEM reconciliation is complete;
+6. executable production source remains unchanged unless corrected current evidence demonstrates an actual product defect.
+
+Until then, the correct disposition is **PRODUCT-CODE PASS / WORKPLAN NO-PASS FOR EVIDENCE-SPECIFICATION IMPACT CLOSURE**.
 
 ## 27. Current-implementation review closure (Revision 2)
 
