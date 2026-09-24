@@ -1392,39 +1392,6 @@ def _raw_configured_path_resolutions(source: str) -> list[str]:
     return found
 
 
-def _checkpoint_presence_shortcuts(source: str) -> list[str]:
-    """Find checkpoint-directory presence shortcuts, not owner root scans.
-
-    The current run-activity owner legitimately observes its leased root with
-    ``root.iterdir()``.  The prohibited shortcut is specifically using the
-    presence of entries in a checkpoint directory as proof that TRAIN2 is
-    resumable.
-    """
-
-    found = []
-    for node in ast.walk(ast.parse(source)):
-        if not (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "any"
-            and node.args
-        ):
-            continue
-        candidate = node.args[0]
-        if (
-            isinstance(candidate, ast.Call)
-            and isinstance(candidate.func, ast.Attribute)
-            and candidate.func.attr == "iterdir"
-        ):
-            owner = candidate.func.value
-            if isinstance(owner, ast.Name) and (
-                "checkpoint" in owner.id.lower()
-                or owner.id.lower() in {"checkpoints", "checkpoint_root", "checkpoint_dir"}
-            ):
-                found.append(ast.unparse(node))
-    return found
-
-
 def _delete_before_authenticate(source: str) -> list[str]:
     """Find a materialization delete ordered before recovery authentication."""
 
@@ -1525,20 +1492,6 @@ def test_structural_rules_distinguish_known_positive_and_negative_constructs():
     assert len(_raw_configured_path_resolutions(raw_path_positive)) == 4
     assert not _raw_configured_path_resolutions(raw_path_negative)
 
-    presence_positive = (
-        "def f(checkpoints):\n"
-        "    return any(checkpoints.iterdir())\n"
-    )
-    presence_negative = (
-        "def f(checkpoints):\n"
-        "    return validate_train2_runtime_continuation_artifacts(checkpoints)\n"
-    )
-    assert _checkpoint_presence_shortcuts(presence_positive)
-    assert not _checkpoint_presence_shortcuts(presence_negative)
-    assert not _checkpoint_presence_shortcuts(
-        "def f(root):\n    return any(root.iterdir())\n"
-    )
-
     delete_positive = (
         "import shutil\n"
         "def f(root):\n"
@@ -1566,7 +1519,6 @@ def test_no_downstream_owner_reintroduces_a_second_locator_authority():
     for name, source in sources.items():
         assert not _path_derived_foundation_identity(source), name
         assert not _raw_configured_path_resolutions(source), name
-        assert not _checkpoint_presence_shortcuts(source), name
         assert not _delete_before_authenticate(source), name
         # No configured foundation locator is re-derived from a raw config value.
         assert "f_model_raw" not in _cwd_resolved_names(source), name

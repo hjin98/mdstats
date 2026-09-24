@@ -558,6 +558,75 @@ def fixture_config_text(
     return text + qualification
 
 
+def multihead_fixture_config_text(tmp_path: Path, **kwargs) -> str:
+    """Build a bounded current P5 multihead-product campaign configuration.
+
+    The generic qualification fixture defaults to scratch training, whose real
+    MACE checkpoint namespace is the ordinary one-head Default namespace.
+    P7 deployment tests that exercise the canonical target_head therefore
+    need the existing foundation/replay method, not an external MH-1 model.
+    This helper only supplies fixture inputs below the P5 owner boundary; the
+    real P1-P5 owners still decide and publish the resulting full model.
+    """
+
+    from tests.test_mlff_target_size_p5_r9_guards import (
+        _write_replay_file,
+        _write_tiny_mace_foundation,
+    )
+
+    root = tmp_path / "multihead-product-inputs"
+    foundation = root / "foundation.model"
+    pseudo_train = root / "replay-pseudo-train.extxyz"
+    pseudo_monitor = root / "replay-pseudo-monitor.extxyz"
+    true_root = root / "true-replay"
+    true_train = true_root / "true_labels" / "replay_train.extxyz"
+    true_monitor = true_root / "true_labels" / "replay_monitor.extxyz"
+
+    foundation.parent.mkdir(parents=True, exist_ok=True)
+    _write_tiny_mace_foundation(foundation)
+    _write_replay_file(pseudo_train, list(range(60)), energy_offset=0.25)
+    _write_replay_file(pseudo_monitor, [60, 61], energy_offset=0.25)
+    _write_replay_file(true_train, list(range(60)), energy_offset=0.0)
+    _write_replay_file(true_monitor, [60, 61], energy_offset=0.0)
+
+    text = fixture_config_text(**kwargs)
+    text = text.replace(
+        'training_root = "{training_root}"',
+        "\\n".join(
+            (
+                'training_root = "{training_root}"',
+                f'foundation_model = "{foundation}"',
+                f'replay_train = "{pseudo_train}"',
+                f'replay_monitor = "{pseudo_monitor}"',
+                f'replay_true_labels = "{true_root}"',
+            )
+        ),
+        1,
+    )
+    text = text.replace(
+        "seeds = [1, 2]",
+        'seeds = [1, 2]\\nmode = "multihead_replay"',
+        1,
+    )
+    text = text.replace("partition_seed = 7", "partition_seed = 2", 1)
+    text += """
+
+[replay]
+mode = "external_pseudolabel"
+seed = 42
+allow_small_corpus = true
+minimum_train_configurations = 1
+minimum_monitor_configurations = 1
+require_target_elements = false
+
+[foundation]
+family = "mace_mpa_0"
+head = "default"
+legacy_normalized = true
+"""
+    return text
+
+
 def build_qualified_campaign(
     tmp_path: Path,
     *,

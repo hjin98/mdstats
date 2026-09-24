@@ -343,28 +343,41 @@ def test_r11b2_runtime_probe_separates_iap_support_from_product_support():
     assert "mace_mliap_supported" in probe.to_dict()
 
 
-def test_r11b2_real_runtime_gate_blocks_rather_than_passing(tmp_path: Path):
-    """Requiring the real runtime without the seam is blocking, never a pass."""
+def test_r11b2_real_runtime_gate_blocks_rather_than_passing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A valid current product reaches the real runtime gate and fails closed.
 
-    text = fx.fixture_config_text().replace(
+    Runtime unavailability is injected below the P7 owner. The test therefore
+    cannot pass because of an invalid one-head fixture or a bounded analytic
+    deployed-evaluator seam: P5 must first publish a genuine current multihead
+    full model, and the real deployment exporter/ML-IAP builder must accept it.
+    """
+
+    text = fx.multihead_fixture_config_text(tmp_path).replace(
         "require_deployed_runtime = false", "require_deployed_runtime = true"
     )
-    # Use the current P5 published full-model representation so the request
-    # reaches the real-runtime gate rather than failing early on the retired
-    # generic one-head checkpoint fixture.
     config, _workspace, harness = _campaign(
         tmp_path, config_text=text, real_mace_checkpoint=True
     )
-    _cfg, paths, store, session = fx.load_session(
-        config, harness, deployed_evaluator=None, mliap_builder=None, deployment_exporter=None
+    _cfg, _paths, store, session = fx.load_session(
+        config,
+        harness,
+        deployed_evaluator=None,
+        mliap_builder=None,
+        deployment_exporter=None,
     )
     try:
-        from mdstats.training_data.qualification.deployment import qualify_deployment_parity
+        from mdstats.training_data.qualification.deployment import (
+            qualify_deployment_parity,
+        )
         from mdstats.training_data.qualification.errors import (
             QualificationUnavailableError,
         )
-        torch = pytest.importorskip("torch")
         from mdstats.training_data.model_artifact_trust import stage_authenticated_model
+
+        torch = pytest.importorskip("torch")
+        pytest.importorskip("mace")
 
         member = session.publication.members[0]
         source_member = session.published_model_member(member)
@@ -377,15 +390,24 @@ def test_r11b2_real_runtime_gate_blocks_rather_than_passing(tmp_path: Path):
             filename="p5-published.model",
         ) as source:
             published_model = torch.load(source, map_location="cpu", weights_only=False)
-        heads = tuple(str(value) for value in getattr(published_model, "heads", ()))
-        if member.target_head_name not in heads:
-            pytest.skip(
-                "UNAVAILABLE/BLOCKING: the locked MH-1 P5 full-model bytes with "
-                "canonical [pt_head, target_head] inventory are not available on "
-                "this host; deferred to target-machine campaign."
+        assert tuple(str(value) for value in published_model.heads) == (
+            POST_SELECTION_REPLAY_HEAD_NAME,
+            POST_SELECTION_TARGET_HEAD_NAME,
+        )
+
+        def unavailable_runtime(*_args, **_kwargs):
+            raise QualificationUnavailableError(
+                "bounded injected real-runtime unavailability"
             )
 
-        with pytest.raises(QualificationUnavailableError, match="unavailable/blocking|cannot"):
+        monkeypatch.setattr(
+            "mdstats.training_data.qualification.runtime.deployed_static_observation",
+            unavailable_runtime,
+        )
+        with pytest.raises(
+            QualificationUnavailableError,
+            match="bounded injected real-runtime unavailability",
+        ):
             qualify_deployment_parity(session)
     finally:
         store.close()
