@@ -467,8 +467,10 @@ At minimum construct or reuse tests that must fail:
 12. warm-up-count sensitivity that changes classification;
 13. quantile-interpolation/cardinality edge case, especially p99.9 with small force-component count;
 14. latent descriptor rescaling that leaves protected selection unchanged, to test whether an absolute descriptor gate is actually invariant to representation;
-15. stale stored `TrainingAccelerationRealizationRecord` created under an old policy that would otherwise be accepted by backend/device/dtype/checkpoint checks alone;
-16. authority-evolution case showing that CONFIG1 source-side `e3nn`, Rev60 generated TRAIN2 `cueq`, doctor admission, explicit e3nn TRAIN2 override, and historical CUEQ-PHASE1/FINAL-GPU1 state remain distinct rather than being collapsed into one boolean.
+15. stale stored `TrainingAccelerationRealizationRecord` or source-side `AccelerationRealizationRecord` created under an old parity method that would otherwise be accepted by their current shallow loader checks;
+16. trained-state counterexample where the starting checkpoint passes but a compatible reachable/perturbed state shows systematic backend/projection disagreement, falsifying an unjustified model-state-uniform claim;
+17. CuEq-trained EVAL2 checkpoint whose actual projected forward is portable e3nn but whose measurement identity is labeled CuEq, proving that execution provenance and measurement reuse fail closed after correction;
+18. authority-evolution case showing that CONFIG1 source-side `e3nn`, Rev60 generated TRAIN2 `cueq`, doctor admission, explicit e3nn TRAIN2 override, and historical CUEQ-PHASE1/FINAL-GPU1 state remain distinct rather than being collapsed into one boolean.
 
 ### 4.7 Historical evidence is evidence, not authority
 
@@ -482,12 +484,17 @@ Determine whether the later generic policy had adequate cross-family evidence fo
 
 ### 4.8 D3/D4 currentness defects to resolve if confirmed
 
-Current inspection confirms that `_stored_training_acceleration_realization(..., require_qualified=True)` authenticates requested backend, device/dtype, checkpoint bytes, and the record's own historical `qualified` flag, but does not authenticate that the record was qualified under the **currently accepted parity-policy/method digest**. Meanwhile optimizer/training identities bind the acceleration-realization digest.
+Current inspection confirms two stale-authority surfaces:
 
-This is a D3/D4 stale-authority defect independent of which new numeric criterion wins. Stage A/D must trace the complete currentness graph for impact and repair the existing owner directly:
+1. `_stored_training_acceleration_realization(..., require_qualified=True)` authenticates requested backend, device/dtype, checkpoint bytes, and the record's own historical `qualified` flag, but not the **currently accepted parity-policy/method identity**.
+2. `_stored_acceleration_realization(..., require_qualified=True)` likewise accepts the source-side realization from backend/device/dtype plus historical `qualified` state; it does not prove that the parity record(s) behind that realization belong to the current source-side D2 method/policy.
+
+Optimizer/training identities bind the training acceleration-realization digest, while source/pseudolabel consumers bind their own inference/currentness ancestry.
+
+These are D3/D4 stale-authority defects independent of which numeric TRAIN2 FP32 criterion wins. Stage A/D must trace the complete currentness graph for impact and repair the existing owners directly:
 
 - reuse the existing stored parity-policy/parity/realization records;
-- make consequential reuse prove the current accepted parity method/policy identity and applicable runtime identity;
+- make consequential reuse of both source-side and TRAIN2 CuEq realizations prove the current accepted parity method/policy identity and applicable runtime/model identity;
 - cause an old doctor pass to become stale/fail closed after a parity-authority change;
 - do not create a second realization registry or migration database;
 - preserve historical records byte-for-byte.
@@ -512,16 +519,18 @@ Do not count several tests sharing the same generated expected values as indepen
 1. Authenticate/export the existing failed-doctor CampaignStore evidence before rerunning anything.
 2. Resolve the exact accepted D1/D2 parent (`a759e81.../a4824d2...` at plan opening) and separately identify unrelated proposed renewals on repository head.
 3. Record the confirmed source-closure result: the accepted D2 source contains no CuEq parity relation at any dtype/role, while the current D4 index classifies parity diagnostics/hotfix material as non-semantic history. Inventory the current source/DATA6 and TRAIN2 FP32/FP64 relations. Treat their D4/historical specifications as executable guards/evidence, not accepted D2 authority, until the role/dtype family is source-closed.
-4. Reconstruct every dependent policy digest/currentness edge through doctor, stored realization, optimizer/training identity, CUEQ-PHASE1, PERF-CERT1 and FINAL-GPU1.
+4. Reconstruct every dependent policy digest/currentness edge through doctor, source-side and TRAIN2 stored realizations, optimizer/training identity, checkpoint projection/EVAL2 measurement identity, CUEQ-PHASE1, PERF-CERT1 and FINAL-GPU1.
 5. Perform the bounded historical CuEq parity/HAS review and classify evidence by provenance: raw realization, derived summary, synthetic fixture, or prose-only claim.
 6. Search for the original MPA-0 DIAG3 workstation artifact. If unavailable, do not promote the hardcoded summary fixture into raw evidence.
 7. Confirm that the MH-1 observation binds the exact EXTRACT1 selected-head checkpoint and current runtime/source-compatibility evidence.
 8. Audit metric semantics: energy/atom, stress convention, descriptor construction, FPS policy, absolute-vs-rtol stable-channel ambiguity, NumPy percentile method, finiteness, and pair counts.
 9. Falsify fixed backend-order, warm-up, process-state, corpus-size, and small-tail-resolution effects with bounded diagnostics.
-10. Treat the stored-realization currentness defect in Section 4.8 as confirmed at the direct loader boundary and trace whether any upstream stage fence happens to compensate for it; repair the direct consequential-use owner regardless of incidental call ordering.
-11. Reconstruct the authority evolution in actual chronological/semantic order: CONFIG1 foundation/source-side `e3nn` -> CUEQ-PHASE1 paired-training evidence contract -> Rev60 phase-separated generated TRAIN2 `cueq` policy -> Rev61+ doctor parity hardening -> current generated split. Record precisely which claims belong to source policy, TRAIN2 generated policy, doctor admission, paired-training evidence, explicit e3nn override, and FINAL-GPU1.
-12. Confirm that current user-facing/runtime documentation consistently describes generated TRAIN2 `cueq` as doctor-qualified/fail-closed, preserves source-side `e3nn`, and does not falsely rewrite immutable CUEQ-PHASE1/FINAL-GPU1 records.
-13. If a pure D4 metric defect explains part of the observed failure, repair that owner separately and rerun measurement evidence, but still close the independently confirmed missing-D2 relation and stale-realization currentness gaps.
+10. Treat both stored-realization currentness defects in Section 4.8 as confirmed at their direct loader boundaries and trace whether any upstream stage fence happens to compensate for them; repair the direct consequential-use owners regardless of incidental call ordering.
+11. Reconstruct the accepted TRAIN2 -> EVAL2 recurrence repair and prove the actual current representation sequence: transient CuEq authentication/state load -> native projection -> portable e3nn forward. Confirm the current `_checkpoint_provider_realization` backend-label mismatch and its exact affected measurement/currentness surface.
+12. Classify the existing trained-state/projection parity tests by evidence scope, and determine what D2 model-state applicability argument/evidence is required before treating a starting-checkpoint doctor witness as a family-wide backend relation.
+13. Reconstruct the authority evolution in actual chronological/semantic order: CONFIG1 foundation/source-side `e3nn` -> CUEQ-PHASE1 paired-training evidence contract -> Rev60 phase-separated generated TRAIN2 `cueq` policy -> Rev61+ doctor parity hardening -> current generated split. Record precisely which claims belong to source policy, TRAIN2 generated policy, doctor admission, paired-training evidence, explicit e3nn override, and FINAL-GPU1.
+14. Confirm that current user-facing/runtime documentation consistently describes generated TRAIN2 `cueq` as doctor-qualified/fail-closed, preserves source-side `e3nn`, and does not falsely rewrite immutable CUEQ-PHASE1/FINAL-GPU1 records.
+15. If a pure D4 metric defect explains part of the observed failure, repair that owner separately and rerun measurement evidence, but still close the independently confirmed missing-D2 relation, stored-realization currentness, and EVAL2 measurement-provenance gaps.
 
 **Gate A:** proceed to the D2 candidate only when evidence provenance is sufficient, D4 measurement defects are partitioned, the parent authority is unambiguous, and the confirmed missing CuEq acceleration-equivalence family can be specified without importing an unresolved lower-level contradiction.
 
@@ -565,15 +574,17 @@ Only after Gate C:
 1. re-resolve current accepted D3 and avoid editing an unrelated proposed architecture candidate as though accepted;
 2. map the accepted D2 relation onto one canonical D4 parity/reducer owner in `acceleration.py`;
 3. remove superseded criterion machinery rather than layering a second special-case path;
-4. repair stored-realization/stage currentness using existing CampaignStore policy/parity/realization records so an old-policy `qualified=true` cannot authorize current execution;
+4. repair source-side and TRAIN2 stored-realization/stage currentness using existing CampaignStore policy/parity/realization records so an old-policy `qualified=true` cannot authorize current execution;
 5. revise record/policy schemas only where method meaning/fields require it; retain historical deserialization without historical authorization;
 6. update doctor diagnostics to expose the method, evidence cardinality/applicability and failure reason transparently;
 7. update optimizer/training identity only according to the accepted D3 projection; do not force retraining merely because a representation changed, and do not reuse a genuinely changed execution realization;
-8. regenerate/rebind FINAL-GPU1 preflight/handoff artifacts rather than mutating a release-pinned handoff whose integrity contract forbids source edits;
-9. update policy-digest/currentness dependencies and stale-stage behavior;
-10. preserve no-silent-fallback and the current generated phase split: source/DATA6/evaluation `e3nn`, TRAIN2 `cueq`; a temporary explicit `training_backend="e3nn"` repair-time override must not be confused with changing the generated default;
-11. preserve the claim boundaries of CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 without inventing them as universal prerequisites for current CuEq TRAIN2 doctor admission;
-12. add focused positive/negative tests that exercise the real numerical owner and independent oracles rather than duplicating expected logic in fixtures.
+8. correct P5 EVAL2 provider-realization identity at the existing measurement owner: after CuEq checkpoint authentication and native projection, the numerical forward backend is portable `e3nn`. Preserve transient CuEq authentication as upstream state provenance; do not relabel the forward as CuEq.
+9. let the corrected EVAL2 measurement identity naturally stale/recompute old mislabeled measurements and downstream assessments through the existing evidence store. Do not retrain authenticated TRAIN2 roots solely for this assessment-side identity correction.
+10. regenerate/rebind FINAL-GPU1 preflight/handoff artifacts rather than mutating a release-pinned handoff whose integrity contract forbids source edits;
+11. update policy-digest/currentness dependencies and stale-stage behavior;
+12. preserve no-silent-fallback and the current generated phase split: source/DATA6/pseudolabel side `e3nn` by default, TRAIN2 `cueq`; P5 checkpoint EVAL2 uses the authenticated portable e3nn projection of that TRAIN2 state. A temporary explicit `training_backend="e3nn"` repair-time override must not be confused with changing the generated default;
+13. preserve the claim boundaries of CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 without inventing them as universal prerequisites for current CuEq TRAIN2 doctor admission;
+14. add focused positive/negative tests that exercise the real numerical owner and independent oracles rather than duplicating expected logic in fixtures.
 
 ### Stage E — Assembled acceptance
 
@@ -581,7 +592,9 @@ Run and retain exact candidate identities for:
 
 - independent estimator/reducer oracle tests and adversarial tests;
 - focused parity-policy/unit/schema/backward-readability tests;
-- stored-realization/stale-stage/currentness tests;
+- source-side and TRAIN2 stored-realization/stale-stage/currentness tests;
+- trained-state/model-state-domain parity tests, reusing the existing real CuEq recurrence owner rather than inventing a second projection harness;
+- P5 EVAL2 measurement-identity tests proving CuEq checkpoint authentication -> portable e3nn forward is labeled e3nn, old mislabeled measurements are not reused, and authenticated TRAIN2 roots are not retrained merely because assessment identity changed;
 - specification/authority-layer tests;
 - doctor/config/default tests;
 - affected optimizer/training-identity and restart/reuse tests;
@@ -638,7 +651,7 @@ Stakeholder ratification is required for the accepted D2 replacement. The agent 
 
 On accepted D2 formalization/change:
 
-1. preserve Rev83-86/CUEQ-DEFAULT1 artifacts exactly as historical evidence; do not rewrite history to imply current authority;
+1. preserve Rev83-86/CUEQ-DEFAULT1 and the accepted TRAIN2->EVAL2 recurrence-repair artifacts exactly as historical evidence; do not rewrite history to imply current D2 authority;
 2. promote the parity relation through the accepted D2 owner/overlay with explicit source closure and parent identity;
 3. reconcile any accepted successor D1/D2/D3 state before promotion rather than merging candidate files by path;
 4. update current D3/D4 architecture/specification documentation and `docs/specs/training_data/README.md` so there is exactly one current numerical owner;
@@ -646,6 +659,7 @@ On accepted D2 formalization/change:
 6. remap or invalidate evidence bound to the old parity-policy/method digest, but preserve still-applicable raw observations;
 7. require stale stored CuEq realizations to requalify under current policy before consequential use;
 8. project realization-digest changes onto TRAIN2 roots. Preserve e3nn roots. For CuEq roots, distinguish an actual changed execution realization from a non-consumed admission-policy representation before deciding reuse/retraining;
+8A. separately project the corrected EVAL2 provider-realization identity: preserved authenticated checkpoint/training roots may be reused, but old measurements/assessments whose identity falsely claimed a CuEq forward must be treated as stale and recomputed under the portable e3nn forward identity;
 9. regenerate any FINAL-GPU1 preflight/handoff/release-side artifact whose integrity contract binds the old policy; never edit a sealed handoff in place;
 10. preserve frozen release/audit/SHA records as historical evidence;
 11. reconcile CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 state separately where those release/evidence claims are in scope—parity acceptance alone does not rewrite their immutable status, and their pending status does not by itself revoke the later Rev60 generated TRAIN2 `cueq` campaign policy;
@@ -661,7 +675,7 @@ The workplan may close only when all of the following hold:
 - the current Serious Challenge has been resolved by an accepted D2 criterion/formalization or falsified by evidence showing the original relation remains adequate;
 - the original MH-1 observation exists as durable, applicability-qualified evidence or its unavailability is explicitly recorded and a reproduction is distinguished from it;
 - MPA-0 evidence used for any generic claim is raw/authenticated or freshly re-realized; prose/test fixtures alone do not carry raw-evidence force;
-- generic-vs-regime/runtime/hardware/model scope is explicit;
+- generic-vs-regime/runtime/hardware/model **and model-state** scope is explicit, including whether a starting-checkpoint witness supports an operator-level relation over reachable trained states;
 - the parity gate's exact current-admission proposition and its claim-boundary relationship to CUEQ-PHASE1, Rev60, current generated defaults, and FINAL-GPU1 are explicit;
 - channel units/scales/protected consequences and descriptor semantics are explicit;
 - estimator dependence, quantile definition/resolution, order/warm-up/process effects and uncertainty/finite-sample semantics are closed;
@@ -670,7 +684,9 @@ The workplan may close only when all of the following hold:
 - the immutable composed D2 candidate passes fresh independent Review;
 - stakeholder ratification of that exact reviewed target is recorded;
 - D3/D4 realize exactly the accepted relation with no special-case bypass or duplicate registry;
-- stale stored realizations/stage state fail closed under a changed policy and historical records remain readable but non-authorizing;
+- stale source-side and TRAIN2 stored realizations/stage state fail closed under a changed policy and historical records remain readable but non-authorizing;
+- the TRAIN2 -> EVAL2 representation boundary is explicit and source-closed: transient CuEq state is authenticated before native projection, while the EVAL2 measurement identity names the actual portable e3nn numerical forward;
+- affected old CuEq-trained EVAL2 measurements carrying the wrong backend realization become stale/recomputed through existing measurement identity without unnecessary TRAIN2 retraining;
 - all dependent policy-digest/currentness/FINAL-GPU1 bindings are reconciled;
 - complete affected CPU regression passes;
 - required target-host requalification passes for every regime claimed by the accepted relation;
