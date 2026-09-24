@@ -12,6 +12,10 @@ Canonical workplan:
 
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md`
 
+Current execution status:
+
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_STATUS.md` — repository-side Stage A is complete; Gate A remains blocked on the durable target-host failed-doctor CampaignStore snapshot and, for generic MPA-0/MH-1 scope, fresh raw MPA-0 evidence.
+
 Formal workplan review:
 
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R9.md` — **PASS AS WORKPLAN after Revision-10 repair**; supersedes R8/R7/R6/R5/R4/R3/R2/R1. The D2 numerical challenge itself remains open.
