@@ -592,7 +592,7 @@ def multihead_fixture_config_text(tmp_path: Path, **kwargs) -> str:
     text = fixture_config_text(**kwargs)
     text = text.replace(
         'training_root = "{training_root}"',
-        "\\n".join(
+        "\n".join(
             (
                 'training_root = "{training_root}"',
                 f'foundation_model = "{foundation}"',
@@ -605,7 +605,7 @@ def multihead_fixture_config_text(tmp_path: Path, **kwargs) -> str:
     )
     text = text.replace(
         "seeds = [1, 2]",
-        'seeds = [1, 2]\\nmode = "multihead_replay"',
+        'seeds = [1, 2]\nmode = "multihead_replay"',
         1,
     )
     text = text.replace("partition_seed = 7", "partition_seed = 2", 1)
