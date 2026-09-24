@@ -14,11 +14,12 @@ Canonical workplan:
 
 Current execution status:
 
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_STATUS.md` — the RTX 3090 MH-1 failed-doctor snapshot has been authenticated and analyzed. Gate A is now blocked only on the predeclared fresh-process/evaluation-order diagnostic needed to separate backend-centered offset from process/order covariance, plus fresh raw MPA-0 evidence before any generic MPA-0/MH-1 claim.
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_STATUS.md` — the RTX 3090 MH-1 snapshot and the predeclared 20-process 2x2 construction/evaluation-order diagnostic are both authenticated and analyzed. The process/order question is closed; Gate A is now blocked only on fresh raw MPA-0 evidence before retaining a generic MPA-0/MH-1 TRAIN2 FP32 relation.
 
 Stage-A numerical evidence analysis:
 
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_EVIDENCE_ANALYSIS.md` — authentic target-host evidence confirms the descriptor absolute-floor defect, finite-sample force-tail instability, tail-metric redundancy, and a small backend-centered force offset; no replacement criterion is yet accepted.
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_EVIDENCE_ANALYSIS.md` — authentic failed-doctor evidence confirms the descriptor absolute-floor defect, finite-sample force-tail instability, and tail-metric redundancy.
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_ORDER_PROCESS_DIAGNOSTIC_ANALYSIS.md` — the counterbalanced 20-process diagnostic shows that the force backend-centered component is smaller than fresh-process variation and materially condition-dependent; descriptor geometry remains stable despite a systematic latent-coordinate shift. No replacement criterion is yet accepted.
 
 Formal workplan review:
 

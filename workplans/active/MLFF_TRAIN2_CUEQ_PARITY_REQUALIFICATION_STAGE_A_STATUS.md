@@ -3,7 +3,7 @@ kind: stage-status
 protocol_version: 6.4.0
 workplan: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md
 stage: A
-status: partial-blocked-on-bounded-target-host-diagnostics
+status: partial-blocked-on-fresh-mpa0-cross-family-evidence
 date: 2026-09-24
 branch: design/mlff-train2-cueq-parity-requalification
 repository_review_head: 872d35d0f905ae5adf16a6ecf5c82fdd5f28375b
@@ -18,7 +18,7 @@ accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 
 **PARTIAL / NOT YET THROUGH GATE A.**
 
-The repository-side authority, currentness, implementation, and historical-evidence reconstruction required by Stage A is now sufficiently closed to identify the exact remaining evidence dependency. Gate A has now received and authenticated the durable target-host CampaignStore snapshot from the observed MACE-MH-1 / `omat_pbe` RTX 3090 failure. The remaining Gate-A blocker is a bounded fresh-process/order diagnostic needed to distinguish systematic backend offset from process/order covariance. If the candidate relation will claim generic MPA-0/MH-1 coverage, a fresh raw MPA-0 realization remains required because the original MPA-0 workstation distributions are not preserved as a raw repository artifact.
+The repository-side authority, currentness, implementation, and historical-evidence reconstruction required by Stage A is now sufficiently closed to identify the exact remaining evidence dependency. Gate A has now received and authenticated the durable target-host CampaignStore snapshot from the observed MACE-MH-1 / `omat_pbe` RTX 3090 failure. The bounded fresh-process/order diagnostic has now been executed and analyzed. It confirms that the observed discrepancy contains both a small backend-centered component and material fresh-process/order covariance, so the current single-process all-pairs reducer cannot cleanly identify a stable backend effect. The remaining Gate-A blocker is fresh raw MPA-0 target-host evidence under the same frozen diagnostic design before this cycle may retain the current generic MPA-0/MH-1 TRAIN2 FP32 scope. The original MPA-0 workstation distributions are not preserved as a raw repository artifact.
 
 The console transcript is discovery evidence only. It is not promoted into durable numerical qualification evidence.
 
@@ -232,23 +232,75 @@ The decisive results are:
 
 These findings strengthen the Serious Challenge but do not yet select a replacement criterion.
 
-## A9. Gate-A remaining obligations
+## A9. Fresh-process/order diagnostic result
 
-Gate A remains blocked until the following are complete:
+The user-supplied diagnostic artifact
 
-1. predeclare and run the bounded fresh-process/evaluation-order diagnostic needed to distinguish systematic backend offset from same-process/order covariance;
-2. retain per-evaluation numerical outputs or sufficient signed summaries so systematic backend bias can be separated from stochastic spread rather than inferred only from absolute pair metrics;
-3. use the same frozen corpus/checkpoint/runtime identity and prohibit outcome-dependent reruns;
-4. obtain fresh MPA-0 raw evidence if generic MPA-0/MH-1 scope is retained;
-5. only then freeze the Stage-B D2 statistic/parameters **before** inspecting whether the candidate method admits the MH-1 realization.
+`mlff_train2_cueq_stage_a_order_process_diagnostic.json`
 
-No threshold or ratio may be changed before this gate closes.
+has raw-file SHA-256
+
+`8f9df123b2ca5b055a7f1a82b3c819263021da52b005904af2f3f5df21acc056`
+
+and self-declared canonical content digest
+
+`880261c2eabd33beeadcefe54eefea01e6acdc3d94e574c657dd3bee78cf570a`.
+
+The aggregate canonical digest and all 20 per-process content digests recompute exactly. The artifact binds:
+
+- repository head `5d2df62f82c70615cbe16aaa4600b4140e80f1c2` with no dirty paths;
+- one campaign/config identity;
+- one selected-head checkpoint SHA;
+- one deterministic three-structure corpus SHA;
+- 20 fresh processes in a balanced 2x2 design;
+- five processes per construction/evaluation-order cell;
+- one discarded warm-up pair and three retained paired evaluations per process;
+- ordinary nondeterministic production settings on the RTX 3090.
+
+Detailed analysis is recorded in:
+
+`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_ORDER_PROCESS_DIAGNOSTIC_ANALYSIS.md`.
+
+The decisive force result is:
+
+- e3nn fresh-process radius: `1.5945e-7`;
+- CuEq fresh-process radius: `1.6520e-7`;
+- backend centroid separation: `9.5935e-8`;
+- centroid separation / pooled process radius: `0.591`.
+
+Thus the backend-centered component is real but smaller than ordinary fresh-process variation.
+
+For the signed process-level force-difference field, centered variation partitions approximately as:
+
+- construction order: 5.41%;
+- evaluation order: 4.96%;
+- construction/evaluation interaction: 5.23%;
+- replicate-block/time state: 20.63%;
+- remaining process variation: 63.77%.
+
+The four cell-mean force-difference directions have pairwise cosines only about `0.29-0.44`. The backend offset therefore is not a single stable direction independent of execution conditions.
+
+The scalar paired force RMSE remains microscopic (grand mean `4.002e-7`). Its strongest designed effect is the construction/evaluation interaction: cells where construction-first and evaluation-first backend agree have mean RMSE about `4.09-4.13e-7`, while crossed-order cells are about `3.87-3.92e-7`. There is no comparable standalone evaluation-order main effect.
+
+Descriptor evidence differs from force: the descriptor centroid separation is `4.481e-8` versus process radii `3.944e-8` (e3nn) and `3.851e-8` (CuEq), so a systematic descriptor representation shift exists. Nevertheless the three-structure inter-descriptor distance ordering is identical across all 20 process-mean realizations for both backends. This reinforces that the current raw absolute descriptor maximum is the wrong semantic object, while downstream decision robustness remains the relevant question.
+
+No decisive monotonic drift across the three retained pair positions was found. The diagnostic therefore does not justify increasing warm-up count merely to make the result pass.
+
+## A10. Gate-A remaining obligation
+
+The fresh-process/order question is closed. Gate A now has one numerical evidence blocker:
+
+1. obtain fresh raw **MPA-0** evidence under the same frozen 2x2 fresh-process design before preserving a generic MPA-0/MH-1 TRAIN2 FP32 relation.
+
+This is mandatory because the current executable policy is generic while the only raw target-host evidence now available is MH-1; historical MPA-0 workstation numbers survive only as secondary prose/test-fixture evidence.
+
+The MPA-0 run must use the same analysis contract and may not be rerun selectively based on outcome. Only after both family realizations are available may Stage B freeze a cross-family D2 statistic/parameter family. No threshold or ratio may be changed before that gate closes.
 
 Until these are complete, no tolerance or acceptance constant may be changed and the current doctor remains fail-closed.
 
-## A10. Repository-side Stage-A result
+## A11. Repository-side Stage-A result
 
-Repository-side Stage A is **complete enough to proceed immediately once target-host evidence is imported**. No additional architecture search or new runtime subsystem is currently justified.
+Repository-side Stage A and the MH-1 target-host diagnostic are complete. No additional architecture search or new runtime subsystem is currently justified. Gate A remains open only because a generic current relation cannot be re-authorized from one model family when its historical MPA-0 raw evidence is unavailable.
 
 The likely next numerical-design focus, once raw arrays are available, is:
 
