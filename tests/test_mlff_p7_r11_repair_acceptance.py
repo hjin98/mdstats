@@ -61,10 +61,18 @@ def _dynamics_config(**kwargs) -> str:
     return fx.fixture_config_text(dynamics_overrides=DYNAMICS_POLICY, **kwargs)
 
 
-def _campaign(tmp_path: Path, *, config_text: str | None = None):
+def _campaign(
+    tmp_path: Path,
+    *,
+    config_text: str | None = None,
+    real_mace_checkpoint: bool = False,
+):
     harness = fx.QualificationHarness()
     config, workspace = fx.build_qualified_campaign(
-        tmp_path, config_text=config_text, harness=harness
+        tmp_path,
+        config_text=config_text,
+        harness=harness,
+        real_mace_checkpoint=real_mace_checkpoint,
     )
     return config, workspace, harness
 
@@ -341,7 +349,12 @@ def test_r11b2_real_runtime_gate_blocks_rather_than_passing(tmp_path: Path):
     text = fx.fixture_config_text().replace(
         "require_deployed_runtime = false", "require_deployed_runtime = true"
     )
-    config, _workspace, harness = _campaign(tmp_path, config_text=text)
+    # Use the current P5 published full-model representation so the request
+    # reaches the real-runtime gate rather than failing early on the retired
+    # generic one-head checkpoint fixture.
+    config, _workspace, harness = _campaign(
+        tmp_path, config_text=text, real_mace_checkpoint=True
+    )
     _cfg, paths, store, session = fx.load_session(
         config, harness, deployed_evaluator=None, mliap_builder=None, deployment_exporter=None
     )
@@ -350,6 +363,27 @@ def test_r11b2_real_runtime_gate_blocks_rather_than_passing(tmp_path: Path):
         from mdstats.training_data.qualification.errors import (
             QualificationUnavailableError,
         )
+        torch = pytest.importorskip("torch")
+        from mdstats.training_data.model_artifact_trust import stage_authenticated_model
+
+        member = session.publication.members[0]
+        source_member = session.published_model_member(member)
+        with stage_authenticated_model(
+            session.context.paths.models,
+            source_member.model_relative_path,
+            expected_sha256=source_member.model_sha256,
+            expected_size_bytes=source_member.model_size_bytes,
+            scratch_directory=tmp_path / "source",
+            filename="p5-published.model",
+        ) as source:
+            published_model = torch.load(source, map_location="cpu", weights_only=False)
+        heads = tuple(str(value) for value in getattr(published_model, "heads", ()))
+        if member.target_head_name not in heads:
+            pytest.skip(
+                "UNAVAILABLE/BLOCKING: the locked MH-1 P5 full-model bytes with "
+                "canonical [pt_head, target_head] inventory are not available on "
+                "this host; deferred to target-machine campaign."
+            )
 
         with pytest.raises(QualificationUnavailableError, match="unavailable/blocking|cannot"):
             qualify_deployment_parity(session)

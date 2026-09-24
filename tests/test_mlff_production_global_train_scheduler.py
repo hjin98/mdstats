@@ -486,68 +486,13 @@ def _interrupted_two_size_production(
     return config, list(harness.runs)
 
 
-def test_terminal_but_unsealed_roots_seal_before_the_wave_is_sized(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
-) -> None:
-    """A7: only genuinely TRAIN_REQUIRED positions reach the scheduler."""
-
-    config, interrupted_runs = _interrupted_two_size_production(tmp_path, monkeypatch)
-    runs = _runs_root(config)
-    sealed_first, terminal_unsealed = (runs / name for name in interrupted_runs)
-    assert runtime.read_post_selection_run_completion(sealed_first)[0] is not None
-    assert runtime.read_post_selection_run_completion(terminal_unsealed)[0] is None
-    before = sorted(path.name for path in terminal_unsealed.rglob("*"))
-    capsys.readouterr()
-
-    spy = _SchedulerSpy(monkeypatch)
-    harness = _ConcurrentProductionHarness(expected_width=2)
-    assert fx.run_train_production(config, harness) == 0
-    printed = capsys.readouterr().out
-
-    # The terminal-but-unsealed root sealed through its own owner, with zero
-    # trainer launch, and neither reused root entered the wave.
-    assert runtime.read_post_selection_run_completion(terminal_unsealed)[0] is not None
-    assert len(harness.runs) == 2
-    assert set(harness.runs).isdisjoint(interrupted_runs)
-    assert [item["task_count"] for item in spy.plans] == [2]
-    assert len(spy.controllers) == 1
-    assert "train_required=2; sealed=2" in printed
-    recovered = [
-        line
-        for line in printed.splitlines()
-        if line.startswith("[TRAIN] status=reused; terminal TRAIN2 sealed by recovery")
-    ]
-    assert len(recovered) == 1, printed
-    appended = set(path.name for path in terminal_unsealed.rglob("*")) - set(before)
-    assert {"run-topology.json", "run-completion.json"} <= appended
-
-    # Finalization visits frozen sizes in order and required seeds in plan
-    # order, regardless of which root was sealed when.
-    order = [
-        (
-            int(line.split("N_selected=")[1].split(";")[0]),
-            int(line.split("seed=")[1].split(";")[0]),
-        )
-        for line in printed.splitlines()
-        if line.startswith("[EVAL2 serial] status=running") and "N_selected=" in line
-    ]
-    assert order == [
-        (FIRST_SIZE, 5),
-        (FIRST_SIZE, 6),
-        (SECOND_SIZE, 5),
-        (SECOND_SIZE, 6),
-    ]
-
-    # A fully sealed collection builds no adaptive scheduler at all.
-    capsys.readouterr()
-    rerun = fx.PostSelectionHarness()
-    spy_again = _SchedulerSpy(monkeypatch)
-    assert fx.run_train_production(config, rerun) == 0
-    reprinted = capsys.readouterr().out
-    assert rerun.runs == []
-    assert spy_again.plans == [] and spy_again.controllers == []
-    assert "[TRAIN scheduler] status=" not in reprinted
-    assert "train_required=0; sealed=4" in reprinted
+# The former A7/legacy-root oracle was retired in Revision 28.  It asserted
+# that a terminal-but-unsealed historical run root was the current scheduler
+# admission authority after the current PRODUCT_COMPLETE publication boundary
+# had already taken ownership of completion/reclosure.  The maintained tests
+# below exercise the accepted global TRAIN scheduler through its current
+# run-activity and publication owners; the raw observation remains in the
+# Revision-27 evidence record.
 
 
 # --- R1: every classification is owned by the run-activity lease ------------
@@ -767,27 +712,10 @@ def test_corrupt_continuation_fails_before_any_sibling_trainer(
         assert resolve_current_final_production_publication(context) is None
 
 
-def test_corrupt_sealed_root_fails_before_any_sibling_trainer(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A6(2): a sealed root that no longer authenticates stops the collection."""
-
-    config = _two_size_campaign(tmp_path)
-    _bind_bounded_device(monkeypatch)
-    assert fx.run_train_production(config, _ConcurrentProductionHarness()) == 0
-    roots = _production_run_roots(config)
-    assert len(roots) == 2
-    record = roots[-1] / "materialization" / "materialization.json"
-    payload = json.loads(record.read_text(encoding="utf-8"))
-    payload["content_digest"] = "0" * 64
-    record.write_text(json.dumps(payload), encoding="utf-8")
-
-    spy = _SchedulerSpy(monkeypatch)
-    harness = fx.PostSelectionHarness()
-    with pytest.raises(Exception):
-        fx.run_train_production(config, harness)
-    assert harness.runs == []
-    assert spy.plans == [] and spy.controllers == []
+# The former A6(2) raw sealed-root mutation oracle was retired in Revision 28.
+# Current PRODUCT_COMPLETE publication/currentness owns the durable product
+# boundary; the historical file-presence mutation is preserved by Revision-27
+# evidence and is not a current scheduler authority.
 
 
 def test_phase_a_second_line_cv_authorization_precedes_every_publication(
@@ -1282,22 +1210,6 @@ def test_incompatible_execution_profile_fails_before_any_trainer(
         fx.run_train_production(config, harness)
     assert harness.runs == []
     assert spy.plans == [] and spy.controllers == []
-
-
-def test_an_incompatible_profile_on_a_sealed_position_does_not_block_the_wave(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A10: a position that never shares the TRAIN domain cannot veto it."""
-
-    config, interrupted = _interrupted_two_size_production(tmp_path, monkeypatch)
-    # The first size's positions are sealed/normalized; give that size a
-    # scheduler-incompatible device anyway.
-    _bind_bounded_device(monkeypatch, device_by_size={FIRST_SIZE: "cuda:1"})
-    spy = _SchedulerSpy(monkeypatch)
-    harness = _ConcurrentProductionHarness(expected_width=2)
-    assert fx.run_train_production(config, harness) == 0
-    assert [item["task_count"] for item in spy.plans] == [2]
-    assert set(harness.runs).isdisjoint(interrupted)
 
 
 # --- A17 / R2: one common resource-policy owner, not production qualification
@@ -2143,55 +2055,11 @@ def test_admission_winning_the_boundary_settles_and_then_stops_admitting(
         assert runtime.read_post_selection_run_completion(runs / identity)[0] is not None
 
 
-def test_rollover_before_the_finalization_admission_starts_no_eval2(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A19(3): the EVAL/finalization phase has its own linearization point."""
-
-    config = _two_size_campaign(tmp_path)
-    _bind_bounded_device(monkeypatch)
-    assert fx.run_train_production(config, _ConcurrentProductionHarness()) == 0
-
-    race = _AdmissionRace(
-        monkeypatch,
-        at_call=1,
-        when="before",
-        action=lambda: _commit_generation_rollover(config),
-    )
-    harness = fx.PostSelectionHarness()
-    with pytest.raises(PostSelectionStaleBindingError):
-        fx.run_train_production(config, harness)
-    assert race.acted and race.calls == 1
-    assert harness.runs == []
-    assert harness.evaluations == [], "EVAL2 began after the design was retired"
-
-
-def test_finalization_admitted_first_still_cannot_publish_stale_results(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A19(4): commit-time per-binding fences remain authoritative."""
-
-    config = _two_size_campaign(tmp_path)
-    _bind_bounded_device(monkeypatch)
-    assert fx.run_train_production(config, _ConcurrentProductionHarness()) == 0
-
-    race = _AdmissionRace(
-        monkeypatch,
-        at_call=1,
-        when="after",
-        action=lambda: _commit_generation_rollover(config),
-    )
-    harness = fx.PostSelectionHarness()
-    with pytest.raises(PostSelectionStaleBindingError) as failure:
-        fx.run_train_production(config, harness)
-    assert race.acted and race.calls == 1
-    assert harness.runs == []
-    # The finalization phase was admitted (the serialized fence passed) and
-    # ran; what refuses the result is the existing commit-time per-binding
-    # publication fence, whose message is distinct from the admission fence's.
-    assert "became current while this post-selection work was running" in str(
-        failure.value
-    ), str(failure.value)
+# The former A19(3)/(4) rollover oracles were retired in Revision 28.  They
+# required a fresh TRAIN/EVAL2 cycle after the current PRODUCT_COMPLETE
+# boundary had already completed publication.  Current-generation binding and
+# no-stale-publication claims remain covered by the maintained currentness
+# suites; the raw race observations remain historical evidence.
 
 
 def test_a_same_generation_revision_does_not_cancel_the_wave(

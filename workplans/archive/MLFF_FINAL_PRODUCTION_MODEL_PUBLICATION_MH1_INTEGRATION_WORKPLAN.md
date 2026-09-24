@@ -2,14 +2,16 @@
 kind: implementation-workplan
 workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
-status: active-reopened
+status: archived-pass
 created_date: 2026-09-21
 revision: 28
-reviewed_date: 2026-09-23
-workplan_review_status: implementation-review-no-pass-evidence-specification-reopened
-workplan_review_basis: e9a1140c9bfffa29f75bba4317989afe49c6bef3
+reviewed_date: 2026-09-24
+closed_date: 2026-09-24
+workplan_review_status: implementation-review-pass-evidence-specification-impact-closed
+workplan_review_basis: d830773a78d860616a2d230c4a437238834a5c5b
 implementation_review_candidate: 73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
 implementation_review_domain: D4
+successor_evidence: workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_REV28_2026-09-24.md
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -21,7 +23,7 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 
 ## 0. Disposition
 
-**REVISION-28 INDEPENDENT IMPLEMENTATION REVIEW: PRODUCT-CODE PASS / WORKPLAN NO-PASS FOR EVIDENCE-SPECIFICATION IMPACT CLOSURE.** Candidate executable source `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` remains conforming and Revision-22 D3 remains coherent; no Serious Challenge is active. The attempted Revision-27 closeout at evidence/archive head `e9a1140c9bfffa29f75bba4317989afe49c6bef3` is reopened because several tests diagnosed as superseded/stale were left as ordinary auto-collected failing `tests/test_*.py` specifications. Protocol 6.4 does not permit lifecycle closure while materially affected stale evidence remains active as apparent current confidence. No production-code repair is authorized unless a remapped current oracle exposes a genuine defect.
+**REVISION-28 EVIDENCE-SPECIFICATION IMPACT CLOSURE: PASS / CLOSED.** Candidate executable source `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` remains conforming and Revision-22 D3 remains coherent; no Serious Challenge is active. The Revision-27 raw observations remain historical. Revision 28 directly retired superseded executable claims and remapped surviving claims to current owners, then completed focused and affected acceptance with only authorized environment-dependent skips. No production-code repair was required.
 
 **IMPLEMENTATION REVIEW PASS / CLOSED. Revision-22 D3 remains coherent and frozen; no Serious Challenge is active.** The exact Revision-27 executable acceptance record is archived in `workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_2026-09-23.md`.
 
@@ -2747,7 +2749,17 @@ The workplan may close only when:
 5. the closeout-learning/PEM assessment is explicit and any required PEM reconciliation is complete;
 6. executable production source remains unchanged unless corrected current evidence demonstrates an actual product defect.
 
-Until then, the correct disposition is **PRODUCT-CODE PASS / WORKPLAN NO-PASS FOR EVIDENCE-SPECIFICATION IMPACT CLOSURE**.
+Until the successor evidence below was completed, the correct disposition was **PRODUCT-CODE PASS / WORKPLAN NO-PASS FOR EVIDENCE-SPECIFICATION IMPACT CLOSURE**.
+
+### IR28-E3 — successor evidence-specification and lifecycle closeout — PASS
+
+The Revision-28 stale/superseded evidence surfaces are now owner-locally retired or remapped. Current scheduler, publication, P7, MACE, campaign, downstream, documentation, storage, static, package, and native-build evidence is green without `-k` exclusions or deselection filters. The only skips are explicitly recorded environment boundaries: locked real MH-1 model bytes/runtime, CUDA-only paths, and target-host LAMMPS/MLIAP runtime. No remapped current oracle exposed a product defect, so `mdstats/**/*.py` remains unchanged.
+
+The exact successor record is `workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_REV28_2026-09-24.md`. It records the exact branch head `d830773a78d860616a2d230c4a437238834a5c5b`, retained executable product SHA `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`, commands, outcomes, skip reasons, owner-local retirement/remapping, package/static/documentation results, and the explicit deferral of long real MH-1/GPU/CUDA-performance/LAMMPS/MLIAP/MD qualification.
+
+The required Protocol-6.4 PEM closeout-learning assessment is complete: no PEM update is required. This intervention is an additional evidence-reconciliation episode over the already accepted SP-001 through SP-004 and FF-001 through FF-005 basis; it does not establish a new evaluated success-pattern episode, alter failure-family applicability, change evidence binding or coverage, or justify a new PEM family.
+
+**REVISION-28 DISPOSITION: PASS / CLOSED.**
 
 ## 27. Current-implementation review closure (Revision 2)
 

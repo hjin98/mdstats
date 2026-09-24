@@ -4,16 +4,6 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 ## Current active MLFF work
 
-### Final-production model publication + lightweight MH-1 integration — Revision 28 evidence closure
-
-Branch: `design/mlff-final-production-model-publication-mh1-integration`
-
-Canonical workplan:
-
-- `workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`
-
-Revision 28 is **PRODUCT-CODE PASS / WORKPLAN NO-PASS FOR EVIDENCE-SPECIFICATION IMPACT CLOSURE**. Executable candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` remains conforming and no Serious Challenge is active. The attempted Revision-27 closeout was reopened because several tests diagnosed as superseded/stale were left as ordinary auto-collected failing specifications. The remaining work is test/evidence-owner retirement or remapping plus successor affected acceptance and the explicit PEM closeout-learning assessment. No production-code change is authorized unless a corrected current oracle exposes a genuine defect. Long real MH-1/GPU/CUDA-performance/LAMMPS/MLIAP/MD qualification remains deferred.
-
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
 Branch: `design/mlff-pi-train-fps-diversity-restoration`

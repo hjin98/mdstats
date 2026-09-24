@@ -25,10 +25,12 @@ def _d3_sources() -> str:
     )
 
 
-def test_doc_arch1_release_and_current_authority_are_synchronized():
+def test_doc_arch1_candidate_and_current_authority_are_synchronized():
     assert mdstats.__version__ == "0.20.242a0"
     text = MANUAL.read_text(encoding="utf-8")
-    assert 'status: "current normative D3 architecture"' in text
+    assert 'status: "proposed D3 renewal candidate pending independent review"' in text
+    assert 'candidate_date: "2026-09-18"' in text
+    assert "accepted-current until Gate D closes" in text
     for owner in (
         "docs/methods/mlff_scientific_method.md",
         "docs/methods/mlff_target_training_order_scientific_method.md",
@@ -39,7 +41,7 @@ def test_doc_arch1_release_and_current_authority_are_synchronized():
         assert owner in text, owner
         if owner.startswith("docs/"):
             assert (ROOT / owner).is_file(), owner
-    assert "one complete `TargetTrainingOrder`" in text
+    assert "one complete TargetTrainingOrder" in text
     assert "post-selection cross-validation" in text
     snapshot = "docs/history/mlff/architecture_snapshots/pre_d1_d2_promotion_2026-09-13/"
     assert snapshot in text and (ROOT / snapshot).is_dir()

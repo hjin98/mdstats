@@ -4,6 +4,19 @@ Retain completed or explicitly superseded workplans here only when their impleme
 
 An archived plan may retain the status metadata it had at the moment it was superseded. Its location under `workplans/archive/` is the lifecycle authority; such internal status fields are historical snapshot content, not an active-work declaration.
 
+## 2026-09-24 Revision-28 final-production model publication evidence closure
+
+Revision 28 closed **PASS** after direct retirement/remapping of stale evidence owners and clean successor focused/affected acceptance. The executable product candidate remains conforming; no `mdstats/**/*.py` production source changed and no genuine product repair was required.
+
+Archived successor records:
+
+- `MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`;
+- `MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_REV28_2026-09-24.md`;
+- `MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_DOCS_PLAN_2026-09-24.json`;
+- `MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_DOCS_BUILD_2026-09-24.json`.
+
+The Revision-27 execution record remains intact as superseded historical evidence. Long real MH-1/GPU/CUDA-performance/LAMMPS/MLIAP/MD qualification remains explicitly deferred.
+
 ## 2026-09-23 provisional final-production model publication evidence record
 
 The Revision-27 execution record remains archived as historical evidence, but its **final PASS/closure assessment was superseded by Revision 28 independent Review**. The executable candidate remains product-code conforming; lifecycle closure was reopened because tests diagnosed as stale/superseded remained ordinary auto-collected failing specifications rather than being retired/remapped at their evidence owners.
@@ -12,9 +25,7 @@ Historical evidence record retained:
 
 - `MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_2026-09-23.md`.
 
-The canonical workplan is active again at:
-
-- `../active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`.
+The canonical workplan and successor evidence are now archived in the Revision-28 closeout section above.
 
 
 ## 2026-09-07 MLFF workplan closeout

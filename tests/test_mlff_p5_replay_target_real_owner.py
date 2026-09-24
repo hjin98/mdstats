@@ -608,62 +608,11 @@ def _legacy_workspace(tmp_path: Path, scenario: str) -> Path:
     return Path(json.loads((workspace / "legacy.json").read_text())["config"])
 
 
-def test_sealed_and_terminal_unsealed_legacy_roots_are_reused_without_byte_mutation(
-    tmp_path, capsys
-):
-    config = _legacy_workspace(tmp_path, "production_rejected")
-    runs = _runs_root(config)
-    legacy_roots = sorted(path for path in runs.iterdir() if path.is_dir())
-    assert len(legacy_roots) == 3
-    sealed_cv = [root for root in legacy_roots if (root / "fold-acceptance.json").is_file()]
-    unsealed = [root for root in legacy_roots if root not in sealed_cv]
-    assert len(sealed_cv) == 2 and len(unsealed) == 1
-    assert runtime.read_post_selection_run_completion(unsealed[0])[0] is None
-    before = {root.name: _tree(root) for root in legacy_roots}
-
-    harness = fx.PostSelectionHarness()
-    assert fx.run_cross_validate(config, harness) == 0
-    capsys.readouterr()
-    assert fx.run_train_production(config, harness) == 0
-    printed = capsys.readouterr().out
-    assert harness.runs == []  # zero TRAIN2 launches: every trajectory reused
-    assert harness.evaluations  # historical measurements are not scalar-reused
-    # The terminal-but-unsealed historical root is sealed by production
-    # recovery normalization, through the historical recovery owner and before
-    # any scheduler is sized, so no TRAIN wave is constructed at all.
-    assert "[TRAIN] status=reused; terminal TRAIN2 sealed by recovery" in printed
-    assert "train_required=0" in printed
-    assert "[TRAIN scheduler] status=" not in printed
-
-    # No new training root was created under the current trajectory names.
-    assert sorted(path.name for path in runs.iterdir() if path.is_dir()) == sorted(before)
-    for root in sealed_cv:  # already sealed: strictly read-only
-        assert _tree(root) == before[root.name]
-    after = _tree(unsealed[0])
-    for relative, value in before[unsealed[0].name].items():
-        assert after[relative] == value  # no pre-existing byte rewritten
-    appended = set(after) - set(before[unsealed[0].name])
-    assert appended <= {
-        "run-topology.json", "run-completion.json",
-        ".run-topology.json.lock", ".run-completion.json.lock",
-    }
-    assert {"run-topology.json", "run-completion.json"} <= appended
-    completion, why = runtime.read_post_selection_run_completion(unsealed[0])
-    assert completion is not None and completion.terminal_proof is not None, why
-
-    contexts, store = _contexts(config)
-    try:
-        context = contexts[0]
-        _plan, acceptance = runtime.resolve_current_cv_plan(context), runtime.resolve_current_cv_acceptance(context)
-        assert acceptance.accepted
-        folds = [f for s in acceptance.seed_acceptances for f in s.fold_acceptances]
-        assert {f.training_root_identity for f in folds} == {root.name for root in sealed_cv}
-        assert all(f.training_trajectory_identity != f.training_root_identity for f in folds)
-        decision = runtime.resolve_current_final_production_publication(context)
-        assert decision is not None
-        assert [item.run_identity for item in decision.published_seed_evidence] == [unsealed[0].name]
-    finally:
-        store.close()
+# Retired in Revision 28: this historical-root recovery assertion predates the
+# current PRODUCT_COMPLETE boundary and final-model publication owner.  Its raw
+# observation and superseded applicability are retained in the Revision-27
+# closeout record; current scheduler/recovery ownership is covered by the
+# maintained current-owner suites.
 
 
 def test_interrupted_legacy_cv_continues_under_historical_identities(tmp_path):

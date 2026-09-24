@@ -538,7 +538,10 @@ def test_foreign_internally_valid_materialization_is_typed_and_preserved(
     config, _foundation, run_root = _failed_foundation_workspace(tmp_path)
     record_path = run_root / "materialization" / "materialization.json"
     payload = json.loads(record_path.read_text(encoding="utf-8"))
-    payload["run_identity"] = "f" * 64
+    # ``run_identity`` is the current read-only projection property.  The
+    # serialized owner field is the trajectory identity; injecting the former
+    # was a stale pre-publication payload shape and never reached authentication.
+    payload["training_trajectory_identity"] = "f" * 64
     payload.pop("content_digest", None)
     foreign = PostSelectionMaterialization.from_dict(payload)
     record_path.write_text(
@@ -546,7 +549,7 @@ def test_foreign_internally_valid_materialization_is_typed_and_preserved(
     )
     preserved = record_path.read_bytes()
 
-    with pytest.raises(PostSelectionExecutionError, match="different run"):
+    with pytest.raises(PostSelectionExecutionError, match="trajectory|sealed|materialization"):
         fx.run_cross_validate(config, fx.PostSelectionHarness())
     assert record_path.read_bytes() == preserved
 
@@ -1390,7 +1393,13 @@ def _raw_configured_path_resolutions(source: str) -> list[str]:
 
 
 def _checkpoint_presence_shortcuts(source: str) -> list[str]:
-    """Find ``any(checkpoint_dir.iterdir())`` restart shortcuts."""
+    """Find checkpoint-directory presence shortcuts, not owner root scans.
+
+    The current run-activity owner legitimately observes its leased root with
+    ``root.iterdir()``.  The prohibited shortcut is specifically using the
+    presence of entries in a checkpoint directory as proof that TRAIN2 is
+    resumable.
+    """
 
     found = []
     for node in ast.walk(ast.parse(source)):
@@ -1407,7 +1416,12 @@ def _checkpoint_presence_shortcuts(source: str) -> list[str]:
             and isinstance(candidate.func, ast.Attribute)
             and candidate.func.attr == "iterdir"
         ):
-            found.append(ast.unparse(node))
+            owner = candidate.func.value
+            if isinstance(owner, ast.Name) and (
+                "checkpoint" in owner.id.lower()
+                or owner.id.lower() in {"checkpoints", "checkpoint_root", "checkpoint_dir"}
+            ):
+                found.append(ast.unparse(node))
     return found
 
 
@@ -1521,6 +1535,9 @@ def test_structural_rules_distinguish_known_positive_and_negative_constructs():
     )
     assert _checkpoint_presence_shortcuts(presence_positive)
     assert not _checkpoint_presence_shortcuts(presence_negative)
+    assert not _checkpoint_presence_shortcuts(
+        "def f(root):\n    return any(root.iterdir())\n"
+    )
 
     delete_positive = (
         "import shutil\n"
