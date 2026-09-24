@@ -107,7 +107,13 @@ def publications_at(ref: str, config: dict | None = None) -> dict[str, Publicati
     config = config or _load_config()
     explicit = _explicit_publications(config)
     paths = _tracked_paths(ref)
-    reserved_sources = {p.source for p in explicit if p.kind == "composite"}
+    manual = config.get("manual", [])
+    manual_sources = {raw["source"] for raw in manual}
+    manual_targets = {
+        raw.get("target") or str(PurePosixPath(raw["source"]).with_suffix(".pdf"))
+        for raw in manual
+    }
+    reserved_sources = {p.source for p in explicit if p.kind == "composite"} | manual_sources
     by_target: dict[str, Publication] = {
         p.target: p for p in explicit
         if p.kind == "composite" or p.source in paths
@@ -116,6 +122,8 @@ def publications_at(ref: str, config: dict | None = None) -> dict[str, Publicati
         if source in reserved_sources:
             continue
         target = str(PurePosixPath(source).with_suffix(".pdf"))
+        if target in manual_targets:
+            continue
         if target in paths and target not in by_target:
             by_target[target] = Publication(
                 id=target, source=source, target=target,
