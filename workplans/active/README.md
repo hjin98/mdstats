@@ -4,6 +4,18 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 ## Current active MLFF work
 
+### TRAIN2 CuEq FP32 backend-parity requalification
+
+Branch: `design/mlff-train2-cueq-parity-requalification`
+
+Canonical workplan:
+
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md`
+
+A real MACE-MH-1 / `omat_pbe` RTX 3090 doctor realization challenged the accepted TRAIN2 FP32 noise-normalized backend-equivalence criterion: force-tail ratios narrowly exceeded the generic ratio ceiling and, more importantly, cross-backend descriptor variation exceeded the absolute `1e-6` stable-channel ceiling while same-backend descriptor repeatability itself reached roughly `1.8-1.9e-6`. The cycle therefore starts at D2 and preserves the current fail-closed/no-silent-fallback D3/D4 behavior until a replacement numerical relation passes fresh independent falsification and stakeholder ratification.
+
+The repair must not tune constants to the observed failure. It must reconstruct the MPA-0 and MH-1 evidence basis, account for dependence in the current repeated all-pairs statistics, test adversarial false-pass/false-fail cases, and freeze one coherent generic or explicitly parameterized parity family. Production MH-1 work that must proceed before closure remains on the accepted e3nn path.
+
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
 Branch: `design/mlff-pi-train-fps-diversity-restoration`
