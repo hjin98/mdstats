@@ -146,7 +146,7 @@ The repair MUST preserve all of the following:
 7. **FP32 scope is explicit.** This work does not relax FP64 authority.
 8. **No family-specific exception without D2 justification.** Do not add an `if MH-1` tolerance branch merely because this realization failed.
 9. **No auto-calibration from the candidate being judged.** A candidate run may supply repeatability evidence under a predeclared method, but its observed cross discrepancy cannot directly set its own acceptance bound.
-9A. **Adjacent parity relations are formalization-frozen.** Source/DATA6 FP32 and FP64 CuEq relations must be brought under explicit D2 source closure because the accepted kernel omitted the entire acceleration-parity surface, but their numerical tolerances/semantics are not changed by this TRAIN2 incident absent separate falsification evidence.
+9A. **Adjacent parity relations are formalization-frozen.** Source-side FP32/FP64 CuEq relations and the trained-state CuEq -> portable-e3nn projection/EVAL2 relation must be brought under explicit D2 source closure because the accepted kernel omitted the acceleration-equivalence surface, but their numerical tolerances/semantics are not changed by this TRAIN2 doctor incident absent separate falsification evidence.
 10. **Uncertainty must be represented honestly.** Repeated-pair statistics built from a small number of repeated evaluations are dependent observations; all-pairs cardinality must not be interpreted as an independent-sample count.
 11. **Accepted currentness is explicit.** Any changed parity-policy identity must invalidate/remap dependent preflight, handoff, qualification, cache, and provenance records exactly where they bind the old policy digest.
 12. **Existing explicit e3nn TRAIN2 path remains admissible.** The current generated campaign split is source/DATA6/evaluation `e3nn` and TRAIN2 `cueq`. This repair must not silently rewrite that accepted generated policy merely to avoid a challenged CuEq gate. A production run that must proceed without the challenged CuEq relation may explicitly set `training_backend = "e3nn"`; that operational override is not a generated-default change.
@@ -155,7 +155,7 @@ The repair MUST preserve all of the following:
 14. **Parity preflight and CUEQ-PHASE1 have distinct scopes.** Instantaneous E/F/stress/descriptor/FPS evidence is the current per-selected-head/runtime admission screen for a CuEq TRAIN2 realization, including the generated TRAIN2 `cueq` path. CUEQ-PHASE1 remains valuable paired-training/FINAL-GPU1 evidence, but Revision 60 changed generated campaign policy without retroactively changing the immutable CUEQ-PHASE1 records. Do not falsely make historical phase-1 completion a blanket prerequisite for every current CuEq TRAIN2 realization, and do not claim doctor parity makes the historical phase-1 record pass.
 15. **Every parity channel needs a protected consequence.** No internal quantity remains a hard gate merely because it was historically measured; D2 must state which scientific/numerical downstream invariant it protects.
 16. **Channel dimensions/scales are explicit.** Energy/atom, force, stress, and latent descriptors have different units/scales. A shared numerical absolute ceiling across unlike channels is inadmissible without an explicit normalization/error derivation.
-17. **Qualification currentness is authenticated.** A stored CuEq realization cannot remain current solely because backend/device/dtype/checkpoint match; it must bind the currently accepted parity-policy/method identity and applicable runtime evidence.
+17. **Qualification currentness is authenticated.** Neither a source-side nor TRAIN2 stored CuEq realization can remain current solely because backend/device/dtype/checkpoint match; consequential reuse must bind the currently accepted parity-policy/method identity and applicable runtime/model evidence.
 18. **Historical records are immutable but non-self-authorizing.** An old record carrying `passed=true` remains historical evidence after a policy/method change and cannot authorize current CuEq use without the accepted remap/requalification rule.
 19. **No adaptive retry.** The number/order of independent target-host realizations used for an acceptance decision must be frozen before their outcomes are inspected; pass/fail instability is evidence against a stable authorizing rule, not permission to rerun until pass.
 
@@ -536,19 +536,20 @@ Do not count several tests sharing the same generated expected values as indepen
 
 ### Stage B — Bounded D2 candidate method
 
-1. Define one D2 acceleration-equivalence family with explicit role/dtype applicability. Preserve existing source/DATA6 FP32 and FP64 numerical relations unless separately challenged; isolate the TRAIN2 FP32 method as the changed/challenged member.
-2. State the exact proposition of the current doctor TRAIN2 parity admission gate and its relationship to historical CUEQ-PHASE1, Rev60 explicit policy authorization, current generated-default policy, and FINAL-GPU1.
-3. Define every governed observable/channel, unit/normalization, and downstream protected consequence.
+1. Define one D2 acceleration-equivalence family with explicit role/dtype/**model-state** applicability. Preserve existing source-side FP32/FP64 and trained-state projection numerical relations unless separately challenged; isolate the TRAIN2 FP32 doctor criterion as the changed/challenged member.
+2. State the exact proposition of the current doctor TRAIN2 parity admission gate and its relationship to starting-checkpoint state, optimizer-reachable trained states, native CuEq -> portable-e3nn projection/EVAL2, historical CUEQ-PHASE1, Rev60 generated TRAIN2 policy, the explicit e3nn override, and FINAL-GPU1.
+3. Define every governed observable/channel, unit/normalization, downstream protected consequence, and the model-state/architecture domain over which each relation is claimed to hold.
 4. Define the experimental units and whether the TRAIN2 FP32 method is a finite-sample functional or a population estimator.
 5. Define the equivalence statistics per justified TRAIN2 FP32 channel, including exact quantile/order-statistic semantics.
 6. Define absolute catastrophic guards and protections against inflated/near-zero self-noise.
 7. Define exact selection identity/robustness requirements.
 8. Define warm-up, repeat, evaluation-order, process-replication, probe-corpus, and insufficiency semantics before seeing acceptance outcomes.
-9. Define generic-vs-regime applicability explicitly. Any parameterization must follow a semantically meaningful scale/architecture/runtime coordinate, not a model-family exception table chosen from failures.
-10. Define the policy/method digest and realization applicability binding so evidence cannot cross incompatible methods/runtimes.
+9. Define generic-vs-regime applicability explicitly, including model-state applicability. Any parameterization must follow a semantically meaningful scale/architecture/runtime coordinate, not a model-family or checkpoint exception table chosen from failures.
+10. Define the policy/method digest and realization applicability binding so evidence cannot cross incompatible methods/runtimes/model-state domains.
 11. Define old-record currentness/remap semantics and whether record/schema versions must advance.
-12. Produce a bounded D2 overlay against the exact accepted parent; do not edit an unrelated unaccepted canonical-path renewal.
-13. Write the proposed D2 authority before changing D4 product thresholds.
+12. Separate three propositions that historical code/tests currently blur: starting-checkpoint CuEq admission, CuEq behavior over optimizer-reachable trained states, and trained-state CuEq -> portable-e3nn projection/EVAL2 equivalence. Reuse one relation only if D2 proves their validity domains coincide; otherwise name the bounded relations separately without duplicating runtime machinery.
+13. Produce a bounded D2 overlay against the exact accepted parent; do not edit an unrelated unaccepted canonical-path renewal.
+14. Write the proposed D2 authority before changing D4 product thresholds.
 
 **Gate B:** candidate method must be source/definition closed, dimensionally/semantically coherent, statistically identifiable at its evidence cardinality, and free of constants selected merely because they pass the new MH-1 observation.
 
@@ -671,7 +672,7 @@ On accepted D2 formalization/change:
 The workplan may close only when all of the following hold:
 
 - the accepted D1/D2 parent and any overlapping successor authority are explicitly resolved;
-- the confirmed acceleration-parity source-closure gap is closed by an accepted role/dtype D2 family covering every current CuEq parity relation that remains supported; only TRAIN2 FP32 may change numerically without separate falsification of the siblings;
+- the confirmed acceleration-parity source-closure gap is closed by an accepted role/dtype/model-state D2 family covering every current CuEq acceleration-equivalence relation that remains supported; only the challenged TRAIN2 FP32 doctor member may change numerically without separate falsification of its siblings;
 - the current Serious Challenge has been resolved by an accepted D2 criterion/formalization or falsified by evidence showing the original relation remains adequate;
 - the original MH-1 observation exists as durable, applicability-qualified evidence or its unavailability is explicitly recorded and a reproduction is distinguished from it;
 - MPA-0 evidence used for any generic claim is raw/authenticated or freshly re-realized; prose/test fixtures alone do not carry raw-evidence force;
