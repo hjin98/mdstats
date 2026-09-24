@@ -2,16 +2,16 @@
 kind: implementation-workplan
 workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
-status: archived-pass
+status: active-reopened
 created_date: 2026-09-21
 revision: 28
 reviewed_date: 2026-09-24
 closed_date: 2026-09-24
-workplan_review_status: implementation-review-pass-evidence-specification-impact-closed
-workplan_review_basis: d830773a78d860616a2d230c4a437238834a5c5b
+workplan_review_status: independent-review-no-pass-closeout-evidence-reopened
+workplan_review_basis: 1f29ca406eb5920b36df9a55d112501225e7868c
 implementation_review_candidate: 73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
 implementation_review_domain: D4
-successor_evidence: workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_REV28_2026-09-24.md
+attempted_successor_evidence: workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_REV28_2026-09-24.md
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -22,6 +22,8 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 # MLFF final-production model publication + lightweight MH-1 integration — D3 -> D4 workplan
 
 ## 0. Disposition
+
+**POST-REVISION-28 INDEPENDENT REVIEW: PRODUCT-CODE PASS / WORKPLAN NO-PASS FOR CLOSEOUT-EVIDENCE BINDING AND ORACLE ADEQUACY.** Reviewed branch head `1f29ca406eb5920b36df9a55d112501225e7868c`. Executable product candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` remains conforming; the Revision-28 delta changes tests/evidence/workplan only and no `mdstats/**/*.py` product source. Revision-22 D3 remains coherent and no Serious Challenge is active. The attempted Revision-28 PASS is reopened for the narrow evidence-owner defects in Section 26H. No production-code change is authorized unless a corrected current oracle demonstrates a genuine product failure.
 
 **REVISION-28 EVIDENCE-SPECIFICATION IMPACT CLOSURE: PASS / CLOSED.** Candidate executable source `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` remains conforming and Revision-22 D3 remains coherent; no Serious Challenge is active. The Revision-27 raw observations remain historical. Revision 28 directly retired superseded executable claims and remapped surviving claims to current owners, then completed focused and affected acceptance with only authorized environment-dependent skips. No production-code repair was required.
 
@@ -2760,6 +2762,145 @@ The exact successor record is `workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUB
 The required Protocol-6.4 PEM closeout-learning assessment is complete: no PEM update is required. This intervention is an additional evidence-reconciliation episode over the already accepted SP-001 through SP-004 and FF-001 through FF-005 basis; it does not establish a new evaluated success-pattern episode, alter failure-family applicability, change evidence binding or coverage, or justify a new PEM family.
 
 **REVISION-28 DISPOSITION: PASS / CLOSED.**
+
+
+## 26H. Post-Revision-28 independent Review reopen — closeout evidence binding, P7 oracle adequacy, structural-oracle retirement, and PEM reconciliation
+
+### Review basis
+
+Reviewed attempted closeout commit:
+
+```text
+1f29ca406eb5920b36df9a55d112501225e7868c
+```
+
+Retained executable product candidate:
+
+```text
+73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
+```
+
+Parent reopened-plan state:
+
+```text
+d830773a78d860616a2d230c4a437238834a5c5b
+```
+
+**NO-PASS FOR LIFECYCLE CLOSEOUT. Product-code conformance remains PASS. No Serious Challenge.** The Revision-28 delta correctly avoids production compatibility patches and materially improves the stale-test surface, but four evidence/lifecycle obligations remain unresolved.
+
+### IR28R-E1 — successor execution is not durably bound to the committed test/evidence tree — BLOCKING
+
+The successor closeout record declares:
+
+```text
+evidence_head: d830773a78d860616a2d230c4a437238834a5c5b
+branch head: d830773a78d860616a2d230c4a437238834a5c5b
+evidence-only worktree changes: intentionally uncommitted
+no commit or branch-head mutation was performed during this closeout
+```
+
+but the reviewed repository now contains those test/evidence changes in commit:
+
+```text
+1f29ca406eb5920b36df9a55d112501225e7868c
+tree 6d3c88d9b4667aba4b48497f564f8e89f0ad803f
+```
+
+Commit `1f29ca406eb5920b36df9a55d112501225e7868c` is one descendant of `d830773...` and contains all Revision-28 test retirements/remaps plus the closeout/archive mutation. The recorded test observations may well have been produced from the pre-commit worktree later committed as `1f29ca406eb5920b36df9a55d112501225e7868c`, but the durable evidence record does not establish that identity and now contains factually stale branch-head statements.
+
+Required repair:
+
+1. Do not rerun the entire historical campaign merely to repair metadata.
+2. Bind the final current evidence specification to an immutable committed tree.
+3. Prefer executing the **modified/remapped current test files plus mandatory focused suites and cheap static/import checks** on the exact committed repair candidate that will be reviewed. Record that exact SHA/tree and results.
+4. If reusing any broader Revision-28 realization without rerun, preserve it as historical evidence and state precisely which claims are reused because `mdstats/**/*.py` product source is unchanged; do not relabel an uncommitted realization as if it had run on a different commit.
+5. Correct all branch/evidence-head statements in the successor record and workplan. Evidence must identify both the retained product subject and the exact evidence-specification subject.
+
+### IR28R-E2 — two P7 real-runtime remaps skip on a fixture/head mismatch before reaching the preserved claim — BLOCKING
+
+Revision 28 required the real-runtime blocking claim to survive the evidence remap. The new R11/R12 tests now source the P5 full-model representation, which is correct, but both contain an early branch equivalent to:
+
+```python
+heads = tuple(str(value) for value in published_model.heads)
+if member.target_head_name not in heads:
+    pytest.skip("... locked MH-1 ... unavailable ...")
+```
+
+The Revision-28 execution ledger confirms two skips at this boundary.
+
+This is not a target-host runtime limitation. The tests build their own bounded campaign fixture with `real_mace_checkpoint=True`; the default fixture can realize a product whose constructed head inventory does not contain the canonical `target_head`. Treating that local fixture mismatch as “locked MH-1 bytes unavailable” means the remapped tests do not reach the real exporter/runtime gate they were required to preserve.
+
+Required repair:
+
+1. Keep deployment sourced from the authenticated **P5 full-model product**, never the representative checkpoint.
+2. Reconfigure/reuse the existing bounded current-owner fixture so the locally constructed publication genuinely carries the canonical current target-head inventory needed by the test (for example the repository's existing multihead/current-head fixture path). Do not require external locked MH-1 bytes for these generic P7 owner/runtime tests.
+3. R11 `test_r11b2_real_runtime_gate_blocks_rather_than_passing` must reach `qualify_deployment_parity(session)` with a valid current P5 product. It may then pass only by observing the required typed runtime-unavailable failure when the real deployment/runtime seam is absent.
+4. R12's real-publication execution test must reach the real exporter + ML-IAP builder for the valid current product; only **actual target-host LAMMPS/ML-IAP unavailability** may skip the final execution boundary.
+5. Keep the independent real-MH1-byte tests under their existing explicit availability boundary. Do not conflate those with this generic current-product acceptance.
+
+### IR28R-E3 — checkpoint-presence structural oracle is rename-sensitive and should be retired or made semantic — BLOCKING EVIDENCE QUALITY
+
+`tests/test_mlff_downstream_integration_closure.py::_checkpoint_presence_shortcuts` was narrowed to accept an `any(...iterdir())` call only when the immediate variable name contains `checkpoint` (or matches a small name set). That avoids the legitimate lease-owned `root.iterdir()` case, but the resulting oracle can be bypassed by a trivial alias/rename:
+
+```python
+d = checkpoint_directory
+if any(d.iterdir()):
+    ... # same prohibited presence-based resume inference
+```
+
+The sensor therefore no longer discriminates the semantic invariant it claims to enforce.
+
+Required repair, preferring reduction:
+
+1. **Prefer retiring this weak AST sensor** if the existing behavioral/current-owner evidence already proves the live invariant. The same file already contains real behavioral tests such as partial-checkpoint-not-resumable, authenticated-continuation resume, corrupt/foreign continuation refusal, and current materialization authentication.
+2. If a structural oracle is retained, it must track the relevant checkpoint-root semantic provenance rather than variable spelling and must include a rename/alias counterexample that the oracle still catches.
+3. Do not add a large data-flow analyzer solely to preserve this test; deletion in favor of the stronger behavioral evidence is acceptable and preferred when coverage remains complete.
+
+### IR28R-L1 — PEM closeout assessment incorrectly treats this intervention as already represented — BLOCKING LIFECYCLE CLOSURE
+
+The successor record states that the final-production publication/P7/MH-1 intervention is “the same evaluated ... application episode represented by the unchanged accepted SP-001 through SP-004 ... basis” and therefore makes no PEM update.
+
+The accepted PEM ledger does **not** contain this intervention. Its current applications are distinct earlier episodes:
+
+- SP-001: storage Revision-38 reduction and TRAIN2 memory-pressure/backoff ownership repair;
+- SP-002: TRAIN2 restart authentication, P4 campaign CAS, and storage final-apply identity;
+- SP-003: prepared-generation publication, post-selection run reuse, and TRAIN2 resource-failure recovery;
+- SP-004: P3 realized-MACE census, target-host CUDA qualification, and assembled P1-P7 campaign/storage integration.
+
+The current work is a later, materially distinct coordinated intervention: selected-checkpoint full-model publication, P7 representation/deployment currentness, durability retry closure, one-shot reveal fencing, and bounded MH-1/current-owner integration. Under the PEM application-episode definition, a materially distinct engineering intervention may add **one application episode per applicable success pattern**, not one row per file/test/review round.
+
+Required reconciliation:
+
+1. Reassess SP-001 through SP-004 against the actual completed intervention. The no-update rationale “already represented by the same episode” is not admissible.
+2. At minimum, SP-004 is materially applicable: bounded current-owner integration exposed/closed defects that isolated serializer/mock paths missed. SP-001 is also materially implicated by the explicit owner-reduction strategy (removal/rewiring instead of compensating wrappers). Assess SP-002/SP-003 on their exact semantic envelopes rather than automatically adding or excluding them.
+3. If admitted, add one bounded application row per applicable pattern with a shared provenance cluster where appropriate; do not multiply the coordinated intervention into many episodes.
+4. Preserve counterevidence/limitations: real locked MH-1, target-host GPU, production LAMMPS/MLIAP, and MD qualification remain unavailable/deferred and cannot be described as supporting realizations.
+5. Follow the PEM anti-self-reference sequence:
+   ```text
+   corrected engineering/evidence commit exists immutably
+       -> closeout assessment binds that commit
+       -> descendant PEM reconciliation commit binds the pre-existing evidence identity
+   ```
+   Do not make the PEM-containing commit depend on its own SHA.
+6. Update the candidate-overlay metadata/HAS disposition consistently if the PEM is changed. If a careful reassessment concludes a particular SP does not admit this episode, record the pattern-specific reason rather than a blanket no-update statement.
+
+### Acceptance / stop conditions
+
+Closeout is Review-ready when all are true:
+
+1. one immutable committed evidence-specification candidate is named, and current successor tests are executed/bound to that candidate;
+2. the R11/R12 P7 tests reach the preserved current-product exporter/runtime claim and do not use local head mismatch as an MH-1 availability skip;
+3. the weak checkpoint-name AST sensor is retired in favor of existing behavioral evidence or replaced by a genuinely semantic, rename-resistant oracle;
+4. all modified/remapped current test files and the mandatory focused suites pass with only genuinely external/environment-dependent skips;
+5. the PEM closeout-learning assessment is reconciled against the actual accepted ledger, with any admitted candidate PEM update published as a descendant of the evidence commit;
+6. no `mdstats/**/*.py` production change is made unless a corrected current oracle demonstrates a real defect;
+7. the final closeout record distinguishes:
+   - executable product SHA;
+   - evidence-specification/qualification SHA;
+   - optional descendant PEM-reconciliation SHA;
+   - explicit deferred qualification boundaries.
+
+Long production MH-1/GPU/CUDA-performance/LAMMPS/MLIAP/MD qualification remains deferred exactly as before.
 
 ## 27. Current-implementation review closure (Revision 2)
 

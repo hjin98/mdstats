@@ -2,19 +2,21 @@
 kind: implementation-qualification-closure
 workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
-status: pass
+status: superseded-independent-review-no-pass
 closed_date: 2026-09-24
 branch: design/mlff-final-production-model-publication-mh1-integration
-evidence_head: d830773a78d860616a2d230c4a437238834a5c5b
+evidence_head: d830773a78d860616a2d230c4a437238834a5c5b  # pre-commit execution basis; superseded for final binding
 executable_product_sha: 73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
 production_source_changed: false
 ---
 
 # Revision-28 successor evidence and lifecycle closeout
 
+> **Post-closeout independent Review reassessment:** raw Revision-28 execution observations remain historical evidence, but the PASS/lifecycle-closure assessment is superseded. The executed worktree was recorded only against pre-commit head `d830773...`, while the reconciled evidence specifications were later committed at `1f29ca406eb5920b36df9a55d112501225e7868c`; two remapped P7 tests skip on local head-inventory mismatch before reaching the preserved runtime claim; one structural checkpoint-presence oracle is rename-sensitive; and the PEM no-update rationale conflicts with the accepted application ledger. Product-code conformance remains PASS. See active Section 26H for the bounded repair contract.
+
 ## Disposition
 
-Revision 28 is **PASS / CLOSED** for evidence-specification impact and lifecycle closure. The retained executable product candidate remains product-code conforming. The Revision-27 raw observations and command ledger remain historical in `MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_2026-09-23.md`; this successor record supersedes their stale-applicability and closure conclusion without rewriting them.
+Historical Revision-28 assessment was **PASS / CLOSED**, but that assessment is superseded by the post-closeout independent Review. The retained executable product candidate remains product-code conforming. The Revision-27 raw observations and command ledger remain historical in `MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_2026-09-23.md`; this successor record supersedes their stale-applicability and closure conclusion without rewriting them.
 
 All current remapped evidence passed with zero unclassified failures. Superseded executable claims were retired at their evidence owners. No remapped current oracle exposed a product defect, so no production owner was repaired and no `mdstats/**/*.py` file changed. No Serious Challenge is active.
 
@@ -226,4 +228,4 @@ This closeout does not claim locked real MH-1 checkpoint/runtime qualification, 
 
 ## Final lifecycle decision
 
-Revision 28 is **PASS / CLOSED**. The canonical workplan is archived as `MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`; `workplans/active/README.md` no longer lists it as active and `workplans/archive/README.md` identifies this successor record. Revision 27 remains intact as superseded historical evidence.
+Historical Revision-28 assessment: **PASS / CLOSED — SUPERSEDED.** The canonical workplan is archived as `MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`; `workplans/active/README.md` no longer lists it as active and `workplans/archive/README.md` identifies this successor record. Revision 27 remains intact as superseded historical evidence.
