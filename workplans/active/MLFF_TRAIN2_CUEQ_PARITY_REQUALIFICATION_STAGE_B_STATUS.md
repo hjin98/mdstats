@@ -7,6 +7,9 @@ status: candidate-4-author-ready-awaiting-fresh-independent-review
 date: 2026-09-24
 candidate: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE.md
 author_challenge: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_B_AUTHOR_CHALLENGE_REVIEW.md
+independent_review_handoff: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_HANDOFF.md
+immutable_candidate_commit: cd4e0453d0a27ae01f7041c1c9d222fd9d71a0e9
+immutable_candidate_blob: 1ad1ee0374ce1644f72e9ab89121ea47110f35bd
 ---
 
 # TRAIN2 CuEq parity requalification — Stage B status
@@ -35,3 +38,5 @@ Candidate 4:
 The first Candidate-4 representation at commit 5d63350dd13929c27fa6c2204238f2f2e8f93cbd contained mathematical escape corruption and is not a Review target. Its successor is a representation-only reconstruction of the same Candidate-4 semantics.
 
 Candidate 4 is **proposed, not accepted**. The next valid gate is a genuinely fresh independent D2 Review of the final immutable Candidate-4 commit.
+
+Fresh independent Review must target commit `cd4e0453d0a27ae01f7041c1c9d222fd9d71a0e9`, not the later lifecycle/handoff descendant.

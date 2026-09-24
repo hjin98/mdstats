@@ -24,6 +24,7 @@ Stage-A numerical evidence analysis:
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE.md` — proposed Stage-B Candidate 4. It separates centroid bias, stochastic non-degradation, and coarse property-scale catastrophic guards; binds two-update transition witnesses to the real accepted loader exposure; independently checks the transient->portable measurement transform; and fixes reducer/currentness/state-domain semantics. **Not accepted; fresh independent Review required.**
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_B_AUTHOR_CHALLENGE_REVIEW.md` — author-side Challenge record covering B1-B10 and the supersession of Candidates 1-3 by Candidate 4; explicitly not an independent Review.
 - `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_B_STATUS.md` — current Stage-B handoff/status and independent-review targets.
+- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_HANDOFF.md` — fresh independent D2 Review entrypoint pinned to immutable Candidate 4 `cd4e0453d0a27ae01f7041c1c9d222fd9d71a0e9`; later branch descendants are lifecycle state only.
 
 Formal workplan review:
 
