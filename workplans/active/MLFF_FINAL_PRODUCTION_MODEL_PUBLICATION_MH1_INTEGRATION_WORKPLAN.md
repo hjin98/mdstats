@@ -6,12 +6,14 @@ status: active-reopened
 created_date: 2026-09-21
 revision: 28
 reviewed_date: 2026-09-24
-closed_date: 2026-09-24
-workplan_review_status: independent-review-no-pass-closeout-evidence-reopened
-workplan_review_basis: 1f29ca406eb5920b36df9a55d112501225e7868c
+workplan_review_status: evidence-repair-implemented-execution-pending-unavailable
+workplan_review_basis: 4194e31e44a61a9a636121b723294a005020d1fd
 implementation_review_candidate: 73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
 implementation_review_domain: D4
 attempted_successor_evidence: workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_REV28_2026-09-24.md
+evidence_specification_candidate: a382c118a62dc32f52536efe7b8aa08dc38f18f5
+evidence_specification_tree: a8d388d1cc4466c7dfe624b6076bb9ab0491e054
+pem_reconciliation_candidate: 4194e31e44a61a9a636121b723294a005020d1fd
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -24,6 +26,8 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 ## 0. Disposition
 
 **POST-REVISION-28 INDEPENDENT REVIEW: PRODUCT-CODE PASS / WORKPLAN NO-PASS FOR CLOSEOUT-EVIDENCE BINDING AND ORACLE ADEQUACY.** Reviewed branch head `1f29ca406eb5920b36df9a55d112501225e7868c`. Executable product candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` remains conforming; the Revision-28 delta changes tests/evidence/workplan only and no `mdstats/**/*.py` product source. Revision-22 D3 remains coherent and no Serious Challenge is active. The attempted Revision-28 PASS is reopened for the narrow evidence-owner defects in Section 26H. No production-code change is authorized unless a corrected current oracle demonstrates a genuine product failure.
+
+**SECTION-26H REPAIR IMPLEMENTED / EXECUTION GATE STILL OPEN.** The evidence-specification repair is immutable at `a382c118a62dc32f52536efe7b8aa08dc38f18f5` (tree `a8d388d1cc4466c7dfe624b6076bb9ab0491e054`), and the Protocol-6.4 PEM candidate-overlay reconciliation is a later descendant at `4194e31e44a61a9a636121b723294a005020d1fd`. The repair changes no `mdstats/**/*.py` product source. IR28R-E2, IR28R-E3, and IR28R-L1 are implemented in repository state; IR28R-E1 now has an immutable evidence-specification subject but remains open for exact executable realization because this review environment has no repository test runner. GitHub reports zero statuses, zero check runs, and zero Actions runs for `a382c118...`; the repository exposes only the path-filtered documentation workflow. Do not manufacture CI or weaken the gate. Close only after the corrected current tests execute successfully on this immutable candidate or an evidence-only descendant with identical product and test source.
 
 **REVISION-28 EVIDENCE-SPECIFICATION IMPACT CLOSURE: PASS / CLOSED.** Candidate executable source `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` remains conforming and Revision-22 D3 remains coherent; no Serious Challenge is active. The Revision-27 raw observations remain historical. Revision 28 directly retired superseded executable claims and remapped surviving claims to current owners, then completed focused and affected acceptance with only authorized environment-dependent skips. No production-code repair was required.
 
@@ -2883,6 +2887,60 @@ Required reconciliation:
    ```
    Do not make the PEM-containing commit depend on its own SHA.
 6. Update the candidate-overlay metadata/HAS disposition consistently if the PEM is changed. If a careful reassessment concludes a particular SP does not admit this episode, record the pattern-specific reason rather than a blanket no-update statement.
+
+### IR28R repair realization — IMPLEMENTED / EXACT EXECUTION PENDING
+
+The Section-26H repository repairs are now concretized as follows.
+
+**Immutable evidence-specification candidate**
+
+```text
+a382c118a62dc32f52536efe7b8aa08dc38f18f5
+tree a8d388d1cc4466c7dfe624b6076bb9ab0491e054
+```
+
+This candidate changes only test/evidence specifications relative to the reopened review state; no `mdstats/**/*.py` production file changes.
+
+- **IR28R-E2 implemented.** `tests/_mlff_qualification_fixture.py` now supplies one bounded current `multihead_replay` P5 fixture using the existing foundation/replay inputs and real P1-P5 owners. R11 requires the resulting published full model to expose exactly `[pt_head, target_head]`, then drives the real P7 deployment owner and injects `QualificationUnavailableError` only below that owner at `deployed_static_observation`. R12 likewise requires the valid current full model and lets only actual ML-IAP-builder or deployed-runtime unavailability skip the real-publication execution test. Local head mismatch is now a failure, never an MH-1 availability skip.
+- **IR28R-E3 implemented by reduction.** The rename-sensitive `_checkpoint_presence_shortcuts` AST sensor and its structural assertions were deleted. The stronger existing behavioral continuation tests remain the evidence owners; no data-flow analyzer or compatibility test layer was added.
+- **IR28R-E1 binding repaired, execution pending.** The corrected evidence specification is now immutable and separately identified from executable product SHA `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`. Historical Revision-28 observations remain historical; they are not relabeled as an exact execution of `a382c118...`.
+- **IR28R-L1 implemented through the required descendant PEM sequence.** The accepted PEM basis remains unchanged and non-authoritative. Candidate overlay reconciliation is published at descendant `4194e31e44a61a9a636121b723294a005020d1fd`, binding the pre-existing `a382c118...` evidence subject. One coordinated application episode is recorded against SP-001 through SP-004, with shared provenance and explicit target-host/real-MH1/GPU/LAMMPS/MD limitations. No new failure-family occurrence or D1-D4 promotion is claimed.
+
+**Execution availability**
+
+For exact candidate `a382c118a62dc32f52536efe7b8aa08dc38f18f5`, repository-hosted evidence currently reports:
+
+```text
+commit statuses : 0
+check runs       : 0
+Actions runs     : 0
+```
+
+The repository exposes only `.github/workflows/docs-build.yml`; there is no pytest workflow to dispatch. The implementation environment available to this repair has no GitHub network checkout and the GitHub connector has no executable test-runner action. Therefore no new pytest result is claimed here.
+
+The prior Revision-28 raw execution remains applicable only to claims whose product source and evidence specification did not change. It cannot substitute for execution of the corrected R11/R12/downstream test surfaces.
+
+**Remaining exact execution command set**
+
+Run on `a382c118...` or an evidence-only descendant with identical `mdstats/**/*.py`, `tests/_mlff_qualification_fixture.py`, and the modified test files:
+
+```text
+conda run -n mace python -m pytest -q -ra \
+  tests/test_mlff_p7_r11_repair_acceptance.py \
+  tests/test_mlff_p7_r12_repair_acceptance.py \
+  tests/test_mlff_downstream_integration_closure.py
+
+conda run -n mace python -m pytest -q -ra \
+  tests/test_mlff_p5_model_publication_owners.py \
+  tests/test_mlff_p5_model_publication_acceptance.py \
+  tests/test_mlff_p7_deployment_realization.py \
+  tests/test_mlff_p7_product_currentness_fences.py \
+  tests/test_mlff_mh1_publication_integration.py
+
+conda run -n mace python -m compileall -q mdstats tests
+```
+
+Only genuine external/runtime skips already authorized by Section 26H are admissible. Any local fixture/head mismatch is a test failure. If these commands pass, no further implementation repair is expected: update the final evidence record, archive the plan, and retain the long production qualification deferrals.
 
 ### Acceptance / stop conditions
 

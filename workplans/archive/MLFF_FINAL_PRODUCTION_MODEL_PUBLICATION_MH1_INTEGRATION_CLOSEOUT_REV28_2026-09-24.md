@@ -8,11 +8,16 @@ branch: design/mlff-final-production-model-publication-mh1-integration
 evidence_head: d830773a78d860616a2d230c4a437238834a5c5b  # pre-commit execution basis; superseded for final binding
 executable_product_sha: 73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
 production_source_changed: false
+repair_evidence_specification_candidate: a382c118a62dc32f52536efe7b8aa08dc38f18f5
+repair_evidence_specification_tree: a8d388d1cc4466c7dfe624b6076bb9ab0491e054
+repair_pem_candidate: 4194e31e44a61a9a636121b723294a005020d1fd
 ---
 
 # Revision-28 successor evidence and lifecycle closeout
 
 > **Post-closeout independent Review reassessment:** raw Revision-28 execution observations remain historical evidence, but the PASS/lifecycle-closure assessment is superseded. The executed worktree was recorded only against pre-commit head `d830773...`, while the reconciled evidence specifications were later committed at `1f29ca406eb5920b36df9a55d112501225e7868c`; two remapped P7 tests skip on local head-inventory mismatch before reaching the preserved runtime claim; one structural checkpoint-presence oracle is rename-sensitive; and the PEM no-update rationale conflicts with the accepted application ledger. Product-code conformance remains PASS. See active Section 26H for the bounded repair contract.
+
+> **Section-26H repair status:** the source/evidence defects identified above are repaired at immutable candidate `a382c118a62dc32f52536efe7b8aa08dc38f18f5`; PEM reconciliation is a descendant at `4194e31e44a61a9a636121b723294a005020d1fd`. These commits do not change `mdstats/**/*.py`. They do **not** retroactively turn the raw Revision-28 run into exact-candidate execution evidence: the corrected P7/downstream tests still require an actual pytest realization before lifecycle closeout.
 
 ## Disposition
 
@@ -20,7 +25,7 @@ Historical Revision-28 assessment was **PASS / CLOSED**, but that assessment is 
 
 All current remapped evidence passed with zero unclassified failures. Superseded executable claims were retired at their evidence owners. No remapped current oracle exposed a product defect, so no production owner was repaired and no `mdstats/**/*.py` file changed. No Serious Challenge is active.
 
-The branch head is `d830773a78d860616a2d230c4a437238834a5c5b`. The candidate executable product SHA remains `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`. The evidence-only worktree changes are intentionally uncommitted; no commit or branch-head mutation was performed during this closeout.
+**Historical execution-time statement:** the branch head recorded for the original run was `d830773a78d860616a2d230c4a437238834a5c5b`, the executable product SHA was `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`, and the evidence edits were then uncommitted. This sentence is retained only to describe that historical realization; current immutable repair identities are recorded in the metadata/reassessment above.
 
 ## IR28-E1: owner-local evidence reconciliation
 

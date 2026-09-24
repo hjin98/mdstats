@@ -6,7 +6,7 @@ An archived plan may retain the status metadata it had at the moment it was supe
 
 ## 2026-09-24 provisional Revision-28 final-production model publication evidence record
 
-The Revision-28 successor execution and test-remapping record remains archived as historical evidence, but its **PASS/lifecycle-closure assessment is superseded by the post-Revision-28 independent Review**. Product-code conformance remains accepted. Closure was reopened for exact committed evidence binding, two P7 runtime-oracle remaps that skip before reaching their preserved claim, one rename-sensitive structural oracle, and PEM closeout-learning reconciliation.
+The Revision-28 successor execution and test-remapping record remains archived as historical evidence, but its **PASS/lifecycle-closure assessment is superseded by the post-Revision-28 independent Review**. Product-code conformance remains accepted. Closure was reopened for exact committed evidence binding, two P7 runtime-oracle remaps that skipped before reaching their preserved claim, one rename-sensitive structural oracle, and PEM closeout-learning reconciliation. Those repository defects are now repaired at evidence-specification candidate `a382c118a62dc32f52536efe7b8aa08dc38f18f5` with descendant PEM reconciliation `4194e31e44a61a9a636121b723294a005020d1fd`; lifecycle closure remains open only because the corrected exact-candidate pytest realization has not been executed in the available environment.
 
 Historical successor record retained:
 
