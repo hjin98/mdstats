@@ -3,7 +3,7 @@ kind: stage-status
 protocol_version: 6.4.0
 workplan: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md
 stage: A
-status: partial-blocked-on-target-host-raw-evidence
+status: partial-blocked-on-bounded-target-host-diagnostics
 date: 2026-09-24
 branch: design/mlff-train2-cueq-parity-requalification
 repository_review_head: 872d35d0f905ae5adf16a6ecf5c82fdd5f28375b
@@ -18,7 +18,7 @@ accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 
 **PARTIAL / NOT YET THROUGH GATE A.**
 
-The repository-side authority, currentness, implementation, and historical-evidence reconstruction required by Stage A is now sufficiently closed to identify the exact remaining evidence dependency. Gate A is blocked on durable target-host CampaignStore evidence from the observed MACE-MH-1 / `omat_pbe` RTX 3090 failure and, if the candidate relation will claim generic MPA-0/MH-1 coverage, a fresh raw MPA-0 realization because the original MPA-0 workstation distributions are not preserved as a raw repository artifact.
+The repository-side authority, currentness, implementation, and historical-evidence reconstruction required by Stage A is now sufficiently closed to identify the exact remaining evidence dependency. Gate A has now received and authenticated the durable target-host CampaignStore snapshot from the observed MACE-MH-1 / `omat_pbe` RTX 3090 failure. The remaining Gate-A blocker is a bounded fresh-process/order diagnostic needed to distinguish systematic backend offset from process/order covariance. If the candidate relation will claim generic MPA-0/MH-1 coverage, a fresh raw MPA-0 realization remains required because the original MPA-0 workstation distributions are not preserved as a raw repository artifact.
 
 The console transcript is discovery evidence only. It is not promoted into durable numerical qualification evidence.
 
@@ -197,20 +197,56 @@ This command is observational: `CampaignStore(create=False)` uses SQLite read-on
 
 The snapshot should be preserved before any rerun because a later doctor invocation may replace current aliases with a new realization.
 
-## A7. Gate-A remaining obligations
+## A7. Imported MH-1 evidence authentication
 
-Gate A remains blocked until all of the following are available:
+The user-supplied snapshot has SHA-256:
 
-1. authenticate the MH-1 snapshot above and verify all nested record/content digests;
-2. bind the snapshot to the exact selected-head checkpoint, config, MACE/Torch/e3nn/CuEq versions, semantic source-compatibility result, GPU/runtime state and parity policy;
-3. inspect the **raw repeated arrays**, not only terminal p99/max summaries;
-4. predeclare and run the bounded order/process/corpus diagnostics required to distinguish stable method behavior from one-process/order effects;
-5. obtain fresh MPA-0 raw evidence if generic MPA-0/MH-1 scope is retained;
-6. only then freeze the Stage-B D2 candidate statistic/parameters before inspecting candidate pass/fail outcomes.
+`ef0e4d8c2d0b867294a97b86769a1e1fd709c1af9e35d1a1c7730bb936a6dd83`.
+
+All content-addressed records and policy digests checked from the snapshot recompute exactly under mdstats canonical JSON hashing. In particular:
+
+- repeatability diagnostic: `66be5bdcc4e660067d6c7801a1fb3083ff634f21a48e919a6fb1199c2d9dedfa`;
+- authorizing noise-normalized parity record: `7dc24d6f0201d34258cfbbfe15c507fb648a2c00b07aff57a6ed202f456c810f`;
+- selected-head qualification: `66867d6b08fc8af279c2f5e449168afa148d2f43aaa6fd745ae4524025c62244`;
+- failed TRAIN2 realization: `9767ce3f3816deb1e19bfed330877401735380c3051db7324529f1e33ab7430b`;
+- TRAIN2 noise-normalized policy: `1faf33e781142ff0656cc6a49235294858dfe5dc7639c08e7a5e0f1fc73ed0d5`.
+
+The selected-head checkpoint is bound to SHA-256 `61c83c377dae92bf37c5412a263687237fbc4b9790828868ec0887cc992be928`, the requested TRAIN2 realization is `cueq_pure` / FP32 / CUDA, and the runtime evidence binds MACE 0.3.16, Torch 2.13.0+cu126, CUDA 12.6, CuEq 0.10.0 and the RTX 3090. The MACE calculator source-byte mismatch is explicitly covered by the stored semantic source-compatibility pass.
+
+The snapshot therefore satisfies the Stage-A provenance/authentication obligation. Its console-derived failure is reproduced exactly by the stored authorizing record.
+
+## A8. Evidence-derived numerical findings
+
+Detailed calculations are recorded in:
+
+`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_EVIDENCE_ANALYSIS.md`.
+
+The decisive results are:
+
+1. the `1e-6` absolute descriptor ceiling is below ordinary same-backend descriptor variability in both backends;
+2. the force-tail ratio classification is unstable under bounded leave-one/leave-two realization sensitivity at only ten retained runs;
+3. per-pair `Fp99.9` on only 45 force components is effectively an extreme/max statistic and is almost redundant with `Fmax`;
+4. same-index cross pairs and all-pairs cross comparisons lead to materially different tail ratios under the current fixed e3nn->CuEq evaluation order, so process/order covariance is not negligible;
+5. complete force-RMSE distance geometry shows similar e3nn/CuEq within-backend spread plus a small systematic backend-centroid separation, which the current tail-ratio rule does not distinguish from stochastic spread;
+6. energy, stress, selection identity and the `1e-5` force-component catastrophic guard do not show a material failure in this realization.
+
+These findings strengthen the Serious Challenge but do not yet select a replacement criterion.
+
+## A9. Gate-A remaining obligations
+
+Gate A remains blocked until the following are complete:
+
+1. predeclare and run the bounded fresh-process/evaluation-order diagnostic needed to distinguish systematic backend offset from same-process/order covariance;
+2. retain per-evaluation numerical outputs or sufficient signed summaries so systematic backend bias can be separated from stochastic spread rather than inferred only from absolute pair metrics;
+3. use the same frozen corpus/checkpoint/runtime identity and prohibit outcome-dependent reruns;
+4. obtain fresh MPA-0 raw evidence if generic MPA-0/MH-1 scope is retained;
+5. only then freeze the Stage-B D2 statistic/parameters **before** inspecting whether the candidate method admits the MH-1 realization.
+
+No threshold or ratio may be changed before this gate closes.
 
 Until these are complete, no tolerance or acceptance constant may be changed and the current doctor remains fail-closed.
 
-## A8. Repository-side Stage-A result
+## A10. Repository-side Stage-A result
 
 Repository-side Stage A is **complete enough to proceed immediately once target-host evidence is imported**. No additional architecture search or new runtime subsystem is currently justified.
 
