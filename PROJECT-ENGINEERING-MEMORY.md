@@ -844,7 +844,8 @@ applications:
           - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md"
           - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_mh1_publication_integration.py"
           - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_p7_r11_repair_acceptance.py"
-          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_p7_r12_repair_acceptance.py"```
+          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_p7_r12_repair_acceptance.py"
+```
 
 ## Current notices
 
