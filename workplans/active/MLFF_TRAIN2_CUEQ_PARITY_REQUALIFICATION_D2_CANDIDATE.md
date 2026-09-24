@@ -3,12 +3,12 @@ kind: proposed-D2-authority-overlay
 protocol_version: 6.4.0
 status: PROPOSED_NOT_ACCEPTED
 workplan: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md
-candidate_id: MLFF-TRAIN2-CUEQ-EQUIVALENCE-D2-CANDIDATE-3
+candidate_id: MLFF-TRAIN2-CUEQ-EQUIVALENCE-D2-CANDIDATE-4
 date: 2026-09-24
 parent_d2_kernel: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 parent_d2_exact_source: a4824d28775164aa942fd29fa97ee0957eb87e6f
 stage_a_cross_family_basis: 24734c8113dfaeaba4ae32c2bb0b80f3c0c72e82
-supersedes_proposed_candidate: MLFF-TRAIN2-CUEQ-EQUIVALENCE-D2-CANDIDATE-2
+supersedes_proposed_candidate: MLFF-TRAIN2-CUEQ-EQUIVALENCE-D2-CANDIDATE-3
 human_ratification_required: true
 ---
 
@@ -18,14 +18,14 @@ human_ratification_required: true
 
 This document is a **proposed** bounded D2 overlay. It is not accepted current authority and cannot authorize CuEq execution by repository presence alone.
 
-Candidate 3 supersedes unreviewed Candidates 1 and 2.
+Candidate 4 supersedes unreviewed Candidates 1, 2 and 3.
 
 Author-side Challenge history:
 
 - Candidate 1 incorrectly used ordinary e3nn realization RMS as the margin for persistent backend bias and compared raw gradient coordinates as the main training consequence.
 - Candidate 2 separated persistent bias from noise and moved to a two-update state-transition witness, but a second author Challenge found three remaining defects: no explicit rare-outlier materiality guard; an unnecessarily permissive factor-two stochastic-variance rule; and a potentially circular measurement dependency that could re-import source/DATA6 descriptor/FPS acceptance through the projection relation.
 
-Candidate 3 repairs those defects before independent Review.
+Candidate 3 repaired those defects. A final author-readiness audit against accepted P5 exposure semantics and real-owner evidence then found that it still under-specified how two-update batches are obtained and how the transient->portable measurement transform is independently falsified. Candidate 4 repairs those remaining scope/oracle gaps before independent Review.
 
 The overlay concretizes the accepted D2 rule that a native backend is execution-only only under a source-closed numerical-equivalence relation. It changes the challenged TRAIN2 relation while source-closing adjacent supported acceleration relations. It does not change D1 scientific meaning, MACE training objectives, replay semantics, checkpoint ranking, CV thresholds or publication policy.
 
@@ -124,27 +124,29 @@ Every observation must retain finite loss, optimizer-consumed gradients, model p
 
 ### D2.CUEQ.DEF.007 — common state-transfer measurement transform
 
-Transient e3nn/CuEq parameterizations need not have identical storage coordinates. TRAIN2 transition evidence therefore uses one independently qualified canonical state-transfer transform
+Transient e3nn/CuEq parameterizations need not have identical storage coordinates. TRAIN2 transition evidence therefore uses one canonical state-transfer transform
 
-[
-P_b:	heta_bmapsto	ilde	heta_b,
-]
+$$
+P_b:\theta_b\mapsto\tilde\theta_b,
+$$
 
-where (	ilde	heta_b) is the canonical portable e3nn model coordinate.
+where $\tilde\theta_b$ is the canonical portable e3nn model coordinate.
 
-For e3nn, (P_R) is identity. For CuEq, (P_C) is the existing dependency-native transfer into an already reconstructed canonical portable shell.
+For e3nn, $P_R$ is identity. For CuEq, $P_C$ is the existing dependency-native transfer into an already reconstructed canonical portable shell.
 
-For use as a **measurement transform**, qualification requires:
+For use as a **measurement transform**, every mapped CuEq state used by the qualification functional must satisfy:
 
 1. exact canonical portable-shell architecture identity before/after transfer;
 2. complete transfer of every mutable model state that can affect the portable function;
 3. deterministic mapping for fixed transient state/configuration;
-4. no source/DATA6 descriptor/FPS acceptance criterion imported merely by using the transform.
+4. direct transient-CuEq versus mapped-portable-e3nn energy/atom, force and stress agreement on a frozen mapping-witness corpus under the dtype mixed envelope of D2.CUEQ.DEF.013;
+5. no source/DATA6 descriptor/FPS acceptance criterion imported merely by using the transform.
+
+In addition, at least one nontrivial state per claimed dtype/topology is checked by a separate dependency-native differential route against pinned MACE conversion semantics/state values. This is supporting anti-common-mode evidence; the direct transient-versus-mapped physical check above remains required for every measured state.
 
 The broader trained-state deployment/projection relation remains separately governed by D2.CUEQ.DEF.023.
 
-This separation prevents circularity: TRAIN2 does not pass or fail because a source-selection descriptor moved, while the state-transfer mapping itself must be independently trustworthy.
-
+This separation prevents circularity: TRAIN2 does not pass or fail because a source-selection descriptor moved, while a defective state-transfer mapping cannot make the training-transition oracle silently self-consistent.
 ### D2.CUEQ.DEF.008 — functional observation of the transition
 
 Let (E) be the fixed portable-e3nn evaluator on a frozen witness corpus/head.
@@ -185,30 +187,42 @@ A future TRAIN2 design that consumes descriptors reopens this definition.
 
 ## 5. Frozen finite-sample qualification design
 
-### D2.CUEQ.DEF.010 — experimental unit and order cells
+### D2.CUEQ.DEF.010 — experimental unit, exposure trace and order cells
 
 The independent experimental unit is the **fresh process**.
+
+Before any CuEq numerical outcome is inspected, build the qualification exposure trace through the real accepted TRAIN2 loader owner from exact authenticated corpus/configuration identity.
+
+For replay-enabled current P5 the trace preserves the accepted numerical exposure semantics:
+
+$$
+D_{\mathrm{train}}=D_r\Vert D_t,
+$$
+
+with `pt_head`/replay first and target second before shuffle, the accepted seed and shuffle/sampler semantics, exact batch size, no implicit target duplication, and `drop_last=true`. Target-only training uses its accepted target-only loader semantics.
+
+Qualification windows are **not hand-built batches**. From the reference-only trace, select the smallest deterministic set of consecutive two-update windows that covers every active head/property-mask branch capable of reaching the optimizer. The selection rule may inspect only frame/head/property metadata and the accepted exposure order. It may not inspect e3nn/CuEq numerical results. At least one native consecutive window is mandatory even if supplemental windows are needed for branch coverage.
 
 Qualification is balanced over four cells defined by:
 
 1. which training realization is constructed first; and
-2. which complete two-update backend witness is executed first.
+2. which complete backend witness is executed first.
 
 For each cell:
 
 - 5 fresh processes;
 - 1 discarded warm-up per backend;
-- 3 retained observations per backend;
+- 3 retained observations per backend/window/state;
 - exact model/optimizer/EMA/RNG reset for every retained transition observation;
+- the same harvested two-update window supplied to e3nn and CuEq;
 - no early stopping;
 - no outcome-selected reruns.
 
 Projection/evaluation occurs as part of each backend witness under the common frozen measurement transform; the baseline portable evaluation for a retained observation is common to both backends.
 
-Thus 20 fresh processes are independent units and repeated observations are nested measurements.
+Thus 20 fresh processes are independent units and repeated observations are nested measurements. Additional branch/state windows multiply nested observations, not the process count.
 
 The relation is a deterministic finite-sample qualification functional. It does not interpret all-pairs or retained-observation cardinality as an inferential independent-sample count.
-
 ### D2.CUEQ.DEF.011 — canonical reduction arithmetic
 
 All qualification reductions are performed in canonical IEEE-754 binary64 control arithmetic.
@@ -304,7 +318,7 @@ le
 qquadorall j.
 ]
 
-This is the existing dtype mixed numerical envelope, applied to backend centroids rather than noisy single realizations.
+The numerical constants are inherited from the existing dtype calculator precision scale. Their application to TRAIN2 transition centroids is a **new proposed D2 use** and must be independently falsified; it is not represented as having been previously accepted for training-state transitions.
 
 ### D2.CUEQ.DEF.014 — global and cell centroid guards
 
@@ -391,16 +405,17 @@ Non-finite values remain hard failure independently.
 
 ## 9. Objective, branch and state coverage
 
-### D2.CUEQ.DEF.018 — real TRAIN2 objective coverage
+### D2.CUEQ.DEF.018 — real TRAIN2 objective and exposure coverage
 
-The two-step transition witness uses the real accepted TRAIN2 objective and exact inputs: checkpoint/head set, labels, E0, objective weights, masks, replay/target branch, optimizer, EMA, scheduler, dtype and batch/exposure semantics.
+Every two-step transition witness uses the real accepted TRAIN2 objective and exact inputs: checkpoint/head set, labels, E0, objective weights, masks, optimizer, EMA, scheduler, dtype and the loader-derived window of D2.CUEQ.DEF.010.
 
-Every active objective/head/property branch capable of reaching the optimizer requires a predeclared two-step witness sequence.
+For replay-enabled multi-head P5, replay/target membership, `pt_head`-first then target-second pre-shuffle indexing, accepted seeded shuffle, `drop_last`, and realized two-batch example/head order are part of witness identity. A target-first reorder, balancing sampler, duplicated target sample, hand-assembled branch batch, or other exposure substitution is non-equivalent evidence.
 
-The frozen portable witness corpus must include the geometries used by the two training updates and additional predeclared structures sufficient to expose the claimed head/property behavior. Witness membership/order cannot be selected from CuEq outcomes.
+Every active objective/head/property-mask branch capable of reaching the optimizer must appear in at least one predeclared loader-derived window. The coverage scan is performed on reference-independent metadata before CuEq outcomes are available.
 
-A source-selected descriptor proxy or inference calculator cannot substitute.
+The frozen portable witness corpus must include all geometries used by the selected two-update windows plus additional predeclared structures sufficient to expose the claimed head/property behavior. Witness membership/order cannot be selected from CuEq outcomes.
 
+A source-selected descriptor proxy, calculator-only check or synthetic batch that bypasses the real loader cannot substitute.
 ### D2.CUEQ.DEF.019 — starting state
 
 (S_0) is the exact authenticated pre-TRAIN2 model state for the claimed architecture/head topology.
@@ -547,11 +562,11 @@ D3/D4 shall prefer reduction over additive machinery:
 
 ## 16. Acceptance state
 
-Candidate 3 is **not accepted**.
+Candidate 4 is **not accepted**.
 
 Required next steps:
 
-1. fresh independent numerical Review of this exact candidate;
+1. fresh independent numerical Review of this exact Candidate 4;
 2. semantic repair under a new candidate identity if Review finds a blocker;
 3. fresh Stage-C target-host evidence under the immutable reviewed candidate;
 4. explicit stakeholder ratification of the exact reviewed/passing target;

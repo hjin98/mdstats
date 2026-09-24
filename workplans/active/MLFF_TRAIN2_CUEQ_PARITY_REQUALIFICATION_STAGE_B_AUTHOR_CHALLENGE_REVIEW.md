@@ -5,7 +5,7 @@ workplan: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md
 stage: B
 date: 2026-09-24
 reviewed_candidate: MLFF-TRAIN2-CUEQ-EQUIVALENCE-D2-CANDIDATE-1
-disposition: CANDIDATES_1_AND_2_BLOCKED; REPAIRED_AS_CANDIDATE_3
+disposition: CANDIDATES_1_2_3_BLOCKED; REPAIRED_AS_CANDIDATE_4
 independent_review: false
 ---
 
@@ -110,3 +110,29 @@ eq S_0) but did not require that (S_1) exercise a materially different function.
 **Repair:** Candidate 3 requires at least one governed portable-e3nn witness output at (S_1) to differ from (S_0) beyond the fixed dtype mixed envelope.
 
 Candidate 3 remains proposed and requires fresh independent Review.
+
+## Final author-readiness Challenge — Candidate 3
+
+### Blocking finding B8 — real TRAIN2 exposure semantics were not concretely bound
+
+Candidate 3 said that witnesses must use the real TRAIN2 objective/exposure, but it did not define how the two optimizer-update batches are obtained.
+
+The accepted D2 method makes pre-shuffle corpus/head order, seeded shuffle, `drop_last`, and realized sample order numerically material. In replay-enabled P5 the accepted layout is replay/`pt_head` first, then target. A hand-assembled target or replay batch can exercise the same loss code while bypassing the actual stochastic training operator.
+
+**Repair:** Candidate 4 requires qualification windows to be harvested from the real accepted loader trace, preserving replay-first/target-second layout, seed/shuffle/sampler, batch size, no target duplication and `drop_last`. The smallest deterministic set of consecutive two-update windows covering all active branches is chosen from metadata only before CuEq outcomes.
+
+### Blocking finding B9 — measurement-transform qualification was still too weak/common-mode
+
+Candidate 3 required an independently qualified transient->portable mapping but did not define a discriminating per-state oracle. A defective mapping used by transition evaluation could hide the state difference being measured.
+
+**Repair:** Candidate 4 requires every measured CuEq state to pass direct transient-CuEq versus mapped-portable-e3nn energy/force/stress parity on a frozen mapping witness under the dtype envelope, plus exact canonical-shell architecture. A separate bounded dependency-native conversion/state-value differential remains supporting anti-common-mode evidence. Descriptor/FPS acceptance is not imported into TRAIN2.
+
+### Blocking finding B10 — tolerance provenance wording overstated acceptance
+
+Candidate 3 called the centroid envelope the existing dtype mixed numerical envelope without making sufficiently explicit that applying those constants to **training-transition centroids** is a new D2 use.
+
+**Repair:** Candidate 4 states that the constants are inherited from the existing calculator precision scale, while their application to TRAIN2 transition centroids is proposed and must be independently falsified.
+
+### Readiness disposition
+
+No further author-known Stage-B scope/oracle defect remains after B1-B10. This is **not** an independent PASS. Candidate 4 must now be frozen by immutable commit identity and reviewed in a genuinely fresh independent context before any Stage-C evidence or D4 implementation.
