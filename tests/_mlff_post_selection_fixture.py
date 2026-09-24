@@ -107,6 +107,24 @@ class _SelectedSizeScreenHarness(p4d._BoundedNumericalHarness):
         return 1.0e-3 * (1.0 + 3.0 * distance)
 
 
+def with_bounded_fixture_execution_profile(config_text: str) -> str:
+    """Give toy TRAIN2 acceptance fixtures a CI-sized execution reservation.
+
+    Tests that explicitly own scheduler/admission policy already provide an
+    [execution] table; those configurations are returned unchanged.
+    """
+
+    if "[execution]" in config_text:
+        return config_text
+    return config_text + """
+[execution]
+parallel_training_jobs = 1
+minimum_parallel_training_jobs = 1
+maximum_parallel_training_jobs = 1
+estimated_training_ram_mib_per_job = 2048.0
+"""
+
+
 def build_selected_campaign(
     tmp_path: Path, *, config_text: str | None = None, data4_bundle=None
 ) -> tuple[Path, Path]:
@@ -118,21 +136,9 @@ def build_selected_campaign(
     is varied.
     """
 
-    template = fixture_config_text() if config_text is None else config_text
-    # These acceptance fixtures substitute TRAIN2's numerical workload with a
-    # toy trainer below the production owner boundary.  Do not make that toy
-    # process inherit the shipped 16 GiB/job production reservation: small CI
-    # hosts would then reject the fixture before the owner under test executes.
-    # Scheduler/admission tests provide their own explicit [execution] table and
-    # therefore bypass this fixture-only serial resource profile unchanged.
-    if "[execution]" not in template:
-        template += """
-[execution]
-parallel_training_jobs = 1
-minimum_parallel_training_jobs = 1
-maximum_parallel_training_jobs = 1
-estimated_training_ram_mib_per_job = 2048.0
-"""
+    template = with_bounded_fixture_execution_profile(
+        fixture_config_text() if config_text is None else config_text
+    )
     with ExitStack() as stack:
         stack.enter_context(patch.object(p4d, "_CONFIG", template))
         if data4_bundle is not None:

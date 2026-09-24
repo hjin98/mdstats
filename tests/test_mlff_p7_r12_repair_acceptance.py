@@ -532,9 +532,14 @@ def test_r12b7_disk_exhaustion_aborts_without_touching_science(tmp_path: Path):
     # An unsatisfiable reserve stands in for an exhausted filesystem. It is read
     # from the campaign's existing [execution] policy, not from a P7 knob.
     text = config.read_text(encoding="utf-8")
-    config.write_text(
-        text + "\n[execution]\nminimum_free_disk_gib = 100000000.0\n", encoding="utf-8"
+    assert "[execution]\n" in text
+    assert "minimum_free_disk_gib =" not in text
+    pressured = text.replace(
+        "[execution]\n",
+        "[execution]\nminimum_free_disk_gib = 100000000.0\n",
+        1,
     )
+    config.write_text(pressured, encoding="utf-8")
     cfg, paths = cli._load_config(config)
     from mdstats.training_data._campaign_cli_core import CampaignStore
 
