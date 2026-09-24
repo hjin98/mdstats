@@ -189,6 +189,13 @@ class PostSelectionContext:
     # can reconstruct the same resource scope that created the P7 attempt.  It
     # is not a P5 scientific or selection identity.
     qualification_case_workers: int = 1
+    # Qualification-only execution seams are carried with the invocation
+    # context so a fresh currentness resolver reuses the same owner seams
+    # instead of silently constructing a different deployment identity.
+    qualification_deployment_exporter: Callable[..., Any] | None = None
+    qualification_mliap_builder: Callable[..., Any] | None = None
+    qualification_deployed_evaluator: Callable[..., Any] | None = None
+    qualification_dynamics_runner: Callable[..., Any] | None = None
     # Every frozen selected size of this campaign generation.  The common target
     # monitor is separated from all of them, so it never depends on one size.
     governed_selected: tuple[CurrentSelectedTrainingContext, ...] = ()
@@ -6250,6 +6257,38 @@ def _cv_admission_blockers(
     return tuple(blockers)
 
 
+def _print_published_model_products(context: Any, decision: Any) -> None:
+    """Print the authoritative usable product of one committed size.
+
+    Discovering the product must not require inspecting internal hash
+    directories or running a second command, and it must never point at the
+    trainer's run-root terminal ``.model``, which belongs to the last TRAIN2
+    epoch rather than the P5-selected representative.  One deterministic line
+    per member, in decision member order.
+    """
+
+    from .post_selection_model_products import (
+        campaign_models_root,
+        resolve_current_final_production_model_publication,
+    )
+
+    record = resolve_current_final_production_model_publication(context, decision)
+    if record is None:  # pragma: no cover - commit precedes this call
+        raise PostSelectionError(
+            f"N={context.selected.n_selected}: no current model publication resolved "
+            "after the authoritative product commit."
+        )
+    models_root = campaign_models_root(context)
+    for member in record.members:
+        print(
+            f"[PRODUCT] N={context.selected.n_selected} member={member.member_id} "
+            f"seed={member.optimizer_seed} head={record.target_head_name} "
+            f"model={models_root / member.model_relative_path} "
+            f"sha256={member.model_sha256}",
+            flush=True,
+        )
+
+
 def execute_current_train_production(args: Any) -> int:
     """`train-production`: fresh full-``T_selected`` production for every size.
 
@@ -6323,8 +6362,39 @@ def execute_current_train_production(args: Any) -> int:
     signature = post_selection_collection_signature(
         tuple(context.selected.binding for context in contexts)
     )
-    bundles: list[_FinalProductionBundle] = []
+    # Recovery classification, before any new TRAIN/EVAL admission.  A size
+    # that already owns an exactly replayable decision owes representation at
+    # most, and representation is never a reason to retrain: only genuine
+    # PRODUCTION_REQUIRED positions enter the accepted global TRAIN wave, and
+    # the reclosure/finalization work stays in the serial post-TRAIN path.
+    from .post_selection_product_recovery import (
+        PRODUCT_COMPLETE,
+        PRODUCT_RECLOSURE,
+        classify_product_recovery,
+        reclose_product_representation,
+    )
+
+    classifications: dict[int, Any] = {}
     for context in contexts:
+        n_selected = context.selected.n_selected
+        try:
+            classification = classify_product_recovery(context)
+        except Exception as exc:
+            fail(f"N={n_selected}: {exc}")
+            raise
+        classifications[int(n_selected)] = classification
+        print(
+            f"[PRODUCT] N={n_selected}: {classification.state}; "
+            f"{classification.detail}",
+            flush=True,
+        )
+    training_contexts = [
+        context
+        for context in contexts
+        if classifications[int(context.selected.n_selected)].admits_training
+    ]
+    bundles: list[_FinalProductionBundle] = []
+    for context in training_contexts:
         first_key = sum(len(bundle.tasks) for bundle in bundles)
         try:
             bundles.append(_plan_final_production(context, first_key=first_key))
@@ -6342,43 +6412,71 @@ def execute_current_train_production(args: Any) -> int:
         except Exception as exc:
             fail(f"N={bundle.context.selected.n_selected}: {exc}")
             raise
-    try:
-        _train_final_production_collection(bundles, signature=signature)
-        # Admission of the finalization phase is linearized exactly like a
-        # TRAIN admission; later rollover is refused by the commit-time
-        # per-binding fences of every assessment and publication.
-        with post_selection_collection_admission(store, signature=signature):
-            pass
-    except Exception as exc:
-        fail(f"production TRAIN2 collection wave: {exc}")
-        raise
-    devices = dict.fromkeys(
-        str(bundle.context.method_policies.device) for bundle in bundles
-    )
-    for device in devices:
-        _report_post_selection_gpu_occupancy(
-            "post-TRAIN EVAL2 entry", device, query_gpu_telemetry(device)
-        )
-    published: list[str] = []
-    for bundle in bundles:
-        n_selected = bundle.context.selected.n_selected
-        final_plan = bundle.final_plan
+    if bundles:
         try:
-            evidence, decision = _finalize_final_production(bundle)
+            _train_final_production_collection(bundles, signature=signature)
+            # Admission of the finalization phase is linearized exactly like a
+            # TRAIN admission; later rollover is refused by the commit-time
+            # per-binding fences of every assessment and publication.
+            with post_selection_collection_admission(store, signature=signature):
+                pass
+        except Exception as exc:
+            fail(f"production TRAIN2 collection wave: {exc}")
+            raise
+        devices = dict.fromkeys(
+            str(bundle.context.method_policies.device) for bundle in bundles
+        )
+        for device in devices:
+            _report_post_selection_gpu_occupancy(
+                "post-TRAIN EVAL2 entry", device, query_gpu_telemetry(device)
+            )
+    bundle_by_size = {
+        int(bundle.context.selected.n_selected): bundle for bundle in bundles
+    }
+    published: list[str] = []
+    # Serial finalization in frozen selected-size order: fresh production,
+    # representation reclosure and create-or-verify all run here, one size at a
+    # time, after the shared TRAIN wave is terminal.
+    for context in contexts:
+        n_selected = context.selected.n_selected
+        classification = classifications[int(n_selected)]
+        bundle = bundle_by_size.get(int(n_selected))
+        try:
+            if bundle is not None:
+                evidence, decision = _finalize_final_production(bundle)
+                _ok(
+                    f"N={n_selected}: trained {len(evidence)} fresh production run(s) "
+                    f"on the full T_selected for {bundle.final_plan.planned_epochs} "
+                    "frozen production epoch(s), under the cross-validation-accepted "
+                    "method"
+                )
+            elif classification.state in (PRODUCT_COMPLETE, PRODUCT_RECLOSURE):
+                decision, _record, _reclosure = reclose_product_representation(
+                    context, classification
+                )
+                _ok(
+                    f"N={n_selected}: verified the existing published model "
+                    "product; no training or evaluation was required"
+                    if classification.state == PRODUCT_COMPLETE
+                    else f"N={n_selected}: the existing scientifically valid final "
+                    "production was reclosed into a current usable model product "
+                    "with no TRAIN2 and no EVAL2"
+                )
+            else:  # pragma: no cover - every state is handled above
+                raise PostSelectionError(
+                    f"N={n_selected}: unhandled product recovery state "
+                    f"{classification.state!r}."
+                )
         except Exception as exc:
             fail(f"N={n_selected}: {exc}")
             raise
-        _ok(
-            f"N={n_selected}: trained {len(evidence)} fresh production run(s) on "
-            f"the full T_selected for {final_plan.planned_epochs} frozen "
-            "production epoch(s), under the cross-validation-accepted method"
-        )
         _ok(
             f"N={n_selected}: published the final product under "
             f"`{decision.committee_policy}`: member(s) "
             f"{list(decision.published_member_ids)} on target head "
             f"`{decision.target_head_name}`"
         )
+        _print_published_model_products(context, decision)
         published.append(f"N={n_selected} {decision.content_digest[:12]}")
     _mark_stage(
         store,

@@ -538,6 +538,52 @@ no role in final checkpoint control or publication. The
 decision is taken here, before any qualification evidence exists, and nothing
 downstream can change it.
 
+### Where your actual model file is
+
+The decision above says *which* seeds ship. It is not a file you can load, so
+`train-production` also materializes each published member's selected
+representative checkpoint as a complete MACE model and prints where it put it:
+
+```text
+[PRODUCT] N=512 member=seed-1 seed=1 head=target_head \
+  model=<workspace>/models/production/g1/N_512/decision-<digest>/seed-1-<sha>-artifact-<token>.model \
+  sha256=<sha>
+```
+
+That path is the product. Load it the ordinary way:
+
+```python
+import torch
+model = torch.load(path, map_location="cpu", weights_only=False)
+```
+
+Three files in a campaign look like "the model", and only one of them is:
+
+- **the representative TRAIN2 checkpoint**, under
+  `.mdstats/post-selection/.../runs/<id>/checkpoints/` - scientific and restart
+  lineage, and the independent reference qualification compares against;
+- **the published full `.model`**, under `<workspace>/models/production/...` -
+  the selected production product, and the only one this guide means when it
+  says "your model";
+- **the deployment/ML-IAP artifact**, built later by qualification inside its
+  attempt root - a converted representation for LAMMPS, not the product itself.
+
+There is a fourth file that is none of these. MACE writes its own `.model` into
+the run tree when training ends, and that one is the **last training epoch**,
+which is routinely not the epoch P5 selected. Nothing in mdstats ever publishes
+it as a product, and neither should you.
+
+A convenience `publication.json` sits at `models/production/g<gen>/N_<size>/`
+listing the current members, paths and hashes. It is a convenience only: if it
+is missing or out of date, `status` still reports the correct product from the
+campaign's own records, and a later `train-production` repairs the file without
+retraining anything.
+
+If you already ran `train-production` on an earlier version of mdstats and have
+no such file, just run `train-production` again. It recognizes that the science
+is already done, and recloses only the missing representation - no training, no
+re-evaluation, and the same published members as before.
+
 The training lifecycle ends at that publication. Everything after it validates
 the finished product without being able to change it.
 
@@ -561,9 +607,12 @@ single-size case.
 ## 7. Qualify the frozen product
 
 Qualification consumes the final-production publication that `train-production`
-already froze. It never creates, reorders, or shrinks that publication, and it
-owns no target-size, cross-validation, production, checkpoint, seed, or member
-decision. Every threshold under `[qualification]` is fixed in the configuration
+already froze, and deploys the published `.model` files it materialized. It
+never creates, reorders, or shrinks that publication, and it owns no
+target-size, cross-validation, production, checkpoint, seed, or member
+decision. Its deployment/ML-IAP artifacts are built *from* your published model
+and live inside the attempt; they are a converted representation, not a second
+product, and reclaiming them later never invalidates a completed release. Every threshold under `[qualification]` is fixed in the configuration
 before any product outcome is observed.
 
 ```bash

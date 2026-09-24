@@ -4,13 +4,37 @@ Retain completed or explicitly superseded workplans here only when their impleme
 
 An archived plan may retain the status metadata it had at the moment it was superseded. Its location under `workplans/archive/` is the lifecycle authority; such internal status fields are historical snapshot content, not an active-work declaration.
 
-The target-size screen/production Repair-1 chain was superseded by later exact-boundary work and is retained here as historical engineering lineage:
+## 2026-09-24 final-production model publication + lightweight MH-1 integration closeout
 
-- `MLFF_TARGET_SIZE_SCREEN_PRODUCTION_DECOUPLING_REPAIR1_WORKPLAN.md`
-- `MLFF_TARGET_SIZE_SCREEN_PRODUCTION_DECOUPLING_REPAIR1_REVIEW1_AMENDMENT.md`
-- `MLFF_TARGET_SIZE_SCREEN_PRODUCTION_DECOUPLING_REPAIR1_REVIEW2_AMENDMENT.md`
+Independent final Review closes the cycle **PASS** under Protocol 6.4.
 
-These archived Repair-1 records do not impose active implementation gates.
+- retained executable product: `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8`;
+- final immutable test/evidence candidate: `5a6719d9fbabf04ddad7407b2729be0d0d1f76bf`;
+- successful GitHub Actions execution: run `36007255491` from workflow descendant `e048aeebcde62301f4ccf6109fd89a238030cf83`;
+- durable report: `../qualification/mlff-publication-closeout/actions-validation-report.md` at commit `84a38b45a9ddd0df6bb19dfba6ba240db094aa2e`;
+- final PEM candidate-overlay reconciliation: `54e3a350855237002012b136442ec9621fe89a98`.
+
+Final executable evidence: corrected closeout surfaces **104 tests / 0 failures / 2 authorized LAMMPS-runtime skips**; mandatory focused publication/P7/MH-1 surfaces **91 tests / 0 failures / 2 authorized locked-real-MH1 skips**; compileall passed. No `mdstats/**/*.py` product source changed during the evidence-repair cycle.
+
+Archived records:
+
+- `MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`;
+- `MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_FINAL_CLOSEOUT_2026-09-24.md`;
+- historical Revision-27 and Revision-28 closeout/evidence records retained below for provenance.
+
+The temporary validation workflow was removed after successful evidence publication. Long real MH-1/GPU/CUDA-performance/LAMMPS/MLIAP/MD qualification remains deferred to the actual campaign/final-release target host.
+
+
+## 2026-09-23 provisional final-production model publication evidence record
+
+The Revision-27 execution record remains archived as historical evidence, but its **final PASS/closure assessment was superseded by Revision 28 independent Review**. The executable candidate remains product-code conforming; lifecycle closure was reopened because tests diagnosed as stale/superseded remained ordinary auto-collected failing specifications rather than being retired/remapped at their evidence owners.
+
+Historical evidence record retained:
+
+- `MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_2026-09-23.md`.
+
+The canonical workplan and successor evidence are now archived in the Revision-28 closeout section above.
+
 
 ## 2026-09-07 MLFF workplan closeout
 

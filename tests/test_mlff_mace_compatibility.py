@@ -326,11 +326,10 @@ def test_new_upstream_warning_group_emits_once_per_process_signature() -> None:
     assert "2 total MACE/PyTorch warning(s) into 1 unique group(s)" in str(observed[0].message)
 
 
-def test_campaign_evaluate_outer_scope_catches_setup_warnings(monkeypatch) -> None:
-    import argparse
+def test_campaign_status_outer_scope_catches_setup_warnings(monkeypatch, capsys) -> None:
     import mdstats.training_data.campaign_cli as campaign_cli
 
-    def noisy_load_config(_path):
+    def noisy_load_config(_path, **_kwargs):
         warnings.warn_explicit(
             SCRIPT_MESSAGE,
             DeprecationWarning,
@@ -345,16 +344,21 @@ def test_campaign_evaluate_outer_scope_catches_setup_warnings(monkeypatch) -> No
         )
         raise RuntimeError("stop after setup")
 
-    monkeypatch.setattr(campaign_cli, "_load_config", noisy_load_config)
+    # ``campaign_cli`` is the public facade; the current command owner is the
+    # private core module.  The removed pre-cutover ``command_evaluate`` API is
+    # not part of the current warning-domain claim.
+    monkeypatch.setattr(campaign_cli._core, "_load_config", noisy_load_config)
     with warnings.catch_warnings(record=True) as observed:
         warnings.simplefilter("always")
         with pytest.raises(RuntimeError, match="stop after setup"):
-            campaign_cli.command_evaluate(argparse.Namespace(config="campaign.toml"))
+            campaign_cli.main(["--config", "campaign.toml", "status"])
 
-    assert len(observed) == 1
-    assert observed[0].category is mdstats.MaceRuntimeCompatibilityWarning
-    summary = str(observed[0].message)
-    assert "campaign checkpoint evaluation" in summary
+    # The current CLI owner emits its single normalized campaign summary at
+    # command exit; it does not replay it through the caller's warnings list.
+    assert observed == []
+    summary = capsys.readouterr().out
+    assert summary.startswith("[WARN]")
+    assert "campaign status command" in summary
     assert "2 total MACE/PyTorch warning(s) into 2 unique group(s)" in summary
 
 
@@ -389,34 +393,32 @@ def test_mace_root_logging_warning_is_captured_and_suppressed(capsys) -> None:
 
 
 def test_campaign_main_owns_one_warning_domain_and_normalizes_output(monkeypatch, capsys) -> None:
-    import argparse
     import mdstats.training_data.campaign_cli as campaign_cli
 
-    class Parser:
-        def parse_args(self, _argv):
-            def noisy_command(_args):
-                warnings.warn_explicit(
-                    SCRIPT_MESSAGE,
-                    DeprecationWarning,
-                    "/runtime/site-packages/torch/jit/_script.py",
-                    1488,
-                )
-                # A nested local MACE scope must merge into the campaign domain
-                # rather than emitting its own compatibility warning.
-                with mdstats.mace_runtime_warning_scope("nested provider construction"):
-                    warnings.warn_explicit(
-                        LOAD_MESSAGE,
-                        DeprecationWarning,
-                        "/runtime/site-packages/torch/jit/_serialization.py",
-                        176,
-                    )
-                    _emit_mace_dtype_log_warning()
-                return 0
+    def noisy_command(_args):
+        warnings.warn_explicit(
+            SCRIPT_MESSAGE,
+            DeprecationWarning,
+            "/runtime/site-packages/torch/jit/_script.py",
+            1488,
+        )
+        # A nested local MACE scope must merge into the campaign domain rather
+        # than emitting its own compatibility warning.
+        with mdstats.mace_runtime_warning_scope("nested provider construction"):
+            warnings.warn_explicit(
+                LOAD_MESSAGE,
+                DeprecationWarning,
+                "/runtime/site-packages/torch/jit/_serialization.py",
+                176,
+            )
+            _emit_mace_dtype_log_warning()
+        return 0
 
-            return argparse.Namespace(command="prepare", func=noisy_command)
-
-    monkeypatch.setattr(campaign_cli, "build_parser", lambda: Parser())
-    assert campaign_cli.main([]) == 0
+    # The current parser and command owner live in the core module.  Patch the
+    # owner selected by the real ``prepare`` command instead of restoring the
+    # removed facade-level parser seam.
+    monkeypatch.setattr(campaign_cli._core, "command_prepare", noisy_command)
+    assert campaign_cli.main(["prepare"]) == 0
 
     captured = capsys.readouterr()
     combined = captured.out + captured.err
@@ -435,29 +437,26 @@ def test_campaign_main_owns_one_warning_domain_and_normalizes_output(monkeypatch
 
 
 def test_campaign_warning_domain_merges_worker_thread_local_scopes(monkeypatch, capsys) -> None:
-    import argparse
     from concurrent.futures import ThreadPoolExecutor
     import mdstats.training_data.campaign_cli as campaign_cli
 
-    class Parser:
-        def parse_args(self, _argv):
-            def noisy_command(_args):
-                def worker():
-                    with mdstats.mace_runtime_warning_scope("worker MACE provider construction"):
-                        warnings.warn_explicit(
-                            LOAD_MESSAGE,
-                            DeprecationWarning,
-                            "/runtime/site-packages/torch/jit/_serialization.py",
-                            176,
-                        )
-                        _emit_mace_dtype_log_warning()
-                with ThreadPoolExecutor(max_workers=1) as pool:
-                    pool.submit(worker).result()
-                return 0
-            return argparse.Namespace(command="prepare", func=noisy_command)
+    def noisy_command(_args):
+        def worker():
+            with mdstats.mace_runtime_warning_scope("worker MACE provider construction"):
+                warnings.warn_explicit(
+                    LOAD_MESSAGE,
+                    DeprecationWarning,
+                    "/runtime/site-packages/torch/jit/_serialization.py",
+                    176,
+                )
+                _emit_mace_dtype_log_warning()
 
-    monkeypatch.setattr(campaign_cli, "build_parser", lambda: Parser())
-    assert campaign_cli.main([]) == 0
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pool.submit(worker).result()
+        return 0
+
+    monkeypatch.setattr(campaign_cli._core, "command_prepare", noisy_command)
+    assert campaign_cli.main(["prepare"]) == 0
     captured = capsys.readouterr()
     combined = captured.out + captured.err
     assert "/runtime/site-packages/torch/jit/_serialization.py:176: DeprecationWarning" not in combined

@@ -107,6 +107,24 @@ class _SelectedSizeScreenHarness(p4d._BoundedNumericalHarness):
         return 1.0e-3 * (1.0 + 3.0 * distance)
 
 
+def with_bounded_fixture_execution_profile(config_text: str) -> str:
+    """Give toy TRAIN2 acceptance fixtures a CI-sized execution reservation.
+
+    Tests that explicitly own scheduler/admission policy already provide an
+    [execution] table; those configurations are returned unchanged.
+    """
+
+    if "[execution]" in config_text:
+        return config_text
+    return config_text + """
+[execution]
+parallel_training_jobs = 1
+minimum_parallel_training_jobs = 1
+maximum_parallel_training_jobs = 1
+estimated_training_ram_mib_per_job = 2048.0
+"""
+
+
 def build_selected_campaign(
     tmp_path: Path, *, config_text: str | None = None, data4_bundle=None
 ) -> tuple[Path, Path]:
@@ -118,7 +136,9 @@ def build_selected_campaign(
     is varied.
     """
 
-    template = fixture_config_text() if config_text is None else config_text
+    template = with_bounded_fixture_execution_profile(
+        fixture_config_text() if config_text is None else config_text
+    )
     with ExitStack() as stack:
         stack.enter_context(patch.object(p4d, "_CONFIG", template))
         if data4_bundle is not None:
@@ -192,6 +212,8 @@ def _seeded_raw_checkpoint(
     *,
     real_mace_checkpoint: bool = False,
     model=None,
+    optimizer=None,
+    native_train2_state: bool = False,
 ):
     """A toy checkpoint whose bytes actually depend on the optimizer seed.
 
@@ -211,6 +233,27 @@ def _seeded_raw_checkpoint(
     path = directory / f"model_run-7_epoch-{epoch}.pt"
     if real_mace_checkpoint:
         if model is not None:
+            if native_train2_state:
+                # The shape MACE 0.3.16 actually writes: the model entry is the
+                # state dict only, beside optimizer and scheduler state.  The
+                # provider's native branch reconstructs architecture from the
+                # candidate configuration and loads these tensors into it, which
+                # is the path a published production model must come from.
+                torch.save(
+                    {
+                        "model": {
+                            str(name): tensor.detach().cpu().clone()
+                            for name, tensor in model.state_dict().items()
+                        },
+                        "optimizer": (
+                            {} if optimizer is None else optimizer.state_dict()
+                        ),
+                        "lr_scheduler": {},
+                        "epoch": int(epoch),
+                    },
+                    path,
+                )
+                return path
             torch.save(model, path)
             return path
         from tests._mlff_tiny_mace import _tiny_mace
@@ -312,6 +355,7 @@ def train_like_mace(
     *,
     real_mace_checkpoint: bool = False,
     real_mace_model: bool = False,
+    native_train2_state: bool = False,
     stop_after_epoch: int | None = None,
     fail_after_persist: bool = False,
 ):
@@ -337,6 +381,16 @@ def train_like_mace(
         post_selection_mace_run_configuration,
     )
 
+    # Only the *final-production* trajectory needs to be a genuine MACE model
+    # written in the MACE-native TRAIN2 checkpoint shape: that is the run whose
+    # selected representative P5 must reconstruct natively and serialize as the
+    # published product.  CV folds prove fold/acceptance behaviour and stay on
+    # the cheap toy trainer, which keeps the fixture's cost proportional to the
+    # claim each suite actually makes.
+    run_role = str(getattr(request.run_plan, "run_role", "final_production"))
+    if run_role != "final_production":
+        real_mace_model = False
+        native_train2_state = False
     seed = int(request.run_plan.optimizer_seed)
     random.seed(seed)
     np.random.seed(seed)
@@ -467,13 +521,28 @@ def train_like_mace(
     for epoch in range(request.start_epoch, stop):
         for _ in train_loader:
             p3c._step(model, optimizer, ema)
-        _seeded_raw_checkpoint(
-            checkpoint_dir,
-            epoch,
-            seed,
-            real_mace_checkpoint=(real_mace_checkpoint or real_mace_model),
-            model=(model if real_mace_model else None),
-        )
+        if real_mace_model and native_train2_state:
+            # MACE saves its checkpoint with the EMA-averaged parameters
+            # applied, which is what the runtime's checkpoint/EMA agreement
+            # check authenticates.  The stand-in child writes the same shape.
+            with ema.average_parameters():
+                _seeded_raw_checkpoint(
+                    checkpoint_dir,
+                    epoch,
+                    seed,
+                    real_mace_checkpoint=True,
+                    model=model,
+                    optimizer=optimizer,
+                    native_train2_state=True,
+                )
+        else:
+            _seeded_raw_checkpoint(
+                checkpoint_dir,
+                epoch,
+                seed,
+                real_mace_checkpoint=(real_mace_checkpoint or real_mace_model),
+                model=(model if real_mace_model else None),
+            )
         with metrics.open("a", encoding="utf-8") as handle:
             handle.write(
                 json.dumps(
@@ -502,12 +571,17 @@ class PostSelectionHarness:
         force_offset: float = 1.0e-4,
         run_force_offsets: dict[str, float] | None = None,
         real_mace_checkpoint: bool = False,
-        real_mace_model: bool = False,
+        real_mace_model: bool = True,
+        native_train2_state: bool = True,
     ) -> None:
         #: Publish genuine MACE model bytes, for tests that must drive the real
         #: deployment/ML-IAP export owners from a published member.
         self.real_mace_checkpoint = bool(real_mace_checkpoint)
         self.real_mace_model = bool(real_mace_model)
+        #: Write MACE-native TRAIN2 checkpoints (state dict beside optimizer and
+        #: scheduler state) so the provider's native reconstruction branch - the
+        #: only admissible source of a published production model - is exercised.
+        self.native_train2_state = bool(native_train2_state)
         self.runs: list[str] = []
         self.requests: list[object] = []
         #: Monotonic timestamp of every EVAL2 provider call, so a test can show
@@ -549,6 +623,7 @@ class PostSelectionHarness:
             request,
             real_mace_checkpoint=self.real_mace_checkpoint,
             real_mace_model=self.real_mace_model,
+            native_train2_state=self.native_train2_state,
         )
 
     def _offset_for(self, provider) -> float:

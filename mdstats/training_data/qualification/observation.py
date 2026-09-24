@@ -197,6 +197,177 @@ def _component_states(
     return tuple(states)
 
 
+def terminal_currentness_failure(
+    paths: Any,
+    binding: Any,
+    pointers: Mapping[str, str | None],
+    record: Any,
+    store: Any,
+) -> str | None:
+    """Why this terminal record is not current, or ``None`` when it is.
+
+    One observational owner for the product/executable dependencies this cycle
+    touches, shared by ``qualification status`` and the compact campaign
+    lifecycle.  Two observers that interpreted a terminal record differently
+    would eventually disagree in public about whether a campaign is released,
+    and the cheaper one would be the wrong one.
+
+    Everything it reads is either the *captured* snapshot mapping or an
+    immutable object that mapping names.  It performs no session construction,
+    no reference request, no locked activation, no provider or model
+    reconstruction, and - decisively - it never reads or rebuilds attempt-local
+    deployment scratch: released-attempt scratch may legitimately have been
+    reclaimed, and its absence is not evidence corruption.
+    """
+
+    from ..post_selection_product_observation import (
+        PRODUCT_STATE_COMPLETE,
+        observe_current_product,
+    )
+    from .components import QualificationComponentEvidence
+    from .identity import resolve_executable_candidate_identity
+    from .record import DEPLOYMENT_REALIZATION_SET_NOT_APPLICABLE
+
+    if getattr(record, "is_historical_v1", False):
+        return (
+            "the terminal qualification record predates the P5 model-publication "
+            "and deployment-realization boundary; it remains readable historical "
+            "evidence and is never the current release verdict"
+        )
+    observation = observe_current_product(paths, binding, pointers)
+    if observation.state != PRODUCT_STATE_COMPLETE:
+        return f"the current P5 product is not exposable: {observation.message}"
+    # The terminal record carries the P7 authenticated-publication view digest,
+    # which an observer cannot reconstruct without building that view.  What it
+    # can compare is the member identity, which both owners define identically
+    # and which is the thing that must not have changed.
+    if str(record.publication_member_digest) != str(observation.decision.member_digest):
+        return "the terminal record binds a superseded final-production member set"
+    if str(record.predecessor_reclosure_digest or "") != str(
+        observation.reclosure.content_digest
+    ):
+        return "the terminal record binds a superseded P5/P6 predecessor reclosure"
+    if str(record.model_artifact_set_digest or "") != str(
+        observation.model_artifact_set_digest
+    ):
+        return (
+            "the terminal record was reduced over a different serialized P5 model "
+            "representation than the one current now"
+        )
+    try:
+        current_executable = resolve_executable_candidate_identity().content_digest
+    except Exception:  # noqa: BLE001 - unreadable source is a blocked observation
+        return "the current qualification executable identity is unreadable"
+    if str(record.executable_digest) != str(current_executable):
+        return (
+            "the terminal record was produced by a different qualification "
+            "executable candidate than the one importable now"
+        )
+    # The stored realization-set identity must agree with the immutable
+    # deployment-dependent component evidence it references.  Reading the
+    # attempt's mutable receipt instead would make public currentness depend on
+    # scratch that accepted retention policy may already have reclaimed.
+    declared = str(record.deployment_realization_set_digest or "")
+    observed: set[str] = set()
+    for outcome in record.components:
+        # A waiting outcome records the absence of external evidence, not a
+        # content-addressed component object.  Its digest is an actionable
+        # request/input marker owned by the terminal record, so attempting to
+        # authenticate it here would incorrectly turn a current
+        # ``waiting_for_reference`` observation into historical evidence.  The
+        # same rule is used by the strict qualification resolver.
+        if (
+            str(
+                getattr(
+                    getattr(outcome, "status", None),
+                    "value",
+                    getattr(outcome, "status", ""),
+                )
+            )
+            == "waiting_for_reference"
+        ):
+            continue
+        evidence = _authenticated(
+            store, outcome.evidence_digest, QualificationComponentEvidence.from_dict
+        )
+        if evidence is None:
+            return (
+                "a component evidence object the terminal record references is "
+                "missing, unreadable, or does not reproduce its own identity"
+            )
+        payload = evidence.payload if isinstance(evidence.payload, Mapping) else {}
+        value = payload.get("deployment_realization_set_digest")
+        if value is not None:
+            observed.add(str(value))
+    if len(observed) > 1:
+        return (
+            "the terminal record references deployment-dependent evidence bound to "
+            f"different deployed realization sets {sorted(observed)}; that is an "
+            "incomplete or internally inconsistent reduction, not a release"
+        )
+    expected = observed.pop() if observed else DEPLOYMENT_REALIZATION_SET_NOT_APPLICABLE
+    if declared != expected:
+        return (
+            "the terminal record's deployed-realization identity disagrees with the "
+            "component evidence it references"
+        )
+    return None
+
+
+def release_currentness_failure(record: Any, index: Any) -> str | None:
+    """Why this release index cannot expose ``record`` as released, if it cannot.
+
+    A crash that published the terminal record but not its release index is
+    recoverable incomplete exposure, not a complete release claim, so pointer
+    presence alone never yields ``release_qualified``.
+    """
+
+    if index is None:
+        return (
+            "no release-evidence index authenticates the terminal record; the "
+            "release exposure is incomplete and is repaired by rerunning "
+            "qualification"
+        )
+    if getattr(index, "is_historical_v1", False):
+        return (
+            "the release-evidence index predates the P5 model-publication and "
+            "deployment-realization boundary and is historical evidence only"
+        )
+    mismatches = {
+        "qualification_record_digest": (
+            str(index.qualification_record_digest),
+            str(record.content_digest),
+        ),
+        "publication_member_digest": (
+            str(index.publication_member_digest),
+            str(record.publication_member_digest),
+        ),
+        "model_artifact_set_digest": (
+            str(index.model_artifact_set_digest or ""),
+            str(record.model_artifact_set_digest or ""),
+        ),
+        "deployment_realization_set_digest": (
+            str(index.deployment_realization_set_digest or ""),
+            str(record.deployment_realization_set_digest or ""),
+        ),
+        "locked_activation_digest": (
+            str(index.locked_activation_digest or ""),
+            str(record.locked_activation_digest or ""),
+        ),
+        "resource_scope_digest": (
+            str(index.resource_scope_digest or ""),
+            str(record.resource_scope_digest or ""),
+        ),
+        "verdict": (str(index.verdict.value), str(record.verdict.value)),
+    }
+    stale = sorted(name for name, (left, right) in mismatches.items() if left != right)
+    if stale:
+        return (
+            f"the release-evidence index does not authenticate the terminal record ({stale})"
+        )
+    return None
+
+
 def observe_current_qualification(
     paths: Any,
     binding: Any,
@@ -336,8 +507,29 @@ def observe_current_qualification(
                 f"{str(specification_digest)[:12]}... is configured now"
             )
         else:
-            verdict = str(record.verdict.value) or None
-            verdict_reason = str(record.reason_code) or None
+            stale = terminal_currentness_failure(
+                paths, binding, pointers, record, store
+            )
+            if stale is not None:
+                superseded = stale
+            else:
+                release_index = (
+                    None
+                    if release_evidence_digest is None
+                    else _authenticated(
+                        store, release_evidence_digest, ReleaseEvidenceIndex.from_dict
+                    )
+                )
+                release_failure = release_currentness_failure(record, release_index)
+                if release_failure is not None and str(
+                    record.verdict.value
+                ) == "release_qualified":
+                    # A release claim needs its matching authenticated index;
+                    # a terminal-record pointer alone never states one.
+                    superseded = release_failure
+                else:
+                    verdict = str(record.verdict.value) or None
+                    verdict_reason = str(record.reason_code) or None
 
     from ..campaign_lifecycle import (
         REPLAY_CURRENT_LINEAGE_OBSERVATION,
@@ -374,4 +566,9 @@ def observe_current_qualification(
     )
 
 
-__all__ = ["QualificationObservation", "observe_current_qualification"]
+__all__ = [
+    "QualificationObservation",
+    "observe_current_qualification",
+    "release_currentness_failure",
+    "terminal_currentness_failure",
+]

@@ -325,8 +325,110 @@ def resolve_authenticated_final_publication(
     return publication
 
 
+@dataclass(frozen=True, slots=True)
+class CurrentProductAdmission:
+    """One coherent P5 product moment, captured before any component runs.
+
+    Session construction must not resolve the moving parents of the final
+    product in separate live reads.  A decision from one instant paired with a
+    model publication from another is a campaign state that never existed, and
+    an attempt built on it would execute against a product nobody published.
+    Everything here comes from one ``campaign_owner_snapshot()`` read
+    transaction, and only the immutable objects that snapshot names are
+    authenticated afterwards.
+    """
+
+    publication: "AuthenticatedFinalPublication"
+    model_publication: Any
+    predecessor_reclosure: Any
+    pointers: Mapping[str, str | None]
+    required_position_locators: Mapping[str, str]
+
+
+def admit_current_product(
+    context: Any, campaign_store: Any
+) -> CurrentProductAdmission | None:
+    """Capture and authenticate the complete current P5 parent graph, once.
+
+    ``None`` means the predecessor has published no usable product yet - not
+    that qualification failed.  A captured parent set that does not mutually
+    agree raises instead, so admission is retried rather than executed on a
+    hybrid.
+    """
+
+    from ..campaign_lifecycle import campaign_owner_snapshot
+    from ..post_selection_product_observation import (
+        PRODUCT_STATE_ABSENT,
+        PRODUCT_STATE_COMPLETE,
+        observe_current_product,
+        required_final_seed_locators,
+    )
+    from ..post_selection_store import open_post_selection_store
+
+    _revision, _bindings, pointers = campaign_owner_snapshot(campaign_store)
+    binding = context.selected.binding
+    observation = observe_current_product(context.paths, binding, pointers)
+    if observation.state == PRODUCT_STATE_ABSENT:
+        return None
+    if observation.state != PRODUCT_STATE_COMPLETE:
+        raise QualificationLineageError(
+            "The current P5 product is not exposable to qualification: "
+            f"{observation.message}"
+        )
+    decision = observation.decision
+    context.selected.require_binding(decision.binding)
+    members = tuple(
+        PublishedProductionMember(
+            optimizer_seed=item.optimizer_seed,
+            run_identity=item.run_identity,
+            run_plan_digest=item.run_plan_digest,
+            run_evidence_digest=item.run_evidence_digest,
+            representative_candidate_identity=item.representative_candidate_identity,
+            representative_checkpoint_sha256=item.representative_checkpoint_sha256,
+            checkpoint_relative_path=item.checkpoint_relative_path,
+            target_head_name=decision.target_head_name,
+        )
+        for item in decision.published_seed_evidence
+    )
+    publication = AuthenticatedFinalPublication(
+        decision_digest=decision.content_digest,
+        binding=decision.binding,
+        final_plan_digest=decision.final_plan_digest,
+        completion_digest=decision.completion_digest,
+        method_identity_digest=decision.method_identity_digest,
+        final_production_policy_digest=decision.final_production_policy_digest,
+        cv_plan_digest=decision.cv_plan_digest,
+        cv_authorization_digest=decision.cv_authorization_digest,
+        committee_policy=decision.committee_policy,
+        decision_policy_identity=decision.decision_policy_identity,
+        common_monitor_record_digest=decision.common_monitor_record_digest,
+        target_head_name=decision.target_head_name,
+        members=members,
+    )
+    if publication.member_digest != decision.member_digest:
+        raise QualificationLineageError(
+            "The qualification publication view does not reproduce the predecessor "
+            "decision's exact ordered member identity."
+        )
+    for member in publication.members:
+        authenticate_member_bytes(context, member)
+    store = open_post_selection_store(context.paths, binding, create=False)
+    locators, failure = required_final_seed_locators(binding, decision, store)
+    if failure is not None:  # pragma: no cover - observation already proved these
+        raise QualificationLineageError(failure)
+    return CurrentProductAdmission(
+        publication=publication,
+        model_publication=observation.model_publication,
+        predecessor_reclosure=observation.reclosure,
+        pointers=dict(pointers),
+        required_position_locators=dict(locators),
+    )
+
+
 __all__ = [
     "AUTHENTICATED_PUBLICATION_SCHEMA",
+    "CurrentProductAdmission",
+    "admit_current_product",
     "PUBLISHED_MEMBER_SCHEMA",
     "AuthenticatedFinalPublication",
     "PublishedProductionMember",

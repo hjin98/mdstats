@@ -114,11 +114,66 @@ for a multihead-capable product, and a model whose heads do not contain it fails
 closed. An artifact built from the replay or foundation head is therefore a
 different product, not the same product serialized differently.
 
-Deployed artifacts are published create-once under an advisory per-artifact lock
-and re-authenticated from a durable receipt plus their bytes before every reuse,
+The **deployment source is the P5 published full `.model`**, not the
+representative checkpoint file. The checkpoint remains P7's independent
+scientific reference through `member_provider(...)`, which is exactly what keeps
+deployment parity a discriminating oracle rather than a comparison of one
+artifact with itself:
+
+```text
+selected checkpoint -> authenticated member_provider -> reference predictions
+same checkpoint -> P5 full .model -> deployment exporter -> ML-IAP artifact
+                                   reference <-> deployed
+```
+
+Because a full PyTorch model file is executable serialized content, P7 consumes
+it through the same descriptor-authenticated owner P5 and `status` use: the
+bytes are opened no-follow relative to an authenticated campaign anchor, proved
+regular by `fstat`, hashed from that same descriptor, and - because the exporter
+needs a pathname - copied into attempt-private scratch, fsynced and re-hashed
+before anything deserializes them. An `lstat`-then-reopen pathname sequence is
+not an admissible authentication anywhere on this path. After export,
+`MaceDeploymentArtifact.source_artifact_sha256` and `source_state_sha256` must
+equal the P5 member's model and model-state digests.
+
+`deployment_identity(member)` is therefore a **versioned successor**: it binds
+the scientific member/checkpoint identity plus the exact P5 source model SHA,
+source full-state SHA, source execution-architecture digest, target head,
+deployment dtype, resource scope, exporter identity and ML-IAP builder identity.
+Its root uses the **full** identity; the former 16-character prefix is not an
+identity. Historical v1 roots and receipts remain immutable historical attempt
+evidence and are not rewritten.
+
+Deployed artifacts are published create-once at a fresh immutable locator under
+that root, and re-authenticated from a durable receipt plus their bytes - both
+opened no-follow and hashed from the opened descriptor - before every reuse,
 including after a process restart with an empty in-memory cache. A full PyTorch
 model pickle is not byte-deterministic, so two independent builds of the same
-logical artifact are serialized rather than compared byte-for-byte.
+logical artifact are serialized under an advisory per-artifact lock rather than
+compared byte-for-byte. A corrupt or missing current artifact is never
+overwritten: the rebuild claims a new locator and the mutable receipt advances,
+relative to the authenticated directory descriptor, only after the new bytes are
+authenticated and durable.
+
+### Deployment realizations
+
+Because those bytes can legitimately differ across a rebuild,
+`deployment_realization_digest` identifies one actual build from
+`deployment_identity` plus the deployed artifact's SHA-256 - and from nothing
+else, since the identity already binds the source, head, dtype, scope, exporter
+and builder authoritatively. One consequential P7 invocation resolves and
+**freezes one ordered realization set** before admitting any deployment-dependent
+component. `deployment_parity` and `dynamics` execute and reuse against that
+same frozen set; a receipt advance mid-invocation cannot switch a later
+component to different executable bytes. A byte-identical rebuild preserves the
+realization digest and may reuse otherwise-current evidence; a different-byte
+rebuild changes it and forces those components - and only those - to rerun.
+
+Attempt-local receipts and ML-IAP files are reuse/execution scratch. They are
+consulted when a session is about to reuse, build or execute a deployed
+artifact, and they are never public release-currentness authority: released
+attempt scratch may be reclaimed by accepted retention policy, and observation
+must stay correct afterwards without recreating it.
 
 Executing *an* ML-IAP unified model and executing *this MACE product* are
 separate runtime capabilities. The runtime probe reports both, and when the real
@@ -139,6 +194,51 @@ Locked disclosure history is kept outside that fence in an append-only reveal
 index, so a currentness change can make a verdict historical without ever making
 a revealed cohort fresh again.
 
+Session admission captures **one coherent P5 parent graph** - selected binding,
+CV plan/acceptance, final plan, every required final-seed assessment-position
+locator, the final decision, the predecessor reclosure and the model publication
+- in one CampaignStore read transaction, and authenticates only the immutable
+objects that snapshot names. Each required final-seed locator key is *derived*
+from the decision-named immutable `PostSelectionRunEvidence` through the
+existing `assessment_position_digest(...)` and pointer-key owners; a historical
+or different position holding the same run-evidence digest does not satisfy
+currentness, and searching captured values for a matching digest is not an
+admissible implementation.
+
+Terminal `ProductionQualificationRecord` and `ReleaseEvidenceIndex` advance to
+v2 and carry `model_artifact_set_digest` and `deployment_realization_set_digest`.
+A v1 object remains readable historical evidence and can never be the current
+release verdict, because it cannot say which representation it ran against.
+Terminal and release publication re-establishes the exact current
+`QualificationInputBinding` and then, inside the same transaction as the pointer
+write, compares the exact captured P5 parent locator set - not the decision row
+alone, since a successor assessment at a required position does not move it.
+
+A public `release_qualified` claim additionally requires the matching
+authenticated `ReleaseEvidenceIndex`; a crash that published the terminal record
+but not its index is recoverable incomplete exposure, not a release. Terminal
+observation also verifies that all referenced deployment-dependent component
+evidence binds one common realization set, from the immutable evidence alone.
+`qualification status` and the general campaign lifecycle share one observer for
+these dependencies, so they cannot disagree in public.
+
+The first irreversible locked reveal is fenced: it uses the exact immutable
+prerequisite evidence admitted into the session - never a mutable, possibly
+rebuilt or reclaimed deployment receipt - re-establishes the current binding,
+and performs the P5 parent CAS under
+
+```text
+post_selection_publication_barrier -> qualification_publication_barrier
+    -> CampaignStore.writer_exclusion()
+```
+
+before appending the reveal. The locked numerical evaluation runs afterwards,
+outside those locks. A representation successor never reopens a revealed cohort;
+`LockedActivationRecord` continues to record its exact prerequisite component
+digests, which transitively preserve the representation that authorized the
+first reveal, while the cohort/reveal identity itself stays
+representation-independent.
+
 # 3c. Component-input identity
 
 Reference-dependent components are keyed by a component-input identity that
@@ -147,6 +247,19 @@ digest, on top of the qualification binding. Replacing a bundle under the same
 request therefore stales local PES, relaxation, and dynamics - the components
 that consume it - while deployment parity and calibration remain reusable. Old
 evidence stays immutable and historical rather than being overwritten.
+
+Deployment-dependent components - `deployment_parity` and `dynamics` - additionally
+bind the current P5 `model_artifact_set_digest` and the invocation-frozen
+ordered `deployment_realization_set_digest`, and record both in their evidence.
+Checkpoint-only components (`physical_pes`, `relaxation`, `calibration`, the
+locked test) never acquire either: they reach the model through the
+authenticated checkpoint provider, so a changed serialized representation is a
+deployment event, not a whole-attempt invalidation.
+
+The scientific `QualificationInputBinding` deliberately stays checkpoint-based.
+Putting representation bytes into the whole binding would stale every component,
+including the one-shot locked test, whenever only serialization changed. The
+model publication is resolved separately, as an authenticated subordinate input.
 
 # 4. Components and typed outcomes
 

@@ -48,10 +48,13 @@ external source evidence
   -> campaign-common post-selection target monitor
   -> post-selection cross-validation
   -> fresh final production and publication decision
+  -> published full-model representation of the selected representatives
   -> downstream production qualification
 ```
 
 `pi_eval/M1/M2/M3` remain under their existing current owners. The restored target-order subsystem is candidate-outcome independent: target-size model outcomes, M3, CV, replay, production, and qualification evidence have no reverse edge into target membership.
+
+Selection and representation are separate owners. The publication decision owns which seeds ship; a subordinate record owns the serialized full MACE models materialized from those seeds' exact selected representative checkpoints, beneath the protected campaign models container. Qualification keeps the checkpoint as its independent scientific reference and consumes the published model bytes only as a deployment source, so deployment parity stays a real oracle. The trainer's own terminal `.model` is the last TRAIN2 epoch, is not the selected representative, and is never a product.
 
 The architecture deliberately prevents reverse control. Post-selection CV cannot reselect a target membership. Qualification cannot choose publication members. Storage cannot create scientific currentness. Runtime adapters cannot redefine D1/D2 semantics merely because an external dependency behaves differently.
 

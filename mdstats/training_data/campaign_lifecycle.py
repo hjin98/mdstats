@@ -115,11 +115,21 @@ class CampaignLifecycleSnapshot:
 
 
 def _post_selection_prefix(binding: Any) -> tuple[str, tuple[str, ...]]:
+    """Every fixed P5 pointer row one coherent observation needs.
+
+    Predecessor reclosure and the subordinate model publication belong here
+    now: both participate in whether a selected size is COMPLETE, and a public
+    answer that read them outside this snapshot could pair a decision from one
+    instant with a representation from another.
+    """
+
     from .post_selection_store import (
         POINTER_CV_ACCEPTANCE,
         POINTER_CV_PLAN,
+        POINTER_FINAL_MODEL_PUBLICATION,
         POINTER_FINAL_PLAN,
         POINTER_FINAL_PUBLICATION,
+        POINTER_PREDECESSOR_RECLOSURE,
     )
 
     return (
@@ -129,6 +139,8 @@ def _post_selection_prefix(binding: Any) -> tuple[str, tuple[str, ...]]:
             POINTER_CV_ACCEPTANCE,
             POINTER_FINAL_PLAN,
             POINTER_FINAL_PUBLICATION,
+            POINTER_FINAL_MODEL_PUBLICATION,
+            POINTER_PREDECESSOR_RECLOSURE,
         ),
     )
 
@@ -262,6 +274,7 @@ def campaign_owner_snapshot(store: Any) -> tuple[Any, tuple[Any, ...], dict[str,
     """
 
     from .campaign_target_size_state import _load_head
+    from .post_selection_store import POINTER_ASSESSMENT_POSITION
 
     db = store._connect()  # noqa: SLF001 - the store owns its connection pool
     db.execute("BEGIN")
@@ -279,6 +292,23 @@ def campaign_owner_snapshot(store: Any) -> tuple[Any, tuple[Any, ...], dict[str,
                     "SELECT value FROM meta WHERE key=?", (prefix + kind,)
                 ).fetchone()
                 pointers[prefix + kind] = None if row is None else str(row[0])
+        # Assessment-position locators are *dynamic*: their keys carry a
+        # position digest, so they cannot be enumerated as fixed kinds.  A
+        # final decision is only current when its exact required final-seed
+        # parents are the ones current now, and reading those rows after this
+        # transaction would let a successor EVAL2 publication slip between the
+        # decision and its parents - the precise hybrid this boundary exists to
+        # prevent.
+        for binding in bindings:
+            position_prefix = (
+                f"post_selection:{binding.content_digest}:"
+                f"{POINTER_ASSESSMENT_POSITION}:"
+            )
+            for key, value in db.execute(
+                "SELECT key, value FROM meta WHERE key LIKE ? ESCAPE '\\'",
+                (position_prefix.replace("_", "\\_").replace("%", "\\%") + "%",),
+            ).fetchall():
+                pointers[str(key)] = None if value is None else str(value)
     finally:
         db.rollback()
     return revision, bindings, pointers
@@ -586,7 +616,6 @@ def _per_size_post_selection(
     from .post_selection_cv_acceptance import CvCampaignAcceptance
     from .post_selection_cv_plan import PostSelectionCvPlan
     from .post_selection_production import FinalProductionPlan
-    from .post_selection_publication import FinalProductionPublicationDecision
     from .post_selection_store import (
         POINTER_CV_ACCEPTANCE,
         POINTER_CV_PLAN,
@@ -704,24 +733,48 @@ def _per_size_post_selection(
             f"({_short(final_plan_digest)}); required final production run(s) are "
             "incomplete"
         )
-    elif (
-        _authenticated(
-            store, publication_digest, FinalProductionPublicationDecision.from_dict
-        )
-        is None
-    ):
-        production_state = LifecycleObservationState.BLOCKED
-        production_message = (
-            "the current final-production publication pointer names an object that "
-            f"is missing, unreadable, or does not reproduce its own identity "
-            f"({_short(publication_digest)})"
-        )
     else:
-        production_state = LifecycleObservationState.COMPLETE
-        production_message = (
-            "fresh production is published on the full exact T_selected under the "
-            f"accepted method ({_short(final_plan_digest)})"
+        # COMPLETE now means a *usable* product: the decision, its exact current
+        # assessment/plan/CV parents, an authenticated full-model publication and
+        # a current predecessor reclosure.  A decision with no materialized model
+        # is a recoverable waiting state, because reporting it complete would tell
+        # the operator production finished while nothing loadable exists.
+        from .post_selection_product_observation import (
+            PRODUCT_STATE_ABSENT,
+            PRODUCT_STATE_BLOCKED,
+            PRODUCT_STATE_COMPLETE,
+            observe_current_product,
         )
+
+        observation = observe_current_product(paths, binding, pointers)
+        mapping = {
+            PRODUCT_STATE_COMPLETE: LifecycleObservationState.COMPLETE,
+            PRODUCT_STATE_BLOCKED: LifecycleObservationState.BLOCKED,
+            PRODUCT_STATE_ABSENT: LifecycleObservationState.WAITING,
+        }
+        production_state = mapping.get(
+            observation.state, LifecycleObservationState.WAITING
+        )
+        if production_state is LifecycleObservationState.COMPLETE:
+            record = observation.model_publication
+            locators = "; ".join(
+                f"{member.member_id} -> "
+                f"{Path(paths.models) / member.model_relative_path} "
+                f"(sha256 {_short(member.model_sha256)})"
+                for member in record.members
+            )
+            production_message = (
+                "fresh production is published on the full exact T_selected under "
+                f"the accepted method ({_short(final_plan_digest)}); "
+                f"{observation.message}: {locators}"
+            )
+            if observation.loader_compatibility_advisory:
+                production_message = (
+                    f"{production_message}. Advisory: "
+                    f"{observation.loader_compatibility_advisory}"
+                )
+        else:
+            production_message = observation.message
     return (cv_state, cv_message), (production_state, production_message)
 
 
@@ -902,8 +955,43 @@ def _qualification_step(
                 f"missing, unreadable, or does not reproduce its own identity "
                 f"({_short(record_digest)})",
             )
+        # The compact lifecycle path used to interpret a terminal record on its
+        # own, while `qualification status` applied extra checks.  Two public
+        # observers that can disagree about whether a campaign is released is a
+        # semantic duplication, not a performance optimization, so both now ask
+        # the same owner.  Generic lifecycle stays config-independent and simply
+        # omits the specification comparison.
+        from .qualification.observation import (
+            release_currentness_failure,
+            terminal_currentness_failure,
+        )
+        from .qualification.record import ReleaseEvidenceIndex
+
+        stale = terminal_currentness_failure(paths, binding, pointers, record, store)
+        if stale is not None:
+            return step(
+                LifecycleObservationState.WAITING,
+                f"the published terminal qualification record is historical: {stale}. "
+                "Rerun `qualification run` under the current product and executable",
+            )
         verdict = str(record.verdict.value) or "unknown"
         release = "release evidence published" if release_digest else "no release index"
+        if verdict == "release_qualified":
+            release_index = (
+                None
+                if release_digest is None
+                else _authenticated(
+                    store, release_digest, ReleaseEvidenceIndex.from_dict
+                )
+            )
+            release_failure = release_currentness_failure(record, release_index)
+            if release_failure is not None:
+                return step(
+                    LifecycleObservationState.WAITING,
+                    "the terminal record claims release qualification but "
+                    f"{release_failure}; rerun `qualification run` to repair the "
+                    "release exposure",
+                )
         # Only `rejected` and `release_qualified` are terminal verdicts.
         # `waiting_for_reference` and `incomplete` are truthful *nonterminal*
         # product states: qualification has run and has said, correctly, that it

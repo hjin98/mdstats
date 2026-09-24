@@ -10,7 +10,7 @@ reconciled_through: 4eabe2ae9783c7ff92f3a1093c37502a01380812
 accepted_base:
   project_state: 4eabe2ae9783c7ff92f3a1093c37502a01380812
   basis: "Accepted mdstats main at the merge of hjin98/mdstats PR #9 (P5 TRAIN2/EVAL2 CuEq architecture recurrence repair, independently closed PASS). The PEM published at that state is the accepted memory basis; it was initialized at b65fa3b02807815d8eca758bc04fb70d514d1f45."
-candidate_overlay: "fix/mlff-p5-cv-no-admissible-outcome-repair candidate overlay: accepted-base reconciliation only (NT-001 retirement, FF-001 coverage refresh); no new family, occurrence, or application episode. Publication identity is the containing Git commit and is not self-declared accepted."
+candidate_overlay: "design/mlff-final-production-model-publication-mh1-integration candidate overlay over accepted base 4eabe2ae9783c7ff92f3a1093c37502a01380812: one distinct final-production publication/P7/MH-1 integration application episode is bound to immutable evidence-specification candidate 5a6719d9fbabf04ddad7407b2729be0d0d1f76bf; no D1-D4 authority promotion and no new failure-family occurrence is claimed."
 detail_files: []
 ---
 
@@ -25,10 +25,10 @@ High-impact unresolved notices: none. NT-001 is retired (see Current notices).
 
 | ID | Kind | Temperature | Maturity/state | Binding | Guidance | Current evidence | Bounded lesson |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| SP-002 | SUCCESS_PATTERN | HOT | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | RECOMMENDED | 3 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Fail-closed authenticated identity/state boundaries catch corruption and semantic drift before downstream consumers can act on plausible-but-wrong data. |
-| SP-003 | SUCCESS_PATTERN | HOT | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | RECOMMENDED | 3 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Immutable/content-addressed durable boundaries make expensive workflows restartable and reusable without reconstructing or retraining already accepted work. |
-| SP-004 | SUCCESS_PATTERN | HOT | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | RECOMMENDED | 3 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Real-owner integration and target-host qualification expose defects that mocks, local unit seams, or isolated component tests can miss. |
-| SP-001 | SUCCESS_PATTERN | WARM | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | RECOMMENDED | 2 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Removing duplicated machinery and returning responsibility to the real owner has repeatedly fixed broad defect families with less state, policy, and code than additive synchronization or wrapper repairs. |
+| SP-002 | SUCCESS_PATTERN | HOT | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | RECOMMENDED | 4 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Fail-closed authenticated identity/state boundaries catch corruption and semantic drift before downstream consumers can act on plausible-but-wrong data. |
+| SP-003 | SUCCESS_PATTERN | HOT | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | RECOMMENDED | 4 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Immutable/content-addressed durable boundaries make expensive workflows restartable and reusable without reconstructing or retraining already accepted work. |
+| SP-004 | SUCCESS_PATTERN | HOT | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | RECOMMENDED | 4 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Real-owner integration and target-host qualification expose defects that mocks, local unit seams, or isolated component tests can miss. |
+| SP-001 | SUCCESS_PATTERN | WARM | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | RECOMMENDED | 3 supporting / 0 neutral / 0 contradicting / 0 inconclusive | Removing duplicated machinery and returning responsibility to the real owner has repeatedly fixed broad defect families with less state, policy, and code than additive synchronization or wrapper repairs. |
 | FF-001 | FAILURE_FAMILY | UNASSESSED | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | OBSERVED | 1 confirmed | Independently reconstructed MACE execution architecture can drift from the model actually trained when model-affecting construction or accelerator realization is duplicated across owners. |
 | FF-002 | FAILURE_FAMILY | UNASSESSED | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | OBSERVED | 1 confirmed | Restart correctness fails when scratch, continuation metadata, or checkpoint state is treated as durable authority before the exact authenticated boundary has been established. |
 | FF-003 | FAILURE_FAMILY | UNASSESSED | SUPPORTED/CURRENT | EVIDENCE_ONLY/HEALTHY | OBSERVED | 1 confirmed | Duplicated destructive-storage routing and negative fallthrough can let consequential mutation escape the owner that actually holds authorization and truth about the target. |
@@ -400,6 +400,31 @@ applications:
         conclusion: SUPPORTS_BOUNDED_CLAIM
         evidence:
           - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_P5_TRAIN2_MEMORY_PRESSURE_BACKOFF_AND_TERMINAL_INFEASIBILITY_FINAL_REVIEW_CLOSURE.md"
+  - id: A03
+    episode_identity: "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf"
+    lifecycle_context: final-production model publication + P7/MH-1 integration
+    source_project: local
+    surfaces:
+      - P5 full-model publication
+      - P7 qualification/deployment integration
+      - qualification binding/currentness ownership
+      - stale evidence retirement/remapping
+    provenance_cluster: final-production-publication-p7-mh1-integration
+    subject: converge the publication and qualification integration by rewiring existing owners and deleting stale compatibility/evidence assumptions instead of adding parallel product machinery
+    comparator: additive compatibility wrappers, duplicate binding logic, or a second publication/deployment authority
+    intended_benefit: Preserve the accepted publication and qualification semantics while reducing competing ownership and keeping the final repair surface local.
+    outcome: SUPPORTING
+    observation: The intervention converged by reusing the canonical dtype/device/binding owners, existing durability/publication owners, and current P5/P7 paths; later evidence repair deleted a weak structural oracle and remapped stale tests rather than restoring deprecated APIs. No new production subsystem was introduced.
+    quantitative_effect: NONE
+    uncertainty: Real locked MH-1, target-host GPU, LAMMPS/ML-IAP, and MD qualification remain deferred; this episode supports ownership/reduction strategy, not those external runtime regimes.
+    costs_tradeoffs: Required several independent review rounds and explicit evidence-owner cleanup before closeout readiness.
+    assessments:
+      - id: AS01
+        state: ADMISSIBLE
+        conclusion: SUPPORTS_BOUNDED_CLAIM
+        evidence:
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_downstream_integration_closure.py"
 ```
 
 ### SP-002 — Fail closed on authenticated identity and durable-state disagreement
@@ -514,6 +539,32 @@ applications:
         conclusion: SUPPORTS_BOUNDED_CLAIM
         evidence:
           - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/mlff-storage-io-reset/STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md"
+  - id: A04
+    episode_identity: "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf"
+    lifecycle_context: final-production publication and P7 currentness/durability integration
+    source_project: local
+    surfaces:
+      - selected representative checkpoint authentication
+      - full-model publication currentness
+      - P7 binding/currentness fences
+      - deployment receipt and reveal-history durability
+    provenance_cluster: final-production-publication-p7-mh1-integration
+    subject: reauthenticate exact publication ancestry and serialized/deployed state before every consequential P5/P7 exposure or reuse boundary
+    comparator: trusting mutable locators, session-frozen configuration, visible-but-unreclosed filesystem residue, or unchecked deployment state
+    intended_benefit: Prevent stale, foreign, or insufficiently durable publication/qualification state from becoming current authority.
+    outcome: SUPPORTING
+    observation: The completed product implementation uses fail-closed selected-checkpoint/full-model identity, late binding-currentness checks, retry-time durability reclosure, deployment receipt authentication, and one-shot reveal fencing; independent reviews repeatedly found defects precisely where one of those boundaries was incomplete.
+    quantitative_effect: NONE
+    uncertainty: External target-host runtime qualification is still deferred; the supporting claim is bounded to repository-owned identity/currentness/durability boundaries.
+    costs_tradeoffs: Strong currentness and durability checks require explicit immutable ancestry and retry/recovery evidence.
+    assessments:
+      - id: AS01
+        state: ADMISSIBLE
+        conclusion: SUPPORTS_BOUNDED_CLAIM
+        evidence:
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_p5_model_publication_acceptance.py"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_p7_product_currentness_fences.py"
 ```
 
 ### SP-003 — Durable immutable boundaries enable exact restart and reuse
@@ -627,6 +678,32 @@ applications:
         conclusion: SUPPORTS_BOUNDED_CLAIM
         evidence:
           - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_P5_TRAIN2_CUDA_LIFETIME_AND_ZERO_SAFE_ADMISSION_REPAIR_WORKPLAN.md"
+  - id: A04
+    episode_identity: "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf"
+    lifecycle_context: selected-representative full-model publication and restart/reuse closure
+    source_project: local
+    surfaces:
+      - immutable P5 model products
+      - representation reclosure
+      - deterministic directory recovery
+      - deployment receipt reuse
+    provenance_cluster: final-production-publication-p7-mh1-integration
+    subject: materialize selected representatives once at an authenticated immutable boundary and make retries/reuse reclose durability and identity instead of retraining or reconstructing authority
+    comparator: terminal-trainer model reuse, pathname-only residue reuse, or rebuilding accepted scientific work after representation loss
+    intended_benefit: Make final products and deployment realizations restartable and reusable while preserving exact selected-checkpoint ancestry.
+    outcome: SUPPORTING
+    observation: P5 publishes reloadable full models subordinate to the already-decided representative checkpoint, can rebuild only a damaged representation without changing scientific selection, and re-fences deterministic directory/deployment-receipt reuse after interrupted durability steps.
+    quantitative_effect: NONE
+    uncertainty: This episode does not quantify wall-time savings and does not cover deferred production-scale GPU/MH-1/MD execution.
+    costs_tradeoffs: Requires immutable model-product metadata plus explicit durability/currentness authentication before reuse.
+    assessments:
+      - id: AS01
+        state: ADMISSIBLE
+        conclusion: SUPPORTS_BOUNDED_CLAIM
+        evidence:
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_p5_model_publication_owners.py"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_p5_model_publication_acceptance.py"
 ```
 
 ### SP-004 — Qualify through real owners and real deployment regimes
@@ -740,6 +817,35 @@ applications:
         conclusion: SUPPORTS_BOUNDED_CLAIM
         evidence:
           - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_HARDENING_WORKPLAN.md"
+  - id: A04
+    episode_identity: "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf"
+    lifecycle_context: bounded P5 publication -> P7 deployment/MH-1 integration review
+    source_project: local
+    surfaces:
+      - TRAIN2 provider reconstruction
+      - canonical target-head publication
+      - P5 full-model serialization/reload
+      - P7 deployment-owner path
+      - bounded MH-1 structural integration
+    provenance_cluster: final-production-publication-p7-mh1-integration
+    subject: qualify the assembled publication/deployment path through current semantic owners rather than accepting serializer, checkpoint, or mock-only evidence
+    comparator: isolated serialization checks, raw-checkpoint deployment, or fixture seams that bypass the current product owner
+    intended_benefit: Expose composition defects at the exact P5-to-P7 boundary before production campaign qualification.
+    outcome: SUPPORTING
+    observation: Real-owner review and bounded integration exposed missing provider/publication equivalence assertions, late-binding drift, durability-retry gaps, raw-checkpoint deployment assumptions, and finally a one-head fixture that skipped before the canonical target-head runtime claim. The repair now binds the P7 test path to a genuine current multihead P5 product instead of treating that fixture mismatch as MH-1 unavailability.
+    quantitative_effect: NONE
+    uncertainty: The corrected P7 evidence specification at 5a6719d9fbabf04ddad7407b2729be0d0d1f76bf executed successfully in GitHub Actions run 36007255491 under the pinned CPU MACE test stack. Real locked MH-1, target-host GPU, production LAMMPS/MLIAP execution, and MD qualification remain explicitly deferred; the P7 execution tests skipped only at actual missing LAMMPS runtime boundaries.
+    costs_tradeoffs: Real-owner acceptance is more expensive than isolated mocks and requires precise separation between unavailable external runtimes and invalid local fixtures.
+    assessments:
+      - id: AS01
+        state: ADMISSIBLE
+        conclusion: SUPPORTS_BOUNDED_CLAIM
+        evidence:
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_mh1_publication_integration.py"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_p7_r11_repair_acceptance.py"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_p7_r12_repair_acceptance.py"
+          - "hjin98/mdstats@84a38b45a9ddd0df6bb19dfba6ba240db094aa2e:qualification/mlff-publication-closeout/actions-validation-report.md"
 ```
 
 ## Current notices
@@ -765,6 +871,7 @@ review_trigger:
   type: accepted_base_change
   basis: 4eabe2ae9783c7ff92f3a1093c37502a01380812
   resolution: RETIRED
+
 ```
 
 ## Coverage and maintenance note

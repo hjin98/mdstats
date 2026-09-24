@@ -26,8 +26,20 @@ from .components import (
     QualificationComponentEvidence,
 )
 
-QUALIFICATION_RECORD_SCHEMA = "mdstats.qualification-record.v1"
-RELEASE_EVIDENCE_SCHEMA = "mdstats.qualification-release-evidence.v1"
+#: v1 remains readable as historical immutable evidence.  v2 adds the two
+#: representation identities a terminal verdict now has to carry: which exact
+#: serialized P5 model set it was reduced over, and which exact deployed
+#: realization set its deployment-dependent component evidence exercised.  A v1
+#: object cannot be *current* under the new product boundary - it cannot say
+#: which representation it ran against - but it is never rewritten or deleted.
+QUALIFICATION_RECORD_SCHEMA_V1 = "mdstats.qualification-record.v1"
+RELEASE_EVIDENCE_SCHEMA_V1 = "mdstats.qualification-release-evidence.v1"
+QUALIFICATION_RECORD_SCHEMA = "mdstats.qualification-record.v2"
+RELEASE_EVIDENCE_SCHEMA = "mdstats.qualification-release-evidence.v2"
+
+#: Recorded when no enabled component consumes a deployed realization, so the
+#: field is always an explicit statement rather than an absent one.
+DEPLOYMENT_REALIZATION_SET_NOT_APPLICABLE = "not_applicable"
 
 
 class QualificationVerdict(str, Enum):
@@ -106,6 +118,9 @@ class ProductionQualificationRecord:
     predecessor_reclosure_digest: str | None = None
     predecessor_executable_tree_digest: str | None = None
     resource_observation_digest: str | None = None
+    model_artifact_set_digest: str | None = None
+    deployment_realization_set_digest: str | None = None
+    schema_version: str = QUALIFICATION_RECORD_SCHEMA
 
     def __post_init__(self) -> None:
         for name in (
@@ -147,10 +162,41 @@ class ProductionQualificationRecord:
             "predecessor_reclosure_digest",
             "predecessor_executable_tree_digest",
             "resource_observation_digest",
+            "model_artifact_set_digest",
         ):
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, validate_digest(value, name=name))
+        realization = self.deployment_realization_set_digest
+        if realization is not None and realization != (
+            DEPLOYMENT_REALIZATION_SET_NOT_APPLICABLE
+        ):
+            object.__setattr__(
+                self,
+                "deployment_realization_set_digest",
+                validate_digest(realization, name="deployment_realization_set_digest"),
+            )
+        version = str(self.schema_version).strip()
+        if version not in (QUALIFICATION_RECORD_SCHEMA, QUALIFICATION_RECORD_SCHEMA_V1):
+            raise TrainingDataSerializationError(
+                f"Unsupported qualification-record schema {version!r}."
+            )
+        if version == QUALIFICATION_RECORD_SCHEMA and (
+            self.model_artifact_set_digest is None
+            or self.deployment_realization_set_digest is None
+        ):
+            raise TrainingDataInputError(
+                "A current terminal qualification record states both the exact P5 "
+                "model-artifact set it was reduced over and the deployed-realization "
+                "set its deployment-dependent evidence exercised."
+            )
+        object.__setattr__(self, "schema_version", version)
+
+    @property
+    def is_historical_v1(self) -> bool:
+        """A pre-representation-boundary record: readable, never current."""
+
+        return self.schema_version == QUALIFICATION_RECORD_SCHEMA_V1
 
     def outcome(self, component: str) -> ComponentOutcome | None:
         for item in self.components:
@@ -160,7 +206,7 @@ class ProductionQualificationRecord:
 
     def _payload(self) -> dict[str, Any]:
         payload = {
-            "schema": QUALIFICATION_RECORD_SCHEMA,
+            "schema": self.schema_version,
             "selected_binding_digest": self.selected_binding_digest,
             "binding_digest": self.binding_digest,
             "publication_digest": self.publication_digest,
@@ -184,6 +230,12 @@ class ProductionQualificationRecord:
             payload["predecessor_executable_tree_digest"] = self.predecessor_executable_tree_digest
         if self.resource_observation_digest is not None:
             payload["resource_observation_digest"] = self.resource_observation_digest
+        if self.model_artifact_set_digest is not None:
+            payload["model_artifact_set_digest"] = self.model_artifact_set_digest
+        if self.deployment_realization_set_digest is not None:
+            payload["deployment_realization_set_digest"] = (
+                self.deployment_realization_set_digest
+            )
         return payload
 
     @property
@@ -195,7 +247,8 @@ class ProductionQualificationRecord:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ProductionQualificationRecord":
-        if payload.get("schema") != QUALIFICATION_RECORD_SCHEMA:
+        schema = str(payload.get("schema"))
+        if schema not in (QUALIFICATION_RECORD_SCHEMA, QUALIFICATION_RECORD_SCHEMA_V1):
             raise TrainingDataSerializationError("Unsupported qualification-record schema.")
         result = cls(
             selected_binding_digest=str(payload["selected_binding_digest"]),
@@ -233,6 +286,17 @@ class ProductionQualificationRecord:
                 if payload.get("resource_observation_digest") is None
                 else str(payload["resource_observation_digest"])
             ),
+            model_artifact_set_digest=(
+                None
+                if payload.get("model_artifact_set_digest") is None
+                else str(payload["model_artifact_set_digest"])
+            ),
+            deployment_realization_set_digest=(
+                None
+                if payload.get("deployment_realization_set_digest") is None
+                else str(payload["deployment_realization_set_digest"])
+            ),
+            schema_version=schema,
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("Qualification-record digest mismatch.")
@@ -291,6 +355,9 @@ class ReleaseEvidenceIndex:
     predecessor_reclosure_digest: str | None = None
     predecessor_executable_tree_digest: str | None = None
     resource_observation_digest: str | None = None
+    model_artifact_set_digest: str | None = None
+    deployment_realization_set_digest: str | None = None
+    schema_version: str = RELEASE_EVIDENCE_SCHEMA
 
     def __post_init__(self) -> None:
         for name in (
@@ -330,14 +397,43 @@ class ReleaseEvidenceIndex:
             "predecessor_reclosure_digest",
             "predecessor_executable_tree_digest",
             "resource_observation_digest",
+            "model_artifact_set_digest",
         ):
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, validate_digest(value, name=name))
+        realization = self.deployment_realization_set_digest
+        if realization is not None and realization != (
+            DEPLOYMENT_REALIZATION_SET_NOT_APPLICABLE
+        ):
+            object.__setattr__(
+                self,
+                "deployment_realization_set_digest",
+                validate_digest(realization, name="deployment_realization_set_digest"),
+            )
+        version = str(self.schema_version).strip()
+        if version not in (RELEASE_EVIDENCE_SCHEMA, RELEASE_EVIDENCE_SCHEMA_V1):
+            raise TrainingDataSerializationError(
+                f"Unsupported release-evidence schema {version!r}."
+            )
+        if version == RELEASE_EVIDENCE_SCHEMA and (
+            self.model_artifact_set_digest is None
+            or self.deployment_realization_set_digest is None
+        ):
+            raise TrainingDataInputError(
+                "A current release-evidence index states both the exact P5 "
+                "model-artifact set and the deployed-realization set its referenced "
+                "deployment-dependent evidence exercised."
+            )
+        object.__setattr__(self, "schema_version", version)
+
+    @property
+    def is_historical_v1(self) -> bool:
+        return self.schema_version == RELEASE_EVIDENCE_SCHEMA_V1
 
     def _payload(self) -> dict[str, Any]:
         payload = {
-            "schema": RELEASE_EVIDENCE_SCHEMA,
+            "schema": self.schema_version,
             "qualification_record_digest": self.qualification_record_digest,
             "selected_binding_digest": self.selected_binding_digest,
             "publication_digest": self.publication_digest,
@@ -358,6 +454,12 @@ class ReleaseEvidenceIndex:
             payload["predecessor_executable_tree_digest"] = self.predecessor_executable_tree_digest
         if self.resource_observation_digest is not None:
             payload["resource_observation_digest"] = self.resource_observation_digest
+        if self.model_artifact_set_digest is not None:
+            payload["model_artifact_set_digest"] = self.model_artifact_set_digest
+        if self.deployment_realization_set_digest is not None:
+            payload["deployment_realization_set_digest"] = (
+                self.deployment_realization_set_digest
+            )
         return payload
 
     @property
@@ -369,7 +471,8 @@ class ReleaseEvidenceIndex:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> "ReleaseEvidenceIndex":
-        if payload.get("schema") != RELEASE_EVIDENCE_SCHEMA:
+        schema = str(payload.get("schema"))
+        if schema not in (RELEASE_EVIDENCE_SCHEMA, RELEASE_EVIDENCE_SCHEMA_V1):
             raise TrainingDataSerializationError("Unsupported release-evidence schema.")
         result = cls(
             qualification_record_digest=str(payload["qualification_record_digest"]),
@@ -404,6 +507,17 @@ class ReleaseEvidenceIndex:
                 if payload.get("resource_observation_digest") is None
                 else str(payload["resource_observation_digest"])
             ),
+            model_artifact_set_digest=(
+                None
+                if payload.get("model_artifact_set_digest") is None
+                else str(payload["model_artifact_set_digest"])
+            ),
+            deployment_realization_set_digest=(
+                None
+                if payload.get("deployment_realization_set_digest") is None
+                else str(payload["deployment_realization_set_digest"])
+            ),
+            schema_version=schema,
         )
         if payload.get("content_digest") not in (None, result.content_digest):
             raise TrainingDataSerializationError("Release-evidence digest mismatch.")
@@ -415,8 +529,11 @@ def utc_now() -> str:
 
 
 __all__ = [
+    "DEPLOYMENT_REALIZATION_SET_NOT_APPLICABLE",
     "QUALIFICATION_RECORD_SCHEMA",
+    "QUALIFICATION_RECORD_SCHEMA_V1",
     "RELEASE_EVIDENCE_SCHEMA",
+    "RELEASE_EVIDENCE_SCHEMA_V1",
     "ComponentOutcome",
     "ProductionQualificationRecord",
     "QualificationVerdict",

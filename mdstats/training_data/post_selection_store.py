@@ -48,6 +48,10 @@ POINTER_CV_ACCEPTANCE = "cv_acceptance"
 POINTER_FINAL_PLAN = "final_production_plan"
 POINTER_PREDECESSOR_RECLOSURE = "p5_p6_predecessor_reclosure"
 POINTER_FINAL_PUBLICATION = "final_production_publication"
+#: The subordinate materialized-product pointer.  It resolves the serialized
+#: full-model representation of the decision the pointer above names; it is
+#: never a second member-selection authority.
+POINTER_FINAL_MODEL_PUBLICATION = "final_production_model_publication"
 #: The one position-addressed locator form: the current immutable assessment
 #: record of one ``(role, assessment-position policy, training trajectory,
 #: seed, fold)`` position.  It is a locator, never authority by itself.
@@ -58,6 +62,7 @@ POINTER_KINDS = (
     POINTER_FINAL_PLAN,
     POINTER_PREDECESSOR_RECLOSURE,
     POINTER_FINAL_PUBLICATION,
+    POINTER_FINAL_MODEL_PUBLICATION,
     POINTER_ASSESSMENT_POSITION,
 )
 ASSESSMENT_POSITION_SCHEMA = "mdstats.post-selection-assessment-position.v1"
@@ -252,6 +257,22 @@ def _pointer_key(
     )
 
 
+def post_selection_pointer_key(
+    binding: PostSelectionBinding, kind: str, position: str | None = None
+) -> str:
+    """The canonical current-pointer key for one binding/kind/position.
+
+    Public spelling of the one key owner.  Observers that need to look up an
+    exact dynamic assessment-position row in a captured snapshot derive the key
+    through this function rather than scanning captured values for a matching
+    digest: a historical or different position that happens to hold the same
+    run-evidence digest is not this position, and value search cannot tell the
+    difference.
+    """
+
+    return _pointer_key(binding, kind, position)
+
+
 def _current_campaign_revision(db: Any) -> Any:
     from .campaign_target_size_state import _load_head
 
@@ -314,6 +335,75 @@ def publish_current_post_selection_pointer(
         db.execute(
             "INSERT OR REPLACE INTO meta(key,value) VALUES (?,?)", (key, value)
         )
+
+
+def publish_current_post_selection_pointer_set(
+    campaign_store: Any,
+    *,
+    binding: PostSelectionBinding,
+    rows: Mapping[str, str],
+) -> None:
+    """Make several current pointers visible in exactly one transaction.
+
+    A product is three facts - the scientific decision, its materialized model
+    representation, and the predecessor reclosure that authorizes exposure -
+    and an observer that saw two of them advance while the third had not would
+    be looking at a campaign state that never existed.  Publishing them as
+    three sequential single-row transactions leaves exactly that window: a
+    crash between them strands the previous current product behind a hybrid
+    pointer set.
+
+    This is deliberately not a second currentness database or transaction
+    subsystem.  It reuses the same pointer-key owner and the same commit-time
+    stale-generation fence as the single-row publisher, performs that fence
+    once inside one ``BEGIN IMMEDIATE``, validates every digest before the
+    transaction opens, and writes all rows or none.  Republishing an already
+    identical set is idempotent.
+    """
+
+    prepared = {
+        _pointer_key(binding, kind): validate_digest(
+            str(value), name=f"{kind}_content_digest"
+        )
+        for kind, value in rows.items()
+    }
+    if not prepared:
+        raise TrainingDataInputError(
+            "A post-selection pointer-set publication needs at least one row."
+        )
+    with campaign_store.exclusive_transaction() as db:
+        revision = _current_campaign_revision(db)
+        if revision is None:
+            raise PostSelectionStaleBindingError(
+                "The campaign has no target-size state; no post-selection result can "
+                "be published as current."
+            )
+        state = revision.state
+        current = {item.content_digest for item in current_target_size_bindings(state)}
+        if (
+            state.generation != binding.campaign_generation
+            or binding.content_digest not in current
+        ):
+            raise PostSelectionStaleBindingError(
+                "A newer frozen target-size design became current while this "
+                f"post-selection work was running (binding generation "
+                f"{binding.campaign_generation} target "
+                f"{binding.content_digest[:12]}... for N={binding.n_selected}; "
+                f"current generation {state.generation} with "
+                f"{len(current)} frozen size(s)). "
+                "The stale result stays available as historical evidence but is "
+                "never published as current."
+            )
+        pending = []
+        for key, value in sorted(prepared.items()):
+            row = db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+            if row is not None and str(row[0]) == value:
+                continue
+            pending.append((key, value))
+        for key, value in pending:
+            db.execute(
+                "INSERT OR REPLACE INTO meta(key,value) VALUES (?,?)", (key, value)
+            )
 
 
 def post_selection_collection_signature(
@@ -439,6 +529,7 @@ __all__ = [
     "POINTER_CV_ACCEPTANCE",
     "POINTER_CV_PLAN",
     "POINTER_FINAL_PLAN",
+    "POINTER_FINAL_MODEL_PUBLICATION",
     "POINTER_FINAL_PUBLICATION",
     "POINTER_PREDECESSOR_RECLOSURE",
     "POINTER_KINDS",
@@ -450,8 +541,10 @@ __all__ = [
     "post_selection_collection_signature",
     "post_selection_publication_barrier",
     "open_post_selection_store",
+    "post_selection_pointer_key",
     "post_selection_root",
     "publish_current_post_selection_pointer",
+    "publish_current_post_selection_pointer_set",
     "read_current_post_selection_pointer",
     "resolve_current_post_selection_record",
 ]

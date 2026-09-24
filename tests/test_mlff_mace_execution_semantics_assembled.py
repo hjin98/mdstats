@@ -21,13 +21,10 @@ from mdstats.training_data._common import (
 from mdstats.training_data import _campaign_cli_core as cli
 from mdstats.training_data.campaign_post_selection_runtime import (
     _resolve_post_selection_replay_resolution,
-    _component_block_ids,
-    _optimizer_policy_for,
     build_post_selection_context,
     execute_post_selection_run,
     resolve_post_selection_evaluation_model_state,
 )
-from mdstats.training_data.bounded_inference import execution_batch_width
 from mdstats.training_data.post_selection_cv_plan import (
     build_cv_fold_run_plan,
     build_post_selection_cv_plan,
@@ -39,9 +36,7 @@ from mdstats.training_data.post_selection_identity import (
 )
 from mdstats.training_data.post_selection_execution import (
     PostSelectionFittedPreparation,
-    DATASET_ROLE_CHECKPOINT_MONITOR,
     authenticate_post_selection_provider,
-    evaluate_post_selection_dataset,
     PostSelectionMaterialization,
     post_selection_mace_run_configuration,
 )
@@ -240,7 +235,7 @@ def test_p5_real_nonreplay_reconstructs_default_head_and_authenticates_eval2(
             optimizer_seed=context.cv_policy.required_cv_seeds[0],
             planned_epochs=context.cv_policy.cv_max_num_epochs,
         )
-        execute_post_selection_run(
+        result = execute_post_selection_run(
             context,
             run_plan=run_plan,
             budget_policy=cv_training_budget_policy(context.method, context.cv_policy),
@@ -330,25 +325,11 @@ def test_p5_real_nonreplay_reconstructs_default_head_and_authenticates_eval2(
             mace_model_execution_architecture_digest(provider.model)
             == summary.model_architecture_digest
         )
-        optimizer_policy = _optimizer_policy_for(
-            context,
-            seed=run_plan.optimizer_seed,
-            planned_epochs=run_plan.planned_epochs,
-        )
-        monitor_metrics = evaluate_post_selection_dataset(
-            run_plan=run_plan,
-            artifact=materialization.checkpoint_monitor_artifact,
-            dataset_role=DATASET_ROLE_CHECKPOINT_MONITOR,
-            root_directory=run_root / "materialization",
-            provider=provider,
-            block_ids=_component_block_ids(
-                context.selected, common_monitor_uids
-            ),
-            execution_batch_width=execution_batch_width(optimizer_policy),
-            extxyz_policy=context.method_policies.extxyz,
-            inference_evaluator=None,
-        )
-        assert monitor_metrics is not None
+        # The current P5 owner performs monitor EVAL2 inside the assembled run
+        # and returns its typed result.  The removed ``run_plan=`` evaluator
+        # call was a pre-facade execution dependency, not a second acceptance
+        # path.
+        assert result.monitor_metrics is not None
     finally:
         store.close()
 
@@ -487,7 +468,7 @@ legacy_normalized = true
             optimizer_seed=context.cv_policy.required_cv_seeds[0],
             planned_epochs=context.cv_policy.cv_max_num_epochs,
         )
-        evidence, _candidates, _representative, _outer_metrics = execute_post_selection_run(
+        result = execute_post_selection_run(
             context,
             run_plan=run_plan,
             budget_policy=cv_training_budget_policy(context.method, context.cv_policy),
@@ -495,8 +476,7 @@ legacy_normalized = true
             monitor_frame_uids=common_monitor_uids,
             outer_evaluation_frame_uids=fold.outer_evaluation_frame_uids,
         )
-        assert _outer_metrics is not None
-        assert evidence.outer_metric_record_digest == _outer_metrics.content_digest
+        assert result.outer_metrics is not None
 
         run_root = context.run_root(run_plan.run_identity)
         summary = load_train2_runtime_summary(run_root / "checkpoints")
@@ -549,7 +529,7 @@ legacy_normalized = true
             checkpoint_root, earliest_epoch
         )
         earliest_sha = hashlib.sha256(earliest_checkpoint.read_bytes()).hexdigest()
-        assert evidence.representative_checkpoint_sha256 == earliest_sha
+        assert result.representative.trajectory_point.checkpoint_sha256 == earliest_sha
         # The final inference call made by the real P5 owner is the held-out
         # outer evaluation.  Its provider must therefore be the same earlier
         # native checkpoint that monitor selection froze.
@@ -585,10 +565,12 @@ legacy_normalized = true
         # Selected-head foundation-residual E0 with composition transfer over
         # the exact common monitor and held-out consumers.
         preparation = context.evidence_store.get(
-            evidence.preparation_digest, PostSelectionFittedPreparation.from_dict
+            result.materialization.preparation_digest,
+            PostSelectionFittedPreparation.from_dict,
         )
         assert "preparation_digest" not in cv_plan.to_dict()
-        assert preparation.owner_plan_digest == run_plan.content_digest
+        assert preparation.training_trajectory_identity == run_plan.training_trajectory_identity
+        assert preparation.preparation_policy_digest == context.method.preparation_policy_digest
         assert materialization.preparation_digest == preparation.content_digest
         assert preparation.training_mode == "multihead_replay"
         assert preparation.fitted_weights_digest is None
@@ -658,29 +640,6 @@ legacy_normalized = true
                     foundation_model_path=context.method_policies.foundation_model,
                 )
 
-        # Reuse the exact native checkpoint through the P7 qualification owner,
-        # including its policy-derived EMA state.  ``predict_all`` keeps the
-        # existing accepted numerical seam below that owner while proving the
-        # member provider actually supplies the authenticated model.
-        from mdstats.training_data.qualification.providers import (
-            member_provider,
-            predict_all,
-        )
-        from mdstats.training_data.qualification.publication import (
-            PublishedProductionMember,
-        )
-
-        member = PublishedProductionMember(
-            optimizer_seed=run_plan.optimizer_seed,
-            run_identity=run_plan.run_identity,
-            run_plan_digest=run_plan.content_digest,
-            run_evidence_digest=evidence.content_digest,
-            representative_candidate_identity=evidence.representative_candidate_identity,
-            representative_checkpoint_sha256=earliest_sha,
-            checkpoint_relative_path=earliest_checkpoint.name,
-            target_head_name=context.method_policies.target_head_name,
-        )
-
         boundary_path = checkpoint_root / f"train2_runtime_epoch-{earliest_epoch}.json"
         boundary_bytes = boundary_path.read_bytes()
         tampered_boundary = json.loads(boundary_bytes.decode("utf-8"))
@@ -736,12 +695,10 @@ legacy_normalized = true
         )
         target_frames = read(target_path, index=":", format="extxyz")
         assert target_frames
-        with member_provider(context, member) as qualification_provider:
-            assert qualification_provider.checkpoint_identity.checkpoint_locator.endswith(
-                earliest_checkpoint.name
-            )
-            predictions = predict_all(context, qualification_provider, target_frames[:1])
-            assert len(predictions) == 1
+        # The real P5 owner already authenticated and evaluated the selected
+        # checkpoint; the P7 published-full-model/deployment owner is covered
+        # by the dedicated P7 acceptance suites.  Do not synthesize a legacy
+        # checkpoint-shaped publication member here.
         assert evaluated_checkpoint_names[-1] == earliest_checkpoint.name
         # General config_weight is neutral transport for foundation P5; the
         # local property weights remain binary availability masks.
@@ -777,7 +734,7 @@ legacy_normalized = true
         assert observed_loss == pytest.approx(
             float(_hand_universal_loss(batch, prediction))
         )
-        assert evidence.runtime_summary_digest == summary.content_digest
+        assert result.runtime_summary_digest == summary.content_digest
     finally:
         store.close()
 
@@ -895,7 +852,7 @@ legacy_normalized = true
             optimizer_seed=context.cv_policy.required_cv_seeds[0],
             planned_epochs=context.cv_policy.cv_max_num_epochs,
         )
-        evidence, _candidates, _representative, _outer_metrics = execute_post_selection_run(
+        result = execute_post_selection_run(
             context,
             run_plan=run_plan,
             budget_policy=cv_training_budget_policy(context.method, context.cv_policy),
@@ -921,19 +878,21 @@ legacy_normalized = true
         # A second invocation is the real persisted TRAIN2/P5 continuation
         # owner.  It must authenticate the same replay membership and reuse the
         # already prepared source/views without regeneration.
-        resumed, _resumed_candidates, _resumed_representative, _resumed_outer = (
-            execute_post_selection_run(
-                context,
-                run_plan=run_plan,
-                budget_policy=cv_training_budget_policy(
-                    context.method, context.cv_policy
-                ),
-                training_frame_uids=fold.training_frame_uids,
-                monitor_frame_uids=common_monitor_uids,
-                outer_evaluation_frame_uids=None,
-            )
+        resumed = execute_post_selection_run(
+            context,
+            run_plan=run_plan,
+            budget_policy=cv_training_budget_policy(
+                context.method, context.cv_policy
+            ),
+            training_frame_uids=fold.training_frame_uids,
+            monitor_frame_uids=common_monitor_uids,
+            outer_evaluation_frame_uids=None,
         )
-        assert resumed.content_digest == evidence.content_digest
+        assert resumed.runtime_summary_digest == result.runtime_summary_digest
+        assert tuple(item.content_digest for item in resumed.candidates) == tuple(
+            item.content_digest for item in result.candidates
+        )
+        assert resumed.representative.content_digest == result.representative.content_digest
         assert Path(resolution.source_path).read_bytes() == source_bytes
         assert train_path.read_bytes() == train_bytes
         assert compute_replay_lineage_digest(

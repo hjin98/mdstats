@@ -40,6 +40,7 @@ A lower layer may produce evidence that challenges an upstream contract, but it 
 | post-selection CV | P5 CV assessment owner | assess complete checkpoint universes, freeze strict representatives, evaluate held-out representatives, and publish per-size current acceptance outside sealed training roots | D1/D2 |
 | P5 fitted preparation | existing atomic-reference fit owner + P5 preparation owner | realize mode-correct fit ancestry and foundation composition-transfer evidence | D2 |
 | fresh final production | P5 production owner | execute or reuse training-equivalent fresh lineages only after current CV authorization; assess complete checkpoint universes and decide publication before qualification | D1/D2 |
+| published production model representation | P5 model-publication owner (`FinalProductionModelPublication`) | materialize each decided member's selected representative checkpoint as a complete MACE `.model` beneath the protected campaign models container, and own its exact current/immutable artifact identity; it represents the decision and can never redefine membership, order, checkpoint ancestry, target head or learned state | D3 |
 | replay construction | replay `prepare` owner | construct/authenticate replay authority and monitor products | D1/D2 |
 | training/evaluation adapter | training/MACE adapter and EVAL2 owners | realize accepted mode-specific method against external dependency/runtime | D2/D4 |
 | execution/provider lifetime | stage/process owners | own schedulers, processes, providers, temporary accelerator state, restartable execution state | D3 |
@@ -96,6 +97,16 @@ A global loss-family mutation is not a valid owner change. Foundation P5 also re
 
 
 ## Final publication ownership
+
+### Selection, representation, and deployment are three owners
+
+`FinalProductionPublicationDecision` owns *which* seeds ship. It does not own bytes: serialized-model identity is deliberately outside it, because existing valid decisions must stay usable as scientific selection evidence and a decision that changed whenever a pickle was rebuilt would stale every descendant for a representation event. A decision that binds a serialized artifact which itself must bind the decision is also an identity cycle.
+
+The subordinate `FinalProductionModelPublication` owns the representation: the exact portable e3nn model the authenticated TRAIN2 provider exposes for each selected representative checkpoint, on CPU, in inference mode, at the accepted learned dtype. Its path-independent `model_artifact_set_digest` is what deployment descendants bind, so relocating an intact workspace changes nothing numerical while changed executable bytes change everything that executes them.
+
+P7 owns neither. It keeps the representative checkpoint as its independent scientific reference and consumes the P5 published bytes only as a deployment source, which is what keeps deployment parity a real oracle. Its ML-IAP artifacts are attempt-local converted representations, identified by a `deployment_realization_digest` composed from the versioned `deployment_identity` plus the deployed bytes, and are never a product or public currentness authority.
+
+The trainer's run-root terminal `.model` belongs to no owner here: MACE writes it from the last TRAIN2 epoch and it is routinely not the selected representative. It is retained as an ordinary trainer byproduct and is never a publication source.
 
 P5 final publication consumes already-frozen hard-admissible final representatives and their authenticated target RMSE records on the exact shared common monitor. M3 is not a P5 checkpoint, ranking, currentness, plan, or publication ancestor.
 

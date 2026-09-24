@@ -542,42 +542,28 @@ def decide_final_production_publication(
 def publish_final_production_publication(
     context: Any, campaign_store: Any, completion: Any
 ) -> FinalProductionPublicationDecision:
-    """Decide and publish the current final publication, idempotently."""
+    """Decide, materialize and publish the current final product, idempotently.
 
-    from .post_selection_store import (
-        POINTER_FINAL_PUBLICATION,
-        POINTER_PREDECESSOR_RECLOSURE,
-        post_selection_publication_barrier,
-        publish_current_post_selection_pointer,
+    The decision is the scientific act and is taken first.  Publishing it as
+    *current* now additionally requires the usable representation: a decision
+    with no materialized model is a recoverable waiting state, not a complete
+    product, because the operator would otherwise be told production finished
+    while no loadable model exists.
+
+    Reconstruction and serialization happen under the decision/publication-set
+    lock and outside both the generation barrier and any SQLite transaction;
+    only the object-to-pointer window and the atomic three-row pointer commit
+    are guarded.
+    """
+
+    from .post_selection_model_products import (
+        model_publication_set_lock,
+        publish_final_production_model_products,
     )
-    from .post_selection_reclosure import build_predecessor_reclosure
 
     decision = decide_final_production_publication(context, completion)
-    # Object publication and the pointers that make them current share the
-    # owner's publication barrier: a storage mutation that could reclaim P5
-    # evidence acquires the same barrier, so it can never delete an object
-    # inside the window in which no pointer references it yet.
-    with post_selection_publication_barrier(
-        context.paths, context.selected.binding.campaign_generation
-    ):
-        context.evidence_store.put(decision)
-        # P5/P6 reclosure is a separate immutable predecessor record.  It binds
-        # the exact decision and the repaired executable source surface before
-        # any P7 descendant can expose the product.
-        reclosure = build_predecessor_reclosure(context, decision)
-        context.evidence_store.put(reclosure)
-        publish_current_post_selection_pointer(
-            campaign_store,
-            binding=context.selected.binding,
-            kind=POINTER_PREDECESSOR_RECLOSURE,
-            content_digest=reclosure.content_digest,
-        )
-        publish_current_post_selection_pointer(
-            campaign_store,
-            binding=context.selected.binding,
-            kind=POINTER_FINAL_PUBLICATION,
-            content_digest=decision.content_digest,
-        )
+    with model_publication_set_lock(context, decision):
+        publish_final_production_model_products(context, campaign_store, decision)
     return decision
 
 

@@ -345,3 +345,43 @@ The audit is diagnostic evidence, not scientific authority, so its own storage c
 ## 12. Production qualification disposition
 
 Routine implementation requires bounded functional, restart, and integrity tests plus representative storage/I/O measurement. Real campaign external-DFT qualification, long target-machine GPU production qualification, and environment-specific HPC storage qualification remain deferred and are not claimed by this specification.
+
+## Published production models
+
+`<workspace>/models` remains a protected campaign layout container under
+`campaign_store:models`. It is a *container* boundary only: it grants no product
+identity, no currentness claim and no recursive deletion authority, and
+unexpected descendants beneath it stay conservatively retained.
+
+The exact current production model artifacts beneath
+`models/production/g<generation>/N_<size>/decision-<full decision digest>/` are
+owned and certified by P5, from the current `FinalProductionModelPublication`.
+Each published member appears as its own durable, current, immutable,
+hot-path-required artifact view, re-authenticated by recorded size and
+SHA-256. The P5 publication owner's `state_identity` includes the model
+publication and artifact-set digests, so a same-decision representation
+advance invalidates a stale storage plan built before it.
+
+Three storage consequences follow, and this cycle adds no new authority beyond
+them:
+
+- Before a legacy decision has been reclosed into a model publication,
+  unresolved product representation causes retention and fail-closed
+  classification. It is never an inference that existing model files are
+  disposable.
+- An active P7 attempt's retention references name both the representative
+  checkpoints and the exact published model paths it consumes, so
+  dependency reporting is truthful while the scientific attempt identity stays
+  checkpoint-based.
+- Publication coordination locks live under the internal post-selection owner
+  (`.mdstats/post-selection/g<gen>/model-publication-locks/`), never in the
+  operator-facing models tree, and are owner-known infrastructure rather than a
+  storage action candidate. Attempt-private serialization temps are publication
+  scratch and are removed only by their owner.
+
+Because product files are immutable and versioned, superseded model bytes can
+accumulate. This is deliberate: current and historical immutable model products
+are durable evidence, and no cleanup, archive, dedup or reclaim authority over
+them is created here. If long-horizon accumulation becomes material, it is a
+separate storage-policy change - not a pathname heuristic that deletes
+historical products.

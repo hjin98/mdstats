@@ -63,36 +63,23 @@ def _conversion_kind(source_dtype: str, deployment_dtype: str) -> str:
 
 
 def _state_dict_digest(state: Mapping[str, Any]) -> str:
-    """Hash tensor names, dtypes, shapes, and exact CPU bytes deterministically."""
+    """The shared exact full-``state_dict`` identity owner.
 
-    hasher = hashlib.sha256()
-    for name in sorted(state):
-        tensor = state[name]
-        if not hasattr(tensor, "detach"):
-            raise TrainingDataInputError(f"State entry {name!r} is not a tensor.")
-        array = tensor.detach().cpu().contiguous().numpy()
-        metadata = json.dumps(
-            {
-                "name": str(name),
-                "dtype": str(array.dtype),
-                "shape": list(array.shape),
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("ascii")
-        hasher.update(len(metadata).to_bytes(8, "big"))
-        hasher.update(metadata)
-        payload = array.tobytes(order="C")
-        hasher.update(len(payload).to_bytes(8, "big"))
-        hasher.update(payload)
-    return hasher.hexdigest()
+    The algorithm lives in the MACE model-identity owner beside the execution
+    architecture digest so P5 publication, deployment export and P7 deployment
+    identity all hash one way.  This name is retained as the deployment-local
+    spelling of that single owner.
+    """
+
+    from .model_features import mace_model_state_digest
+
+    return mace_model_state_digest(state)
 
 
 def _clone_state_dict(model: Any) -> dict[str, Any]:
-    return {
-        str(name): tensor.detach().cpu().clone()
-        for name, tensor in model.state_dict().items()
-    }
+    from .model_features import mace_model_state_dict_clone
+
+    return mace_model_state_dict_clone(model)
 
 
 def _state_conversion_is_exact(

@@ -39,6 +39,7 @@ from mdstats.training_data.campaign_target_size_state import (
     load_target_size_campaign_revision,
 )
 from mdstats.training_data.post_selection_execution import (
+    POST_SELECTION_MATERIALIZATION_SCHEMA,
     POST_SELECTION_PREPARATION_SCHEMA,
     PostSelectionFittedPreparation,
     PostSelectionMaterialization,
@@ -165,7 +166,7 @@ def test_p5g_assembled_post_selection_lifecycle(tmp_path: Path, capsys):
         materializations = []
         for path in sorted((evidence.root / "objects").rglob("*.json")):
             payload = json.loads(path.read_text(encoding="utf-8"))
-            if payload.get("schema") == "mdstats.post-selection-materialization.v2":
+            if payload.get("schema") == POST_SELECTION_MATERIALIZATION_SCHEMA:
                 materializations.append(
                     PostSelectionMaterialization.from_dict(payload)
                 )
@@ -173,17 +174,27 @@ def test_p5g_assembled_post_selection_lifecycle(tmp_path: Path, capsys):
         assert len(set(identities)) == len(identities)
         assert set(cv.runs) | set(production.runs) == set(identities)
         assert not set(cv.runs) & set(production.runs)
-        plans_by_digest = {
-            request.run_plan.content_digest
+        requests_by_run = {
+            request.run_plan.run_identity: request
             for request in (*cv.requests, *production.requests)
         }
         preparations_by_digest = {
             item.content_digest: item for item in preparations
         }
         for item in materializations:
-            assert item.run_plan_digest in plans_by_digest
+            request = requests_by_run[item.run_identity]
+            # v3 deliberately removes the policy-bearing run-plan ancestry
+            # from the training-only materialization.  The current owner
+            # binds the exact trajectory and fitted preparation instead; the
+            # run request still carries the same materialization object for
+            # execution, while the run-plan identity remains in the separate
+            # run-evidence ancestry.
+            assert request.materialization.content_digest == item.content_digest
             preparation = preparations_by_digest[item.preparation_digest]
-            assert preparation.owner_plan_digest == item.run_plan_digest
+            assert (
+                preparation.training_trajectory_identity
+                == item.training_trajectory_identity
+            )
 
         # --- P4 is byte-for-byte untouched by all of the above ---------------
         after = load_target_size_campaign_revision(store)

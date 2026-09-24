@@ -71,7 +71,9 @@ The operator supplies `campaign.toml`. The workspace contains:
 <workspace>/.mdstats/                 # current records and reconstructible caches
 <workspace>/data/                      # current MACE materializations
 <workspace>/runs/                      # authorized checkpoints and logs
-<workspace>/models/                    # current production publication
+<workspace>/models/                    # protected model container; P5 owns the
+                                       # exact current published production
+                                       # models beneath production/g<gen>/N_<n>/
 <workspace>/results/                   # bounded summaries and cleanup reports
 ```
 
@@ -446,10 +448,36 @@ one complete size at a time:
    interleaving are execution facts and change no scientific identity or result;
 4. only then is each size finalized, in frozen selection order and serially:
    EVAL2 over its required final seeds in plan order, its complete per-seed
-   assessment set, then its own final publication. Finalization is fail-fast: a
-   size that fails prevents later sizes from beginning fresh evaluation or
-   publication in that invocation, and their sealed training roots remain
-   reusable on a later run.
+   assessment set, its own final publication, and the materialization of every
+   published member's selected representative checkpoint into a usable full
+   MACE `.model`. Finalization is fail-fast: a size that fails prevents later
+   sizes from beginning fresh evaluation or publication in that invocation, and
+   their sealed training roots and already-committed earlier-size products
+   remain durable and reusable on a later run.
+
+Before phase 1, every selected size is classified as `PRODUCT_COMPLETE`,
+`PRODUCT_RECLOSURE` or `PRODUCTION_REQUIRED`. Only `PRODUCTION_REQUIRED`
+positions enter the phase-3 TRAIN wave; a size that already owns an exactly
+replayable decision owes at most a *representation*, and retraining or
+re-evaluating to regenerate a serialized model is explicitly forbidden.
+Representation reclosure and create-or-verify therefore run in the serial
+phase-4 path. The classification is an admission hint only: every later action
+re-resolves current state under the decision/publication-set lock, and the
+pointer commit repeats the upstream validation, so a classification taken before
+another size's TRAIN wave can never commit after currentness moved.
+
+A selected size is production-complete only when its current final plan and
+completion, its current final-production decision, an authenticated current
+model publication and a current predecessor reclosure all agree. A decision with
+no materialized model is a recoverable waiting state, not completion.
+
+On success the command prints one deterministic line per committed member, in
+frozen size then decision member order, carrying `N`, the member id and
+optimizer seed, the target head, the canonical published `.model` path and its
+SHA-256. Locating the product never requires inspecting internal hash
+directories, reading SQLite, or running a second command, and the line always
+names the P5 published model - never the trainer's run-root terminal `.model`,
+which belongs to the last TRAIN2 epoch.
 
 Newly admitted training work and the evaluation/finalization phase are each
 admitted against the exact frozen design the invocation was authorized for -
@@ -459,7 +487,9 @@ A same-generation revision that preserves the frozen design is not staleness. A 
 production parent, and no size may consume another size's membership, horizons,
 evidence, pointers, or publication. Publication rechecks currentness at commit
 time and cannot promote work from a superseded generation. Campaign production
-is complete only when every selected size has its own current final publication.
+is complete only when every selected size has its own current final publication
+*and* its authenticated published model representation and current predecessor
+reclosure.
 
 For a multi-size design, completing production is a **terminal training-experiment
 state**, not a release: see `qualification`.

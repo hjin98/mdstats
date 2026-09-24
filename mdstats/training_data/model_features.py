@@ -253,6 +253,48 @@ def _mace_model_execution_architecture_descriptor(model: Any) -> dict[str, Any]:
     }
 
 
+def mace_model_state_digest(state: Mapping[str, Any]) -> str:
+    """Hash tensor names, dtypes, shapes, and exact CPU bytes deterministically.
+
+    This is the repository's single exact full-``state_dict`` identity for a
+    MACE model.  MACE deployment export established the algorithm; P5
+    full-model publication and the P7 deployment-source identity consume this
+    same implementation rather than defining a second tensor hash, so a state
+    two owners call equal is equal by exactly one algorithm.
+    """
+
+    hasher = hashlib.sha256()
+    for name in sorted(state):
+        tensor = state[name]
+        if not hasattr(tensor, "detach"):
+            raise TrainingDataInputError(f"State entry {name!r} is not a tensor.")
+        array = tensor.detach().cpu().contiguous().numpy()
+        metadata = json.dumps(
+            {
+                "name": str(name),
+                "dtype": str(array.dtype),
+                "shape": list(array.shape),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+        hasher.update(len(metadata).to_bytes(8, "big"))
+        hasher.update(metadata)
+        payload = array.tobytes(order="C")
+        hasher.update(len(payload).to_bytes(8, "big"))
+        hasher.update(payload)
+    return hasher.hexdigest()
+
+
+def mace_model_state_dict_clone(model: Any) -> dict[str, Any]:
+    """Detached CPU clone of one model's exact full state dictionary."""
+
+    return {
+        str(name): tensor.detach().cpu().clone()
+        for name, tensor in model.state_dict().items()
+    }
+
+
 def mace_model_execution_architecture_digest(model: Any) -> str:
     """Return the shared weight-independent identity of one MACE model.
 

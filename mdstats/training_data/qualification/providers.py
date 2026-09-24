@@ -10,18 +10,12 @@ the already accepted P5 inference seam - the owner boundary stays above it.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from pathlib import Path
 from typing import Any, Iterator, Sequence
 
 import numpy as np
 
-from ..campaign_post_selection_runtime import (
-    authenticated_training_materialization,
-    resolve_post_selection_evaluation_model_state,
-)
 from ..post_selection_execution import (
     PostSelectionRunEvidence,
-    authenticate_post_selection_provider,
 )
 from .errors import QualificationError, QualificationLineageError
 from .publication import PublishedProductionMember, authenticate_member_bytes
@@ -36,9 +30,16 @@ def _run_evidence(context: Any, member: PublishedProductionMember) -> PostSelect
 
 @contextmanager
 def member_provider(context: Any, member: PublishedProductionMember) -> Iterator[Any]:
-    """Authenticate one published member's model and release it deterministically."""
+    """Authenticate one published member's model and release it deterministically.
 
-    from ..train2_runtime import load_train2_runtime_summary
+    The reconstruction itself belongs to the P5 owner and is *called*, not
+    reimplemented: qualification checks its own lineage preconditions and then
+    hands the exact selected member to the same reconstruction path that
+    produces the published product.  Two copies of MACE checkpoint
+    authentication is precisely how one of them ends up weaker.
+    """
+
+    from ..post_selection_model_products import selected_representative_provider
 
     authenticate_member_bytes(context, member)
     evidence = _run_evidence(context, member)
@@ -50,43 +51,19 @@ def member_provider(context: Any, member: PublishedProductionMember) -> Iterator
         raise QualificationLineageError(
             "Published member does not name the training root its assessment binds."
         )
-    run_root = context.run_root(member.run_identity)
-    materialization = authenticated_training_materialization(
-        run_root, expected_digest=evidence.materialization_digest
-    )
-    checkpoint_directory = run_root / "checkpoints"
-    summary = load_train2_runtime_summary(checkpoint_directory)
-    evaluation_model_state = resolve_post_selection_evaluation_model_state(
+    with selected_representative_provider(
         context,
-        seed=member.optimizer_seed,
-        planned_epochs=context.production_policy.production_max_num_epochs,
-    )
-    provider, _evaluated = authenticate_post_selection_provider(
-        materialization=materialization,
-        materialization_directory=run_root / "materialization",
-        checkpoint_directory=checkpoint_directory,
-        checkpoint_name=Path(member.checkpoint_relative_path).name,
-        checkpoint_sha256=member.representative_checkpoint_sha256,
-        summary=summary,
-        evaluation_model_state=evaluation_model_state,
+        run_identity=member.run_identity,
+        checkpoint_relative_path=member.checkpoint_relative_path,
+        representative_checkpoint_sha256=member.representative_checkpoint_sha256,
+        materialization_digest=evidence.materialization_digest,
+        optimizer_seed=member.optimizer_seed,
+        # The one substitutable seam remains the accepted P5 numerical forward.
+        # It can never be the source of a *published* model, which is why the
+        # publication owner passes False unconditionally.
         allow_forward_override=context.inference_evaluator is not None,
-        foundation_model_path=context.method_policies.foundation_model,
-    )
-    try:
+    ) as (provider, _evaluated):
         yield provider
-    finally:
-        _retire(provider)
-
-
-def _retire(provider: Any) -> None:
-    for name in ("retire", "close", "release"):
-        method = getattr(provider, name, None)
-        if callable(method):
-            try:
-                method()
-            except Exception:
-                pass
-            return
 
 
 def predict_all(context: Any, provider: Any, atoms_list: Sequence[Any]) -> tuple[Any, ...]:

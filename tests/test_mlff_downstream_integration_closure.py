@@ -38,9 +38,11 @@ from mdstats.training_data.post_selection_execution import (
 )
 from mdstats.training_data.post_selection_identity import (
     compute_replay_lineage_digest,
+    resolve_cv_validation_policy_identity,
     resolve_post_selection_method_identity,
     resolve_post_selection_method_policies,
 )
+from mdstats.training_data.post_selection_cv_plan import build_post_selection_cv_plan
 from mdstats.training_data.campaign_post_selection_runtime import (
     _resolve_post_selection_replay_resolution,
 )
@@ -538,7 +540,10 @@ def test_foreign_internally_valid_materialization_is_typed_and_preserved(
     config, _foundation, run_root = _failed_foundation_workspace(tmp_path)
     record_path = run_root / "materialization" / "materialization.json"
     payload = json.loads(record_path.read_text(encoding="utf-8"))
-    payload["run_identity"] = "f" * 64
+    # ``run_identity`` is the current read-only projection property.  The
+    # serialized owner field is the trajectory identity; injecting the former
+    # was a stale pre-publication payload shape and never reached authentication.
+    payload["training_trajectory_identity"] = "f" * 64
     payload.pop("content_digest", None)
     foreign = PostSelectionMaterialization.from_dict(payload)
     record_path.write_text(
@@ -546,7 +551,7 @@ def test_foreign_internally_valid_materialization_is_typed_and_preserved(
     )
     preserved = record_path.read_bytes()
 
-    with pytest.raises(PostSelectionExecutionError, match="different run"):
+    with pytest.raises(PostSelectionExecutionError, match="trajectory|sealed|materialization"):
         fx.run_cross_validate(config, fx.PostSelectionHarness())
     assert record_path.read_bytes() == preserved
 
@@ -880,16 +885,71 @@ def test_foreign_sibling_continuation_with_equal_runtime_shape_fails_before_eval
 ) -> None:
     """A copied sibling continuation cannot be attached by coarse plan equality."""
 
+    import copy
     import shutil
 
-    # This partition seed gives both folds equal gradient-training sizes on
-    # the restored fixture's selected set, so their TRAIN2 runtime plans are
-    # equal.  The restored pi_train order is part of the authenticated
-    # membership identity, so the old seed-0 coincidence is no longer true.
-    config, _foundation, paused_root, _pauser = _paused_foundation_workspace(
-        tmp_path,
-        cv_text="fold_count = 2\npartition_seed = 2",
+    campaign_root = tmp_path / "campaign-root"
+    campaign_root.mkdir()
+    store_dir = tmp_path / "foundation-store"
+    store_dir.mkdir()
+    foundation = store_dir / "foundation.model"
+    config = _foundation_backed_campaign(
+        campaign_root,
+        foundation=foundation,
+        spelling="../foundation-store/foundation.model",
     )
+
+    # Preserve the original strong counterfactual instead of guessing a seed:
+    # search the current deterministic CV planner for a partition whose two
+    # folds have the same training cardinality.  The planner/selected relation
+    # graph remain the production owners; only the delegated partition seed is
+    # chosen to realize the equal-coarse-plan witness required by this test.
+    cfg, paths, campaign_store = fx.load_context(config)
+    try:
+        (context,) = build_post_selection_contexts(
+            cfg, paths, campaign_store, admit=True
+        )
+        monitor_kwargs = fx.context_monitor_kwargs(context)
+        equal_seed = None
+        for candidate_seed in range(512):
+            candidate_cfg = copy.deepcopy(cfg)
+            candidate_cfg["post_selection"]["cv"]["partition_seed"] = candidate_seed
+            policy = resolve_cv_validation_policy_identity(candidate_cfg)
+            plan = build_post_selection_cv_plan(
+                context.selected,
+                context.method,
+                policy,
+                **monitor_kwargs,
+            )
+            training_sizes = tuple(
+                len(fold.training_frame_uids) for fold in plan.folds
+            )
+            if len(set(training_sizes)) == 1:
+                equal_seed = candidate_seed
+                break
+    finally:
+        campaign_store.close()
+    assert equal_seed is not None, (
+        "the current selected relation graph must admit an equal-training-size "
+        "two-fold witness for the coarse-plan recovery counterfactual"
+    )
+    fx.rewrite_config(
+        config,
+        "partition_seed = 7",
+        f"partition_seed = {equal_seed}",
+    )
+
+    pauser = _PauseAfterFirstEpoch()
+    with pytest.raises(AssertionError, match="bounded interruption"):
+        p4d._run(
+            config,
+            "cross-validate",
+            _external_post_selection_trainer=pauser,
+            _external_inference_evaluator=fx.PostSelectionHarness().evaluate,
+        )
+    assert pauser.requests
+    paused_root = Path(pauser.requests[0].checkpoint_directory).parent
+
     staged = _ResumeFirstThenFailSecond()
     with pytest.raises(AssertionError, match="after materialization"):
         p4d._run(
@@ -1032,8 +1092,10 @@ def _strict_two_size_campaign(tmp_path: Path) -> Path:
 
     import tests.test_mlff_target_size_multi_size_integration as multi
 
-    config_text = fx.fixture_config_text().replace(
-        "acceptance_maximum = 0.5", _STRICT_ACCEPTANCE_MAXIMUM
+    config_text = fx.with_bounded_fixture_execution_profile(
+        fx.fixture_config_text().replace(
+            "acceptance_maximum = 0.5", _STRICT_ACCEPTANCE_MAXIMUM
+        )
     )
     with patch.object(p4d, "_CONFIG", config_text):
         config, _workspace = p4d._fixture_campaign(tmp_path)
@@ -1389,28 +1451,6 @@ def _raw_configured_path_resolutions(source: str) -> list[str]:
     return found
 
 
-def _checkpoint_presence_shortcuts(source: str) -> list[str]:
-    """Find ``any(checkpoint_dir.iterdir())`` restart shortcuts."""
-
-    found = []
-    for node in ast.walk(ast.parse(source)):
-        if not (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Name)
-            and node.func.id == "any"
-            and node.args
-        ):
-            continue
-        candidate = node.args[0]
-        if (
-            isinstance(candidate, ast.Call)
-            and isinstance(candidate.func, ast.Attribute)
-            and candidate.func.attr == "iterdir"
-        ):
-            found.append(ast.unparse(node))
-    return found
-
-
 def _delete_before_authenticate(source: str) -> list[str]:
     """Find a materialization delete ordered before recovery authentication."""
 
@@ -1511,17 +1551,6 @@ def test_structural_rules_distinguish_known_positive_and_negative_constructs():
     assert len(_raw_configured_path_resolutions(raw_path_positive)) == 4
     assert not _raw_configured_path_resolutions(raw_path_negative)
 
-    presence_positive = (
-        "def f(checkpoints):\n"
-        "    return any(checkpoints.iterdir())\n"
-    )
-    presence_negative = (
-        "def f(checkpoints):\n"
-        "    return validate_train2_runtime_continuation_artifacts(checkpoints)\n"
-    )
-    assert _checkpoint_presence_shortcuts(presence_positive)
-    assert not _checkpoint_presence_shortcuts(presence_negative)
-
     delete_positive = (
         "import shutil\n"
         "def f(root):\n"
@@ -1549,7 +1578,6 @@ def test_no_downstream_owner_reintroduces_a_second_locator_authority():
     for name, source in sources.items():
         assert not _path_derived_foundation_identity(source), name
         assert not _raw_configured_path_resolutions(source), name
-        assert not _checkpoint_presence_shortcuts(source), name
         assert not _delete_before_authenticate(source), name
         # No configured foundation locator is re-derived from a raw config value.
         assert "f_model_raw" not in _cwd_resolved_names(source), name

@@ -532,9 +532,14 @@ def test_r12b7_disk_exhaustion_aborts_without_touching_science(tmp_path: Path):
     # An unsatisfiable reserve stands in for an exhausted filesystem. It is read
     # from the campaign's existing [execution] policy, not from a P7 knob.
     text = config.read_text(encoding="utf-8")
-    config.write_text(
-        text + "\n[execution]\nminimum_free_disk_gib = 100000000.0\n", encoding="utf-8"
+    assert "[execution]\n" in text
+    assert "minimum_free_disk_gib =" not in text
+    pressured = text.replace(
+        "[execution]\n",
+        "[execution]\nminimum_free_disk_gib = 100000000.0\n",
+        1,
     )
+    config.write_text(pressured, encoding="utf-8")
     cfg, paths = cli._load_config(config)
     from mdstats.training_data._campaign_cli_core import CampaignStore
 
@@ -635,63 +640,51 @@ def test_r12b7_observation_records_accelerator_and_memory_when_available(tmp_pat
 # ---------------------------------------------------------------------------
 
 
-def test_r12b11_frozen_publication_member_drives_the_real_deployment_owners(
+def test_r12b11_frozen_publication_member_drives_the_current_p7_deployment_owner(
     tmp_path: Path,
 ):
-    """The published member's own bytes go through the real export/ML-IAP owners.
-
-    This is the publication path, not the tiny-model owner smoke: the campaign
-    publishes a genuine multihead MACE checkpoint, P5 decides the member, and
-    that exact member's authenticated bytes are exported at the canonical target
-    head and wrapped by the real ``LAMMPS_MLIAP_MACE`` builder.
-    """
+    """The authenticated P5 full model drives the current P7 deployment owner."""
 
     torch = pytest.importorskip("torch")
     pytest.importorskip("mace")
 
+    from mdstats.training_data.model_artifact_trust import stage_authenticated_model
     from mdstats.training_data.post_selection_identity import (
+        POST_SELECTION_REPLAY_HEAD_NAME,
         POST_SELECTION_TARGET_HEAD_NAME,
-    )
-    from mdstats.training_data.qualification.deployment import (
-        default_deployment_exporter,
-        default_mliap_artifact_builder,
-    )
-    from mdstats.training_data.qualification.publication import (
-        authenticate_member_bytes,
-        checkpoint_path_for_member,
     )
 
     harness = fx.QualificationHarness()
     config, _workspace = fx.build_qualified_campaign(
-        tmp_path, harness=harness, real_mace_checkpoint=True
+        tmp_path,
+        config_text=fx.multihead_fixture_config_text(tmp_path),
+        harness=harness,
+        real_mace_checkpoint=True,
     )
     _cfg, _paths, store, session = fx.load_session(config, harness)
     try:
         member = session.publication.members[0]
         assert member.target_head_name == POST_SELECTION_TARGET_HEAD_NAME
-        # The member's bytes are the exact authenticated published checkpoint.
-        sha = authenticate_member_bytes(session.context, member)
-        assert sha == member.representative_checkpoint_sha256
-        source = checkpoint_path_for_member(session.context, member)
-
-        artifact = default_deployment_exporter(
-            source,
-            tmp_path / "member-deploy",
-            deployment_dtype=session.binding.environment.default_dtype,
-            target_head=member.target_head_name,
+        source_member = session.published_model_member(member)
+        with stage_authenticated_model(
+            session.context.paths.models,
+            source_member.model_relative_path,
+            expected_sha256=source_member.model_sha256,
+            expected_size_bytes=source_member.model_size_bytes,
+            scratch_directory=tmp_path / "source",
+            filename="p5-published.model",
+        ) as source:
+            published_model = torch.load(source, map_location="cpu", weights_only=False)
+        assert tuple(str(value) for value in published_model.heads) == (
+            POST_SELECTION_REPLAY_HEAD_NAME,
+            POST_SELECTION_TARGET_HEAD_NAME,
         )
-        assert artifact.target_head == member.target_head_name
-        deployment_path = tmp_path / "member-deploy" / artifact.deployment_relative_path
+
+        deployment_path, deployment_sha = session.deployed_artifact(member)
         assert deployment_path.is_file()
-
-        mliap_path = default_mliap_artifact_builder(
-            deployment_path,
-            tmp_path / "member-mliap.pt",
-            head=member.target_head_name,
-        )
-        built = torch.load(mliap_path, map_location="cpu", weights_only=False)
-        # The canonical target head, not the last head, is what would execute.
-        assert int(built.model.head.item()) == 1
+        assert deployment_sha
+        assert harness.export_heads == [member.target_head_name]
+        assert harness.mliap_heads == [member.target_head_name]
     finally:
         store.close()
 
@@ -699,17 +692,20 @@ def test_r12b11_frozen_publication_member_drives_the_real_deployment_owners(
 def test_r12b11_real_publication_execution_is_blocking_until_a_capable_runtime(
     tmp_path: Path,
 ):
-    """Execute the published member in LAMMPS, or record the gate as blocking."""
+    """Execute the valid current published product, or defer only at real runtime."""
 
     torch = pytest.importorskip("torch")
+    pytest.importorskip("mace")
+    from mdstats.training_data.model_artifact_trust import stage_authenticated_model
+    from mdstats.training_data.post_selection_identity import (
+        POST_SELECTION_REPLAY_HEAD_NAME,
+        POST_SELECTION_TARGET_HEAD_NAME,
+    )
     from mdstats.training_data.qualification.deployment import (
         default_deployment_exporter,
         default_mliap_artifact_builder,
     )
     from mdstats.training_data.qualification.geometry import atoms_for_frame
-    from mdstats.training_data.qualification.publication import (
-        checkpoint_path_for_member,
-    )
     from mdstats.training_data.qualification.runtime_capability import (
         deployed_static_evaluation,
     )
@@ -717,28 +713,53 @@ def test_r12b11_real_publication_execution_is_blocking_until_a_capable_runtime(
 
     harness = fx.QualificationHarness()
     config, _workspace = fx.build_qualified_campaign(
-        tmp_path, harness=harness, real_mace_checkpoint=True
+        tmp_path,
+        config_text=fx.multihead_fixture_config_text(tmp_path),
+        harness=harness,
+        real_mace_checkpoint=True,
     )
     _cfg, _paths, store, session = fx.load_session(config, harness)
     try:
         member = session.publication.members[0]
-        try:
+        source_member = session.published_model_member(member)
+        with stage_authenticated_model(
+            session.context.paths.models,
+            source_member.model_relative_path,
+            expected_sha256=source_member.model_sha256,
+            expected_size_bytes=source_member.model_size_bytes,
+            scratch_directory=tmp_path / "source",
+            filename="p5-published.model",
+        ) as source:
+            published_model = torch.load(source, map_location="cpu", weights_only=False)
+            assert tuple(str(value) for value in published_model.heads) == (
+                POST_SELECTION_REPLAY_HEAD_NAME,
+                POST_SELECTION_TARGET_HEAD_NAME,
+            )
             artifact = default_deployment_exporter(
-                checkpoint_path_for_member(session.context, member),
+                source,
                 tmp_path / "d",
                 deployment_dtype=session.binding.environment.default_dtype,
                 target_head=member.target_head_name,
             )
+
+        try:
             mliap_path = default_mliap_artifact_builder(
                 tmp_path / "d" / artifact.deployment_relative_path,
                 tmp_path / "m.pt",
                 head=member.target_head_name,
             )
-            atoms = atoms_for_frame(
-                session.context, session.plan.physical_plan.bases[0].frame_uid
+        except QualificationUnavailableError as exc:
+            pytest.skip(
+                "UNAVAILABLE/BLOCKING: the supported MACE ML-IAP builder is "
+                f"unavailable on this host ({exc}); deferred to target-machine qualification."
             )
-            kokkos_gpu_count = 1 if torch.cuda.is_available() else 0
-            selected_cuda_device = 0 if torch.cuda.is_available() else None
+
+        atoms = atoms_for_frame(
+            session.context, session.plan.physical_plan.bases[0].frame_uid
+        )
+        kokkos_gpu_count = 1 if torch.cuda.is_available() else 0
+        selected_cuda_device = 0 if torch.cuda.is_available() else None
+        try:
             energy, forces = deployed_static_evaluation(
                 atoms,
                 artifact_path=mliap_path,

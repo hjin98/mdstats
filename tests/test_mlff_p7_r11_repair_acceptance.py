@@ -61,10 +61,18 @@ def _dynamics_config(**kwargs) -> str:
     return fx.fixture_config_text(dynamics_overrides=DYNAMICS_POLICY, **kwargs)
 
 
-def _campaign(tmp_path: Path, *, config_text: str | None = None):
+def _campaign(
+    tmp_path: Path,
+    *,
+    config_text: str | None = None,
+    real_mace_checkpoint: bool = False,
+):
     harness = fx.QualificationHarness()
     config, workspace = fx.build_qualified_campaign(
-        tmp_path, config_text=config_text, harness=harness
+        tmp_path,
+        config_text=config_text,
+        harness=harness,
+        real_mace_checkpoint=real_mace_checkpoint,
     )
     return config, workspace, harness
 
@@ -335,23 +343,71 @@ def test_r11b2_runtime_probe_separates_iap_support_from_product_support():
     assert "mace_mliap_supported" in probe.to_dict()
 
 
-def test_r11b2_real_runtime_gate_blocks_rather_than_passing(tmp_path: Path):
-    """Requiring the real runtime without the seam is blocking, never a pass."""
+def test_r11b2_real_runtime_gate_blocks_rather_than_passing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A valid current product reaches the real runtime gate and fails closed.
 
-    text = fx.fixture_config_text().replace(
+    Runtime unavailability is injected below the P7 owner. The test therefore
+    cannot pass because of an invalid one-head fixture or a bounded analytic
+    deployed-evaluator seam: P5 must first publish a genuine current multihead
+    full model, and the real deployment exporter/ML-IAP builder must accept it.
+    """
+
+    text = fx.multihead_fixture_config_text(tmp_path).replace(
         "require_deployed_runtime = false", "require_deployed_runtime = true"
     )
-    config, _workspace, harness = _campaign(tmp_path, config_text=text)
-    _cfg, paths, store, session = fx.load_session(
-        config, harness, deployed_evaluator=None, mliap_builder=None, deployment_exporter=None
+    config, _workspace, harness = _campaign(
+        tmp_path, config_text=text, real_mace_checkpoint=True
+    )
+    _cfg, _paths, store, session = fx.load_session(
+        config,
+        harness,
+        deployed_evaluator=None,
+        mliap_builder=None,
+        deployment_exporter=None,
     )
     try:
-        from mdstats.training_data.qualification.deployment import qualify_deployment_parity
+        from mdstats.training_data.qualification.deployment import (
+            qualify_deployment_parity,
+        )
         from mdstats.training_data.qualification.errors import (
             QualificationUnavailableError,
         )
+        from mdstats.training_data.model_artifact_trust import stage_authenticated_model
 
-        with pytest.raises(QualificationUnavailableError, match="unavailable/blocking|cannot"):
+        torch = pytest.importorskip("torch")
+        pytest.importorskip("mace")
+
+        member = session.publication.members[0]
+        source_member = session.published_model_member(member)
+        with stage_authenticated_model(
+            session.context.paths.models,
+            source_member.model_relative_path,
+            expected_sha256=source_member.model_sha256,
+            expected_size_bytes=source_member.model_size_bytes,
+            scratch_directory=tmp_path / "source",
+            filename="p5-published.model",
+        ) as source:
+            published_model = torch.load(source, map_location="cpu", weights_only=False)
+        assert tuple(str(value) for value in published_model.heads) == (
+            POST_SELECTION_REPLAY_HEAD_NAME,
+            POST_SELECTION_TARGET_HEAD_NAME,
+        )
+
+        def unavailable_runtime(*_args, **_kwargs):
+            raise QualificationUnavailableError(
+                "bounded injected real-runtime unavailability"
+            )
+
+        monkeypatch.setattr(
+            "mdstats.training_data.qualification.runtime.deployed_static_observation",
+            unavailable_runtime,
+        )
+        with pytest.raises(
+            QualificationUnavailableError,
+            match="bounded injected real-runtime unavailability",
+        ):
             qualify_deployment_parity(session)
     finally:
         store.close()
@@ -818,6 +874,100 @@ def test_r11b6_resume_after_locked_evidence_does_not_reopen_the_cohort(tmp_path:
     # The locked cohort was evaluated once; the resume reused that evidence.
     assert counted.locked_evaluations == 0
     assert _current(config, counted).verdict is QualificationVerdict.RELEASE_QUALIFIED
+
+
+def test_r11b6_reveal_history_before_activation_pointer_is_repaired_without_reopen(
+    tmp_path: Path, monkeypatch
+):
+    """A crash after immutable reveal history still repairs one activation."""
+
+    from mdstats.training_data.qualification import runtime as runtime_module
+    from mdstats.training_data.qualification.runtime import (
+        locked_cohort_already_revealed,
+        resolve_current_locked_activation,
+    )
+    from mdstats.training_data.qualification.store import (
+        POINTER_LOCKED_ACTIVATION,
+        locked_reveal_path,
+    )
+
+    config, _workspace, harness = _campaign(tmp_path)
+    assert _qualify_nonlocked(config, harness) == 0
+
+    original_pointer_publish = runtime_module.publish_current_qualification_pointer
+
+    def crash_after_reveal(campaign_store, **kwargs):
+        if kwargs.get("kind") == POINTER_LOCKED_ACTIVATION:
+            raise RuntimeError("crash after locked reveal history")
+        return original_pointer_publish(campaign_store, **kwargs)
+
+    monkeypatch.setattr(
+        runtime_module,
+        "publish_current_qualification_pointer",
+        crash_after_reveal,
+    )
+    with pytest.raises(RuntimeError, match="crash after locked reveal history"):
+        _activate(config, harness)
+
+    _cfg, paths, store, session = fx.load_session(config, harness)
+    try:
+        opened = locked_cohort_already_revealed(session, paths)
+        assert opened is not None
+        # History was committed, but the currentness-fenced pointer was not.
+        assert resolve_current_locked_activation(store, paths, session.context) is None
+        reveal_path = locked_reveal_path(
+            paths, session.context.selected.binding, opened.cohort_generation_identity
+        ).parent
+        reveal_files = list(reveal_path.glob("*.json"))
+        assert len(reveal_files) == 1
+        reveal_bytes = reveal_files[0].read_bytes()
+    finally:
+        store.close()
+
+    # A changed binding cannot reuse the disclosed cohort while the repair is
+    # still incomplete; the durable reveal remains a hard one-shot boundary.
+    original_config = config.read_text(encoding="utf-8")
+    changed_config = original_config.replace(
+        "probe_configurations = 2", "probe_configurations = 3", 1
+    )
+    config.write_text(changed_config, encoding="utf-8")
+    try:
+        drifted = fx.QualificationHarness()
+        fx.attach_labels(drifted, config)
+        with pytest.raises(
+            QualificationActivationError, match="different product or|permanent"
+        ):
+            _activate(config, drifted)
+    finally:
+        config.write_text(original_config, encoding="utf-8")
+        monkeypatch.setattr(
+            runtime_module,
+            "publish_current_qualification_pointer",
+            original_pointer_publish,
+        )
+
+    resumed = fx.QualificationHarness()
+    fx.attach_labels(resumed, config)
+    assert _activate(config, resumed) == 0
+    assert resumed.locked_evaluations == 1
+
+    _cfg, paths, store, session = fx.load_session(config, resumed)
+    try:
+        repaired = resolve_current_locked_activation(store, paths, session.context)
+        assert repaired is not None
+        assert repaired.content_digest == opened.content_digest
+        assert (
+            locked_cohort_already_revealed(session, paths).content_digest
+            == opened.content_digest
+        )
+        reveal_path = locked_reveal_path(
+            paths, session.context.selected.binding, opened.cohort_generation_identity
+        ).parent
+        reveal_files = list(reveal_path.glob("*.json"))
+        assert len(reveal_files) == 1
+        assert reveal_files[0].read_bytes() == reveal_bytes
+    finally:
+        store.close()
 
 
 def test_r11b6_revealed_cohort_stays_revealed_after_a_currentness_change(tmp_path: Path):

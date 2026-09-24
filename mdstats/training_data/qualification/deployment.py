@@ -443,6 +443,14 @@ def qualify_deployment_parity(session: Any) -> QualificationComponentEvidence:
             ],
         },
         payload={
+            # Which exact serialized P5 representation, and which exact deployed
+            # bytes, this evidence was produced against.  A terminal reduction
+            # may not combine two different realization sets, and it can only
+            # see that if each component says what it ran.
+            "model_artifact_set_digest": session.model_artifact_set_digest,
+            "deployment_realization_set_digest": (
+                session.freeze_deployment_realization_set()
+            ),
             "probe_cohort_digest": cohort_digest,
             "probe_geometry_digest": probe_geometry_digest,
             "probe_frame_uids": list(cohort),

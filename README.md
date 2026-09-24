@@ -54,10 +54,34 @@ The public campaign lifecycle is current-generation only. Obsolete derived
 target-size state is rejected before candidate/checkpoint reuse and is
 quarantined rather than translated; lower-level source/content caches remain
 reusable only after current-owner validation. The training lifecycle ends at
-current functional/restart closure and fresh final production.
+current functional/restart closure, fresh final production, and the usable
+model product that production publishes.
 
-Qualification consumes that already frozen publication. It validates deployment
-parity through the supported ML-IAP/LAMMPS runtime, local PES response against
+`train-production` completes a selected size only when it has both the
+scientific decision *and* a loadable model. For every published member it
+materializes that member's exact selected representative checkpoint as a
+complete MACE `.model` under
+`<workspace>/models/production/g<generation>/N_<size>/decision-<digest>/`, and
+prints the path, SHA-256 and target head. Three files look like "the model" and
+only one is the product:
+
+```text
+representative TRAIN2 checkpoint   scientific/restart lineage
+P5 published full .model           the usable production product
+P7 deployment/ML-IAP artifact      downstream converted representation
+```
+
+MACE also writes its own `.model` in the run tree when training ends. That one
+is the *last training epoch*, which is routinely not the selected
+representative, and is never published as a product. A campaign completed by an
+earlier version obtains the new product by rerunning `train-production`, which
+recloses only the missing representation with no retraining and no
+re-evaluation.
+
+Qualification consumes that already frozen publication and deploys the
+published `.model` bytes, while keeping the representative checkpoint as its
+independent scientific reference. It validates deployment parity through the
+supported ML-IAP/LAMMPS runtime, local PES response against
 matched external references, relaxation topology and geometry fidelity,
 finite-temperature dynamics stability, uncertainty calibration, and - only after
 an explicit one-shot activation - the reserved locked interpolation test. It has

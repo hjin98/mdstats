@@ -350,7 +350,10 @@ def test_p5_object_before_pointer_publication_wins_against_storage(tmp_path: Pat
     window_open = threading.Event()
     storage_at_barrier = threading.Event()
     order: list[str] = []
-    original_pointer = pointer_mod.publish_current_post_selection_pointer
+    # The current P5 product owner commits the decision, model-publication and
+    # predecessor-reclosure pointers as one transaction.  Pause that atomic
+    # pointer-set owner, not the retired single-row publication seam.
+    original_pointer = pointer_mod.publish_current_post_selection_pointer_set
     original_barrier = executor_mod.owner_mutation_barrier
 
     def observed_barrier(paths, synchronization):
@@ -376,13 +379,13 @@ def test_p5_object_before_pointer_publication_wins_against_storage(tmp_path: Pat
             storage_error.append(exc)
 
     worker = threading.Thread(target=storage_worker, daemon=True)
-    pointer_mod.publish_current_post_selection_pointer = paused_pointer
+    pointer_mod.publish_current_post_selection_pointer_set = paused_pointer
     executor_mod.owner_mutation_barrier = observed_barrier
     try:
         worker.start()
         assert p5.run_train_production(config, harness) == 0
     finally:
-        pointer_mod.publish_current_post_selection_pointer = original_pointer
+        pointer_mod.publish_current_post_selection_pointer_set = original_pointer
         executor_mod.owner_mutation_barrier = original_barrier
         worker.join(180.0)
     assert not storage_error, storage_error

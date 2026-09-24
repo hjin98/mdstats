@@ -229,8 +229,9 @@ def test_p5_plan_and_fitted_preparation_ancestry_is_one_way():
     materialization_fields = {field.name for field in fields(PostSelectionMaterialization)}
 
     # A fitted-preparation digest is downstream evidence, never a parent of
-    # either current role plan.  The preparation itself authenticates the
-    # exact plan/run that authorized its fit.
+    # either current role plan.  The preparation instead binds the exact
+    # pre-fit training trajectory and resolved preparation policy that
+    # authorized its fit.
     forbidden_plan_parents = {
         "preparation_digest",
         "fitted_preparation_digest",
@@ -238,7 +239,8 @@ def test_p5_plan_and_fitted_preparation_ancestry_is_one_way():
     }
     assert not forbidden_plan_parents & cv_plan_fields
     assert not forbidden_plan_parents & final_plan_fields
-    assert "owner_plan_digest" in preparation_fields
+    assert "training_trajectory_identity" in preparation_fields
+    assert "preparation_policy_digest" in preparation_fields
     assert "preparation_digest" in materialization_fields
 
 

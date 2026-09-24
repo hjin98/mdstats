@@ -233,6 +233,7 @@ def publish_current_qualification_pointer(
     binding: PostSelectionBinding,
     kind: str,
     content_digest: str,
+    expected_post_selection_pointers: Mapping[str, str | None] | None = None,
 ) -> None:
     """Make one qualification record current under the same commit-time fence.
 
@@ -269,6 +270,34 @@ def publish_current_qualification_pointer(
                 "qualification work was running. The stale qualification stays "
                 "available as historical evidence but is never published as current."
             )
+        if expected_post_selection_pointers:
+            # Representation is deliberately outside ``QualificationInputBinding``,
+            # so an in-flight attempt can overlap a representation-only P5
+            # successor.  Its immutable component objects stay valid history,
+            # but it must not publish an already-stale terminal pointer.  This
+            # is a compare-and-swap fence inside the same transaction as the
+            # write - not a new lock, attempt identity or currentness database.
+            #
+            # Every captured P5 parent locator is compared, not only the final
+            # decision row: a decision pointer that has not moved does not
+            # rescue an attempt whose final-plan, CV or final-seed assessment
+            # parent advanced underneath it.
+            for expected_key, expected_value in sorted(
+                expected_post_selection_pointers.items()
+            ):
+                observed = db.execute(
+                    "SELECT value FROM meta WHERE key=?", (expected_key,)
+                ).fetchone()
+                current_value = None if observed is None else str(observed[0])
+                if current_value != (
+                    None if expected_value is None else str(expected_value)
+                ):
+                    raise PostSelectionStaleBindingError(
+                        "A P5 parent this qualification attempt consumed has advanced "
+                        f"({expected_key.rsplit(':', 1)[-1]}); the immutable P7 "
+                        "objects remain historical evidence, but no stale terminal "
+                        "pointer is published."
+                    )
         row = db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
         if row is not None and str(row[0]) == value:
             return
