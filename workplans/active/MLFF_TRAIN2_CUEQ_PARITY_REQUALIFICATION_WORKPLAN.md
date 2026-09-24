@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 5
+revision: 6
 reviewed_date: 2026-09-24
-workplan_review_status: PASS_AS_WORKPLAN_AFTER_R4_REPAIR
-workplan_review_basis: 272bc2bab5e7b05c7a4ad4b34e51f56d0d50befa
+workplan_review_status: PASS_AS_WORKPLAN_AFTER_R5_REPAIR
+workplan_review_basis: c14c153c2c44bd52e6c2532a201819dd3f2ba673
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -22,11 +22,11 @@ production_default_during_repair: e3nn
 
 ## 0. Disposition and Serious Challenge
 
-**OPEN — SERIOUS CHALLENGE to the accepted TRAIN2 FP32 backend-equivalence criterion.**
+**OPEN — SERIOUS CHALLENGE to the current executable TRAIN2 FP32 backend-equivalence rule, including its missing accepted-D2 source closure and its numerical adequacy.**
 
 A real target-host MACE-MH-1 / `omat_pbe` doctor realization on an NVIDIA RTX 3090 passed dependency, selected-head, CUDA, resource, and execution-capability checks but failed the authorizing pure-CuEq TRAIN2 FP32 noise-normalized parity gate.
 
-The observed failure is not sufficient evidence that CuEq is scientifically or numerically inadmissible. It is evidence that the current equivalence authority may be inadequately parameterized for the regime it claims to govern:
+The observed failure is not sufficient evidence that CuEq is scientifically or numerically inadmissible. It is evidence that the current executable equivalence rule may be inadequately parameterized for the regime it claims to govern:
 
 - energy cross maximum: `7.629e-7 <= 1e-6`;
 - stress cross maximum: `7.213e-8 <= 1e-6`;
@@ -657,7 +657,7 @@ backend = "e3nn"
 for production MH-1 runs that must proceed without the challenged CuEq equivalence claim.
 
 
-## 9. R1 exhaustive workplan-review closure
+## 9. Historical R1 exhaustive workplan-review closure — superseded by R2/R3/R4/R5
 
 This Revision-2 workplan incorporates the formal review performed against `main@af89c30...`, the accepted Protocol-6.4 D1/D2 baseline `a759e81...` / source `a4824d2...`, current D4 authority-index rules, current acceleration/doctor implementation, historical CUEQ-DEFAULT1/DIAG3/PARITY1 records, CUEQ-PHASE1, Project Engineering Memory, and FINAL-GPU1 binding machinery.
 
@@ -685,7 +685,7 @@ The review repaired these plan-level blockers:
 **R1 disposition: PASS AS WORKPLAN.** No remaining plan-level blocker was found after the repairs above. This is not a PASS of the challenged CuEq D2 method, not CUEQ-PHASE1 authorization, and not permission to implement new thresholds. Stage A remains the next executable gate.
 
 
-## 10. R2 post-repair review closure
+## 10. Historical R2 post-repair review closure — superseded by R3/R4/R5
 
 Revision 2 was re-reviewed rather than accepted on assertion. That re-review promoted three additional facts from investigation items to confirmed obligations:
 
@@ -698,7 +698,7 @@ The review also sharpened the selection-evidence limitation: with the reported t
 **R2 disposition: PASS AS WORKPLAN after Revision-3 repair.** R1 is retained as historical review evidence but is superseded by this R2 closure. No remaining plan-level blocker is known. Stage A remains the next gate; no new parity threshold or CuEq production authorization is accepted by this disposition.
 
 
-## 11. R3 authority-evolution correction
+## 11. Historical R3 authority-evolution correction — superseded by R4/R5
 
 The Revision-3 plan was subjected to a final historical-authority adversarial check. That check found that R2 had over-constrained current CuEq execution by treating the still-deferred CUEQ-PHASE1 record as a blanket production prerequisite.
 
@@ -714,7 +714,7 @@ Revision 4 therefore:
 **R3 disposition: PASS AS WORKPLAN after Revision-4 repair.** R2 is superseded on this authority-evolution point. No remaining plan-level blocker is known after the final historical check.
 
 
-## 12. R4 full acceleration-parity source-closure correction
+## 12. Historical R4 full acceleration-parity source-closure correction — superseded by R5
 
 The final source-closure audit generalized the D2 omission correctly: the accepted source contains no CuEq-specific relation at all, not merely no TRAIN2 FP32 rule. Therefore source/DATA6 FP32 and FP64 CuEq parity are also D4/historical relations lacking explicit accepted-D2 source closure.
 
@@ -726,3 +726,16 @@ Revision 5 closes this without turning the MH-1 TRAIN2 failure into permission t
 - downstream D3/D4 can then bind each realization to an explicit accepted D2 member rather than an unlisted D4 constant.
 
 **R4 disposition: PASS AS WORKPLAN after Revision-5 repair.** No known parity-authority surface is left outside the plan, and no unaffected numerical sibling is silently relaxed.
+
+
+## 13. R5 terminology/source-closure consistency check
+
+The terminal consistency pass found one residual wording error: the opening still called Rev86 an “accepted” D2 criterion after R2/R4 had established that the accepted Protocol-6.4 D2 source contains no CuEq parity relation. Revision 6 now consistently distinguishes:
+
+- the **current executable fail-closed rule** carried by D4/historical Rev86 machinery;
+- the **accepted D2 authority**, which currently lacks source closure for the CuEq acceleration-equivalence family;
+- the proposed future D2 relation, which requires independent Review and stakeholder ratification.
+
+Earlier R1-R4 closure sections are retained only as historical review chronology and are explicitly labeled superseded.
+
+**R5 disposition: PASS AS WORKPLAN after Revision-6 repair.** No remaining semantic contradiction or plan-level blocker was found in the terminal consistency pass.
