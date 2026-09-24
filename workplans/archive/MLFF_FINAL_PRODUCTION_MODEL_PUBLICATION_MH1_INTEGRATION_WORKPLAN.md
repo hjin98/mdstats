@@ -2,18 +2,23 @@
 kind: implementation-workplan
 workplan_id: MLFF-FINAL-PRODUCTION-MODEL-PUBLICATION-MH1-INTEGRATION
 protocol_version: 6.4.0
-status: active-reopened
+status: closed-pass
 created_date: 2026-09-21
-revision: 28
+revision: 29
 reviewed_date: 2026-09-24
-workplan_review_status: evidence-repair-implemented-execution-pending-unavailable
-workplan_review_basis: 4194e31e44a61a9a636121b723294a005020d1fd
+closed_date: 2026-09-24
+workplan_review_status: final-implementation-review-pass-closed
+workplan_review_basis: 54e3a350855237002012b136442ec9621fe89a98
 implementation_review_candidate: 73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
 implementation_review_domain: D4
 attempted_successor_evidence: workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_CLOSEOUT_REV28_2026-09-24.md
-evidence_specification_candidate: a382c118a62dc32f52536efe7b8aa08dc38f18f5
-evidence_specification_tree: a8d388d1cc4466c7dfe624b6076bb9ab0491e054
-pem_reconciliation_candidate: 4194e31e44a61a9a636121b723294a005020d1fd
+evidence_specification_candidate: 5a6719d9fbabf04ddad7407b2729be0d0d1f76bf
+evidence_specification_tree: 45ab5adf7b94e58770cecf73a27325e06206b309
+pem_reconciliation_candidate: 54e3a350855237002012b136442ec9621fe89a98
+actions_validation_run: 36007255491
+actions_validation_workflow_commit: e048aeebcde62301f4ccf6109fd89a238030cf83
+actions_validation_report_commit: 84a38b45a9ddd0df6bb19dfba6ba240db094aa2e
+final_closeout_record: workplans/archive/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_FINAL_CLOSEOUT_2026-09-24.md
 branch: design/mlff-final-production-model-publication-mh1-integration
 basis_commit: 237448b449b6f8042de5f239e5fefdfd54e3b2c3
 highest_affected_domain: D3
@@ -24,6 +29,8 @@ production_gpu_qualification: deferred-to-actual-campaign-and-final-release
 # MLFF final-production model publication + lightweight MH-1 integration — D3 -> D4 workplan
 
 ## 0. Disposition
+
+**REVISION-29 FINAL IMPLEMENTATION REVIEW: PASS / CLOSED.** The retained executable product candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` remains conforming, with no `mdstats/**/*.py` product-source change in the evidence-repair descendants. The final immutable test/evidence candidate is `5a6719d9fbabf04ddad7407b2729be0d0d1f76bf` (tree `45ab5adf7b94e58770cecf73a27325e06206b309`). GitHub Actions run `36007255491`, executed from workflow descendant `e048aeebcde62301f4ccf6109fd89a238030cf83`, first proved `mdstats/` and `tests/` byte-identical to that evidence base and then completed compileall plus both required pytest groups successfully. The corrected-surface group recorded 104 tests, 0 failures, 0 errors, and 2 authorized target-host LAMMPS/ML-IAP skips; the mandatory focused group recorded 91 tests, 0 failures, 0 errors, and 2 authorized locked-real-MH1 skips. The durable report is `qualification/mlff-publication-closeout/actions-validation-report.md` at report commit `84a38b45a9ddd0df6bb19dfba6ba240db094aa2e`. PEM closeout learning is reconciled at descendant `54e3a350855237002012b136442ec9621fe89a98`. No Serious Challenge is active. Long real MH-1/GPU/CUDA-performance/LAMMPS/MLIAP/MD qualification remains explicitly deferred to the actual campaign/final-release target-host package.
 
 **POST-REVISION-28 INDEPENDENT REVIEW: PRODUCT-CODE PASS / WORKPLAN NO-PASS FOR CLOSEOUT-EVIDENCE BINDING AND ORACLE ADEQUACY.** Reviewed branch head `1f29ca406eb5920b36df9a55d112501225e7868c`. Executable product candidate `73aab9e35399c5b7ceec3bbe31e129f76a50cdd8` remains conforming; the Revision-28 delta changes tests/evidence/workplan only and no `mdstats/**/*.py` product source. Revision-22 D3 remains coherent and no Serious Challenge is active. The attempted Revision-28 PASS is reopened for the narrow evidence-owner defects in Section 26H. No production-code change is authorized unless a corrected current oracle demonstrates a genuine product failure.
 
@@ -2959,6 +2966,139 @@ Closeout is Review-ready when all are true:
    - explicit deferred qualification boundaries.
 
 Long production MH-1/GPU/CUDA-performance/LAMMPS/MLIAP/MD qualification remains deferred exactly as before.
+
+
+## 26I. Revision-29 final executable acceptance and lifecycle closure
+
+### Final immutable identities
+
+```text
+retained executable product:
+73aab9e35399c5b7ceec3bbe31e129f76a50cdd8
+
+final test/evidence candidate:
+5a6719d9fbabf04ddad7407b2729be0d0d1f76bf
+tree 45ab5adf7b94e58770cecf73a27325e06206b309
+
+Actions workflow descendant:
+e048aeebcde62301f4ccf6109fd89a238030cf83
+
+Actions run:
+36007255491
+
+durable Actions report commit:
+84a38b45a9ddd0df6bb19dfba6ba240db094aa2e
+
+PEM reconciliation descendant:
+54e3a350855237002012b136442ec9621fe89a98
+```
+
+No `mdstats/**/*.py` product source changed between the retained executable product and the final evidence candidate. The intervening executable-evidence changes are test/evidence retirement, remapping, and bounded fixture corrections only.
+
+### Execution route
+
+A temporary repository-local GitHub Actions workflow was used because the review runtime itself could not execute the repository. This follows the repository's prior temporary-evidence-workflow pattern rather than adding a permanent CI subsystem.
+
+Before pytest, the workflow executed:
+
+```text
+git diff --exit-code 5a6719d9fbabf04ddad7407b2729be0d0d1f76bf -- mdstats tests
+```
+
+and passed. Therefore the tested workflow descendant carried byte-identical product and test source to the named immutable evidence base.
+
+Environment recorded by the run:
+
+```text
+Python      3.11.16
+mdstats     0.20.242a0
+mace-torch  0.3.16
+ASE         3.29.0
+torch       2.14.0+cpu
+torch-ema   0.3
+e3nn        0.4.4
+numpy       2.4.6
+scipy       1.17.1
+pytest      9.1.1
+hypothesis  6.168.1
+```
+
+`python -m compileall -q mdstats tests` exited 0.
+
+### Corrected closeout evidence surfaces
+
+Executed:
+
+```text
+tests/test_mlff_p7_r11_repair_acceptance.py
+tests/test_mlff_p7_r12_repair_acceptance.py
+tests/test_mlff_downstream_integration_closure.py
+```
+
+Result:
+
+```text
+104 tests
+0 failures
+0 errors
+2 skipped
+```
+
+Both skips are authorized target-host runtime deferrals:
+
+1. the supported LAMMPS/ML-IAP runtime is absent on the GitHub CPU runner;
+2. actual frozen-publication MACE execution reaches the real runtime boundary and then observes missing `lammps`.
+
+The local one-head/head-inventory mismatch no longer skips these claims.
+
+The earlier failed Actions realization was useful diagnostic evidence rather than product failure. It exposed three test-fixture defects: duplicate TOML `[execution]` declaration, a stale equal-runtime-shape premise, and toy TRAIN2 jobs inheriting a production 16-GiB reservation on a small CI host. Those were repaired only at the test/evidence owner. No product source changed.
+
+### Mandatory focused publication/P7/MH-1 suites
+
+Executed:
+
+```text
+tests/test_mlff_p5_model_publication_owners.py
+tests/test_mlff_p5_model_publication_acceptance.py
+tests/test_mlff_p7_deployment_realization.py
+tests/test_mlff_p7_product_currentness_fences.py
+tests/test_mlff_mh1_publication_integration.py
+```
+
+Result:
+
+```text
+91 tests
+0 failures
+0 errors
+2 skipped
+```
+
+The two skips are the explicitly authorized real locked-MH1-byte tests. The bounded current-owner MH-1 integration and all nonlocked publication/currentness/deployment checks executed.
+
+### Evidence-owner and PEM closure
+
+IR28R-E1 is closed by immutable source binding plus successful exact-source execution.
+
+IR28R-E2 is closed: P7 runtime tests now start from a genuine current P5 multihead full-model product and reach the actual exporter/runtime boundary.
+
+IR28R-E3 is closed by reduction: the rename-sensitive structural checkpoint-presence sensor was removed, leaving stronger behavioral continuation/authentication evidence.
+
+IR28R-L1 is closed: the distinct coordinated intervention is recorded as one application episode across the applicable success patterns, with target-host limitations preserved. Final candidate-overlay evidence now binds the passing evidence base and durable Actions report.
+
+### Final disposition
+
+**PASS / CLOSED.** No blocking product, evidence-specification, lifecycle, or PEM issue remains for this workplan.
+
+The temporary Actions workflow is removed during final archival; its report and GitHub Actions run remain durable evidence. This removal changes neither product nor test source and does not invalidate the run.
+
+Deferred, non-blocking final-release qualification remains:
+
+- locked real MACE-MH-1 bytes on the intended campaign;
+- target-host GPU/CUDA performance/VRAM qualification;
+- production LAMMPS/MLIAP runtime execution;
+- long production MD validation.
+
 
 ## 27. Current-implementation review closure (Revision 2)
 

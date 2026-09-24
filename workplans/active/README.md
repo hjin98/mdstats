@@ -4,16 +4,6 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 ## Current active MLFF work
 
-### Final-production model publication + lightweight MH-1 integration — closeout evidence reopen
-
-Branch: `design/mlff-final-production-model-publication-mh1-integration`
-
-Canonical workplan:
-
-- `workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md`
-
-Post-Revision-28 product-code conformance remains **PASS** and no Serious Challenge is active. The Section-26H evidence repairs are implemented: immutable evidence-specification candidate `a382c118a62dc32f52536efe7b8aa08dc38f18f5` fixes the P7 current-product runtime oracles and retires the weak checkpoint-name AST sensor; descendant PEM candidate `4194e31e44a61a9a636121b723294a005020d1fd` records the distinct coordinated application episode. No `mdstats/**/*.py` production source changed. Lifecycle closeout remains **NO-PASS for exact execution evidence only** because this environment has no pytest runner and GitHub exposes zero statuses/checks/Actions for the candidate. Run the Section-26H command set on the immutable candidate (or an evidence-only descendant with identical product/test source); if green with only authorized external-runtime skips, archive the plan without another production patch.
-
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
 Branch: `design/mlff-pi-train-fps-diversity-restoration`
