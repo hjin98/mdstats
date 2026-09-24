@@ -3,12 +3,12 @@ kind: proposed-D2-authority-overlay
 protocol_version: 6.4.0
 status: PROPOSED_NOT_ACCEPTED
 workplan: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md
-candidate_id: MLFF-TRAIN2-CUEQ-EQUIVALENCE-D2-CANDIDATE-2
+candidate_id: MLFF-TRAIN2-CUEQ-EQUIVALENCE-D2-CANDIDATE-3
 date: 2026-09-24
 parent_d2_kernel: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 parent_d2_exact_source: a4824d28775164aa942fd29fa97ee0957eb87e6f
 stage_a_cross_family_basis: 24734c8113dfaeaba4ae32c2bb0b80f3c0c72e82
-supersedes_proposed_candidate: MLFF-TRAIN2-CUEQ-EQUIVALENCE-D2-CANDIDATE-1
+supersedes_proposed_candidate: MLFF-TRAIN2-CUEQ-EQUIVALENCE-D2-CANDIDATE-2
 human_ratification_required: true
 ---
 
@@ -18,11 +18,18 @@ human_ratification_required: true
 
 This document is a **proposed** bounded D2 overlay. It is not accepted current authority and cannot authorize CuEq execution by repository presence alone.
 
-Candidate 2 supersedes the unreviewed Candidate 1. Author-side Challenge found that Candidate 1 allowed a persistent backend centroid displacement as large as one ordinary e3nn realization RMS. That is not adequate for a training operator because a persistent bias can accumulate while zero-mean execution noise need not. Candidate 2 separates fixed dtype-scale persistent-bias control from reference-anchored stochastic-spread control.
+Candidate 3 supersedes unreviewed Candidates 1 and 2.
 
-This overlay concretizes the accepted D2 rule that a native backend is execution-only only under a source-closed numerical-equivalence relation. It changes the challenged TRAIN2 relation while source-closing adjacent currently supported acceleration relations. It does not change D1 scientific meaning, MACE training objectives, replay semantics, checkpoint ranking, CV thresholds or publication policy.
+Author-side Challenge history:
 
-The relation family is deliberately split by protected consequence:
+- Candidate 1 incorrectly used ordinary e3nn realization RMS as the margin for persistent backend bias and compared raw gradient coordinates as the main training consequence.
+- Candidate 2 separated persistent bias from noise and moved to a two-update state-transition witness, but a second author Challenge found three remaining defects: no explicit rare-outlier materiality guard; an unnecessarily permissive factor-two stochastic-variance rule; and a potentially circular measurement dependency that could re-import source/DATA6 descriptor/FPS acceptance through the projection relation.
+
+Candidate 3 repairs those defects before independent Review.
+
+The overlay concretizes the accepted D2 rule that a native backend is execution-only only under a source-closed numerical-equivalence relation. It changes the challenged TRAIN2 relation while source-closing adjacent supported acceleration relations. It does not change D1 scientific meaning, MACE training objectives, replay semantics, checkpoint ranking, CV thresholds or publication policy.
+
+The relation family is split by protected consequence:
 
 1. source/DATA6 calculator inference;
 2. TRAIN2 training-state transition;
@@ -81,7 +88,7 @@ For TRAIN2 the governed backend-specific computation is the accepted training-st
 mathcal T_b:
 (	heta,q,omega)
 mapsto
-(	heta',q',omega'),
+(	heta',q'),
 ]
 
 where:
@@ -89,14 +96,15 @@ where:
 - (bin{R,C}) is e3nn reference or pure CuEq candidate;
 - (	heta) is exact model state;
 - (q) is accepted optimizer/EMA/scheduler/RNG state;
-- (omega) is the exact frozen exposure/objective input for one optimizer update; and
-- the output is the post-update training state.
+- (omega) is the exact frozen exposure/objective input for one optimizer update.
 
-The backend-specific forward/backward graph is part of (mathcal T_b). Optimizer semantics are not redefined here; they are held identical so any difference in the transition is attributable to the backend-dependent model computation.
+The backend-specific forward/backward graph is part of (mathcal T_b). Optimizer/EMA semantics are held identical rather than redefined here.
+
+Every mutable transient CuEq state item capable of influencing a later TRAIN2 update must either be represented by ((	heta',q')) or be an exact deterministic function of represented state plus immutable configuration. A hidden mutable CuEq-only state outside this closure makes the transition witness incomplete and fails qualification.
 
 ### D2.CUEQ.DEF.006 — minimum stateful transition witness
 
-A TRAIN2 qualification observation resets exact ((	heta,q)), executes two frozen optimizer updates
+A qualification observation resets exact ((	heta,q)), executes two frozen optimizer updates,
 
 [
 (	heta_b^{(1)},q_b^{(1)})
@@ -110,31 +118,50 @@ mathcal T_b(	heta^{(0)},q^{(0)},omega_1),
 mathcal T_b(	heta_b^{(1)},q_b^{(1)},omega_2).
 ]
 
-Two updates are the minimum witness because the first populates stateful optimizer/EMA recurrence and the second consumes non-initial recurrence state.
+Two updates are the minimum witness because update 1 populates stateful optimizer/EMA recurrence and update 2 consumes non-initial recurrence state.
 
-Every run must retain finite loss, optimizer-consumed gradients, model parameters, optimizer state and EMA state. Any non-finite state is hard failure.
+Every observation must retain finite loss, optimizer-consumed gradients, model parameters, optimizer state and EMA state. Non-finite state is hard failure.
 
-### D2.CUEQ.DEF.007 — common functional observation of the transition
+### D2.CUEQ.DEF.007 — common state-transfer measurement transform
 
-Training realizations may use different transient parameterizations, so transition equivalence is observed through one common portable function.
+Transient e3nn/CuEq parameterizations need not have identical storage coordinates. TRAIN2 transition evidence therefore uses one independently qualified canonical state-transfer transform
 
-Let (P_b) be the already-governed projection from the authenticated transient training realization to the canonical portable e3nn shell; for e3nn this is identity.
+[
+P_b:	heta_bmapsto	ilde	heta_b,
+]
+
+where (	ilde	heta_b) is the canonical portable e3nn model coordinate.
+
+For e3nn, (P_R) is identity. For CuEq, (P_C) is the existing dependency-native transfer into an already reconstructed canonical portable shell.
+
+For use as a **measurement transform**, qualification requires:
+
+1. exact canonical portable-shell architecture identity before/after transfer;
+2. complete transfer of every mutable model state that can affect the portable function;
+3. deterministic mapping for fixed transient state/configuration;
+4. no source/DATA6 descriptor/FPS acceptance criterion imported merely by using the transform.
+
+The broader trained-state deployment/projection relation remains separately governed by D2.CUEQ.DEF.023.
+
+This separation prevents circularity: TRAIN2 does not pass or fail because a source-selection descriptor moved, while the state-transfer mapping itself must be independently trustworthy.
+
+### D2.CUEQ.DEF.008 — functional observation of the transition
 
 Let (E) be the fixed portable-e3nn evaluator on a frozen witness corpus/head.
 
-For (kin{1,2}),
+For a bound starting state (S), compute one common baseline
 
 [
-y_{b}^{(k)}
-=
-E(P_b(	heta_b^{(k)})),
-qquad
-y^{(0)}
-=
-E(	heta^{(0)}),
+y^{(0)}=E(	heta^{(0)}).
 ]
 
-and define the update-induced functional displacement
+After update (kin{1,2}),
+
+[
+y_b^{(k)}=E(P_b(	heta_b^{(k)})),
+]
+
+and define update-induced displacement
 
 [
 Delta y_b^{(k)}
@@ -142,13 +169,13 @@ Delta y_b^{(k)}
 y_b^{(k)}-y^{(0)}.
 ]
 
-The governed transition channels are the energy/atom, force and stress displacement vectors at both (k=1) and (k=2).
+The governed transition channels are energy/atom, force and stress displacement vectors at both (k=1) and (k=2).
 
-Using displacement rather than absolute post-step prediction prevents a large common baseline from masking a materially different update.
+Using displacement rather than absolute post-step prediction prevents a large common baseline from masking a materially different training update.
 
-Projection is a measurement dependency here and must independently satisfy D2.CUEQ.DEF.021 before it can be used to close TRAIN2 evidence.
+The portable shell and evaluator are reset/reconstructed according to the frozen measurement protocol for every retained observation so measurement-state reuse cannot create a backend-specific hidden input.
 
-### D2.CUEQ.DEF.008 — TRAIN2 descriptors are not an authorizing channel
+### D2.CUEQ.DEF.009 — TRAIN2 descriptors are not an authorizing channel
 
 Invariant descriptors and FPS fingerprints are not consumed by the current TRAIN2 optimizer. They therefore do not belong to the TRAIN2 backend-equivalence predicate.
 
@@ -158,24 +185,43 @@ A future TRAIN2 design that consumes descriptors reopens this definition.
 
 ## 5. Frozen finite-sample qualification design
 
-### D2.CUEQ.DEF.009 — experimental unit
+### D2.CUEQ.DEF.010 — experimental unit and order cells
 
 The independent experimental unit is the **fresh process**.
 
-Qualification is balanced over four backend construction/execution-order cells. For each cell:
+Qualification is balanced over four cells defined by:
+
+1. which training realization is constructed first; and
+2. which complete two-update backend witness is executed first.
+
+For each cell:
 
 - 5 fresh processes;
 - 1 discarded warm-up per backend;
 - 3 retained observations per backend;
-- exact model/optimizer/EMA/RNG reset for each retained transition observation;
+- exact model/optimizer/EMA/RNG reset for every retained transition observation;
 - no early stopping;
 - no outcome-selected reruns.
+
+Projection/evaluation occurs as part of each backend witness under the common frozen measurement transform; the baseline portable evaluation for a retained observation is common to both backends.
 
 Thus 20 fresh processes are independent units and repeated observations are nested measurements.
 
 The relation is a deterministic finite-sample qualification functional. It does not interpret all-pairs or retained-observation cardinality as an inferential independent-sample count.
 
-### D2.CUEQ.DEF.010 — vector notation
+### D2.CUEQ.DEF.011 — canonical reduction arithmetic
+
+All qualification reductions are performed in canonical IEEE-754 binary64 control arithmetic.
+
+The iteration order is fixed lexicographically by:
+
+[
+(	ext{cell identity},	ext{process replicate},	ext{retained repeat},	ext{component index}).
+]
+
+Centroid and sum-of-squares accumulation order is therefore part of the method identity. D3 may use a mathematically equivalent more accurate summation only after exact decision-equivalence is established for the accepted boundaries.
+
+### D2.CUEQ.DEF.012 — vector notation
 
 For governed vector channel (c), let
 
@@ -185,7 +231,7 @@ x_{b,h,p,r,c}inmathbb R^{m_c}
 
 be the retained observation for backend (b), order cell (h), fresh process (p), repeat (r).
 
-This notation is used for:
+This notation covers:
 
 - direct starting-state physical E/F/stress forward channels where required by the qualification record; and
 - (Delta y^{(1)}) and (Delta y^{(2)}) E/F/stress transition-displacement channels for every active TRAIN2 objective/head branch and bound state.
@@ -236,19 +282,17 @@ sum_{p,r}
 
 ## 6. Persistent-bias relation
 
-### D2.CUEQ.DEF.011 — dtype mixed envelope
+### D2.CUEQ.DEF.013 — dtype mixed envelope
 
 Let ((r_d,a_d)) be:
 
 - FP32: (r_d=10^{-5}), (a_d=10^{-6});
 - FP64: (r_d=10^{-10}), (a_d=10^{-12}).
 
-For reference vector (z), define component tolerance
+For reference vector (z), define
 
 [
-	au_{d,j}(z)
-=
-a_d+r_d|z_j|.
+	au_{d,j}(z)=a_d+r_d|z_j|.
 ]
 
 A candidate vector (w) is persistently equivalent to (z) iff
@@ -260,42 +304,36 @@ le
 qquadorall j.
 ]
 
-This is the existing dtype mixed numerical envelope, applied to backend **centroids** rather than noisy single realizations.
+This is the existing dtype mixed numerical envelope, applied to backend centroids rather than noisy single realizations.
 
-### D2.CUEQ.DEF.012 — global and order-cell centroid guards
+### D2.CUEQ.DEF.014 — global and cell centroid guards
 
-For every governed channel (c), pass requires
+Every governed channel must satisfy
 
 [
-mu_{C,c}
-approx_d
-mu_{R,c},
+mu_{C,c}approx_dmu_{R,c},
 ]
 
 and for every order cell (h),
 
 [
-mu_{C,h,c}
-approx_d
-mu_{R,h,c},
+mu_{C,h,c}approx_dmu_{R,h,c},
 ]
 
-using D2.CUEQ.DEF.011 componentwise.
+using D2.CUEQ.DEF.013 componentwise.
 
-Therefore opposite order-conditioned backend biases cannot cancel into a passing global mean.
+Opposite order-conditioned backend biases therefore cannot cancel into a passing global mean.
 
-A systematic centroid shift never receives a larger margin merely because single-realization noise is large.
+A systematic centroid shift never receives a larger margin merely because realization noise is large.
 
 ## 7. Stochastic non-degradation
 
-### D2.CUEQ.DEF.013 — tolerance RMS floor
+### D2.CUEQ.DEF.015 — fixed dtype tolerance scale
 
-For channel (c), form the fixed tolerance vector around the e3nn global centroid,
+For channel (c), form the tolerance vector around the e3nn global centroid,
 
 [
-t_{c,j}
-=
-a_d+r_d|mu_{R,c,j}|,
+t_{c,j}=a_d+r_d|mu_{R,c,j}|,
 ]
 
 and its RMS-square scale
@@ -306,71 +344,90 @@ T_c^2
 rac1{m_c}sum_j t_{c,j}^2.
 ]
 
-Define the candidate-independent reference stochastic budget
+(T_c) is fixed by accepted dtype numerical scale and e3nn reference magnitude. Candidate observations do not set it.
 
-[
-B_c
-=
-max(V_{R,c},T_c^2).
-]
-
-The candidate cross result does not enter (B_c).
-
-### D2.CUEQ.DEF.014 — variance budget
+### D2.CUEQ.DEF.016 — additional stochastic variance budget
 
 Pass requires
 
 [
-V_{C,c}le 2B_c
+V_{C,c}
+le
+V_{R,c}+T_c^2
 ]
 
 and
 
 [
-V_{C,h,c}le 2B_c
+V_{C,h,c}
+le
+V_{R,c}+T_c^2
 qquadorall h.
 ]
 
-The factor two is a predeclared variance budget: candidate stochastic spread may consume at most one additional reference-sized variance budget beyond the larger of observed accepted-reference variability and its fixed dtype tolerance floor.
+Thus candidate stochastic variability may exceed accepted e3nn variability by at most one fixed dtype-tolerance-sized variance budget.
 
-This prevents a noisy candidate from inflating its own acceptance denominator while allowing a deterministic reference regime to retain the fixed dtype numerical floor.
+This handles deterministic-reference cases without inventing an epsilon and is strictly candidate-independent.
 
-No tail percentile, all-pairs count, candidate-normalized ratio, or model-family threshold table is authoritative.
+No tail percentile, all-pairs pseudo-count, pooled candidate denominator, variance ratio, or family threshold table is authoritative.
 
-## 8. Objective, branch and state coverage
+## 8. Catastrophic/materiality guard
 
-### D2.CUEQ.DEF.015 — real TRAIN2 objective coverage
+### D2.CUEQ.DEF.017 — accepted property-scale guard
 
-The two-step transition witness must use the real accepted TRAIN2 objective and exact inputs: checkpoint/head set, labels, E0, objective weights, masks, replay/target branch, optimizer, EMA, scheduler, dtype and batch/exposure semantics.
+The accepted TRAIN2 robust-loss property transition scales are:
 
-Every active objective/head/property branch capable of reaching the optimizer requires a predeclared two-step witness sequence. A source-selected structure proxy, descriptor-only check, or inference calculator cannot substitute.
+- energy: (delta_E=0.01;mathrm{eV/atom});
+- force: (delta_F=0.01;mathrm{eV/AA});
+- stress: (delta_S=0.01;mathrm{eV/AA^3}).
 
-### D2.CUEQ.DEF.016 — starting state
+For every retained **paired same-process/same-repeat** e3nn/CuEq observation, the maximum absolute backend discrepancy in each physical channel, including update-induced displacement channels, must remain strictly below its corresponding (delta).
+
+This is a gross catastrophic/materiality guard only. It is not the ordinary numerical equivalence envelope and may not be lowered/raised from the candidate observations.
+
+The purpose is to reject rare discrepancies large enough to reach the accepted property-loss regime scale even if centroid/variance aggregation would dilute them.
+
+Non-finite values remain hard failure independently.
+
+## 9. Objective, branch and state coverage
+
+### D2.CUEQ.DEF.018 — real TRAIN2 objective coverage
+
+The two-step transition witness uses the real accepted TRAIN2 objective and exact inputs: checkpoint/head set, labels, E0, objective weights, masks, replay/target branch, optimizer, EMA, scheduler, dtype and batch/exposure semantics.
+
+Every active objective/head/property branch capable of reaching the optimizer requires a predeclared two-step witness sequence.
+
+The frozen portable witness corpus must include the geometries used by the two training updates and additional predeclared structures sufficient to expose the claimed head/property behavior. Witness membership/order cannot be selected from CuEq outcomes.
+
+A source-selected descriptor proxy or inference calculator cannot substitute.
+
+### D2.CUEQ.DEF.019 — starting state
 
 (S_0) is the exact authenticated pre-TRAIN2 model state for the claimed architecture/head topology.
 
 A passing (S_0) witness establishes entry-state transition equivalence only.
 
-### D2.CUEQ.DEF.017 — non-initial state
+### D2.CUEQ.DEF.020 — non-initial state
 
 A full TRAIN2 operator claim additionally requires at least one authenticated non-initial state (S_1) for each materially distinct claimed architecture/head topology.
 
 (S_1):
 
-- differs from (S_0);
+- differs from (S_0) in authenticated model state;
 - is obtained independently of the candidate acceptance outcome;
 - may come from bounded e3nn-only adaptation or still-applicable authenticated trained-state evidence;
-- uses the same architecture/head/objective family being claimed.
+- uses the same architecture/head/objective family being claimed; and
+- must change at least one governed portable-e3nn witness output relative to (S_0) by more than the D2.CUEQ.DEF.013 dtype envelope, so a numerically trivial state cannot satisfy non-initial coverage.
 
 Starting-state evidence alone cannot be represented as proof over optimizer-reachable trained states.
 
 Contradictory later paired-training evidence reopens the relation even though historical CUEQ-PHASE1 is not a universal doctor prerequisite.
 
-## 9. Dtype semantics
+## 10. Dtype semantics
 
-### D2.CUEQ.DEF.018 — FP32 TRAIN2
+### D2.CUEQ.DEF.021 — FP32 TRAIN2
 
-FP32 pure-CuEq TRAIN2 authorization uses D2.CUEQ.DEF.005-017.
+FP32 pure-CuEq TRAIN2 authorization uses D2.CUEQ.DEF.005-020.
 
 If this candidate is accepted, the Rev86 TRAIN2 authorizing statistics are retired:
 
@@ -383,38 +440,37 @@ They remain historical diagnostics only.
 
 No family-specific replacement threshold is introduced.
 
-### D2.CUEQ.DEF.019 — FP64 TRAIN2
+### D2.CUEQ.DEF.022 — FP64 TRAIN2
 
-FP64 retains the existing calculator forward envelope
+FP64 retains the existing forward calculator envelope
 (mathrm{rtol}=10^{-10}), (mathrm{atol}=10^{-12}).
 
-That forward guard is not sufficient by itself to establish an equivalent training state transition. FP64 CuEq TRAIN2 must satisfy D2.CUEQ.DEF.005-017 or D3/D4 must explicitly narrow support rather than representing the historical forward-only record as training equivalence.
+That forward guard is not sufficient by itself to establish an equivalent training-state transition. FP64 CuEq TRAIN2 must satisfy D2.CUEQ.DEF.005-020 or D3/D4 must explicitly narrow support.
 
 This strengthens source closure without relaxing FP64 numerical tolerance.
 
-## 10. Projection / EVAL2 relation
+## 11. Trained-state deployment projection / EVAL2
 
-### D2.CUEQ.DEF.020 — authenticated transient state
+### D2.CUEQ.DEF.023 — deployment projection relation
 
-A CuEq-trained checkpoint is first authenticated in the exact transient realization that produced it. Checkpoint/model state cannot control inference before this identity/state authentication succeeds.
+For a completed CuEq-trained checkpoint:
 
-### D2.CUEQ.DEF.021 — portable projection
+1. authenticate the transient CuEq realization and state before it controls inference;
+2. reconstruct the canonical portable e3nn shell from accepted configuration;
+3. transfer state through the pinned dependency-native CuEq -> e3nn transfer owner;
+4. require exact canonical portable-shell architecture identity;
+5. require the existing dtype-appropriate post-transfer calculator parity relation that currently governs deployment projection;
+6. execute EVAL2 under provider identity `e3nn`, because that is the actual numerical forward.
 
-Projection then:
+The numerical values of this existing deployment relation are not changed by the current TRAIN2 incident.
 
-1. reconstructs the canonical portable e3nn shell from accepted configuration;
-2. transfers authenticated state through the pinned dependency-native CuEq -> e3nn transfer owner;
-3. requires exact preservation of the canonical portable-shell architecture identity;
-4. compares projected portable e3nn against the authenticated CuEq realization under the existing dtype-appropriate calculator relation; and
-5. executes EVAL2 with provider identity `e3nn`, because that is the actual numerical forward after projection.
+D2.CUEQ.DEF.007 uses only the independently qualified state-transfer mapping as a measurement transform; it does not make source/DATA6 descriptor/FPS parity a TRAIN2 protected consequence.
 
-The projection relation is independently checked before its common evaluator may serve as the TRAIN2 transition oracle.
+## 12. Qualification versus routine doctor admission
 
-## 11. Qualification versus routine doctor admission
+### D2.CUEQ.DEF.024 — qualification record
 
-### D2.CUEQ.DEF.022 — qualification record
-
-The multi-process functional produces an authorizing qualification record only when all required role/state/dtype channels pass.
+The multi-process functional authorizes only when all required role/state/dtype channels pass.
 
 Its identity binds at least:
 
@@ -425,13 +481,13 @@ Its identity binds at least:
 - model architecture/head topology;
 - (S_0) and (S_1) applicability;
 - TRAIN2 objective/exposure identity;
-- frozen transition witness corpus and batch sequences;
+- frozen training sequences and portable witness corpus;
 - construction/execution-order design and cardinality;
-- independently qualified projection relation.
+- state-transfer measurement-transform qualification.
 
 A changed binding stales the record.
 
-### D2.CUEQ.DEF.023 — routine witness
+### D2.CUEQ.DEF.025 — routine witness
 
 Routine campaign doctor need not rerun the 20-process qualification experiment on every invocation.
 
@@ -444,51 +500,54 @@ The routine witness cannot estimate a new envelope, widen a failed qualification
 
 Exact persistence/routing belongs to D3/D4.
 
-## 12. Evidence role of Stage A
+## 13. Evidence role of Stage A
 
-Authenticated MH-1 and MPA-0 Stage-A artifacts are **method-design evidence**, not acceptance evidence for Candidate 2.
+Authenticated MH-1 and MPA-0 Stage-A artifacts are **method-design evidence**, not acceptance evidence for Candidate 3.
 
 They establish model-family-dependent absolute FP32 discrepancy, similar normalized stochastic decomposition, material process/order covariance, failure of the fixed (10^{-6}) stable-channel interpretation, and fragility of tail/max reduction.
 
-They do not contain two-step training-state transitions. Fresh candidate-bound evidence is required after Candidate 2 is frozen.
+They do not contain two-update training-state transitions. Fresh candidate-bound evidence is required after Candidate 3 is frozen.
 
-## 13. Stage-C falsification obligations
+## 14. Stage-C falsification obligations
 
 Before acceptance, fresh target-host evidence must attempt to falsify at least:
 
 1. MACE-MH-1 / `omat_pbe`, FP32, (S_0) and (S_1);
 2. MACE-MPA-0-medium / `default`, FP32, (S_0) and (S_1);
 3. every active target/replay/head/property branch capable of reaching the optimizer;
-4. persistent global centroid bias outside D2.CUEQ.DEF.011;
+4. persistent global centroid bias outside D2.CUEQ.DEF.013;
 5. opposite order-cell biases that cancel globally;
-6. candidate stochastic variance above D2.CUEQ.DEF.014;
-7. a defect that appears only on the second optimizer update after recurrence state is populated;
-8. descriptor-only drift with otherwise equivalent transition — this must not fail TRAIN2 solely because descriptor coordinates differ;
-9. source/DATA6 descriptor/FPS drift — this must fail the source relation where selection is governed;
-10. wrong checkpoint/head/objective/runtime/method identity;
-11. projection architecture/state corruption and post-projection numerical mismatch;
-12. deterministic-reference cases where (V_R=0) but the fixed tolerance floor remains nonzero;
-13. FP64 transition evidence if FP64 CuEq TRAIN2 remains supported.
+6. candidate stochastic variance above (V_R+T^2);
+7. a single rare paired discrepancy above the accepted property-scale guard while aggregate centroids/variance otherwise pass;
+8. a defect that appears only on update 2 after recurrence state is populated;
+9. descriptor-only drift with otherwise equivalent transition — this must not fail TRAIN2 solely because descriptor coordinates differ;
+10. source/DATA6 descriptor/FPS drift — this must fail the source relation where selection is governed;
+11. wrong checkpoint/head/objective/runtime/method identity;
+12. incomplete/hidden transient state not represented by the state-transfer measurement mapping;
+13. deployment projection architecture/state corruption and post-projection numerical mismatch;
+14. deterministic-reference cases with zero (V_R);
+15. FP64 transition evidence if FP64 CuEq TRAIN2 remains supported.
 
 The number/order of fresh processes and repeats is frozen before outcomes are inspected. Failure is evidence, not permission to rerun until pass.
 
-## 14. D2 -> D3 handoff if accepted
+## 15. D2 -> D3 handoff if accepted
 
 D3/D4 shall prefer reduction over additive machinery:
 
-- replace the current Rev86 TRAIN2 authorizing reducer rather than stacking Candidate 2 above it;
+- replace the current Rev86 TRAIN2 authorizing reducer rather than stacking Candidate 3 above it;
 - retain old Rev83-86 record schemas only for historical deserialization/diagnosis;
 - remove TRAIN2 descriptor/FPS hard-gating when no TRAIN2 consumer exists;
 - use one canonical TRAIN2 transition-qualification owner;
 - reuse CampaignStore/currentness machinery and add only missing method/applicability identity;
-- keep source/DATA6 calculator parity and trained-state projection relations separate;
+- reuse the existing dependency-native transient->portable state-transfer owner; do not add a second projection implementation;
+- keep source/DATA6 calculator parity and deployment projection relations separate;
 - preserve no-silent-fallback behavior;
 - preserve the generated source `e3nn` / TRAIN2 `cueq` policy unless its owning policy is separately changed;
 - correct EVAL2 measurement identity to the actual portable e3nn forward without retraining an otherwise authenticated root.
 
-## 15. Acceptance state
+## 16. Acceptance state
 
-Candidate 2 is **not accepted**.
+Candidate 3 is **not accepted**.
 
 Required next steps:
 
