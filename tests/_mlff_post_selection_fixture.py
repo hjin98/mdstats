@@ -119,6 +119,20 @@ def build_selected_campaign(
     """
 
     template = fixture_config_text() if config_text is None else config_text
+    # These acceptance fixtures substitute TRAIN2's numerical workload with a
+    # toy trainer below the production owner boundary.  Do not make that toy
+    # process inherit the shipped 16 GiB/job production reservation: small CI
+    # hosts would then reject the fixture before the owner under test executes.
+    # Scheduler/admission tests provide their own explicit [execution] table and
+    # therefore bypass this fixture-only serial resource profile unchanged.
+    if "[execution]" not in template:
+        template += """
+[execution]
+parallel_training_jobs = 1
+minimum_parallel_training_jobs = 1
+maximum_parallel_training_jobs = 1
+estimated_training_ram_mib_per_job = 2048.0
+"""
     with ExitStack() as stack:
         stack.enter_context(patch.object(p4d, "_CONFIG", template))
         if data4_bundle is not None:
