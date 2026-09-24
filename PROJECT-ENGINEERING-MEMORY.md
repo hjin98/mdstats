@@ -10,7 +10,7 @@ reconciled_through: 4eabe2ae9783c7ff92f3a1093c37502a01380812
 accepted_base:
   project_state: 4eabe2ae9783c7ff92f3a1093c37502a01380812
   basis: "Accepted mdstats main at the merge of hjin98/mdstats PR #9 (P5 TRAIN2/EVAL2 CuEq architecture recurrence repair, independently closed PASS). The PEM published at that state is the accepted memory basis; it was initialized at b65fa3b02807815d8eca758bc04fb70d514d1f45."
-candidate_overlay: "design/mlff-final-production-model-publication-mh1-integration candidate overlay over accepted base 4eabe2ae9783c7ff92f3a1093c37502a01380812: one distinct final-production publication/P7/MH-1 integration application episode is bound to immutable evidence-specification candidate a382c118a62dc32f52536efe7b8aa08dc38f18f5; no D1-D4 authority promotion and no new failure-family occurrence is claimed."
+candidate_overlay: "design/mlff-final-production-model-publication-mh1-integration candidate overlay over accepted base 4eabe2ae9783c7ff92f3a1093c37502a01380812: one distinct final-production publication/P7/MH-1 integration application episode is bound to immutable evidence-specification candidate 5a6719d9fbabf04ddad7407b2729be0d0d1f76bf; no D1-D4 authority promotion and no new failure-family occurrence is claimed."
 detail_files: []
 ---
 
@@ -401,7 +401,7 @@ applications:
         evidence:
           - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_P5_TRAIN2_MEMORY_PRESSURE_BACKOFF_AND_TERMINAL_INFEASIBILITY_FINAL_REVIEW_CLOSURE.md"
   - id: A03
-    episode_identity: "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5"
+    episode_identity: "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf"
     lifecycle_context: final-production model publication + P7/MH-1 integration
     source_project: local
     surfaces:
@@ -423,8 +423,8 @@ applications:
         state: ADMISSIBLE
         conclusion: SUPPORTS_BOUNDED_CLAIM
         evidence:
-          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md"
-          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_downstream_integration_closure.py"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_downstream_integration_closure.py"
 ```
 
 ### SP-002 — Fail closed on authenticated identity and durable-state disagreement
@@ -540,7 +540,7 @@ applications:
         evidence:
           - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/mlff-storage-io-reset/STORAGE_IO_MANAGEMENT_RESET_SIMPLICITY_CONSOLIDATION_REVISION_38.md"
   - id: A04
-    episode_identity: "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5"
+    episode_identity: "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf"
     lifecycle_context: final-production publication and P7 currentness/durability integration
     source_project: local
     surfaces:
@@ -562,9 +562,9 @@ applications:
         state: ADMISSIBLE
         conclusion: SUPPORTS_BOUNDED_CLAIM
         evidence:
-          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md"
-          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_p5_model_publication_acceptance.py"
-          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_p7_product_currentness_fences.py"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_p5_model_publication_acceptance.py"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_p7_product_currentness_fences.py"
 ```
 
 ### SP-003 — Durable immutable boundaries enable exact restart and reuse
@@ -679,7 +679,7 @@ applications:
         evidence:
           - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_P5_TRAIN2_CUDA_LIFETIME_AND_ZERO_SAFE_ADMISSION_REPAIR_WORKPLAN.md"
   - id: A04
-    episode_identity: "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5"
+    episode_identity: "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf"
     lifecycle_context: selected-representative full-model publication and restart/reuse closure
     source_project: local
     surfaces:
@@ -701,9 +701,9 @@ applications:
         state: ADMISSIBLE
         conclusion: SUPPORTS_BOUNDED_CLAIM
         evidence:
-          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md"
-          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_p5_model_publication_owners.py"
-          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_p5_model_publication_acceptance.py"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_p5_model_publication_owners.py"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_p5_model_publication_acceptance.py"
 ```
 
 ### SP-004 — Qualify through real owners and real deployment regimes
@@ -818,7 +818,7 @@ applications:
         evidence:
           - "hjin98/mdstats@b65fa3b02807815d8eca758bc04fb70d514d1f45:workplans/archive/MLFF_CAMPAIGN_P1_P7_STORAGE_INTEGRATION_HARDENING_WORKPLAN.md"
   - id: A04
-    episode_identity: "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5"
+    episode_identity: "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf"
     lifecycle_context: bounded P5 publication -> P7 deployment/MH-1 integration review
     source_project: local
     surfaces:
@@ -834,17 +834,18 @@ applications:
     outcome: SUPPORTING
     observation: Real-owner review and bounded integration exposed missing provider/publication equivalence assertions, late-binding drift, durability-retry gaps, raw-checkpoint deployment assumptions, and finally a one-head fixture that skipped before the canonical target-head runtime claim. The repair now binds the P7 test path to a genuine current multihead P5 product instead of treating that fixture mismatch as MH-1 unavailability.
     quantitative_effect: NONE
-    uncertainty: The corrected P7 evidence specification at a382c118a62dc32f52536efe7b8aa08dc38f18f5 still requires execution in a repository environment with the mace test dependencies; locked real MH-1, target-host GPU, LAMMPS/ML-IAP, and MD qualification remain explicitly deferred.
+    uncertainty: The corrected P7 evidence specification at 5a6719d9fbabf04ddad7407b2729be0d0d1f76bf executed successfully in GitHub Actions run 36007255491 under the pinned CPU MACE test stack. Real locked MH-1, target-host GPU, production LAMMPS/MLIAP execution, and MD qualification remain explicitly deferred; the P7 execution tests skipped only at actual missing LAMMPS runtime boundaries.
     costs_tradeoffs: Real-owner acceptance is more expensive than isolated mocks and requires precise separation between unavailable external runtimes and invalid local fixtures.
     assessments:
       - id: AS01
         state: ADMISSIBLE
         conclusion: SUPPORTS_BOUNDED_CLAIM
         evidence:
-          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md"
-          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_mh1_publication_integration.py"
-          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_p7_r11_repair_acceptance.py"
-          - "hjin98/mdstats@a382c118a62dc32f52536efe7b8aa08dc38f18f5:tests/test_mlff_p7_r12_repair_acceptance.py"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:workplans/active/MLFF_FINAL_PRODUCTION_MODEL_PUBLICATION_MH1_INTEGRATION_WORKPLAN.md"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_mh1_publication_integration.py"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_p7_r11_repair_acceptance.py"
+          - "hjin98/mdstats@5a6719d9fbabf04ddad7407b2729be0d0d1f76bf:tests/test_mlff_p7_r12_repair_acceptance.py"
+          - "hjin98/mdstats@84a38b45a9ddd0df6bb19dfba6ba240db094aa2e:qualification/mlff-publication-closeout/actions-validation-report.md"
 ```
 
 ## Current notices
