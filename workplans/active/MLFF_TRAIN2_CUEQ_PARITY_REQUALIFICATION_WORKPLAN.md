@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 8
+revision: 10
 reviewed_date: 2026-09-24
-workplan_review_status: PASS_AS_WORKPLAN_AFTER_R7_REPAIR
-workplan_review_basis: 44b4d22a70b197201bf185510531151188f6a6a5
+workplan_review_status: PASS_AS_WORKPLAN_AFTER_R9_REPAIR
+workplan_review_basis: 275840e74a67f435975773b51981ec8727f3b48c
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -47,7 +47,7 @@ The observed failure is not sufficient evidence that CuEq is scientifically or n
 
 The strongest immediate **adequacy counterexample candidate** is the descriptor channel: the current absolute cross-backend ceiling is smaller than the maximum observed same-backend FP32 descriptor variability on both backends in this target-host realization. That fact alone is not a mathematical contradiction—an independently justified cross-backend bound could in principle be tighter than same-backend extrema—but, combined with the policy's MPA-0-only calibration history, preserved hard selection outcomes, and absence of a current cross-family D2 derivation, it is sufficient to challenge transportability and numerical justification.
 
-This review also confirmed an authority-provenance defect that must be resolved before changing any tolerance. The accepted Protocol-6.4 D2 kernel is `a759e81...`, importing exact source `a4824d2...`; it states that backend-observed discrepancy or an unlisted tolerance cannot create a new numerical-equivalence relation. Direct inspection of the exact accepted source finds no CuEq-specific relation and no FP32 parity rule. The Rev86 CuEq parity document is now classified by the current D4 specification index as historical/backend-qualification material rather than a current semantic owner. Therefore the current CuEq acceleration-equivalence family is **not source-closed as accepted D2 authority under the current Protocol-6.4 kernel**. The immediate adequacy challenge is specific to TRAIN2 FP32, but the same formalization omission also covers the existing source/DATA6 FP32 relation and FP64 CuEq relation. This cycle must formally source-close the current role/dtype family. Numerical changes outside TRAIN2 FP32 are not authorized unless those existing relations are independently falsified.
+This review also confirmed an authority-provenance defect that must be resolved before changing any tolerance. The accepted Protocol-6.4 D2 kernel is `a759e81...`, importing exact source `a4824d2...`; it states that backend-observed discrepancy or an unlisted tolerance cannot create a new numerical-equivalence relation. Direct inspection of the exact accepted source finds no CuEq-specific relation and no FP32 parity rule. The Rev86 CuEq parity document is now classified by the current D4 specification index as historical/backend-qualification material rather than a current semantic owner. Therefore the current CuEq acceleration-equivalence family is **not source-closed as accepted D2 authority under the current Protocol-6.4 kernel**. The immediate adequacy challenge is specific to the TRAIN2 FP32 doctor relation, but the same formalization omission also covers the current source-side inference relation, FP64 CuEq relations, and the trained-state CuEq -> portable-e3nn projection/evaluation relation used after checkpoint authentication. This cycle must source-close the complete supported acceleration-equivalence family by role, dtype, and model-state applicability. Numerical changes outside the challenged TRAIN2 FP32 member are not authorized unless those siblings are independently falsified.
 
 The current runtime behavior remains the fail-closed baseline until a replacement relation is accepted. D3/D4 MUST continue to fail closed under the existing policy in the meantime. No threshold widening, retry-until-pass behavior, silent e3nn fallback, or MH-1-specific bypass is authorized.
 
@@ -219,13 +219,16 @@ from:
 At minimum inspect and close:
 
 - accepted D1/D2 kernels and exact imported source target at `a759e81.../a4824d2...`, plus any accepted successor resolved before promotion;
-- current role/dtype acceleration parity family: source/DATA6 FP32, selected-head TRAIN2 FP32, source/DATA6 FP64, and TRAIN2 FP64, with only TRAIN2 FP32 numerically challenged by this incident;
+- current acceleration-equivalence family by semantic role and dtype: source-foundation inference/DATA6/pseudolabel execution where the source backend is consumed; selected-head TRAIN2 starting-realization admission; and trained-state transient-CuEq -> portable-e3nn projection/EVAL2 equivalence, with only the TRAIN2 FP32 doctor criterion numerically challenged by this incident;
 - the unrelated proposed D1/D2 renewal currently occupying canonical paths on `main@af89c30...`, for composition/conflict only;
 - `docs/specs/training_data/README.md` authority classification;
 - historical `docs/specs/training_data/mlff_cueq_train_noise_normalized_parity_spec.md`, Rev83-86 notes, CUEQ-DEFAULT1/HF1/HF2 evidence, and DIAG3 records;
 - `mdstats/training_data/acceleration.py`;
 - doctor/currentness code in `mdstats/training_data/_campaign_cli_core.py`;
 - optimizer/training identity owners that bind `acceleration_realization_digest`, including `mdstats/training_data/protocol.py`, post-selection runtime identities, and target-size execution identities where still current;
+- `mdstats/training_data/target_size_execution/evaluation.py::authenticate_train2_checkpoint_provider`, which authenticates transient CuEq state and projects it through the dependency-native owner into the portable e3nn EVAL2 provider;
+- `mdstats/training_data/campaign_post_selection_runtime.py::_checkpoint_provider_realization`, because current CuEq-trained EVAL2 forwards use the projected portable e3nn provider while this measurement-identity helper currently records the TRAIN2 backend;
+- `tests/test_mlff_p5_train2_eval2_cueq_realization_parity.py` and the accepted TRAIN2->EVAL2 recurrence-repair evidence, which provide bounded trained-state/projection evidence but are not themselves D2 authority;
 - `mdstats/training_data/cueq_phase1.py`, its tool/spec/evidence, and PERF-CERT1 prerequisites;
 - `mdstats/training_data/final_gpu1.py` and `tools/run_mlff_final_gpu_qualification.py`;
 - FINAL-GPU1 preflight/handoff policy-digest bindings and release-pinned workstation runbooks;
@@ -246,7 +249,7 @@ Unless new evidence contradicts them:
 - replay-retention and checkpoint-admissibility method;
 - final-production publication and P7 deployment ownership.
 
-The **numerical values** of source/DATA6 FP32 and FP64 CuEq parity are presumed unchanged unless separately falsified, but they are not listed as unaffected authorities because the same accepted-D2 source-closure omission applies to them. Include them in the D2 acceleration-equivalence family formalization without using the TRAIN2 failure as a reason to relax them.
+The **numerical values** of the existing source-side FP32/FP64 and trained-state projection parity checks are presumed unchanged unless separately falsified, but they are not listed as unaffected authorities because the same accepted-D2 source-closure omission applies to them. Include their exact propositions/applicability in the D2 acceleration-equivalence family formalization without using the TRAIN2 doctor failure as a reason to relax them.
 
 “Unaffected” means semantically unaffected, not automatically reusable evidence. A shared runtime/source/policy digest may still make an evidence record stale-dependent; perform the explicit impact projection rather than either invalidating everything or reusing everything.
 
@@ -258,7 +261,8 @@ Materially applicable current lessons:
 
 - **SP-002**: preserve fail-closed authenticated identity/state boundaries;
 - **SP-004**: real-owner and target-host qualification can expose defects missed by mocks/control-plane checks;
-- TRAIN2/EVAL2 CuEq architecture history: do not confuse backend-parity failure with model-construction/architecture drift without independently checking exact realization identity.
+- TRAIN2/EVAL2 CuEq architecture history: do not confuse backend-parity failure with model-construction/architecture drift without independently checking exact realization identity;
+- accepted recurrence-repair history at the TRAIN2 -> EVAL2 boundary: authenticate checkpoint state in the true transient CuEq realization, then use dependency-native state transfer into the canonical portable e3nn shell before EVAL2; preserve this representation split and its fail-closed architecture guards.
 
 PEM coverage is partial. Absence of a specific historical parity family is not evidence that no relevant prior episode exists. Perform a bounded history search over CuEq/FP32 parity, selected-head MH-1, MPA-0, DIAG3, CUEQ-DEFAULT1, CUEQ-REPEAT1, CUEQ-PHASE1, PERF-CERT1, and FINAL-GPU1 before freezing a replacement criterion.
 
@@ -267,7 +271,7 @@ PEM coverage is partial. Absence of a specific historical parity family is not e
 The workplan SHALL preserve the distinction among:
 
 1. **runtime/capability identity** — CUEQ-DEP1 and MACE/Torch/CUDA/source compatibility;
-2. **current campaign admission** — the selected-head doctor parity/repeatability rule under review here, which current product prose uses to authorize an explicit CuEq TRAIN2 realization fail-closed;
+2. **current campaign admission** — the selected-head doctor parity/repeatability rule under review here, which authorizes a specific CuEq TRAIN2 realization fail-closed, including the generated TRAIN2 `cueq` path;
 3. **historical/paired training qualification evidence** — CUEQ-PHASE1 short and representative full e3nn-vs-CuEq trajectories with hard-decision preservation;
 4. **release/end-to-end certification** — PERF-CERT1/FINAL-GPU1 where applicable.
 
@@ -281,6 +285,30 @@ Therefore:
 - keep generated TRAIN2 policy, doctor realization admission, and explicit e3nn override as separate claims.
 
 The D2 candidate must explicitly state the proposition proved by the instantaneous parity gate: bounded numerical admission of the exact selected-head/runtime CuEq realization under current campaign policy. CUEQ-PHASE1 remains useful stronger evidence about multi-epoch trajectory behavior and a falsification source, but it is not silently promoted into the current campaign admission owner.
+
+### 3.6 Model-state and EVAL2 representation boundary
+
+The accepted TRAIN2 -> EVAL2 recurrence repair establishes a two-representation checkpoint path:
+
+```text
+authenticated TRAIN2 checkpoint state
+  -> reconstruct/authenticate transient training realization (CuEq when configured)
+  -> load exact live/EMA state
+  -> dependency-native CuEq -> e3nn state transfer
+  -> canonical portable e3nn provider
+  -> EVAL2 numerical forward
+```
+
+The current doctor parity witness is the selected-head **starting checkpoint**. That witness does not, by itself, prove a numerical statement for every optimizer-reachable trained parameter state. Stage B must therefore make one of these source-closed claims explicit and falsifiable:
+
+- the accepted backend relation is an operator/implementation relation whose validity domain is uniform over a defined family of compatible model states/architectures, with evidence adequate to support that generalization; or
+- the relation is witness/state scoped, in which case downstream state domains requiring separate equivalence must name and qualify their own bounded relation.
+
+The existing CUDA recurrence test supplies useful evidence by perturbing trained CuEq parameters, projecting them through pinned MACE's native conversion, and checking portable-vs-CuEq predictions. It is evidence to challenge/reuse, not D2 authority and not proof that the Rev86 FP32 doctor statistic transports to all trained states.
+
+A separate D3/D4 defect is confirmed on this boundary. `authenticate_post_selection_provider()` returns the projected **portable e3nn provider** for CuEq-trained checkpoints, but `_checkpoint_provider_realization()` currently records `context.method_policies.acceleration_backend` (normally `cueq`) in `EvaluationMeasurementIdentity`. Measurement identity must describe the numerically material forward realization, not the transient training representation from which state was authenticated.
+
+Repair this through the existing provider-realization/measurement-identity owner. Do not weaken transient-CuEq checkpoint authentication. Correcting the forward-backend identity from mislabeled `cueq` to actual `e3nn` must stale/recompute affected EVAL2 measurements/assessments through existing content-addressed identity; it must **not** force retraining of otherwise authenticated TRAIN2 roots merely because an assessment-side representation label was wrong.
 
 ## 4. Evidence and falsification
 
