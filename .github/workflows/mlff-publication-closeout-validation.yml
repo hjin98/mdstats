@@ -1,0 +1,72 @@
+name: MLFF publication closeout validation
+
+on:
+  push:
+    branches:
+      - design/mlff-final-production-model-publication-mh1-integration
+    paths:
+      - '.github/workflows/mlff-publication-closeout-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    env:
+      CUDA_VISIBLE_DEVICES: ""
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+    steps:
+      - name: Checkout exact evidence descendant
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prove product and test source match immutable evidence candidate
+        run: |
+          set -euo pipefail
+          git diff --exit-code a382c118a62dc32f52536efe7b8aa08dc38f18f5 -- mdstats tests
+          echo "mdstats/ and tests/ are byte-identical to evidence candidate a382c118a62dc32f52536efe7b8aa08dc38f18f5"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install accepted CPU MLFF runtime and test dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install 'mace-torch==0.3.16' 'ase==3.29.0'
+          python -m pip install -e '.[manifest]' pytest hypothesis
+
+      - name: Record validation environment
+        run: |
+          python - <<'PY'
+          import importlib.metadata as md
+          import platform
+          names = [
+              'mdstats', 'mace-torch', 'ase', 'torch', 'torch-ema', 'e3nn',
+              'numpy', 'scipy', 'pytest', 'hypothesis'
+          ]
+          print('python=' + platform.python_version())
+          for name in names:
+              try:
+                  print(f'{name}={md.version(name)}')
+              except Exception:
+                  print(f'{name}=MISSING')
+          PY
+
+      - name: Compile product and tests
+        run: python -m compileall -q mdstats tests
+
+      - name: Corrected closeout evidence surfaces
+        run: |
+          python -m pytest -q -ra             tests/test_mlff_p7_r11_repair_acceptance.py             tests/test_mlff_p7_r12_repair_acceptance.py             tests/test_mlff_downstream_integration_closure.py
+
+      - name: Mandatory focused publication and P7 suites
+        run: |
+          python -m pytest -q -ra             tests/test_mlff_p5_model_publication_owners.py             tests/test_mlff_p5_model_publication_acceptance.py             tests/test_mlff_p7_deployment_realization.py             tests/test_mlff_p7_product_currentness_fences.py             tests/test_mlff_mh1_publication_integration.py
