@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 2
+revision: 3
 reviewed_date: 2026-09-24
-workplan_review_status: PASS_AS_WORKPLAN_AFTER_R1_REPAIR
-workplan_review_basis: 797328a8c972ebdd908fc08269eb746d417cc1a1
+workplan_review_status: PASS_AS_WORKPLAN_AFTER_R2_REPAIR
+workplan_review_basis: 8d7c87ae3130f18b6b1c8f33c632a2483eee9b6b
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -44,7 +44,7 @@ The observed failure is not sufficient evidence that CuEq is scientifically or n
 
 The strongest immediate **adequacy counterexample candidate** is the descriptor channel: the current absolute cross-backend ceiling is smaller than the maximum observed same-backend FP32 descriptor variability on both backends in this target-host realization. That fact alone is not a mathematical contradiction—an independently justified cross-backend bound could in principle be tighter than same-backend extrema—but, combined with the policy's MPA-0-only calibration history, preserved hard selection outcomes, and absence of a current cross-family D2 derivation, it is sufficient to challenge transportability and numerical justification.
 
-This review also found an authority-provenance defect that must be resolved before changing any tolerance. The accepted Protocol-6.4 D2 kernel is `a759e81...`, importing exact source `a4824d2...`; it states that backend-observed discrepancy or an unlisted tolerance cannot create a new numerical-equivalence relation. The Rev86 CuEq parity document is now classified by the current D4 specification index as historical/backend-qualification material rather than a current semantic owner. Stage A therefore must determine the durable acceptance/import route, if any, by which CUEQ-REPEAT1-PARITY1 became a valid D2 relation. If no such route exists, the defect is an unclosed D2 authority gap in addition to an adequacy challenge.
+This review also confirmed an authority-provenance defect that must be resolved before changing any tolerance. The accepted Protocol-6.4 D2 kernel is `a759e81...`, importing exact source `a4824d2...`; it states that backend-observed discrepancy or an unlisted tolerance cannot create a new numerical-equivalence relation. Direct inspection of the exact accepted source finds no CuEq-specific relation and no FP32 parity rule. The Rev86 CuEq parity document is now classified by the current D4 specification index as historical/backend-qualification material rather than a current semantic owner. Therefore CUEQ-REPEAT1-PARITY1 is **not source-closed as accepted D2 authority under the current Protocol-6.4 kernel**. This cycle must formally supply and qualify the missing bounded D2 relation (or prove that another already-accepted owner, not yet identified, legitimately supplies it and reconcile that conflict).
 
 The current runtime behavior remains the fail-closed baseline until a replacement relation is accepted. D3/D4 MUST continue to fail closed under the existing policy in the meantime. No threshold widening, retry-until-pass behavior, silent e3nn fallback, or MH-1-specific bypass is authorized.
 
@@ -88,7 +88,7 @@ The files currently present on `main@af89c30...` under `docs/methods/mlff_{scien
 
 The current post-formalization D4 specification index `docs/specs/training_data/README.md` explicitly states that backend qualification reports, hotfix notes, and parity diagnostics are not current semantic owners. Therefore:
 
-- `docs/specs/training_data/mlff_cueq_train_noise_normalized_parity_spec.md` is historical/qualification evidence and a representation of Rev86 behavior unless Stage A proves a valid accepted-D2 import/promotion route;
+- `docs/specs/training_data/mlff_cueq_train_noise_normalized_parity_spec.md` is historical/qualification evidence and a representation of Rev86 behavior; the accepted D2 source at `a4824d2...` contains no CuEq/FP32 parity relation, so Rev86 cannot be treated as current D2 authority by path or runtime use;
 - `mdstats/training_data/acceleration.py` and `mdstats/training_data/_campaign_cli_core.py` are executable D4 realizations, not owners permitted to invent numerical equivalence;
 - any replacement relation must first exist as a bounded D2 candidate/overlay against the exact accepted parent.
 
@@ -147,6 +147,7 @@ The repair MUST preserve all of the following:
 11. **Accepted currentness is explicit.** Any changed parity-policy identity must invalidate/remap dependent preflight, handoff, qualification, cache, and provenance records exactly where they bind the old policy digest.
 12. **Existing e3nn production path remains admissible.** The repair may not destabilize the current default MH-1 e3nn campaign path.
 13. **Authority isolation is hard.** Unrelated proposed D1/D2/D3 renewal artifacts on the repository head are evidence/candidate state only and cannot become parents by path precedence.
+13A. **The missing D2 relation is a confirmed closure obligation.** The accepted D2 source does not define CuEq/FP32 parity. D4's Rev86 rule may remain the conservative executable guard during repair, but it cannot be cited as accepted numerical authority until this cycle supplies the source-closed D2 relation through the normal acceptance process.
 14. **Parity preflight is not paired-training authorization.** Instantaneous E/F/stress/descriptor/FPS evidence may be a necessary runtime/admission screen, but it cannot replace the separate CUEQ-PHASE1 short+full paired-training qualification unless D1/D2 are explicitly reopened and that scientific evidence contract is superseded.
 15. **Every parity channel needs a protected consequence.** No internal quantity remains a hard gate merely because it was historically measured; D2 must state which scientific/numerical downstream invariant it protects.
 16. **Channel dimensions/scales are explicit.** Energy/atom, force, stress, and latent descriptors have different units/scales. A shared numerical absolute ceiling across unlike channels is inadmissible without an explicit normalization/error derivation.
@@ -265,7 +266,9 @@ The workplan SHALL preserve the distinction among:
 3. **paired training scientific qualification** — CUEQ-PHASE1 short and representative full e3nn-vs-CuEq trajectories with hard-decision preservation;
 4. **end-to-end performance/certification** — PERF-CERT1/FINAL-GPU1 where applicable.
 
-Repository evidence at plan opening still records positive CUEQ-PHASE1 training authorization as deferred/pending. No repair in levels 1-2 may silently set level 3 or 4 to pass. If a newer positive qualification exists outside the repository, it must be imported/authenticated before being relied upon.
+Repository evidence at plan opening still records positive CUEQ-PHASE1 training authorization as deferred/pending. A repository search found no later positive CUEQ-PHASE1 qualification artifact. The ordinary campaign runtime also does not directly consume a `CueqPhase1QualificationRecord`; the phase-1 record is consumed by PERF-CERT1/FINAL-GPU1 instead. This creates a second authority-boundary question: an explicit CuEq campaign may be executable for **qualification evidence generation**, but execution must not be represented as production-qualified merely because doctor parity passes.
+
+No repair in levels 1-2 may silently set level 3 or 4 to pass. If a newer positive qualification exists outside the repository, it must be imported/authenticated before being relied upon. Stage A/D must make the evidence-generation-versus-production-authorization boundary explicit using existing CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 owners rather than adding a parallel gate.
 
 The D2 candidate must explicitly state the proposition proved by the instantaneous parity gate. It may be a necessary per-runtime/per-selected-head admission screen; it must not be worded as complete proof that multi-epoch optimization trajectories are scientifically interchangeable unless the higher-level qualification authority is intentionally reopened and replaced.
 
@@ -387,7 +390,7 @@ For deterministic FPS/selection:
 
 ### 4.5A Probe-domain adequacy
 
-The routine doctor corpus is not a representative random sample: it takes one readable periodic campaign structure and constructs at most two deterministic variants (one sinusoidal displacement and one fixed strain). The target-host report exercised 3 structures and 15 atoms total.
+The routine doctor corpus is not a representative random sample: it takes one readable periodic campaign structure and constructs at most two deterministic variants (one sinusoidal displacement and one fixed strain). The target-host report exercised 3 structures and 15 atoms total. The parity FPS smoke uses structure-mean invariant descriptors and `selection_fraction=0.5`; with three structures that selects only two structure identifiers. Therefore `100/100` cross selection identity is useful as a local smoke result but is weak evidence for generic selection robustness.
 
 D2/D3 must decide separately:
 
@@ -426,7 +429,8 @@ At minimum construct or reuse tests that must fail:
 12. warm-up-count sensitivity that changes classification;
 13. quantile-interpolation/cardinality edge case, especially p99.9 with small force-component count;
 14. latent descriptor rescaling that leaves protected selection unchanged, to test whether an absolute descriptor gate is actually invariant to representation;
-15. stale stored `TrainingAccelerationRealizationRecord` created under an old policy that would otherwise be accepted by backend/device/dtype/checkpoint checks alone.
+15. stale stored `TrainingAccelerationRealizationRecord` created under an old policy that would otherwise be accepted by backend/device/dtype/checkpoint checks alone;
+16. explicit CuEq execution with doctor parity passing but no positive CUEQ-PHASE1 record, verifying that qualification-evidence generation cannot be mislabeled production authorization.
 
 ### 4.7 Historical evidence is evidence, not authority
 
@@ -440,9 +444,9 @@ Determine whether the later generic policy had adequate cross-family evidence fo
 
 ### 4.8 D3/D4 currentness defects to resolve if confirmed
 
-Current inspection found that `_stored_training_acceleration_realization(..., require_qualified=True)` authenticates requested backend, device/dtype, checkpoint bytes, and the record's own `qualified` flag, but does not authenticate that the record was qualified under the **currently accepted parity-policy/method digest**. Meanwhile optimizer/training identities bind the acceleration-realization digest.
+Current inspection confirms that `_stored_training_acceleration_realization(..., require_qualified=True)` authenticates requested backend, device/dtype, checkpoint bytes, and the record's own historical `qualified` flag, but does not authenticate that the record was qualified under the **currently accepted parity-policy/method digest**. Meanwhile optimizer/training identities bind the acceleration-realization digest.
 
-This is a candidate D3/D4 stale-authority defect independent of which new numeric criterion wins. Stage A/D must prove the exact currentness graph and, if confirmed, repair the existing owner directly:
+This is a D3/D4 stale-authority defect independent of which new numeric criterion wins. Stage A/D must trace the complete currentness graph for impact and repair the existing owner directly:
 
 - reuse the existing stored parity-policy/parity/realization records;
 - make consequential reuse prove the current accepted parity method/policy identity and applicable runtime identity;
@@ -469,16 +473,17 @@ Do not count several tests sharing the same generated expected values as indepen
 
 1. Authenticate/export the existing failed-doctor CampaignStore evidence before rerunning anything.
 2. Resolve the exact accepted D1/D2 parent (`a759e81.../a4824d2...` at plan opening) and separately identify unrelated proposed renewals on repository head.
-3. Determine whether CUEQ-REPEAT1-PARITY1 has a durable accepted-D2 import/promotion route. If not, record an explicit D2 authority gap; do not pretend the D4 constant is accepted merely because runtime/tests use it.
+3. Record the confirmed source-closure result: the accepted D2 source contains no CuEq/FP32 parity rule, while the current D4 index classifies parity diagnostics/hotfix material as non-semantic history. Treat CUEQ-REPEAT1-PARITY1 as a conservative executable guard/historical evidence, not accepted D2 authority, unless a distinct already-accepted owner is produced and conflict-reconciled.
 4. Reconstruct every dependent policy digest/currentness edge through doctor, stored realization, optimizer/training identity, CUEQ-PHASE1, PERF-CERT1 and FINAL-GPU1.
 5. Perform the bounded historical CuEq parity/HAS review and classify evidence by provenance: raw realization, derived summary, synthetic fixture, or prose-only claim.
 6. Search for the original MPA-0 DIAG3 workstation artifact. If unavailable, do not promote the hardcoded summary fixture into raw evidence.
 7. Confirm that the MH-1 observation binds the exact EXTRACT1 selected-head checkpoint and current runtime/source-compatibility evidence.
 8. Audit metric semantics: energy/atom, stress convention, descriptor construction, FPS policy, absolute-vs-rtol stable-channel ambiguity, NumPy percentile method, finiteness, and pair counts.
 9. Falsify fixed backend-order, warm-up, process-state, corpus-size, and small-tail-resolution effects with bounded diagnostics.
-10. Confirm or refute the stored-realization currentness defect in Section 4.8.
-11. Reconcile the instantaneous parity gate with CUEQ-PHASE1/FINAL-GPU1 state; record what this work can and cannot authorize.
-12. If a pure D4 metric/currentness bug explains the failure under an already accepted relation, repair that owner separately and rerun before proposing D2 mutation.
+10. Treat the stored-realization currentness defect in Section 4.8 as confirmed at the direct loader boundary and trace whether any upstream stage fence happens to compensate for it; repair the direct consequential-use owner regardless of incidental call ordering.
+11. Reconcile the instantaneous parity gate with CUEQ-PHASE1/FINAL-GPU1 state; distinguish candidate-training execution for qualification evidence from production authorization, and record what this work can and cannot authorize.
+12. Resolve the documentation/runtime contradiction between “doctor parity authorizes explicit CuEq” wording and the still-pending CUEQ-PHASE1 production qualification contract.
+13. If a pure D4 metric defect explains part of the observed failure, repair that owner separately and rerun measurement evidence, but still close the independently confirmed missing-D2 relation and stale-realization currentness gaps.
 
 **Gate A:** proceed to D2 replacement/formalization only when evidence provenance is sufficient, D4 measurement defects are partitioned, the parent authority is unambiguous, and either (a) the accepted relation remains materially challenged or (b) an explicit missing D2 relation must be formally supplied.
 
@@ -613,7 +618,7 @@ On accepted D2 formalization/change:
 The workplan may close only when all of the following hold:
 
 - the accepted D1/D2 parent and any overlapping successor authority are explicitly resolved;
-- the Rev86 authority-provenance question is closed: either a valid accepted route is proven or the missing D2 relation is formally supplied;
+- the confirmed Rev86 source-closure gap is closed by an accepted bounded D2 relation (or a distinct already-accepted owner is produced and conflict-reconciled);
 - the current Serious Challenge has been resolved by an accepted D2 criterion/formalization or falsified by evidence showing the original relation remains adequate;
 - the original MH-1 observation exists as durable, applicability-qualified evidence or its unavailability is explicitly recorded and a reproduction is distinguished from it;
 - MPA-0 evidence used for any generic claim is raw/authenticated or freshly re-realized; prose/test fixtures alone do not carry raw-evidence force;
@@ -631,7 +636,8 @@ The workplan may close only when all of the following hold:
 - complete affected CPU regression passes;
 - required target-host requalification passes for every regime claimed by the accepted relation;
 - no required check is merely deferred while an unqualified CuEq production claim is made;
-- if CUEQ-PHASE1 is still pending, workplan closure is explicitly limited to the parity/preflight relation and e3nn remains the only fully authorized production route until the existing higher-level gate passes.
+- if CUEQ-PHASE1 is still pending, workplan closure is explicitly limited to the parity/preflight relation; CuEq may be used only in the explicitly governed qualification-evidence path, while e3nn remains the fully authorized production route until the existing higher-level gate passes;
+- user-facing/runtime documentation cannot state or imply that doctor parity alone grants production CuEq training authorization while the accepted CUEQ-PHASE1 contract says otherwise.
 
 Until closure, the safe campaign disposition is:
 
@@ -669,3 +675,16 @@ The review repaired these plan-level blockers:
 18. incomplete runtime/source-compatibility applicability, including semantically qualified MACE source-byte drift.
 
 **R1 disposition: PASS AS WORKPLAN.** No remaining plan-level blocker was found after the repairs above. This is not a PASS of the challenged CuEq D2 method, not CUEQ-PHASE1 authorization, and not permission to implement new thresholds. Stage A remains the next executable gate.
+
+
+## 10. R2 post-repair review closure
+
+Revision 2 was re-reviewed rather than accepted on assertion. That re-review promoted three additional facts from investigation items to confirmed obligations:
+
+1. the exact accepted D2 source `a4824d2...` contains no CuEq-specific or FP32 parity relation, so the Rev86 rule is not source-closed under the accepted Protocol-6.4 D2 equivalence registry;
+2. `_stored_training_acceleration_realization` directly permits reuse of a historical `qualified=true` realization without checking the current parity-method/policy identity;
+3. no later positive CUEQ-PHASE1 record was found, and the ordinary campaign runtime does not consume the phase-1 qualification record directly, so qualification-evidence execution and production authorization must be represented separately.
+
+The review also sharpened the selection-evidence limitation: with the reported three-structure doctor corpus and `selection_fraction=0.5`, the exact FPS equality check selects only two structure IDs from structure-mean latent descriptors.
+
+**R2 disposition: PASS AS WORKPLAN after Revision-3 repair.** R1 is retained as historical review evidence but is superseded by this R2 closure. No remaining plan-level blocker is known. Stage A remains the next gate; no new parity threshold or CuEq production authorization is accepted by this disposition.
