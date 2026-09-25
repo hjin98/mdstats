@@ -1,7 +1,9 @@
 ---
 kind: implementation-workplan
 protocol_version: 6.4.0
-status: active
+status: closed-pass
+closed_date: 2026-09-25
+implementation_evidence_head: 40758c1b447f8e1b149359359515ccd75b237edb
 workplan_id: MLFF-TRAIN2-CUEQ-DOCTOR-SANITY-REPAIR
 created_date: 2026-09-24
 revision: 44
@@ -165,3 +167,74 @@ After the real-host doctor command:
 
 If repository tests and the real-host doctor pass, update this workplan to PASS/CLOSED and archive it. If doctor still fails, diagnose only the immediate doctor sanity-check failure and keep the repair local unless concrete evidence demonstrates a scientifically consequential CuEq defect.
 
+## 7. Revision-44 execution and closeout — 2026-09-25
+
+### Disposition
+
+**PASS / CLOSED.** The implementation already present at execution head
+`40758c1b447f8e1b149359359515ccd75b237edb` includes the complete bounded repair
+from `d093d0231a8885f935b6affb19dd924296e53c3c`. No additional product-code
+correction was needed. This is a D4-only closeout; no D1-D3 authority changed.
+
+### Repository evidence
+
+Executed from the repository root in Conda environment `mace`:
+
+```bash
+conda run -n mace python -m pytest -q \
+  tests/test_mlff_cueq_train_default1.py \
+  tests/test_mlff_cueq_train_noise_normalized_parity.py \
+  tests/test_mlff_cueq_train_noise_normalized_parity_specification.py \
+  tests/test_mlff_mace_execution_semantics_assembled.py \
+  tests/test_mlff_final_gpu1.py
+```
+
+Result: **23 passed, 2 skipped, 0 failed** (268.39 seconds; 1540 warnings).
+The skips were the assembled CUDA-specific CuEq TRAIN2 case
+(`tests/test_mlff_mace_execution_semantics_assembled.py:973`, reported as
+CUDA-specific) and the locked foundation-model preflight
+(`tests/test_mlff_final_gpu1.py:75`, locked models not mounted).
+
+```bash
+conda run -n mace python -m py_compile \
+  mdstats/training_data/_campaign_cli_core.py \
+  mdstats/training_data/acceleration.py
+git diff --check
+```
+
+Both static checks exited 0.
+
+### RTX 3090 doctor evidence
+
+The specified command was:
+
+```bash
+conda run -n mace python tools/mdstats-mlff-campaign.py \
+  --config /home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32/campaign.toml \
+  doctor
+```
+
+The first sandboxed invocation stopped before doctor checks because the
+sandbox denied creation of the campaign writer lock. The same command was
+rerun with the filesystem access required by the user-authorized doctor
+operation; it exited **0** and reported **Doctor passed**. The active device
+was an NVIDIA GeForce RTX 3090 (23.6 GiB). CuEq was available; the configured
+TRAIN2 realization was `cueq_pure`; selected-head and resource checks passed.
+The all-pairs sanity result was `passed=True`, with selection identical for
+100/100 cross comparisons and self-selection identical for 45/45 comparisons
+per backend. Force ratios (RMSE, p99, p99.9) were `(0.954, 1.013, 1.059)`;
+cross Fmax was `2.146e-06` against a `2.861e-06` limit. No `prepare`,
+`select-target-size`, `cross-validate`, or `train-production` command was run.
+
+The doctor reported that `mace/calculators/mace.py` differed from the locked
+source bytes, while the required semantic compatibility probes passed and
+doctor continued under semantic source qualification. TorchScript deprecation
+warnings were also emitted; neither warning changed the successful doctor
+exit or sanity result.
+
+### Closeout learning and lifecycle
+
+No Project Engineering Memory update is warranted for this bounded, task-local
+D4 repair. No implementation rework, normative-document update, or upstream
+Challenge was required. The plan is archived as historical coordination and
+execution evidence; campaign progression remains outside this cycle.

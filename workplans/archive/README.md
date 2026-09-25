@@ -4,6 +4,25 @@ Retain completed or explicitly superseded workplans here only when their impleme
 
 An archived plan may retain the status metadata it had at the moment it was superseded. Its location under `workplans/archive/` is the lifecycle authority; such internal status fields are historical snapshot content, not an active-work declaration.
 
+## 2026-09-25 CuEq TRAIN2 doctor sanity-check repair closeout
+
+Revision 44 closed **PASS** on branch `design/mlff-train2-cueq-parity-requalification`
+at execution head `40758c1b447f8e1b149359359515ccd75b237edb`. The bounded D4
+margin repair passed the required repository evidence (**23 passed, 2 skipped,
+0 failed**; `py_compile` and `git diff --check` passed) and the single intended
+RTX 3090 `doctor` operation exited 0. Its all-pairs TRAIN2 sanity result passed
+with 100/100 cross-selection comparisons identical. The two test skips were
+the CUDA-specific assembled CuEq realization and the unavailable locked-model
+preflight fixture; production CUDA qualification is not inferred from these
+repository skips.
+
+The real-host doctor reported a MACE source-byte difference from its locked
+reference while semantic compatibility probes passed. No `prepare` or later
+campaign command was run. No product-code correction, D1-D3 change, upstream
+Challenge, or Project Engineering Memory update was required.
+
+Archived workplan: `MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md`.
+
 ## 2026-09-24 final-production model publication + lightweight MH-1 integration closeout
 
 Independent final Review closes the cycle **PASS** under Protocol 6.4.

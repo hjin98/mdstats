@@ -4,13 +4,6 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 ## Current active MLFF work
 
-### CuEq doctor sanity-check repair
-
-Branch: `design/mlff-train2-cueq-parity-requalification`
-
-This is now a **bounded D4 doctor repair only**. The former Candidate-10/Stage-C qualification architecture is superseded as overdesign and retained only in Git history. Current plan: `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md`. Acceptance stops after a successful real-host `doctor`; campaign preparation, target-size selection, CV, and production training are outside this cycle.
-
-
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 
 Branch: `design/mlff-pi-train-fps-diversity-restoration`
