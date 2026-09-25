@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 20
+revision: 21
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_8_FROZEN_AWAITING_FRESH_INDEPENDENT_REVIEW
-workplan_review_basis: c6e18ccfce62d47e96dde80600558522c62c28ef
+workplan_review_status: CANDIDATE_8_INDEPENDENT_REVIEW_R5_NO_PASS_CANDIDATE_9_REQUIRED
+workplan_review_basis: a4c170674b2beb1df57ee56a32777cc2e58a1060
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -1214,3 +1214,63 @@ The fresh independent handoff is:
 No Candidate-8 Stage-C evidence may run before fresh independent Review PASS plus exact stakeholder instance ratification.
 
 No D2-to-D3/D4 handoff exists.
+
+
+## 25. Candidate-8 independent NO-PASS and Candidate-9 repair obligations
+
+Fresh independent Protocol-6.4 D2 Review R5 of immutable Candidate 8
+
+`c6e18ccfce62d47e96dde80600558522c62c28ef`
+
+with frozen Candidate-8 blob
+
+`60598fa33048df16f9cc41e6adf761dd952aa28f`
+
+returned **NO-PASS** with **no SERIOUS CHALLENGE to accepted parent D1/D2 authority**.
+
+The independent Review record is:
+
+`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R5.md`
+
+at lifecycle commit:
+
+`a4c170674b2beb1df57ee56a32777cc2e58a1060`.
+
+Candidate 8 remains immutable historical candidate state and MUST NOT be edited, reinterpreted, or continued under the same candidate identity. No Candidate-8 Stage-C qualification may run, and no Candidate-8 CuEq outcome may be used to formulate or tune its replacement.
+
+Review R5 confirms that Candidate 8 closes or fail-closes the prior R4 defect families for:
+
+- explicit stakeholder-owned risk coordinates with no generated default;
+- complete actual-consumer closure and final completed-state consequence;
+- source-owned continuous materiality relations and joint population-risk events;
+- exact signed-zero/dtype-aware ULP semantics;
+- non-dilutable `S_max` plus exact unnormalized `S_Sigma`;
+- complete forward-affecting structural inventory;
+- independent projection semantic ownership;
+- exact correctly rounded production coefficient qualification;
+- reduced-CG/non-unique inverse fail-closed behavior;
+- exact scientific-decision preservation;
+- source/DATA6 narrowing;
+- FP64 TRAIN2 fail-closed scope; and
+- non-authorizing routine doctor.
+
+However, R5 found one blocking D2 defect in the replacement stochastic relation.
+
+### Candidate-9 mandatory repair contract
+
+1. Preserve Candidate 8 unchanged as historical evidence and preserve all R5-passed repairs unless separately falsified.
+2. Repair the triplet null at the **pre-assignment/marginal randomization level**. Do not assert that `R2` and `C` are exchangeable conditional on a realized launch-order permutation when that permutation fixes different launch positions.
+3. Introduce an explicit pre-assignment triplet nuisance state (Lambda_p), then draw the `R1/R2/C` assignment independently from the exact uniform six-permutation law after (Lambda_p) is fixed.
+4. State the backend-equivalence null as `R2/C` label-exchange invariance of the relevant potential-response/consumer-score law under that prospective randomization. Prove the resulting marginal strict-worse probability is at most (	frac12), including discrete/tied cases, or replace Binomial Clopper-Pearson with an exact/conservative procedure valid for the actual final design.
+5. Separate **randomization-policy identity** from the **realized assignment sequence**. Currentness/evidence may bind both, but the inferential population may not condition away the design randomness whose averaging justifies the Bernoulli model.
+6. Resolve persistent target-host state explicitly. CUDA/driver/compiler cache, allocator/residency, clocks/thermal state, autotuning, filesystem/page cache, and teardown state must either be reset/isolated sufficiently to establish common independent triplet law, represented prospectively as nuisance/block state with valid inference, or cause qualification to fail closed.
+7. Define child startup failure, OOM, timeout, crash, nonfinite execution, warm-up behavior, and infrastructure failure prospectively so no outcome-dependent discard/redraw or retry-until-pass path exists.
+8. Apply the same repaired randomization/null theorem to the completed-state projection evaluator relation.
+9. Keep the existing (eta_{m NI}), (q_{m cat}), (n), exact `E`, and ({R_e}) coordinates prospective and outcome-independent. Do not select any of them from Candidate-8 outcomes.
+10. Freeze the repair as Candidate 9 or later and perform a genuinely fresh independent D2 Review before stakeholder instance ratification.
+11. Do not run Candidate-8 Stage C.
+12. Keep D3/D4 blocked until a future immutable D2 candidate passes independent Review, receives exact stakeholder instance ratification, and then passes fresh Stage-C qualification.
+
+The exact counterexample that Candidate 9 must close is an **identical-backend, order-only null**: let launch positions carry deterministic nuisance values (h=(0,1,2)) and pair score be absolute difference. In fixed stratum ((R1,R2,C)), (S^{RR}=1) and (S^{RC}=2), so conditional exchangeability fails even though `C` is literally the same backend. Under a uniform random assignment over all six permutations, the strict-worse indicators are ((1,0,0,0,0,1)), showing that the relevant symmetry exists only after averaging over the assignment law.
+
+No D2-to-D3/D4 handoff exists while this blocker remains.
