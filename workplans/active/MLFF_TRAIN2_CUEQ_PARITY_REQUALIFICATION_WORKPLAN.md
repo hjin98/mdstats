@@ -4,9 +4,9 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 30
+revision: 31
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_10_REVIEW_PASS_AWAITING_STAKEHOLDER_INSTANCE_RATIFICATION
+workplan_review_status: CANDIDATE_10_METHOD_FAMILY_ACCEPTED_AWAITING_EXACT_INSTANCE_BINDING
 workplan_review_basis: db2ed47e8c999cb61507803610c72c0fa7ffaaf7
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
@@ -1552,3 +1552,29 @@ The next gate is **stakeholder ratification of one exact reviewed Candidate-10 m
 No Candidate-10 Stage-C evidence may run before that exact stakeholder instance ratification.
 
 D3/D4 remain blocked until fresh Candidate-10 Stage C passes and the later lifecycle contract authorizes handoff.
+
+
+## 32. Stakeholder acceptance of Candidate-10 method family
+
+Following fresh independent Review R7 PASS, the stakeholder explicitly accepted the reviewed Candidate-10 method family and directed the work to proceed.
+
+The durable acceptance record is:
+
+workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_STAKEHOLDER_ACCEPTANCE_C10.md.
+
+This advances the lifecycle from independent-Review PASS to stakeholder acceptance of the **method family**.
+
+It does **not** yet satisfy Candidate 10's separate exact-instance requirement because no stakeholder-owned numerical values for \(\eta_{\rm NI}\), \(q_{\rm cat}\), or \(n\) have been supplied, and Candidate 10 forbids generated defaults or inference of those values from Candidate/Stage-A outcomes.
+
+Therefore the current gate is narrowed to exact instance binding:
+
+- bind \(\eta_{\rm NI}\);
+- bind \(q_{\rm cat}\);
+- derive/freeze \(n\) prospectively from the ratified \(q_{\rm cat}\) and any separately stated evidence-budget/power reason;
+- bind exact \(E\) and all source-owned \(\mathcal R_e\);
+- bind exact \(\mathcal Q\);
+- bind exact \(\mathcal W_{\rm pre},\mathcal W_R,\mathcal W_C\);
+- bind exact \(P_R^{\rm prod},P_C^{\rm prod}\);
+- bind corresponding projection/evaluator coordinates.
+
+Stage C remains blocked only on this exact instance ratification. D3/D4 remain blocked pending fresh Stage-C PASS.
