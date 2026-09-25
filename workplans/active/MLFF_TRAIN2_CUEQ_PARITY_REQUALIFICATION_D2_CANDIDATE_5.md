@@ -180,7 +180,7 @@ Every mapped state must satisfy all of:
 3. one-to-one source-to-destination correspondence for that inventory;
 4. deterministic transfer for fixed source state/configuration;
 5. exact source-state identity before and after transfer, proving that the measurement is non-mutating;
-6. direct transient-CuEq versus mapped-portable-e3nn energy/atom, force, and stress parity under D2.CUEQ5.DEF.018; and
+6. direct transient-CuEq versus mapped-portable-e3nn energy/atom, force, and stress parity under D2.CUEQ5.DEF.013-014; and
 7. no descriptor/FPS TRAIN2 acceptance criterion imported through the mapping.
 
 A transfer that drops a quiescent tensor still fails structural completeness even if a finite witness corpus does not expose it.
@@ -244,7 +244,7 @@ The probe set includes:
 1. a zero-gradient probe, exposing weight decay, momentum carry, counters, and scheduler-only effects; and
 2. the canonical e3nn gradients from every selected real TRAIN2 exposure-window branch used by the qualification.
 
-For each probe, compare the resulting portable live-model and EMA E/F/stress function under D2.CUEQ5.DEF.018.
+For each probe, compare the resulting portable live-model and EMA E/F/stress function under D2.CUEQ5.DEF.013-014.
 
 This functional readout closes latent optimizer-state differences that are finite and not yet visible in the live model.
 
@@ -358,6 +358,107 @@ Required live-model channels are energy/atom, force, and stress for:
 - every optimizer-action probe result.
 
 The corresponding EMA channels are required whenever EMA exists.
+
+### D2.CUEQ5.DEF.016A — bounded recurrence-horizon adaptation
+
+The local two-update witness is not, by itself, allowed to certify a backend whose small coherent update bias would accumulate materially over many optimizer updates.
+
+For each state anchor, define the slowest active exponential recurrence factor
+
+$
+\beta_{\max}
+=
+\max\{\beta:\beta\text{ is an active optimizer-moment or EMA recurrence factor}\}.
+$
+
+When such recurrence exists, define the recurrence-horizon update count
+
+$
+H_{\rm rec}
+=
+\max\left(2,\left\lceil\frac{1}{1-\beta_{\max}}\right\rceil\right).
+$
+
+This is the e-folding-scale update count of the slowest accepted first-order recurrence. It is a numerical reason for a longer bounded witness, not a generic "more is safer" multiplier.
+
+If no exponential recurrence is active, \(H_{\rm rec}=2\).
+
+From each state anchor, let \(H\) be the smaller of \(H_{\rm rec}\) and the number of accepted optimizer updates remaining in the anchor's reference trajectory.
+
+For one predeclared native loader continuation per anchor and order cell, each fresh process executes the same accepted exposure for \(H\) backend-specific updates from the exact anchor state.
+
+Physical live-model and EMA channels are observed at
+
+$
+K_H=\{1,2,4,8,\ldots,2^j\le H\}\cup\{H\}.
+$
+
+The continuation is fixed from the reference loader trace before CuEq outcomes and retains all scheduler/epoch transitions encountered naturally.
+
+This bounded adaptation is qualification-only evidence. It is not inserted into ordinary production training.
+
+### D2.CUEQ5.DEF.016B — coherent-drift growth guard
+
+For ensemble \(e\), order cell \(h\), channel \(c\), and checkpoint \(k\in K_H\), let
+
+$
+d_{e,h,c}(k)
+=
+\mu_{C,e,h,c}(k)-\mu_{R,e,h,c}(k)
+$
+
+be the process-level backend-centroid difference in portable physical function.
+
+Every observed horizon must satisfy
+
+$
+\|d_{e,h,c}(k)\|_{\rm RMS}
+\le
+\epsilon_{c,32}.
+$
+
+Define the maximum observed systematic secant growth
+
+$
+g_{e,h,c}
+=
+\max_{k_i<k_j}
+\frac{
+\|d_{e,h,c}(k_j)-d_{e,h,c}(k_i)\|_{\rm RMS}
+}{
+k_j-k_i
+}.
+$
+
+Let \(U_{\rm rem}\) be the number of accepted optimizer updates remaining from the anchor to the end of its reference TRAIN2 horizon.
+
+Pass additionally requires the conservative no-hidden-linear-accumulation bound
+
+$
+\|d_{e,h,c}(H)\|_{\rm RMS}
++
+\max(0,U_{\rm rem}-H)\,g_{e,h,c}
+\le
+\epsilon_{c,32}.
+$
+
+This guard is deliberately one-sided against coherent accumulation: stochastic scatter may enlarge uncertainty, but it cannot be used to authorize an unresolved systematic growth rate.
+
+Before CuEq results are inspected, the reference-only process ensemble must also have sufficient resolution for this claim. For each long-horizon cell/channel, define the RMS standard error of the reference process centroid. If that reference-only standard error exceeds
+
+$
+\epsilon_{c,32}/2,
+$
+
+the qualification result is
+
+`INSUFFICIENT_REFERENCE_RESOLUTION`
+
+rather than PASS or FAIL.
+
+The fixed five-process-per-cell design may therefore authorize only when it can resolve the proposed physical numerical budget. A future larger-process design must be separately predeclared before observing its CuEq outcomes; it is not an outcome-selected rerun of the insufficient design.
+
+The same recurrence-horizon and growth tests are repeated independently in both complete ensembles. Pooling cannot rescue an insufficient or failed ensemble.
 
 ## 9. State-domain applicability
 
@@ -804,13 +905,15 @@ At minimum it must attempt to falsify:
 15. an anti-common-mode transfer route that intentionally disagrees with the primary transfer;
 16. target-first, hand-built, balancing-sampler, duplication, or altered-drop-last exposure;
 17. first/last/epoch-boundary/scheduler-discontinuity/extreme-metadata window selection;
-18. descriptor-only drift with preserved TRAIN2 physical consequence — must not fail TRAIN2 solely for that descriptor drift;
-19. source/DATA6 descriptor/FPS drift that changes selection — must fail the source relation;
-20. Huber-branch mismatch near the transition;
-21. zero-reference-variance cases;
-22. stale qualification after runtime/source/configuration/method/state-class change;
-23. a formally different but numerically trivial state anchor; and
-24. attempted FP64 CuEq TRAIN2 admission — must fail closed.
+18. recurrence-horizon bounded adaptation and injected coherent linear drift that is locally sub-tolerance but extrapolates beyond the full remaining-horizon budget;
+19. reference-only long-horizon resolution too weak for the proposed bias budget — must return INSUFFICIENT_REFERENCE_RESOLUTION, not PASS;
+20. descriptor-only drift with preserved TRAIN2 physical consequence — must not fail TRAIN2 solely for that descriptor drift;
+21. source/DATA6 descriptor/FPS drift that changes selection — must fail the source relation;
+22. Huber-branch mismatch near the transition;
+23. zero-reference-variance cases;
+24. stale qualification after runtime/source/configuration/method/state-class change;
+25. a formally different but numerically trivial state anchor; and
+26. attempted FP64 CuEq TRAIN2 admission — must fail closed.
 
 The process/repeat/order design is frozen before Candidate-5 outcomes are inspected.
 
@@ -820,7 +923,7 @@ No failure may be converted into a pass by widening \(\epsilon_{c,32}\), deletin
 
 Candidate 5 is specifically constructed to reject:
 
-- coherent small backend bias that persists beyond the fixed physical numerical budget at any qualified state/window;
+- coherent small backend bias that is locally sub-tolerance but would accumulate beyond the fixed physical numerical budget over the remaining accepted horizon, through the recurrence-horizon growth guard;
 - equal global means with order-cell bias;
 - cell-local variance inflation hidden by another reference cell;
 - within-process variance inflation hidden by process averaging;
