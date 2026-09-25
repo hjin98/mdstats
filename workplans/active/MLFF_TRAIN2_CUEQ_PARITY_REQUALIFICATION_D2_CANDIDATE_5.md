@@ -82,24 +82,26 @@ Backend/kernel realization is the deliberate independent variable. Any mismatch 
 
 ### D2.CUEQ5.DEF.002A — TRAIN2 physical numerical budget declaration
 
+The property residual scales below are exact imports of the accepted foundation-P5 robust objective owned by the accepted D2 source (`D2.IMP.OBJECTIVE` / `D2.SRC.GENERAL`), not Candidate-5 calibration values.
+
 For later TRAIN2 definitions, let the accepted property residual scales be
 
-$
+$$
 \delta_E=0.01\ \mathrm{eV/atom},
 \qquad
 \delta_F=0.01\ \mathrm{eV/\mathring A},
 \qquad
 \delta_S=0.01\ \mathrm{eV/\mathring A^3}.
-$
+$$
 
 Let \(u_d\) be machine epsilon for learned-model dtype \(d\).
 
 Candidate 5 proposes the fixed physical numerical budget
 
-$
+$$
 \epsilon_{c,d}=\delta_c\sqrt{u_d},
 \qquad c\in\{E,F,S\}.
-$
+$$
 
 This declaration makes \(\epsilon_{c,d}\) source-available before later transfer, transition, stochastic, and outlier predicates use it.
 
@@ -205,7 +207,7 @@ Every mapped state must satisfy all of:
 3. one-to-one source-to-destination correspondence for that inventory;
 4. deterministic transfer for fixed source state/configuration;
 5. exact source-state identity before and after transfer, proving that the measurement is non-mutating;
-6. direct transient-CuEq versus mapped-portable-e3nn energy/atom, force, and stress parity under D2.CUEQ5.DEF.013-014; and
+6. direct transient-CuEq versus mapped-portable-e3nn energy/atom, force, and stress parity under the D2.CUEQ5.DEF.002A physical numerical budget; and
 7. no descriptor/FPS TRAIN2 acceptance criterion imported through the mapping.
 
 A transfer that drops a quiescent tensor still fails structural completeness even if a finite witness corpus does not expose it.
@@ -271,7 +273,7 @@ The probe set includes:
 1. a zero-gradient probe, exposing weight decay, momentum carry, counters, and scheduler-only effects; and
 2. the canonical e3nn gradients from every selected real TRAIN2 exposure-window branch used by the qualification.
 
-For each probe, compare the resulting portable live-model and EMA E/F/stress function under D2.CUEQ5.DEF.013-014.
+For each probe, compare the resulting portable live-model and EMA E/F/stress function under the D2.CUEQ5.DEF.002A physical numerical budget.
 
 This functional readout closes latent optimizer-state differences that are finite and not yet visible in the live model.
 
@@ -285,18 +287,18 @@ TRAIN2 does not reuse the source-calculator `rtol/atol` relation on update centr
 
 D2.CUEQ5.DEF.002A declares
 
-$
+$$
 \epsilon_{c,d}=\delta_c\sqrt{u_d}.
-$
+$$
 
 The construction uses the accepted property-residual scale only as a dimensional reference and scales it by \(\sqrt{u_d}\), so the proposed numerical budget vanishes under precision refinement and remains far below the robust-loss transition itself.
 
 For FP32, \(u_{32}=2^{-23}\), giving approximately
 
-$
+$$
 \epsilon_{E,32}=\epsilon_{F,32}=\epsilon_{S,32}
 \text{ numerically }3.45\times10^{-6}
-$
+$$
 
 in their respective physical units.
 
@@ -377,23 +379,27 @@ The local two-update witness is not, by itself, allowed to certify a backend who
 
 For each state anchor, define the slowest active exponential recurrence factor
 
-$
+$$
 \beta_{\max}
 =
 \max\{\beta:\beta\text{ is an active optimizer-moment or EMA recurrence factor}\}.
-$
+$$
+
+The exponential set contains only recurrence factors \(0\le\beta<1\).
 
 When such recurrence exists, define the recurrence-horizon update count
 
-$
+$$
 H_{\rm rec}
 =
 \max\left(2,\left\lceil\frac{1}{1-\beta_{\max}}\right\rceil\right).
-$
+$$
 
 This is the e-folding-scale update count of the slowest accepted first-order recurrence. It is a numerical reason for a longer bounded witness, not a generic "more is safer" multiplier.
 
 If no exponential recurrence is active, \(H_{\rm rec}=2\).
+
+If the active optimizer/EMA state contains a non-decaying carried recurrence that can preserve backend-dependent numerical history (for example an exact running extremum) and whose effect is not completely closed by the common-gradient action probes, the bounded-adaptation horizon is the **entire remaining accepted TRAIN2 horizon** from that anchor. Candidate 5 does not assign a fictitious finite e-folding time to a non-decaying state.
 
 From each state anchor, let \(H\) be the smaller of \(H_{\rm rec}\) and the number of accepted optimizer updates remaining in the anchor's reference trajectory.
 
@@ -401,9 +407,9 @@ For one predeclared native loader continuation per anchor and order cell, each f
 
 Physical live-model and EMA channels are observed at
 
-$
+$$
 K_H=\{1,2,4,8,\ldots,2^j\le H\}\cup\{H\}.
-$
+$$
 
 The continuation is fixed from the reference loader trace before CuEq outcomes and retains all scheduler/epoch transitions encountered naturally.
 
@@ -415,42 +421,42 @@ For ensemble \(e\), order cell \(h\), channel \(c\), checkpoint \(k\in K_H\), fr
 
 Define the process mean
 
-$
+$$
 \bar x_{b,e,h,p,c}(k)
 =
 \frac{1}{R}\sum_{r=1}^{R}x_{b,e,h,p,r,c}(k),
 \qquad R=3,
-$
+$$
 
 and the cell centroid
 
-$
+$$
 \mu_{b,e,h,c}(k)
 =
 \frac{1}{5}\sum_{p=1}^{5}\bar x_{b,e,h,p,c}(k).
-$
+$$
 
 Then define
 
-$
+$$
 d_{e,h,c}(k)
 =
 \mu_{C,e,h,c}(k)-\mu_{R,e,h,c}(k)
-$
+$$
 
 as the process-level backend-centroid difference in portable physical function.
 
 Every observed horizon must satisfy
 
-$
+$$
 \|d_{e,h,c}(k)\|_{\rm RMS}
 \le
 \epsilon_{c,32}.
-$
+$$
 
 Define the maximum observed systematic secant growth
 
-$
+$$
 g_{e,h,c}
 =
 \max_{k_i<k_j}
@@ -459,33 +465,35 @@ g_{e,h,c}
 }{
 k_j-k_i
 }.
-$
+$$
 
 Let \(U_{\rm rem}\) be the number of accepted optimizer updates remaining from the anchor to the end of its reference TRAIN2 horizon.
 
 Pass additionally requires the conservative no-hidden-linear-accumulation bound
 
-$
+$$
 \|d_{e,h,c}(H)\|_{\rm RMS}
 +
 \max(0,U_{\rm rem}-H)\,g_{e,h,c}
 \le
 \epsilon_{c,32}.
-$
+$$
 
 This guard is deliberately one-sided against coherent accumulation: stochastic scatter may enlarge uncertainty, but it cannot be used to authorize an unresolved systematic growth rate.
 
 Before CuEq results are inspected, the reference-only process ensemble must also have sufficient resolution for this claim. For each long-horizon cell/channel, define the RMS standard error of the reference process centroid. If that reference-only standard error exceeds
 
-$
+$$
 \epsilon_{c,32}/2,
-$
+$$
 
 the qualification result is
 
 `INSUFFICIENT_REFERENCE_RESOLUTION`
 
 rather than PASS or FAIL.
+
+After candidate long-horizon observations exist, the corresponding candidate process-centroid standard error must also be at most \(\epsilon_{c,32}/2\); otherwise that ensemble returns `INSUFFICIENT_CANDIDATE_RESOLUTION` and cannot authorize.
 
 The fixed five-process-per-cell design may therefore authorize only when it can resolve the proposed physical numerical budget. A future larger-process design must be separately predeclared before observing its CuEq outcomes; it is not an outcome-selected rerun of the insufficient design.
 
@@ -610,20 +618,20 @@ The two-ensemble rule is a classification-stability guard for the new transition
 
 For governed vector channel \(c\), let
 
-$
+$$
 x_{b,e,h,p,r,c}\in\mathbb R^{m_c}
-$
+$$
 
 be retained observation for backend \(b\), ensemble \(e\), order cell \(h\), fresh process \(p\), and nested repeat \(r\).
 
 The process mean is the same canonical reduction introduced in D2.CUEQ5.DEF.016B:
 
-$
+$$
 \bar x_{b,e,h,p,c}
 =
 \frac{1}{R}\sum_{r=1}^{R}x_{b,e,h,p,r,c},
 \qquad R=3.
-$
+$$
 
 All primary centroid and between-process stochastic statistics use \(\bar x\), not the 60 nested observations as if they were independent.
 
@@ -685,13 +693,21 @@ Let \(SE_{R,e,h,c}\) be the root-mean-square over components of the ordinary sta
 
 Require
 
-$
+$$
 SE_{R,e,h,c}\le\epsilon_{c,32}/2.
-$
+$$
 
 If this is false, the result is `INSUFFICIENT_REFERENCE_RESOLUTION` for that ensemble/cell/channel, not PASS and not a candidate FAIL.
 
-This is a design-resolution condition, not a normality-based confidence claim. It prevents five processes from authorizing a bias scale that the reference experiment itself cannot resolve.
+After candidate observations exist, define \(SE_{C,e,h,c}\) by the same formula over candidate process means and require
+
+$
+SE_{C,e,h,c}\le\epsilon_{c,32}/2.
+$
+
+If that condition is false, the ensemble is non-authorizing with result `INSUFFICIENT_CANDIDATE_RESOLUTION`. Candidate noise cannot be converted into permission to increase process count after inspecting the outcome.
+
+This is a design-resolution condition, not a normality-based confidence claim. It prevents five processes from authorizing a bias scale that the experiment itself cannot resolve.
 
 A larger-process qualification may be designed later only as a new predeclared qualification instance before its CuEq outcomes are inspected; it is not an outcome-selected retry.
 
@@ -957,11 +973,11 @@ At minimum it must attempt to falsify:
 12. scheduler/counter or RNG-state divergence;
 13. a non-mutating state-transfer check;
 14. a dropped transferable tensor that is quiescent on the physical witness corpus;
-15. an anti-common-mode transfer route that intentionally disagrees with the primary transfer;
+15. an anti-common-mode model-state transfer route that intentionally disagrees with the primary transfer, plus an independent optimizer-state inventory/value check that does not call the primary optimizer-state mapper;
 16. target-first, hand-built, balancing-sampler, duplication, or altered-drop-last exposure;
 17. first/last/epoch-boundary/scheduler-discontinuity/extreme-metadata window selection;
 18. recurrence-horizon bounded adaptation and injected coherent linear drift that is locally sub-tolerance but extrapolates beyond the full remaining-horizon budget;
-19. reference-only long-horizon resolution too weak for the proposed bias budget — must return INSUFFICIENT_REFERENCE_RESOLUTION, not PASS;
+19. reference or candidate long-horizon/process resolution too weak for the proposed bias budget — must return the corresponding INSUFFICIENT_*_RESOLUTION state, not PASS;
 20. descriptor-only drift with preserved TRAIN2 physical consequence — must not fail TRAIN2 solely for that descriptor drift;
 21. source/DATA6 descriptor/FPS drift that changes selection — must fail the source relation;
 22. near-transition Huber straddle with unchanged governed transition — branch identity alone must not fail; a straddle that changes the governed transition beyond Candidate-5 bounds must fail;
