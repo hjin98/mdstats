@@ -13,7 +13,21 @@ import subprocess
 import sys
 from typing import Any, Mapping, Sequence
 
-SCHEMA = "mdstats.mlff-cueq-c10-stage-c-preflight.v1"
+SCHEMA = "mdstats.mlff-cueq-c10-stage-c-preflight.v2"
+EXPECTED_BRANCH = "design/mlff-train2-cueq-parity-requalification"
+TRAIN2_KEY_COORDINATES = (
+    "d",
+    "theta_0",
+    "q_0",
+    "D",
+    "E",
+    "O",
+    "H",
+    "K",
+    "rho",
+    "m",
+    "R",
+)
 CANDIDATE_COMMIT = "db2ed47e8c999cb61507803610c72c0fa7ffaaf7"
 CANDIDATE_BLOB = "7843a41172d25c231d4c589aebc0214ddec42bd1"
 ACCEPTED_PARENT_KERNEL = "a759e81aa1b4c70c8fb513c569ddce57e99cbdb2"
@@ -77,6 +91,60 @@ def canonical_json_bytes(value: Any) -> bytes:
     ).encode("utf-8")
 
 
+def manifest_content_digest(payload: Mapping[str, Any]) -> str:
+    """Return the digest over the manifest body, excluding its digest field."""
+
+    body = dict(payload)
+    body.pop("content_digest", None)
+    return hashlib.sha256(canonical_json_bytes(body)).hexdigest()
+
+
+def verify_manifest_content_digest(payload: Mapping[str, Any]) -> bool:
+    """Check a preflight digest without interpreting any of its observations."""
+
+    claimed = payload.get("content_digest")
+    return isinstance(claimed, str) and claimed == manifest_content_digest(payload)
+
+
+def train2_key_digest(coordinates: Mapping[str, Any]) -> str:
+    """Content-address one exact D2.CUEQ10.DEF.001 coordinate mapping."""
+
+    if set(coordinates) != set(TRAIN2_KEY_COORDINATES):
+        raise RuntimeError(
+            "Candidate-10 key must contain exactly the DEF.001 coordinates: "
+            + ", ".join(TRAIN2_KEY_COORDINATES)
+        )
+    return hashlib.sha256(canonical_json_bytes(coordinates)).hexdigest()
+
+
+def _require_exact_train2_keys(payload: Mapping[str, Any]) -> None:
+    candidate10 = payload.get("candidate10")
+    keys = candidate10.get("exact_train2_keys") if isinstance(candidate10, Mapping) else None
+    if not isinstance(keys, list) or not keys:
+        raise RuntimeError(
+            "No exact Candidate-10 TRAIN2 key was frozen; refusing to publish preflight JSON."
+        )
+    observed_digests: set[str] = set()
+    required_fields = set(TRAIN2_KEY_COORDINATES) | {"key_digest"}
+    for index, key in enumerate(keys):
+        if not isinstance(key, Mapping) or set(key) != required_fields:
+            raise RuntimeError(
+                f"Candidate-10 TRAIN2 key {index} does not contain the exact DEF.001 "
+                "coordinates and key_digest."
+            )
+        coordinates = {name: key[name] for name in TRAIN2_KEY_COORDINATES}
+        expected = train2_key_digest(coordinates)
+        actual = key.get("key_digest")
+        if actual != expected:
+            raise RuntimeError(
+                f"Candidate-10 TRAIN2 key {index} digest mismatch: expected {expected}, "
+                f"got {actual}."
+            )
+        if expected in observed_digests:
+            raise RuntimeError(f"Duplicate exact Candidate-10 TRAIN2 key at index {index}.")
+        observed_digests.add(expected)
+
+
 def _run(argv: Sequence[str], *, cwd: Path | None = None) -> str:
     return subprocess.run(
         list(argv), cwd=cwd, check=True, capture_output=True, text=True
@@ -115,23 +183,61 @@ def _git_hash(repo: Path, relative: str) -> str | None:
     return None if not path.is_file() else _run(("git", "hash-object", str(path)), cwd=repo)
 
 
+def _require_candidate_ancestor(repo: Path, candidate_path: str) -> None:
+    try:
+        frozen_blob = _run(
+            ("git", "rev-parse", f"{CANDIDATE_COMMIT}:{candidate_path}"), cwd=repo
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"Frozen Candidate-10 commit is unavailable: {CANDIDATE_COMMIT}"
+        ) from exc
+    if frozen_blob != CANDIDATE_BLOB:
+        raise RuntimeError(
+            "Frozen Candidate-10 commit does not contain the reviewed semantic blob: "
+            f"expected {CANDIDATE_BLOB}, got {frozen_blob}."
+        )
+    result = subprocess.run(
+        ("git", "merge-base", "--is-ancestor", CANDIDATE_COMMIT, "HEAD"),
+        cwd=repo,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        if result.returncode == 1:
+            raise RuntimeError(
+                f"Frozen Candidate-10 commit {CANDIDATE_COMMIT} is not an ancestor of HEAD."
+            )
+        raise RuntimeError(
+            "Unable to verify Candidate-10 ancestry: "
+            + (result.stderr or result.stdout).strip()
+        )
+
+
 def collect_git(repo_arg: str) -> dict[str, Any]:
     repo = Path(_run(("git", "rev-parse", "--show-toplevel"), cwd=Path(repo_arg))).resolve()
     status = _run(("git", "status", "--porcelain=v1", "--untracked-files=all"), cwd=repo)
     if status:
         raise RuntimeError("Stage-C preflight requires a clean repository.\n" + status)
-    candidate = _git_hash(
-        repo,
-        "workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_10.md",
+    branch = _run(("git", "branch", "--show-current"), cwd=repo)
+    if branch != EXPECTED_BRANCH:
+        raise RuntimeError(
+            f"Stage-C preflight requires branch {EXPECTED_BRANCH!r}, got {branch!r}."
+        )
+    candidate_path = (
+        "workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_10.md"
     )
+    candidate = _git_hash(repo, candidate_path)
     if candidate != CANDIDATE_BLOB:
         raise RuntimeError(
             f"Candidate-10 blob mismatch: expected {CANDIDATE_BLOB}, got {candidate}."
         )
+    _require_candidate_ancestor(repo, candidate_path)
     return {
         "repo_root": str(repo),
         "head": _run(("git", "rev-parse", "HEAD"), cwd=repo),
-        "branch": _run(("git", "branch", "--show-current"), cwd=repo),
+        "branch": branch,
         "clean_before_manifest": True,
         "candidate_blob": candidate,
         "risk_binding_blob": _git_hash(
@@ -164,6 +270,40 @@ def _selected_gpu_apps(gpu_query: str, apps_query: str) -> list[dict[str, str]]:
     return found
 
 
+def _require_no_selected_gpu_apps(gpu_query: str, apps_query: str) -> list[dict[str, str]]:
+    active = _selected_gpu_apps(gpu_query, apps_query)
+    if active:
+        raise RuntimeError(
+            "Selected GPU already has compute processes; Candidate-10 first law requires "
+            f"one governed child at a time: {active}"
+        )
+    return active
+
+
+def _require_runtime_family(
+    versions: Mapping[str, Any], torch_cuda_version: Any
+) -> None:
+    mismatches = {
+        name: {"expected": expected, "observed": versions.get(name)}
+        for name, expected in EXPECTED_RUNTIME.items()
+        if name != "torch_cuda" and versions.get(name) != expected
+    }
+    if str(torch_cuda_version) != EXPECTED_RUNTIME["torch_cuda"]:
+        mismatches["torch_cuda"] = {
+            "expected": EXPECTED_RUNTIME["torch_cuda"],
+            "observed": torch_cuda_version,
+        }
+    if mismatches:
+        raise RuntimeError("Runtime family mismatch: " + json.dumps(mismatches, sort_keys=True))
+
+
+def _require_rtx3090(name: str, major: int, minor: int) -> None:
+    if "RTX 3090" not in name or (major, minor) != (8, 6):
+        raise RuntimeError(
+            f"Expected RTX 3090 / compute capability 8.6, got {name} {major}.{minor}."
+        )
+
+
 def collect_runtime(gpu_index: int) -> dict[str, Any]:
     gpu = _run_optional(
         (
@@ -182,12 +322,7 @@ def collect_runtime(gpu_index: int) -> dict[str, Any]:
     )
     if not gpu["ok"] or not apps["ok"]:
         raise RuntimeError(f"nvidia-smi precheck failed: gpu={gpu}, apps={apps}")
-    active = _selected_gpu_apps(str(gpu["stdout"]), str(apps["stdout"]))
-    if active:
-        raise RuntimeError(
-            "Selected GPU already has compute processes; Candidate-10 first law requires "
-            f"one governed child at a time: {active}"
-        )
+    active = _require_no_selected_gpu_apps(str(gpu["stdout"]), str(apps["stdout"]))
 
     import mdstats
     import torch
@@ -197,26 +332,11 @@ def collect_runtime(gpu_index: int) -> dict[str, Any]:
         raise RuntimeError("CUEQ-DEP1 runtime does not pass: " + ", ".join(dep1.blocking_reasons))
     dep = dep1.to_dict()
     versions = {str(v["logical_name"]): v.get("version") for v in dep["distributions"]}
-    mismatches = {
-        name: {"expected": expected, "observed": versions.get(name)}
-        for name, expected in EXPECTED_RUNTIME.items()
-        if name != "torch_cuda" and versions.get(name) != expected
-    }
-    if str(dep1.device.torch_cuda_version) != EXPECTED_RUNTIME["torch_cuda"]:
-        mismatches["torch_cuda"] = {
-            "expected": EXPECTED_RUNTIME["torch_cuda"],
-            "observed": dep1.device.torch_cuda_version,
-        }
-    if mismatches:
-        raise RuntimeError("Runtime family mismatch: " + json.dumps(mismatches, sort_keys=True))
+    _require_runtime_family(versions, dep1.device.torch_cuda_version)
     if not torch.cuda.is_available() or gpu_index >= torch.cuda.device_count():
         raise RuntimeError(f"CUDA device {gpu_index} is unavailable to Torch.")
     props = torch.cuda.get_device_properties(gpu_index)
-    if "RTX 3090" not in props.name or (props.major, props.minor) != (8, 6):
-        raise RuntimeError(
-            f"Expected RTX 3090 / compute capability 8.6, got {props.name} "
-            f"{props.major}.{props.minor}."
-        )
+    _require_rtx3090(props.name, props.major, props.minor)
 
     projection_sources: dict[str, Any] = {}
     for name in PROJECTION_MODULES:
@@ -260,6 +380,14 @@ def _file_record(path: Path | None, *, required: bool = False) -> dict[str, Any]
     return {"path": str(path), "size": path.stat().st_size, "sha256": sha256_file(path)}
 
 
+def _locked_file_record(path: Path | None, expected_sha256: str, label: str) -> dict[str, Any]:
+    record = _file_record(path, required=True)
+    assert record is not None
+    if record["sha256"] != expected_sha256:
+        raise RuntimeError(f"{label} SHA-256 mismatch: {record['sha256']}")
+    return record
+
+
 def collect_campaign(config_arg: str, mpa0_arg: str) -> dict[str, Any]:
     import mdstats
     from mdstats.training_data._campaign_cli_core import CampaignStore, _load_config
@@ -279,10 +407,11 @@ def collect_campaign(config_arg: str, mpa0_arg: str) -> dict[str, Any]:
     if not contexts:
         raise RuntimeError("No frozen selected post-selection context exists.")
 
-    mh1 = _file_record(_configured_path(cfg, paths.config_dir, "foundation_model"), required=True)
-    assert mh1 is not None
-    if mh1["sha256"] != MH1_SOURCE_SHA256:
-        raise RuntimeError(f"MH-1 source SHA mismatch: {mh1['sha256']}")
+    mh1 = _locked_file_record(
+        _configured_path(cfg, paths.config_dir, "foundation_model"),
+        MH1_SOURCE_SHA256,
+        "MH-1 source",
+    )
     q = store.get_record_optional(
         "selected_head_qualification", mdstats.MaceSelectedHeadQualificationRecord
     )
@@ -290,14 +419,14 @@ def collect_campaign(config_arg: str, mpa0_arg: str) -> dict[str, Any]:
         raise RuntimeError(
             "Selected-head qualification is missing or not the frozen Stage-A identity."
         )
-    selected = _file_record(Path(q.extraction.derived_checkpoint_reference).expanduser().resolve(), required=True)
-    assert selected is not None
-    if selected["sha256"] != MH1_SELECTED_HEAD_SHA256:
-        raise RuntimeError(f"MH-1 selected-head SHA mismatch: {selected['sha256']}")
-    mpa0 = _file_record(Path(mpa0_arg).expanduser().resolve(), required=True)
-    assert mpa0 is not None
-    if mpa0["sha256"] != MPA0_SHA256:
-        raise RuntimeError(f"MPA-0 SHA mismatch: {mpa0['sha256']}")
+    selected = _locked_file_record(
+        Path(q.extraction.derived_checkpoint_reference).expanduser().resolve(),
+        MH1_SELECTED_HEAD_SHA256,
+        "MH-1 selected-head",
+    )
+    mpa0 = _locked_file_record(
+        Path(mpa0_arg).expanduser().resolve(), MPA0_SHA256, "MPA-0 checkpoint"
+    )
 
     selected_contexts: list[dict[str, Any]] = []
     for context in contexts:
@@ -395,7 +524,8 @@ def build_manifest(args: argparse.Namespace) -> dict[str, Any]:
             "manifest_is_identity_evidence_not_qualification_evidence": True,
         },
     }
-    payload["content_digest"] = hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+    _require_exact_train2_keys(payload)
+    payload["content_digest"] = manifest_content_digest(payload)
     return payload
 
 
@@ -414,14 +544,25 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     output = Path(args.output).expanduser().resolve()
-    if output.exists():
-        raise RuntimeError(f"Refusing to overwrite preflight artifact: {output}")
     payload = build_manifest(args)
+    _require_exact_train2_keys(payload)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(
-        json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True, allow_nan=False) + "\n",
-        encoding="utf-8",
-    )
+    serialized = json.dumps(
+        payload, indent=2, sort_keys=True, ensure_ascii=True, allow_nan=False
+    ) + "\n"
+    try:
+        fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError as exc:
+        raise RuntimeError(f"Refusing to overwrite preflight artifact: {output}") from exc
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(serialized)
+        handle.flush()
+        os.fsync(handle.fileno())
+    directory_fd = os.open(output.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
     print(f"Candidate-10 Stage-C preflight written: {output}")
     print(f"content_digest={payload['content_digest']}")
     print("No Candidate-10 training trajectory was executed.")

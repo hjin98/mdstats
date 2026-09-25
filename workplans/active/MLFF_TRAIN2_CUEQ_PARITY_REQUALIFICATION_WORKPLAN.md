@@ -4,7 +4,7 @@ protocol_version: 6.4.0
 status: active
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 35
+revision: 36
 reviewed_date: 2026-09-25
 workplan_review_status: CANDIDATE_10_IMPLEMENTER_CONTINUATION_AUTHORIZED_PREFLIGHT_STAGE_C_D3_D4_PENDING
 workplan_review_basis: db2ed47e8c999cb61507803610c72c0fa7ffaaf7
@@ -25,7 +25,7 @@ repair_safe_train2_backend: e3nn
 
 ## 0. Disposition and Serious Challenge
 
-**REVISION-35 CURRENT LIFECYCLE:** the opening Serious Challenge below is retained as historical problem provenance, but it is no longer the current lifecycle disposition. Immutable Candidate 10 passed fresh independent D2 Review R7, the stakeholder accepted the reviewed family, and the exact `0.09 / 0.09 / 300` risk instance plus law/role binding are now frozen. **No current SERIOUS CHALLENGE to accepted D1/D2 parent authority is active.** The workplan remains open only because target-host key freeze, Candidate-10 Stage-C realization, dependent D3/D4 reconciliation, and assembled acceptance remain incomplete. The stakeholder has now authorized the implementer to carry those remaining stages through completion without another routine confirmation gate, subject to the stop/reopen conditions in Section 36.
+**REVISION-36 CURRENT LIFECYCLE:** the opening Serious Challenge below is retained as historical problem provenance, but it is no longer the current lifecycle disposition. Immutable Candidate 10 passed fresh independent D2 Review R7, the stakeholder accepted the reviewed family, and the exact `0.09 / 0.09 / 300` risk instance plus law/role binding are now frozen. **No current SERIOUS CHALLENGE to accepted D1/D2 parent authority is active.** Repository-only preflight collector hardening and its focused negative tests are complete. The exact target-host key remains unfrozen: this environment cannot access the stakeholder RTX 3090 runtime or live CampaignStore, and the current collector does not serialize the exact Candidate-10 realization key. Section 36.1 stop condition 1 is active; Stage C, dependent D3/D4 reconciliation, assembled acceptance, and closure remain incomplete. The stakeholder's continuation authorization remains subject to the stop/reopen conditions in Section 36.
 
 **OPEN — SERIOUS CHALLENGE to the current executable TRAIN2 FP32 backend-equivalence rule, including its missing accepted-D2 source closure and its numerical adequacy.**
 
@@ -1964,3 +1964,26 @@ If only a subset of exact keys passes, close or authorize only that exact subset
 
 The final implementation report MUST lead with any unavailable/failed target-host evidence or Serious Challenge, then state the exact authorized key scope, D3/D4 changes, tests actually executed, preserved historical evidence, and remaining non-authorized scopes (including concurrent CuEq TRAIN2 unless separately qualified).
 
+## 37. Revision-36 implementer execution update — preflight hardening and target-host key blocker
+
+### 37.1 Repository-only preflight hardening
+
+The Section 36.3 preflight collector review found that its frozen Candidate-10 commit constant was not consumed, so a clean branch could present the reviewed blob without proving the immutable candidate commit was in its ancestry. The collector now requires the requested branch, verifies the frozen commit contains the reviewed Candidate-10 blob and is an ancestor of `HEAD`, and continues to authenticate the working-tree candidate blob. Locked model/checkpoint, runtime/device, and selected-GPU-process checks now have focused negative coverage at the same helper boundaries used by collection.
+
+Preflight publication now uses exclusive file creation, flushes and synchronizes the file and containing directory, and refuses a competing writer without replacing its bytes. The canonical manifest digest has a matching verification helper. The publication boundary also requires a complete DEF.001 coordinate map and verifies its exact-coordinate digest; the current collector has no map, so it now refuses to publish an incomplete preflight JSON. The artifact schema is v2 for the key-bound representation. These are D4 evidence-collection hardenings only; Candidate-10 definitions, risk coordinates, source relations, and production law are unchanged.
+
+Focused verification on 2026-09-25:
+
+- `conda run -n mace python -m pytest -q tests/test_mlff_cueq_c10_stage_c_preflight.py` — **16 passed**; one fixture `VelocityReconstructionWarning` was emitted while constructing temporary source data.
+- `conda run -n mace python -m py_compile tools/run_mlff_cueq_c10_stage_c_preflight.py tests/test_mlff_cueq_c10_stage_c_preflight.py` — **PASS**.
+- `git diff --check` — **PASS**.
+
+These are local collector/control-plane checks, not target-host preflight or Candidate-10 qualification evidence.
+
+### 37.2 Target-host preflight remains blocked at exact-key freeze
+
+The collector can gather selected context/runtime observations but does not materialize the exact D2.CUEQ10.DEF.001 key `A=(d, theta_0, q_0, D, E, O, H, K, rho, m, R)` or a key digest. A fail-closed publication guard now prevents those observations from being emitted as a preflight artifact until the projection is implemented at the owning identity boundary and checked against the bound law/role definitions. No independent key owner or guessed digest was introduced here.
+
+This execution environment is also not the stakeholder RTX 3090 host: `nvidia-smi` cannot communicate with an NVIDIA driver. The exact target campaign configuration, live CampaignStore, locked model/checkpoint inputs, and target-host preflight JSON are not supplied here. Per the Section-C preflight handoff, those values cannot be reconstructed from repository defaults or synthesized.
+
+No exact Candidate-10 key is frozen, no Stage-C child or evaluator was launched, and no Stage-C evidence assessment exists. Section 36.1 stop condition 1 is active: the current collector cannot bind the exact key, and the required target-host values are unavailable here. Stop at the preflight/key owner. Resume after that owner emits and verifies the exact key on the stakeholder host, then authenticate the resulting preflight JSON under Section 36.4; preserve this workplan as active until the remaining gates actually pass.
