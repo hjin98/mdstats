@@ -4,9 +4,9 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 32
+revision: 33
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_10_RISK_COORDINATES_BOUND_AWAITING_EXACT_LAW_BINDING
+workplan_review_status: CANDIDATE_10_LAW_BOUND_AWAITING_TARGET_HOST_KEY_FREEZE
 workplan_review_basis: db2ed47e8c999cb61507803610c72c0fa7ffaaf7
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
@@ -1605,3 +1605,31 @@ The materiality-only minimum \(n=47\) is intentionally rejected as the default e
 The remaining Stage-C gate is exact law/role binding: \(E\), all source-owned \(\mathcal R_e\), \(\mathcal Q\), \(\mathcal W_{\rm pre/R/C}\), \(P_R^{\rm prod},P_C^{\rm prod}\), evaluator production laws/projection-oracle instance identity, and exact MH-1/MPA-0 scientific/runtime keys.
 
 Stage C remains blocked until those remaining coordinates are durably bound before Candidate-10 execution.
+
+
+## 34. Candidate-10 exact law/role binding and Stage-C preflight boundary
+
+The remaining source-owned Candidate-10 method choices are now bound in:
+
+workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_C10_INSTANCE_LAW_BINDING.md.
+
+The binding fixes:
+
+- exact FP32 e3nn / pure-CuEq kernel roles;
+- MH-1/omat_pbe and MPA-0/default model-family identities;
+- CV and production consumer populations \(E\);
+- accepted-parent \(\mathcal R_e\) registry;
+- the 300-triplet uniform pre-assignment design \(\mathcal Q\);
+- \(\mathcal W_{\rm pre},\mathcal W_R,\mathcal W_C\);
+- production-equivalent reference/candidate law definitions;
+- single-active-training-child GPU scope for the first qualification;
+- exact loader/objective/horizon late-binding rules;
+- projection/evaluator law.
+
+The first Candidate-10 record does not authorize current adaptive concurrent CuEq TRAIN2. Concurrent production is a different execution law until independently shown execution-only under Candidate 10.
+
+All remaining unknowns are live exact-key values owned by the stakeholder target host and current CampaignStore rather than free method parameters. They are frozen by the pre-output handoff:
+
+workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_C_PREFLIGHT_HANDOFF.md.
+
+Stage C remains blocked only on that target-host key freeze. No Candidate-10 training output may be generated before it.
