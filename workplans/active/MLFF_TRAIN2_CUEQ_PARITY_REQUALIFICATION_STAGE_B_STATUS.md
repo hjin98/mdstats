@@ -3,40 +3,51 @@ kind: workplan-stage-status
 protocol_version: 6.4.0
 workplan: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md
 stage: B
-status: candidate-4-author-ready-awaiting-fresh-independent-review
+status: candidate-5-author-ready-awaiting-fresh-independent-review
 date: 2026-09-24
-candidate: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE.md
-author_challenge: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_B_AUTHOR_CHALLENGE_REVIEW.md
-independent_review_handoff: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_HANDOFF.md
-immutable_candidate_commit: cd4e0453d0a27ae01f7041c1c9d222fd9d71a0e9
-immutable_candidate_blob: 1ad1ee0374ce1644f72e9ab89121ea47110f35bd
+candidate: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_5.md
+candidate_repair_record: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_5_REPAIR.md
+candidate4_independent_review: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R1.md
+independent_review_handoff: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_HANDOFF_C5.md
+immutable_candidate_commit: be57964c15ed24e30372de407534efd8173d6bc5
+immutable_candidate_blob: db0f59e0f9fb81462a18aa6e607ee9deded19c89
+stage_C_state: BLOCKED_PENDING_FRESH_D2_REVIEW_AND_RATIFICATION
+D3_D4_state: BLOCKED_PENDING_D2_ACCEPTANCE
 ---
 
 # TRAIN2 CuEq parity requalification — Stage B status
 
-Stage A is PASS.
+Stage A remains PASS as **method-design evidence only**.
 
-Three author-side Challenge passes blocked and repaired Candidates 1-3 before independent Review. Candidate 4 is the author-ready proposal.
+Immutable Candidate 4 `cd4e0453d0a27ae01f7041c1c9d222fd9d71a0e9` received fresh independent D2 Review **NO-PASS**. That candidate remains historical and was not mutated.
 
-Candidate 4:
+Candidate 5 is the author-side repair and is frozen at:
 
-- controls persistent global and order-cell bias with the inherited dtype calculator precision constants, explicitly as a new proposed TRAIN2-centroid use;
-- budgets candidate stochastic variance by V_C <= V_R + T_dtype^2, so candidate evidence never sets its own scale;
-- adds a coarse paired catastrophic guard at the accepted 0.01 property robust-loss transition scales;
-- makes starting-state energy/force/stress channels mandatory;
-- measures the real two-update TRAIN2 state transition rather than raw inference or raw parameter-gradient coordinates;
-- harvests consecutive witness windows from the actual accepted loader exposure, including replay-first/target-second pre-shuffle order, seed/shuffle/batch, no-duplication, and drop-last semantics;
-- observes update-induced energy/force/stress displacements through the canonical transient-to-portable state-transfer transform and portable-e3nn evaluator;
-- independently checks every mapped CuEq state directly against the transient CuEq physical function, with an additional dependency-native state-transfer differential;
-- prevents the measurement transform from re-importing source/DATA6 descriptor/FPS gating into TRAIN2;
-- fixes binary64 reduction arithmetic/order;
-- requires meaningful starting and non-initial model-state coverage;
-- requires finite loss, gradient, model, optimizer, and EMA execution plus complete mutable transient-state closure;
-- keeps source/DATA6 and deployment-projection relations separate; and
-- does not relax FP64 forward tolerance, while refusing to call forward-only FP64 evidence a complete training-operator proof.
+`be57964c15ed24e30372de407534efd8173d6bc5`
 
-The first Candidate-4 representation at commit 5d63350dd13929c27fa6c2204238f2f2e8f93cbd contained mathematical escape corruption and is not a Review target. Its successor is a representation-only reconstruction of the same Candidate-4 semantics.
+with canonical blob:
 
-Candidate 4 is **proposed, not accepted**. The next valid gate is a genuinely fresh independent D2 Review of the final immutable Candidate-4 commit.
+`db0f59e0f9fb81462a18aa6e607ee9deded19c89`.
 
-Fresh independent Review must target commit `cd4e0453d0a27ae01f7041c1c9d222fd9d71a0e9`, not the later lifecycle/handoff descendant.
+Candidate 5 repairs the independent Review blockers by:
+
+- governing complete TRAIN2 state, including EMA, optimizer, scheduler/counter, RNG, and backend mutable state;
+- observing EMA as a physical function and optimizer state through canonical common-gradient action probes;
+- requiring independent anti-common-mode checks for both model-state and optimizer-state transfer;
+- replacing TRAIN2 reuse of source-calculator `rtol/atol` with a new prospective precision-scaled physical numerical budget;
+- adding a recurrence-horizon paired adaptation and conservative coherent-drift growth guard;
+- using fresh-process means for primary stochastic reduction, separate between/within-process variability, cell-local reference comparators, and typed resolution-insufficiency states;
+- requiring two independent complete four-cell qualification ensembles with no pooled rescue or rerun-until-pass;
+- removing the Huber `0.01` value as a direct catastrophic backend-discrepancy ceiling;
+- protecting rare components by a reference-controlled non-dilution guard;
+- expanding loader-derived exposure to predeclared first/last/epoch-boundary/scheduler-discontinuity/metadata-extreme/branch windows;
+- using full entry/mid/late reference training-state anchors;
+- explicitly proposing source/DATA6 and projection/EVAL2 as new D2 sibling relations rather than historical D4 authority;
+- identifying EVAL2 as the portable e3nn forward after qualified projection; and
+- narrowing current CuEq TRAIN2 support to FP32 only. FP64 CuEq TRAIN2 must fail closed.
+
+Candidate 5 is **proposed, not accepted**.
+
+The next valid gate is a genuinely fresh independent Protocol-6.4 D2 Review of the exact immutable candidate commit above.
+
+Stage C must not run before that Review passes and the exact passing candidate receives stakeholder ratification. D3/D4 implementation remains blocked.

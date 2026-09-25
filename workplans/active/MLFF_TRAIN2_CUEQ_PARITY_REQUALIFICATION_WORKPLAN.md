@@ -874,3 +874,54 @@ Revision 9 replaces those with the exact current split and claim boundaries:
 It also strengthens affected regression requirements so “campaign default” tests must assert the full two-backend split, not merely the source-side CONFIG1 field.
 
 **R8 disposition: PASS AS WORKPLAN after Revision-9 repair.** No live Section 0-8 backend-policy ambiguity is known.
+
+
+## 17. Candidate-4 independent NO-PASS and Candidate-5 repair
+
+Fresh independent Protocol-6.4 D2 Review of immutable Candidate 4
+
+`cd4e0453d0a27ae01f7041c1c9d222fd9d71a0e9`
+
+returned **NO-PASS** with no SERIOUS CHALLENGE to the accepted parent.
+
+The blocking owner remained D2. The Review identified seven material defects:
+
+1. complete optimizer/EMA state was under-observed;
+2. source-calculator tolerances were transferred to TRAIN2 centroids without a training-operator warrant;
+3. nested repeats were used inside the primary variance estimator despite fresh process being the declared independent unit, and cell-local candidate variance borrowed global reference variance;
+4. the `0.01` Huber transition scale was used as an unrelated catastrophic backend ceiling;
+5. minimum metadata-covering loader windows could systematically omit difficult exposure regimes;
+6. state-transfer measurement retained mutation/common-mode holes; and
+7. source/DATA6 and projection/EVAL2 historical D4 relations were described as if already source-closed D2 siblings.
+
+Candidate 5 repairs those blockers and is frozen at immutable semantic target:
+
+`be57964c15ed24e30372de407534efd8173d6bc5`
+
+with canonical blob:
+
+`db0f59e0f9fb81462a18aa6e607ee9deded19c89`.
+
+The Candidate-5 repair record is:
+
+`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_5_REPAIR.md`.
+
+Material Candidate-5 changes include:
+
+- complete TRAIN2 state semantics and exact discrete-state consequences;
+- EMA physical-function observation;
+- canonical optimizer-action probes plus independent optimizer-state transfer checks;
+- a new prospective TRAIN2 physical numerical budget `epsilon_(c,d)=delta_c*sqrt(u_d)`, explicitly proposed rather than inherited;
+- recurrence-horizon bounded adaptation and coherent-drift growth extrapolation over the remaining accepted horizon;
+- entry/mid/late full-state anchors;
+- process-level primary stochastic reduction, distinct within-process variance, matching-cell reference variance, two independent complete ensembles, and typed insufficient-resolution outcomes;
+- removal of `0.01` as a direct backend discrepancy ceiling;
+- reference-controlled per-component non-dilution guard;
+- expanded real-loader boundary/extreme/branch exposure;
+- snapshot-only non-mutating model-state transfer with independent anti-common-mode oracle;
+- source/DATA6 and projection/EVAL2 reclassified as explicit proposed D2 siblings requiring their own evidence; and
+- explicit narrowing of CuEq TRAIN2 support to FP32. FP64 CuEq TRAIN2 is unsupported pending a future accepted operator relation.
+
+This repair does **not** authorize Candidate 5, CuEq TRAIN2, Stage C, or D3/D4 implementation.
+
+The next gate is a genuinely fresh independent D2 Review pinned to `be57964c15ed24e30372de407534efd8173d6bc5`. Any semantic repair discovered by that Review creates a new candidate identity. Candidate-5 Stage-C evidence may begin only after Review PASS and stakeholder ratification of the exact passing candidate.
