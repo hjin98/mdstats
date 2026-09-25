@@ -3,17 +3,17 @@ kind: proposed-D2-authority-overlay
 protocol_version: 6.4.0
 status: PROPOSED_NOT_ACCEPTED
 workplan: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md
-candidate_id: MLFF-TRAIN2-CUEQ-EQUIVALENCE-D2-CANDIDATE-7
+candidate_id: MLFF-TRAIN2-CUEQ-EQUIVALENCE-D2-CANDIDATE-8
 date: 2026-09-25
 parent_d2_kernel: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 parent_d2_exact_source: a4824d28775164aa942fd29fa97ee0957eb87e6f
 stage_a_cross_family_basis: 24734c8113dfaeaba4ae32c2bb0b80f3c0c72e82
-supersedes_candidate: f3035317dcea1448c9d6d825c6f2d9f156aaec24
-superseded_candidate_review: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R3.md
+supersedes_candidate: 499b1269590db7c8636b32e6c2dd5cebb05ac602
+superseded_candidate_review: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R4.md
 human_ratification_required: true
 ---
 
-# Proposed D2 complete-state acceleration-equivalence overlay for MACE e3nn / CuEq TRAIN2 — Candidate 8
+# Proposed D2 consumer-closed acceleration-equivalence overlay for MACE e3nn / CuEq TRAIN2 — Candidate 8
 
 ## 1. Lifecycle, authority, and repair scope
 
@@ -757,7 +757,7 @@ Routine doctor may only:
 1. authenticate an exact current accepted Candidate-8 qualification record applicable to the requested realization; and
 2. execute a cheap real finite forward/backward reachability witness under the requested current state.
 
-Routine doctor cannot estimate or change p_max, Gamma, triplet count, score definitions, tail limits, projection bounds, or oracle identities; authorize another key; retry until pass; revive stale Candidate-6/Rev86 evidence; authorize source/DATA6 CuEq; or authorize a mid-run backend switch.
+Routine doctor cannot estimate or change the ratified risk tuple, triplet count, score definitions, source-owned materiality relations, projection bounds, or oracle identities; authorize another key; retry until pass; revive stale Candidate-7/Candidate-6/Rev86 evidence; authorize source/DATA6 CuEq; or authorize a mid-run backend switch.
 
 ## 18. Candidate-8 Stage-C obligations
 
