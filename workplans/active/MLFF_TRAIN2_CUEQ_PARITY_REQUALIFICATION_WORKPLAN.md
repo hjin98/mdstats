@@ -4,9 +4,9 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 27
+revision: 28
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_10_AUTHORED_PREFREEZE_CHALLENGE_COMPLETE
+workplan_review_status: CANDIDATE_10_PREFREEZE_JOINT_LAW_CORRECTED
 workplan_review_basis: d288d0f931b36e0304a91312915b9785e07dbe3c
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
@@ -1474,4 +1474,16 @@ Exact repair obligations now are:
 14. keep Stage C and D3/D4 blocked pending immutable freeze, fresh independent Review PASS, and stakeholder instance ratification.
 
 Author-side Challenge found no reason to alter the accepted parent or any previously passed consumer/materiality/ULP/projection/scope surface.
+
+### Candidate-10 prefreeze joint-law correction
+
+Final prefreeze Challenge strengthened the transport contract from per-child marginal equality to the exact conditional joint product law
+
+\[
+P_R^{\rm prod}\otimes P_R^{\rm prod}\otimes P_C^{\rm prod}.
+\]
+
+This prevents hidden shared entropy or another cross-child owner from coupling otherwise correct marginals and silently changing the pairwise materiality-event distribution. Marginal start-law equality alone is not sufficient qualification evidence.
+
+No Candidate-10 Stage-C evidence exists.
 

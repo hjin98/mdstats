@@ -29,15 +29,13 @@ Candidate 10 introduces
 
 The pre-assignment owner \(\mathcal W_{\rm pre}\) retains the R5/R6 common-law boundary. After label assignment and immediately before each child executes, the corresponding \(\mathcal W_R\) or \(\mathcal W_C\) independently restores/authenticates that child to its production-equivalent execution law.
 
-For every assignment, slot and admissible pre-assignment state:
+For every assignment and admissible pre-assignment state the three-child execution law is exactly
 
 \[
-\mathcal L(\Omega^R\mid\Lambda,A)=P_R^{\rm prod},
-\qquad
-\mathcal L(\Omega^C\mid\Lambda,A)=P_C^{\rm prod}.
+P_R^{\rm prod}\otimes P_R^{\rm prod}\otimes P_C^{\rm prod}.
 \]
 
-The ordinary production CuEq launch must execute the same \(\mathcal W_C\) and authenticate \(P_C^{\rm prod}\).
+The per-child marginal laws follow from this product identity; marginal matching alone is insufficient because hidden shared entropy could otherwise preserve cross-child coupling. The ordinary production CuEq launch must execute the same \(\mathcal W_C\) and authenticate \(P_C^{\rm prod}\).
 
 Therefore \(q_{\rm cat}\) is inferred from exact production-equivalent pair populations rather than a qualification slot mixture.
 
@@ -69,7 +67,7 @@ Unchanged in substance: exact \(E\) consumer closure; source-owned \(\mathcal R_
 
 ## 8. Prefreeze Challenge
 
-The repair was challenged against: qualification slot history after prior siblings; child-start snapshot versus whole execution law; overlapping siblings; backend-specific warm-up; production skipping \(\mathcal W_C\); persistent host state; favorable assignment mixtures; and the R5 exact-same-backend order fixture.
+The repair was challenged against: qualification slot history after prior siblings; superficially correct child marginals with hidden shared entropy; child-start snapshot versus whole execution law; overlapping siblings; backend-specific warm-up; production skipping \(\mathcal W_C\); persistent host state; favorable assignment mixtures; and the R5 exact-same-backend order fixture.
 
 No alternate estimator or compensating tolerance was added. If the target host cannot establish production-equivalent per-child execution law, the method fails closed.
 

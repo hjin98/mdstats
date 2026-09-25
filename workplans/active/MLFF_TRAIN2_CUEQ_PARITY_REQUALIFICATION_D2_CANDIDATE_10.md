@@ -446,23 +446,35 @@ independently across triplets. Assignment chooses labels only; it cannot feed sc
 
 Immediately before governed arithmetic of the label assigned to slot \(s\), execute backend-specific child renewal \(\mathcal W_b\), \(b=R\) for \(R1/R2\), \(b=C\) for \(C\), producing authenticated child execution state \(\Omega_{p,s}^b\).
 
-The exact transport contract is
+The exact transport contract is a **joint product law**, not merely equality of three marginals. Let \(s_{R1}(a),s_{R2}(a),s_C(a)\) be the slots occupied by \(R1,R2,C\) under assignment \(a\). For every admissible \(\lambda\) and assignment \(a\),
+
+\[
+\mathcal L\!\left(
+\Omega_{p,s_{R1}(a)}^{R},
+\Omega_{p,s_{R2}(a)}^{R},
+\Omega_{p,s_C(a)}^{C}
+\mid
+\Lambda_p=\lambda,A_p=a
+\right)
+=
+P_R^{\rm prod}\otimes P_R^{\rm prod}\otimes P_C^{\rm prod}.
+\]
+
+Consequently, for every occupied slot,
 
 \[
 \mathcal L(\Omega_{p,s}^{R}\mid\Lambda_p=\lambda,A_p=a)=P_R^{\rm prod},
-\]
-
-\[
+\qquad
 \mathcal L(\Omega_{p,s}^{C}\mid\Lambda_p=\lambda,A_p=a)=P_C^{\rm prod},
 \]
 
-for every admissible \(\lambda\), assignment \(a\), and occupied slot \(s\).
+but these marginal equalities alone are not sufficient evidence. Hidden shared entropy or another common mutable owner that couples otherwise correct marginals violates the joint contract.
 
-Thus actual arithmetic-relevant child law is invariant to qualification slot and prior-sibling history. \(P_C^{\rm prod}\) is exactly the law of the ordinary CuEq production launch authorized by the record; \(P_R^{\rm prod}\) is the corresponding accepted-reference law.
+Thus actual arithmetic-relevant child laws are invariant to qualification slot and prior-sibling history **and are mutually independent at the execution-law level conditional on the exact scientific key**. \(P_C^{\rm prod}\) is exactly the law of the ordinary CuEq production launch authorized by the record; \(P_R^{\rm prod}\) is the corresponding accepted-reference law.
 
 The equality is structural. The qualification record must census every mutable owner able to carry information from one child to another or make a qualification slot differ from production, including CUDA/driver/compiler caches, allocator/device residency, CUDA graphs, autotuning/generated-kernel caches, supervisor state, filesystem/page cache, clock/power/thermal regime, Torch/MACE/CuEq globals, persistent RNG streams, workers/threads/daemons, and analogous owners.
 
-Each owner must be reset/fixed to the production contract, immutable in \(\rho\), independently regenerated with the production law, or isolated so sibling execution cannot affect the child. A materially history-dependent or slot-dependent owner makes the key unqualifiable.
+Each owner must be reset/fixed to the production contract, immutable in \(\rho\), independently regenerated with the production law, or isolated so sibling execution cannot affect the child. The resulting child-execution randomness must also be independent across the three children as required by the joint product law. A materially history-dependent, slot-dependent, or cross-child-coupled owner makes the key unqualifiable.
 
 A child may not overlap another child's governed arithmetic unless production uses the same concurrency/resource-sharing law and equality to \(P_b^{\rm prod}\) is proved. Otherwise sibling overlap is outside applicability.
 
@@ -582,7 +594,7 @@ q_C^\ast=
 
 Qualification launch assignment may change audit order but cannot change either event law. A high-risk production-relevant stratum cannot be averaged with lower-risk qualification-only strata because slot-specific child laws are inadmissible under the key.
 
-The ordinary production CuEq run executes the same \(\mathcal W_C\) contract and therefore belongs to \(P_C^{\rm prod}\). The candidate risk proposition is the pairwise material-disagreement risk applicable to that production realization against an independently fresh accepted-reference realization.
+The ordinary production CuEq run executes the same \(\mathcal W_C\) contract and therefore belongs to \(P_C^{\rm prod}\). The joint product-law requirement makes the observed \((R1,C)\) pairs exact draws from \(P_R^{\rm prod}\otimes P_C^{\rm prod}\), so the candidate risk proposition is the pairwise material-disagreement risk applicable to that production realization against an independently fresh accepted-reference realization. Matching only the two marginals while coupling reference and candidate execution noise is insufficient.
 
 Completed triplets are independent draws from these common production-equivalent pair laws. Zero failures in \(n\) gives exact one-sided Clopper-Pearson bound
 
@@ -958,7 +970,7 @@ The R6 adversary cannot satisfy Candidate 10: slot risks \(0.20,0,0\) imply diff
 
 The R5 systematic theorem remains intact and separate. Uniform assignment owns the pre-assignment label-swap comparison used by \(\eta_{\rm NI}\); it is not the owner of catastrophic-tail transport.
 
-Structural applicability proof is owner-based. Nonsignificant stationarity/autocorrelation cannot prove pre-assignment independence, per-child renewal, slot invariance, or production transport.
+Structural applicability proof is owner-based. Nonsignificant stationarity/autocorrelation cannot prove pre-assignment independence, the within-triplet joint product law, per-child renewal, slot invariance, or production transport.
 
 Candidate 10 defines no alternate estimator for a host that cannot realize the child production law. If every qualification child cannot execute under the same law as corresponding production child, qualification fails closed.
 
@@ -968,6 +980,6 @@ All Candidate-9 consumer closure, materiality-source, ULP/score, complete-state,
 
 No Candidate-10 Stage-C result exists.
 
-Candidate 10 must be frozen immutably and subjected to fresh independent D2 Review. Review must challenge: child execution law versus mere start snapshot; surviving prior-sibling state; actual production use of identical \(\mathcal W_C\); slot/outcome independence; structural rejection of the R6 \(0.20,0,0\) adversary; continued validity of the R5 theorem; evaluator transport; and every R1-R6 historical repair.
+Candidate 10 must be frozen immutably and subjected to fresh independent D2 Review. Review must challenge: child execution law versus mere start snapshot; the full conditional joint product law versus superficially correct marginals; surviving prior-sibling/shared-entropy state; actual production use of identical \(\mathcal W_C\); slot/outcome independence; structural rejection of the R6 \(0.20,0,0\) adversary; continued validity of the R5 theorem; evaluator transport; and every R1-R6 historical repair.
 
 No D2-to-D3/D4 handoff exists before independent PASS, exact stakeholder ratification, and subsequent fresh Stage-C qualification.
