@@ -4,7 +4,7 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 14
+revision: 15
 reviewed_date: 2026-09-24
 workplan_review_status: PASS_AS_WORKPLAN_AFTER_STAGE_B_FINAL_AUTHOR_READINESS_REPAIR
 workplan_review_basis: 08e2fcc53128a2a0b197a673453437e5f584f4cc
@@ -942,3 +942,40 @@ with canonical blob:
 The pre-correction Candidate-5 commit `be57964c15ed24e30372de407534efd8173d6bc5` / blob `db0f59e0f9fb81462a18aa6e607ee9deded19c89` is historical only and must not be used as the fresh Review target.
 
 No Stage-C evidence was run between the two representations.
+
+
+## 19. Candidate-5 independent NO-PASS and Candidate-6 full-trajectory repair
+
+Fresh independent Protocol-6.4 D2 Review R2 of immutable Candidate 5
+
+`6e73fbb7af9b8d46f61cf81113259584ffed8527`
+
+returned **NO-PASS** with no SERIOUS CHALLENGE to accepted D1/D2 parent authority.
+
+Review R2 found nine blocking defects: unsupported `delta*sqrt(u)` error semantics; non-injective optimizer action probes; under-observed EMA state; unsupported recurrence/secant extrapolation; undefined anchor state classes; metadata windows that can omit numerically hard ordinary batches; under-specified finite-sample stochastic authorization; a three-repeat rare-component allowance that can mint candidate tolerance; and under-warranted generic source/DATA6 siblings.
+
+Candidate 6 is the semantic repair. It is frozen at immutable commit:
+
+`f3035317dcea1448c9d6d825c6f2d9f156aaec24`
+
+with Candidate-6 blob:
+
+`f2596ef7bb0f146e6a6ec3b0af44ffcf8b96764a`.
+
+Candidate 6 intentionally narrows rather than broadens authority:
+
+- one exact initial-state/corpus/loader/objective/horizon/runtime/order realization is the qualification unit;
+- every accepted TRAIN2 update is executed, eliminating sampled-window and recurrence extrapolation;
+- optimizer/EMA latent state is protected only through complete realized-horizon consequences; no arbitrary future-state theorem or mid-run backend conversion is claimed;
+- acceptance uses an explicit nonparametric reference-self population tolerance construction rather than Huber-derived or machine-epsilon-derived physical thresholds;
+- rare components and broad shifts are part of fixed full-horizon score families;
+- generic source/DATA6 CuEq authority is removed from this candidate;
+- FP32 remains the sole proposed CuEq TRAIN2 dtype; FP64 remains unsupported;
+- completed-state projection retains a distinct structural mapping oracle and evaluator-parity relation; and
+- post-projection EVAL2 executes e3nn.
+
+Candidate 6 remains **proposed, not accepted**.
+
+No Candidate-6 Stage-C evidence may run before a fresh independent Review passes and the exact passing immutable candidate receives stakeholder ratification.
+
+No D2-to-D3/D4 handoff exists yet.

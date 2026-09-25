@@ -3,15 +3,14 @@ kind: workplan-stage-status
 protocol_version: 6.4.0
 workplan: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md
 stage: B
-status: candidate-5-author-ready-awaiting-fresh-independent-review
-date: 2026-09-24
-candidate: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_5.md
-candidate_repair_record: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_5_REPAIR.md
-candidate4_independent_review: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R1.md
-independent_review_handoff: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_HANDOFF_C5.md
-immutable_candidate_commit: 6e73fbb7af9b8d46f61cf81113259584ffed8527
-immutable_candidate_blob: 4bfd2451cc1835e82e303cc9a597b69b8f8deda9
-representation_correction_of_candidate5: be57964c15ed24e30372de407534efd8173d6bc5
+status: candidate-6-author-ready-awaiting-fresh-independent-review
+date: 2026-09-25
+candidate: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_6.md
+candidate_repair_record: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_6_REPAIR.md
+candidate5_independent_review: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R2.md
+independent_review_handoff: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_HANDOFF_C6.md
+immutable_candidate_commit: f3035317dcea1448c9d6d825c6f2d9f156aaec24
+immutable_candidate_blob: f2596ef7bb0f146e6a6ec3b0af44ffcf8b96764a
 stage_C_state: BLOCKED_PENDING_FRESH_D2_REVIEW_AND_RATIFICATION
 D3_D4_state: BLOCKED_PENDING_D2_ACCEPTANCE
 ---
@@ -20,35 +19,36 @@ D3_D4_state: BLOCKED_PENDING_D2_ACCEPTANCE
 
 Stage A remains PASS as **method-design evidence only**.
 
-Immutable Candidate 4 `cd4e0453d0a27ae01f7041c1c9d222fd9d71a0e9` received fresh independent D2 Review **NO-PASS**. That candidate remains historical and was not mutated.
+Immutable Candidate 5 `6e73fbb7af9b8d46f61cf81113259584ffed8527` / blob `4bfd2451cc1835e82e303cc9a597b69b8f8deda9` received fresh independent D2 Review R2 **NO-PASS** with no SERIOUS CHALLENGE to the accepted D1/D2 parent.
 
-Candidate 5 is the author-side repair and is frozen at:
+Candidate 5 remains historical and was not mutated.
 
-`6e73fbb7af9b8d46f61cf81113259584ffed8527`
+Candidate 6 is the author-side semantic repair and is frozen at:
 
-with canonical blob:
+`f3035317dcea1448c9d6d825c6f2d9f156aaec24`
 
-`4bfd2451cc1835e82e303cc9a597b69b8f8deda9`.
+with canonical Candidate-6 blob:
 
-Candidate 5 repairs the independent Review blockers by:
+`f2596ef7bb0f146e6a6ec3b0af44ffcf8b96764a`.
 
-- governing complete TRAIN2 state, including EMA, optimizer, scheduler/counter, RNG, and backend mutable state;
-- observing EMA as a physical function and optimizer state through canonical common-gradient action probes;
-- requiring independent anti-common-mode checks for both model-state and optimizer-state transfer;
-- replacing TRAIN2 reuse of source-calculator `rtol/atol` with a new prospective precision-scaled physical numerical budget;
-- adding a recurrence-horizon paired adaptation and conservative coherent-drift growth guard;
-- using fresh-process means for primary stochastic reduction, separate between/within-process variability, cell-local reference comparators, and typed resolution-insufficiency states;
-- requiring two independent complete four-cell qualification ensembles with no pooled rescue or rerun-until-pass;
-- removing the Huber `0.01` value as a direct catastrophic backend-discrepancy ceiling;
-- protecting rare components by a reference-controlled non-dilution guard;
-- expanding loader-derived exposure to predeclared first/last/epoch-boundary/scheduler-discontinuity/metadata-extreme/branch windows;
-- using full entry/mid/late reference training-state anchors;
-- explicitly proposing source/DATA6 and projection/EVAL2 as new D2 sibling relations rather than historical D4 authority;
-- identifying EVAL2 as the portable e3nn forward after qualified projection; and
-- narrowing current CuEq TRAIN2 support to FP32 only. FP64 CuEq TRAIN2 must fail closed.
+Candidate 6 repairs Review-R2 blockers by reduction:
 
-Candidate 5 is **proposed, not accepted**.
+- deletes the unsupported `delta*sqrt(u)` TRAIN2 error scale;
+- deletes recurrence-timescale/secant future-drift extrapolation;
+- deletes entry/mid/late state-class extrapolation;
+- deletes finite optimizer-action probes as complete-state authority;
+- deletes sampled TRAIN2 windows and executes the complete accepted loader/update horizon;
+- replaces five-process/standard-error acceptance with an explicit distribution-free 90%-content / 95%-simultaneous-confidence reference tolerance design using 44 fresh-process reference-self and 44 fresh-process candidate confirmations;
+- deletes the three-repeat `M_R+epsilon` rare-component allowance;
+- narrows authorization to one exact initial-state/corpus/loader/objective/horizon/runtime/order qualification key;
+- forbids mid-run e3nn/CuEq switching;
+- removes generic source/DATA6 CuEq authority from this candidate rather than inventing a new source-side threshold;
+- retains FP32 as the sole proposed CuEq TRAIN2 dtype and keeps FP64 fail-closed;
+- separates completed-state projection into an independent structural transfer oracle plus a separate reference-self evaluator envelope; and
+- preserves EVAL2 provider identity as portable e3nn after successful projection.
 
-The next valid gate is a genuinely fresh independent Protocol-6.4 D2 Review of the exact immutable candidate commit above.
+Candidate 6 is **proposed, not accepted**.
 
-Stage C must not run before that Review passes and the exact passing candidate receives stakeholder ratification. D3/D4 implementation remains blocked.
+The next valid gate is a genuinely fresh independent Protocol-6.4 D2 Review of the exact immutable candidate commit and blob above.
+
+A Review PASS means only that Candidate 6 is coherent enough to test. Stage C still requires stakeholder ratification of that exact passing candidate. D3/D4 implementation remains blocked.
