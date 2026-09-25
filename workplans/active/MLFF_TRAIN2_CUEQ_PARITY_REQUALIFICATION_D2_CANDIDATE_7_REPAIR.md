@@ -1,11 +1,13 @@
 ---
 kind: D2-candidate-repair-record
 protocol_version: 6.4.0
-status: AUTHOR_REPAIR_COMPLETE_PENDING_IMMUTABLE_FREEZE
+status: FROZEN_PENDING_FRESH_INDEPENDENT_REVIEW
 workplan: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md
 review_basis: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R3.md
 superseded_candidate: f3035317dcea1448c9d6d825c6f2d9f156aaec24
 replacement_candidate_file: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_7.md
+immutable_candidate_commit: 499b1269590db7c8636b32e6c2dd5cebb05ac602
+immutable_candidate_blob: d5e1c72d6cb4c35027e0f43f502f0da48819af3d
 date: 2026-09-25
 ---
 

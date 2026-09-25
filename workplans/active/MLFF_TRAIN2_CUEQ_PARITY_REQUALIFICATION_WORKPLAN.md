@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 16
+revision: 17
 reviewed_date: 2026-09-25
-workplan_review_status: REOPENED_AFTER_CANDIDATE_6_INDEPENDENT_NO_PASS
-workplan_review_basis: ffa521096376bcee66c3ebe867022613c476243d
+workplan_review_status: CANDIDATE_7_FROZEN_AWAITING_FRESH_INDEPENDENT_REVIEW
+workplan_review_basis: 499b1269590db7c8636b32e6c2dd5cebb05ac602
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -1035,3 +1035,46 @@ The next semantic candidate MUST be Candidate 7 or later and MUST, before a new 
 9. undergo a new genuinely fresh independent D2 Review after immutable freeze and then exact stakeholder ratification before any Stage-C evidence is run.
 
 No D3/D4 implementation handoff exists while these D2 blockers remain.
+
+
+## 21. Candidate-7 repair and immutable Review freeze
+
+Candidate-6 independent Review R3 returned NO-PASS at:
+
+ffa521096376bcee66c3ebe867022613c476243d
+
+with no SERIOUS CHALLENGE to accepted parent D1/D2.
+
+The D2 repair is Candidate 7. Its immutable semantic Review target is:
+
+499b1269590db7c8636b32e6c2dd5cebb05ac602
+
+with Candidate-7 blob:
+
+d5e1c72d6cb4c35027e0f43f502f0da48819af3d.
+
+The earlier author draft 85b41f6954d87175a44bfc2c16e369a5385e8d33 is historical authoring state only. Before freeze, the author-side Challenge pass corrected the realization key to bind the ordered backend-kernel pair (K_R,K_C), replaced globally dilutable RMS with fixed semantic-block RMS, and clarified that TRAIN2 E-consumer comparison uses the same portable e3nn provider on both reference and projected-candidate states.
+
+Candidate 7 repairs the live R3 blockers as follows:
+
+1. **complete-state consequence:** complete forward-affecting live and EMA state is projected to the common e3nn coordinate after every required mutation, including the final optimizer update; exact role-effective downstream consumer population E is part of the key and protected trace;
+2. **systematic-shift semantics:** 101 prospective independent R1/R2/C triplets replace sample-maximum containment as the substantive relation; for both S_max and block-balanced S_rms the exact one-sided Clopper-Pearson upper bound on strict-worse probability must be <=0.60 at simultaneous confidence >=0.95;
+3. **separate tail guard:** the reference sample maximum remains only a catastrophic-tail guard and cannot rescue a failed systematic-shift relation;
+4. **reference adequacy:** accepted threshold and ordering geometry supplies the reference-stability margin; unstable e3nn self behavior fails rather than widening candidate authority;
+5. **exact ULP:** signed zero is quotiented to one exact IEEE rank with explicit subnormal/normal semantics;
+6. **projection independence:** the oracle cannot share inventory, correspondence, k-range, key-enumeration, projection-matrix, get_kmax_pairs, or symmetric_contraction_proj semantic owners with production;
+7. **complete projection inventory:** forward-affecting non-state_dict state, including avg_num_neighbors where applicable, is mandatory;
+8. **floating projection bound:** coefficient-representation error is explicit in addition to learned-dtype accumulation error;
+9. **scope preserved:** complete real loader/horizon, same-backend restart only, source/DATA6 e3nn narrowing, FP64 CuEq TRAIN2 fail-closed, e3nn EVAL2 provider, and non-authorizing routine doctor remain intact.
+
+Project Engineering Memory was consulted as evidence context. Candidate 7 preserves the materially applicable lessons without treating them as normative authority: authenticated identity/state boundaries (SP-002), immutable restart/reuse boundaries (SP-003), real-owner/target-host qualification (SP-004), architecture-reconstruction drift including avg_num_neighbors/CuEq realization (FF-001), and restart-boundary ownership (FF-002).
+
+The fresh independent handoff is:
+
+workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_HANDOFF_C7.md
+
+No Candidate-7 Stage-C evidence may run before a fresh independent Review PASS and stakeholder ratification of the exact immutable candidate above.
+
+No D2-to-D3/D4 handoff exists yet.
+
+Any semantic repair discovered by that Review creates Candidate 8 or later.
