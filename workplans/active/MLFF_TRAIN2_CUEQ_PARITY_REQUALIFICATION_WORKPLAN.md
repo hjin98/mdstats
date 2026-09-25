@@ -1666,13 +1666,13 @@ This section is the current implementation handoff for the remainder of this wor
 
 The implementer MUST start from the exact current branch and reconstruct authority from the immutable records rather than from older stage prose:
 
-- Candidate 10 semantic target: \`db2ed47e8c999cb61507803610c72c0fa7ffaaf7\`;
-- Candidate-10 blob: \`7843a41172d25c231d4c589aebc0214ddec42bd1\`;
-- independent Review R7: \`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R7.md\`;
-- stakeholder family acceptance: \`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_STAKEHOLDER_ACCEPTANCE_C10.md\`;
-- exact risk binding: \`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_C10_INSTANCE_RISK_BINDING.md\`;
-- exact law/role binding: \`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_C10_INSTANCE_LAW_BINDING.md\`;
-- target-host preflight handoff: \`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_C_PREFLIGHT_HANDOFF.md\`.
+- Candidate 10 semantic target: `db2ed47e8c999cb61507803610c72c0fa7ffaaf7`;
+- Candidate-10 blob: `7843a41172d25c231d4c589aebc0214ddec42bd1`;
+- independent Review R7: `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R7.md`;
+- stakeholder family acceptance: `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_STAKEHOLDER_ACCEPTANCE_C10.md`;
+- exact risk binding: `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_C10_INSTANCE_RISK_BINDING.md`;
+- exact law/role binding: `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_C10_INSTANCE_LAW_BINDING.md`;
+- target-host preflight handoff: `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_C_PREFLIGHT_HANDOFF.md`.
 
 Where Sections 5 or earlier candidate-era prose conflicts with Candidate 10 or Sections 31-36, the later Candidate-10 lifecycle state controls. In particular, superseded 4-cell/5-process, 20-process, 101-triplet, sample-maximum, block-RMS, Candidate-7/Candidate-8, or fixed-order descriptions MUST NOT be executed as Candidate-10 qualification.
 
@@ -1707,12 +1707,12 @@ Implement the remainder by changing/reusing the existing owners. Do not build a 
 
 Canonical surfaces to inspect and preserve/reconcile include at least:
 
-- \`mdstats/training_data/acceleration.py\` — acceleration qualification/parity numerical owner;
-- \`mdstats/training_data/_campaign_cli_core.py\` — doctor/runtime admission and stored realization exposure;
-- \`mdstats/training_data/accelerator_runtime_freeze.py\` and \`mace_runtime_freeze.py\` — runtime/dependency identity;
-- \`mdstats/training_data/train2_runtime.py\` and the existing MACE TRAIN2 execution owners — real training execution;
-- \`mdstats/training_data/post_selection_identity.py\` — training/assessment identity projection;
-- \`mdstats/training_data/campaign_post_selection_runtime.py\` and existing P5 checkpoint/provider owners — post-selection/EVAL2 realization identity;
+- `mdstats/training_data/acceleration.py` — acceleration qualification/parity numerical owner;
+- `mdstats/training_data/_campaign_cli_core.py` — doctor/runtime admission and stored realization exposure;
+- `mdstats/training_data/accelerator_runtime_freeze.py` and `mace_runtime_freeze.py` — runtime/dependency identity;
+- `mdstats/training_data/train2_runtime.py` and the existing MACE TRAIN2 execution owners — real training execution;
+- `mdstats/training_data/post_selection_identity.py` — training/assessment identity projection;
+- `mdstats/training_data/campaign_post_selection_runtime.py` and existing P5 checkpoint/provider owners — post-selection/EVAL2 realization identity;
 - existing CampaignStore parity/policy/realization persistence/currentness owners;
 - existing production scheduler/resource owner;
 - existing dependency-native CuEq -> portable-e3nn mapper and selected-checkpoint/provider reconstruction owners.
@@ -1737,7 +1737,7 @@ Prefer removal/rewiring/replacement of superseded Rev86/noise-normalized machine
 
 Before target-host Stage-C output exists, the implementer SHALL complete all non-outcome-dependent D3/D4 preparation that can be falsified locally:
 
-1. independently review and harden \`tools/run_mlff_cueq_c10_stage_c_preflight.py\`; preserve its observational/pre-output character;
+1. independently review and harden `tools/run_mlff_cueq_c10_stage_c_preflight.py`; preserve its observational/pre-output character;
 2. add/repair focused tests proving dirty-repo, candidate-blob, model/checkpoint, runtime/device, competing-process, missing-CampaignStore, wrong-lineage, and overwrite attempts fail closed;
 3. implement the Candidate-10 qualification specification in the existing acceleration/training ownership graph without enabling production authorization yet;
 4. implement one durable, content-addressed Candidate-10 qualification record representation satisfying D2.CUEQ10.DEF.033; historical Candidate-8/9/Rev86 records remain readable history but cannot authorize Candidate 10;
@@ -1748,12 +1748,12 @@ Before target-host Stage-C output exists, the implementer SHALL complete all non
 9. implement the pre-assignment assignment owner using an unbiased uniform draw over all six \(S_3\) permutations only **after** the triplet's \(\Lambda_p\) freeze; assignment entropy and realized permutation are evidence-realization identity, not method-key coordinates;
 10. implement terminal/no-retry semantics before launching any expensive child;
 11. implement the cross-child mutable-owner census required by D2.CUEQ10.DEF.015 and make unresolved mutable residue a pre-arithmetic failure;
-12. implement the independent structural/coefficient projection oracle without sharing the production mapper's inventory, correspondence, k-range, key-enumeration, projection-matrix, \`get_kmax_pairs\`, or \`symmetric_contraction_proj\` semantic owners;
+12. implement the independent structural/coefficient projection oracle without sharing the production mapper's inventory, correspondence, k-range, key-enumeration, projection-matrix, `get_kmax_pairs`, or `symmetric_contraction_proj` semantic owners;
 13. implement evaluator qualification as a distinct Candidate-10 relation with its own renewal/start-law evidence while reusing common generic statistical primitives where semantics are identical;
 14. implement currentness predicates so every material key coordinate in D2.CUEQ10.DEF.001 / DEF.033 can stale a Candidate-10 record;
-15. add all Candidate-10 synthetic/adversarial tests from D2.CUEQ10 Section 18 before real Stage-C execution, especially R5 assignment, R6 \`0.20,0,0\` slot-risk transport, cross-child residue, failure/no-redraw, final-step hidden consumer, rare severe candidate event, tensor repartition, wrong coefficient, structural projection corruption, evaluator transport, and structural-failure-not-rescued-by-evaluator-agreement;
+15. add all Candidate-10 synthetic/adversarial tests from D2.CUEQ10 Section 18 before real Stage-C execution, especially R5 assignment, R6 `0.20,0,0` slot-risk transport, cross-child residue, failure/no-redraw, final-step hidden consumer, rare severe candidate event, tensor repartition, wrong coefficient, structural projection corruption, evaluator transport, and structural-failure-not-rescued-by-evaluator-agreement;
 16. preserve FP64 CuEq TRAIN2 and source/DATA6 CuEq as fail-closed unsupported scopes under Candidate 10;
-17. preserve the post-projection numerical provider identity as portable \`e3nn\`;
+17. preserve the post-projection numerical provider identity as portable `e3nn`;
 18. run focused and stage-local affected regression after each coherent executable stage.
 
 Repository-only tests may prove implementation semantics and negative guards. They MUST NOT be reported as target-host Candidate-10 qualification.
@@ -1777,7 +1777,7 @@ Before accepting the preflight artifact:
 9. bind the exact cache/scratch/isolation policy used by \(\mathcal W_{\rm pre},\mathcal W_R,\mathcal W_C\);
 10. bind exact accepted-parent materiality relations: current Candidate-10 instance uses accepted-parent foundation defaults \(45/45/30\ {\rm meV/\AA}\) for CV checkpoint/CV outer/production checkpoint force-RMSE and the accepted \(30\ {\rm meV/\AA}\) true-reference replay hard budget unless the accepted authority itself has formally advanced before execution.
 
-The current branch's \`75/75/50\` and replay \`50/100\` assessment-policy renewal is not Candidate-10 authority while that D2 renewal remains unaccepted. If that renewal becomes accepted before Stage C, do not silently substitute it: recompose the Candidate-10 source relations onto the new accepted parent and obtain whatever fresh D2 lifecycle action material overlap requires.
+The current branch's `75/75/50` and replay `50/100` assessment-policy renewal is not Candidate-10 authority while that D2 renewal remains unaccepted. If that renewal becomes accepted before Stage C, do not silently substitute it: recompose the Candidate-10 source relations onto the new accepted parent and obtain whatever fresh D2 lifecycle action material overlap requires.
 
 A valid preflight artifact freezes one or more exact Candidate-10 keys. Because role-effective \(E\), horizon and policy coordinates belong to \(A\), CV and production are distinct keys whenever their bound coordinates differ. Likewise MH-1 and MPA-0 are distinct keys. One passing key never authorizes another.
 
@@ -1842,7 +1842,7 @@ For every completed-state/projection key that will be consumed:
 9. apply the same \(\eta_{\rm NI}=0.09\), \(q_{\rm cat}=0.09\), \(\alpha=0.0125\), source-owned \(\mathcal R_e\), no-retry semantics, systematic comparison and zero-event materiality-risk rules;
 10. execute the evaluator R6 slot-mixture transport adversary;
 11. preserve structural failure as dominant even if numerical evaluator outputs happen to agree;
-12. record the post-projection numerical provider as \`e3nn\`, with CuEq retained only as TRAIN2-state provenance.
+12. record the post-projection numerical provider as `e3nn`, with CuEq retained only as TRAIN2-state provenance.
 
 A projection/evaluator pass is exact-state/key scoped unless Candidate-10 identity proves otherwise. Do not generalize one completed-state evaluator record across another materially different completed-state identity.
 
@@ -1861,7 +1861,7 @@ Revision 35 supplies the stakeholder continuation authorization for this already
 
 ### 36.9 Stage-D D3 reconciliation before D4 product mutation
 
-After exact Stage-C PASS, use the \`software-design\` role to reconstruct current accepted D3 and issue the minimum D3 -> D4 contract necessary to preserve Candidate 10.
+After exact Stage-C PASS, use the `software-design` role to reconstruct current accepted D3 and issue the minimum D3 -> D4 contract necessary to preserve Candidate 10.
 
 The D3 reconciliation MUST cover at least:
 
@@ -1882,23 +1882,23 @@ If those requirements can be expressed by rewiring existing owners, do so. If pr
 
 ### 36.10 Stage-D D4 implementation obligations
 
-After the D3 contract is accepted/current for this branch, use the \`software-implementation\` role and modify the existing owners directly.
+After the D3 contract is accepted/current for this branch, use the `software-implementation` role and modify the existing owners directly.
 
 Required D4 outcomes include:
 
 1. replace/remove the superseded TRAIN2 FP32 Rev86/noise-normalized authorizer so exactly one current Candidate-10 numerical owner exists;
 2. preserve historical record deserialization but make Candidate-8/9/Rev86 and stale Candidate-10 records incapable of consequential authorization;
 3. make source-side and TRAIN2 stored-realization consequential reuse authenticate current accepted parity method/record identity and exact runtime/model applicability;
-4. make an old \`qualified=true\` record fail currentness after method/risk/key/law/runtime changes;
+4. make an old `qualified=true` record fail currentness after method/risk/key/law/runtime changes;
 5. expose Candidate-10 method, exact applicability, evidence cardinality, record digest and fail reason in doctor diagnostics without letting doctor recreate qualification;
-6. keep generated source/DATA6/pseudolabel execution \`e3nn\`;
-7. keep generated FP32 TRAIN2 \`cueq\` only when an exact applicable Candidate-10 record passes currentness;
+6. keep generated source/DATA6/pseudolabel execution `e3nn`;
+7. keep generated FP32 TRAIN2 `cueq` only when an exact applicable Candidate-10 record passes currentness;
 8. keep FP64 CuEq TRAIN2 fail closed;
 9. enforce single-active-governed-CuEq-job-per-GPU production scope under the first Candidate-10 record;
-10. correct P5 EVAL2 numerical-provider identity so authenticated CuEq TRAIN2 checkpoint/state provenance projects to portable state but EVAL2 forward identity is \`e3nn\`;
+10. correct P5 EVAL2 numerical-provider identity so authenticated CuEq TRAIN2 checkpoint/state provenance projects to portable state but EVAL2 forward identity is `e3nn`;
 11. stale/recompute old falsely CuEq-labeled EVAL2 measurements and dependent assessments naturally through existing evidence/currentness owners;
 12. do not retrain otherwise-authenticated TRAIN2 roots solely because the EVAL2 provider identity is corrected;
-13. reconcile role thresholds/replay retention to the exact accepted authority resolved at Stage D; if accepted authority is still the Candidate-10 parent, D4 must not silently use the unratified \`75/75/50\` or \`50/100\` renewal as Candidate-10 authority;
+13. reconcile role thresholds/replay retention to the exact accepted authority resolved at Stage D; if accepted authority is still the Candidate-10 parent, D4 must not silently use the unratified `75/75/50` or `50/100` renewal as Candidate-10 authority;
 14. regenerate/rebind mutable FINAL-GPU1/preflight descendants whose currentness legitimately depends on the changed parity method; never edit release-pinned historical evidence in place;
 15. update user-facing status/configuration/specification surfaces so there is no claim that one Candidate-10 key authorizes another corpus, role, model family, runtime, state, concurrent law or evaluator;
 16. remove obsolete duplicate criterion machinery instead of leaving two authorizers reachable.
