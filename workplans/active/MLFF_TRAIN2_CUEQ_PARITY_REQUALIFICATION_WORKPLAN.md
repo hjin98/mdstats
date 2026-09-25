@@ -4,9 +4,9 @@ protocol_version: 6.4.0
 status: active
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 40
+revision: 41
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_10_DOCTOR_BOOTSTRAP_REPAIR_REQUIRED_BEFORE_PREPARE
+workplan_review_status: DOCTOR_BOOTSTRAP_REPAIR_ACCEPTED_PREPARE_PENDING
 workplan_review_basis: db2ed47e8c999cb61507803610c72c0fa7ffaaf7
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
@@ -18,14 +18,14 @@ human_ratification_required_for_d2_mutation: true
 current_generated_source_backend: e3nn
 current_generated_train2_backend: cueq
 repair_safe_source_backend: e3nn
-repair_safe_train2_backend: e3nn
+repair_safe_train2_backend: cueq
 ---
 
 # MLFF TRAIN2 CuEq FP32 backend-parity requalification — D2 -> D3/D4 workplan
 
 ## 0. Disposition and Serious Challenge
 
-**REVISION-40 CURRENT LIFECYCLE:** the opening Serious Challenge below is retained as historical problem provenance, but it is no longer the current lifecycle disposition. Immutable Candidate 10 passed fresh independent D2 Review R7, the stakeholder accepted the reviewed family, and the exact 0.09 / 0.09 / 300 risk instance plus law/role binding are frozen. **No current SERIOUS CHALLENGE to accepted D1/D2 parent authority is active.**
+**REVISION-41 CURRENT LIFECYCLE:** the opening Serious Challenge below is retained as historical problem provenance, but it is no longer the current lifecycle disposition. Immutable Candidate 10 passed fresh independent D2 Review R7, the stakeholder accepted the reviewed family, and the exact 0.09 / 0.09 / 300 risk instance plus law/role binding are frozen. **No current SERIOUS CHALLENGE to accepted D1/D2 parent authority is active.** The Revision-40 doctor bootstrap repair passed focused regression and real RTX 3090 doctor acceptance with intended `backend="e3nn"` / `training_backend="cueq"`; Candidate-10 remains pending until exact-key Stage C. The next authorized gate is campaign preparation, followed by exact-key preflight.
 
 The stakeholder restarted from a fresh campaign and exposed an earlier D4 bootstrap blocker than the retired-CampaignStore issue recorded in Revision 39. Routine doctor still executes the superseded Rev86 TRAIN2 FP32 noise-normalized parity authorizer. On the fresh campaign, source/DATA6 e3nn, selected-head extraction, CUDA/runtime/dependencies, replay prerequisites, and resources all passed, but doctor ran the old warm-up/all-pairs TRAIN2 parity rule and failed solely because descriptor_max_abs=1.860e-06 exceeded the historical 1.000e-06 ceiling. That result is **not Candidate-10 qualification evidence and must not gate preparation**.
 
@@ -2221,5 +2221,40 @@ The Revision-39 retired-CampaignStore blocker applies only to the old live campa
 
 **Current immediate blocker:** stale Rev86 routine-doctor authorizer.
 
-**Next action:** repair and verify doctor/actual-TRAIN2 admission separation per this section. Do not run prepare until this repair passes on the fresh campaign.
+**Next action at Revision 40:** repair and verify doctor/actual-TRAIN2 admission separation per this section. Do not run prepare until this repair passes on the fresh campaign. Revision 41 records that this gate has since passed; follow the Revision-41 continuation below.
 
+
+## 41. Revision-41 implementer execution update — doctor repair accepted; prepare is next
+
+### 41.1 D4 repair and repository acceptance
+
+The Section-40 owner split is implemented in the existing acceleration and launch owners. For phase-separated CuEq TRAIN2, routine doctor now performs current runtime/capability and preparation-readiness checks, resolves Candidate-10 state observationally, and does not run or rewrite Rev86 parity authorization. Target-size and post-selection production trainer owners fail closed before a CuEq TRAIN2 process starts unless the shared exact-key Candidate-10 resolver returns current authorization. Source/DATA6 e3nn behavior and FP64 CuEq rejection remain separate.
+
+Focused verification on 2026-09-25:
+
+- `conda run -n mace python -m pytest -q tests/test_mlff_cueq_train_candidate10_authorization.py tests/test_mlff_cueq_train_default1.py tests/test_mlff_cueq_train_noise_normalized_parity.py tests/test_mlff_cueq_train_noise_normalized_parity_specification.py tests/test_mlff_cueq_c10_stage_c_preflight.py 'tests/test_mlff_mace_execution_semantics_assembled.py::test_p5_real_cross_validate_resumes_eval2_for_replay_only_elements[cueq]' tests/test_mlff_replay_true_dft_default_and_prepare_ownership.py::test_doctor_never_reaches_replay_construction_for_single_source tests/test_mlff_replay_true_dft_default_and_prepare_ownership.py::test_doctor_defers_single_source_replay_and_publishes_no_replay_alias` — **43 passed, 60 warnings**. Warnings were TorchScript deprecations, fixture velocity reconstruction, and CUDA/NVML test-environment initialization; no test was skipped.
+- `conda run -n mace python -m py_compile mdstats/__init__.py mdstats/training_data/__init__.py mdstats/training_data/_campaign_cli_core.py mdstats/training_data/acceleration.py mdstats/training_data/campaign_target_size_runtime.py mdstats/training_data/post_selection_execution.py tools/run_mlff_cueq_c10_stage_c_preflight.py tests/test_mlff_cueq_train_candidate10_authorization.py` — **PASS**.
+- `git diff --check` — **PASS**.
+
+### 41.2 Real target-host doctor acceptance
+
+The fresh target campaign configuration was restored to the intended phase-separated policy and held unchanged for the accepted doctor run:
+
+~~~
+backend = "e3nn"
+training_backend = "cueq"
+only_cueq = false
+require_available = true
+~~~
+
+Target campaign: `/home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32/campaign.toml`; configuration SHA-256 `b9069db0ac6008c8c9f7ceae1b4ed1337852018ea18a6d34b25a156cca10693d`. The target was NVIDIA GeForce RTX 3090, driver `580.159.03`, 24 GiB; PyTorch `2.13.0+cu126`, CUDA `12.6`, MACE `0.3.16`, e3nn `0.4.4`, and CuEq `0.10.0`.
+
+Command: `conda run -n mace ../../../../90_scripts/mdstats/tools/mdstats-mlff-campaign.py --config campaign.toml doctor`, run from the target campaign directory. It exited successfully at `2026-09-25T18:22:52Z`; persisted doctor summary has `passed=true` and an empty failure list. It reported CuEq runtime capability available and Candidate-10 authorization `PENDING_CANDIDATE10_QUALIFICATION` because no exact key was yet resolvable, followed by preparation readiness. It ran no Candidate-10 training trajectory. Captured log SHA-256 is `5c05f2d142ef72308573dc7fa8e3b6bd7adb7301faf3606f22fed34a7c7b1fa8`; compact evidence is `qualification/mlff-cueq-c10/doctor-after-repair.json`.
+
+The old Rev86 noise-normalized record remains present only as historical evidence at digest `b1d59fba351ba360216ec582211bc152f550206dcf6872662673754165df69fb`, still documenting its descriptor-ceiling failure; doctor reports that historical record was not consulted for authorization. There are zero stored Candidate-10 qualification records. The generic legacy training-realization row is also reported as not consulted and is non-authorizing. Runtime capability is not Candidate-10 qualification.
+
+Section 40.7 now passes, so the next operation is the existing campaign `prepare` flow. Review its generated manifest and follow the CLI's approval-and-return step before allowing preparation to build current selection/post-selection state. Keep `training_backend="cueq"`; do not start Candidate-10 training until the observational preflight freezes every exact current key and Stage C passes under Sections 34-36.
+
+### 41.3 Remaining lifecycle state
+
+Target-host doctor is accepted; exact-key target-host preflight, Stage-C children/evaluators, Candidate-10 reducer PASS, assembled acceptance, and D3/D4 currentness closure are **not** complete. No Candidate-10 authorization scope is granted. Continue automatically only through gates that pass. At the first Section-36.1 stop condition, preserve the exact key, campaign state, and evidence boundary; do not retry any failed same-key realization. Keep this workplan active until all Section-36.10 closure requirements are actually satisfied.

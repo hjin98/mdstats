@@ -95,7 +95,7 @@ def test_phase_separated_default_never_implies_source_cueq() -> None:
     assert not campaign_cli._acceleration_policy(cfg).enable_cueq
 
 
-def test_optimizer_loads_training_realization_not_source_realization(tmp_path: Path) -> None:
+def test_optimizer_does_not_treat_legacy_training_realization_as_candidate10_authority(tmp_path: Path) -> None:
     cfg, paths = _write_default(tmp_path)
     checkpoint = tmp_path / "selected-head.model"
     checkpoint.write_bytes(b"selected-head-training-bytes")
@@ -114,10 +114,11 @@ def test_optimizer_loads_training_realization_not_source_realization(tmp_path: P
     )
     store = campaign_cli.CampaignStore(paths.state_db)
     store.put_record("training_acceleration_realization", training)
+    store.close()
     optimizer = campaign_cli._optimizer_policy(cfg, seed=7, num_workers=0, paths=paths)
-    assert optimizer.acceleration_policy.backend is mdstats.MaceAccelerationBackend.CUEQ
-    assert optimizer.resolved_acceleration_kernel_mode == "cueq_pure"
-    assert optimizer.acceleration_realization_digest == training.content_digest
+    assert optimizer.acceleration_realization_digest is None
+    failure = mdstats.training_acceleration_candidate10_launch_failure(optimizer)
+    assert failure is not None and "exact current Candidate-10 record" in failure
 
 
 def test_training_parity_policy_restores_tight_stable_channels_and_separates_force_authority() -> None:

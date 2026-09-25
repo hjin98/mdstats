@@ -56,7 +56,7 @@ def test_noise_normalized_gate_keeps_absolute_catastrophic_fmax_guard():
     assert any(item.startswith("Fmax=") for item in record.failure_reasons)
 
 
-def test_training_realization_uses_noise_normalized_record_for_fp32(monkeypatch, tmp_path):
+def test_rev86_fp32_method_remains_readable_but_cannot_authorize_candidate10(monkeypatch, tmp_path):
     from types import SimpleNamespace
     from mdstats.training_data import acceleration
     import mace.calculators
@@ -75,5 +75,11 @@ def test_training_realization_uses_noise_normalized_record_for_fp32(monkeypatch,
     )
     assert isinstance(parity, mdstats.TrainingAccelerationNoiseNormalizedParityRecord)
     assert parity.passed
-    assert realization.qualified
+    assert realization.qualified  # The legacy diagnostic schema retains its historical result.
     assert realization.training_parity_record_digest == parity.content_digest
+    from tests.test_mlff_cueq_train_candidate10_authorization import _candidate10_key
+    authorization = mdstats.resolve_training_acceleration_cueq_candidate10_authorization(
+        key=_candidate10_key(), record_payload=realization.to_dict()
+    )
+    assert authorization.status is mdstats.TrainingAccelerationCueqCandidate10AuthorizationStatus.INVALID
+    assert not authorization.authorized

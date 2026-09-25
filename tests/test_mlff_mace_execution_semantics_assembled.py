@@ -36,6 +36,7 @@ from mdstats.training_data.post_selection_identity import (
 )
 from mdstats.training_data.post_selection_execution import (
     PostSelectionFittedPreparation,
+    PostSelectionExecutionError,
     authenticate_post_selection_provider,
     PostSelectionMaterialization,
     post_selection_mace_run_configuration,
@@ -967,11 +968,6 @@ head = "default"
 legacy_normalized = true
 """
     if training_backend == "cueq":
-        torch = pytest.importorskip("torch")
-        pytest.importorskip("cuequivariance_torch")
-        if not torch.cuda.is_available():
-            pytest.skip("The phase-separated CuEq TRAIN2 realization is CUDA-specific.")
-        config_text = config_text.replace('device = "cpu"', 'device = "cuda"', 1)
         config_text += """
 
 [acceleration]
@@ -994,7 +990,7 @@ require_available = true
                     mdstats.TrainingAccelerationRealizationRecord(
                         requested_backend="cueq",
                         training_kernel_mode="cueq_pure",
-                        device="cuda",
+                        device="cpu",
                         dtype="float32",
                         training_checkpoint_reference=str(foundation),
                         training_checkpoint_sha256=cli._sha256(foundation),
@@ -1040,6 +1036,20 @@ require_available = true
                 # not an EVAL2 consumer.
                 return super().evaluate(provider, atoms_list)
             raise RuntimeError("simulated interruption at the first EVAL2 consumer")
+
+    if training_backend == "cueq":
+        # A legacy qualified Rev86 realization was injected above to prove that
+        # assembled P5 admission no longer treats it as Candidate-10 authority.
+        with pytest.raises(
+            PostSelectionExecutionError, match="exact current Candidate-10 record"
+        ):
+            p4d._run(
+                config,
+                "cross-validate",
+                _external_inference_evaluator=_InterruptAtEval2().evaluate,
+            )
+        assert not launches.exists(), "pending Candidate-10 must block before TRAIN2 launch"
+        return
 
     with pytest.raises(RuntimeError, match="simulated interruption"):
         p4d._run(

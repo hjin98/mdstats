@@ -60,6 +60,380 @@ TRAINING_ACCELERATION_CUEQ_C10_KEY_COORDINATES = (
     "R",
 )
 
+TRAINING_ACCELERATION_CUEQ_C10_RECORD_SCHEMA = (
+    "mdstats.training-acceleration-cueq-candidate10-qualification.v1"
+)
+CUEQ_C10_CANDIDATE_COMMIT = "db2ed47e8c999cb61507803610c72c0fa7ffaaf7"
+CUEQ_C10_CANDIDATE_BLOB = "7843a41172d25c231d4c589aebc0214ddec42bd1"
+CUEQ_C10_ACCEPTED_PARENT_KERNEL = "a759e81aa1b4c70c8fb513c569ddce57e99cbdb2"
+CUEQ_C10_ACCEPTED_PARENT_SOURCE = "a4824d28775164aa942fd29fa97ee0957eb87e6f"
+CUEQ_C10_RISK_BINDING_BLOB = "8bdb8be9b0229dad9063e28e83c9ba6cfb092ce8"
+CUEQ_C10_LAW_BINDING_BLOB = "7b936d85d73e3bc7a18a8e20a57653e7e454d007"
+CUEQ_C10_RISK_INSTANCE = {
+    "eta_NI": 0.09,
+    "q_cat": 0.09,
+    "n": 300,
+    "n_eval": 300,
+    "alpha": 0.0125,
+}
+
+
+class TrainingAccelerationCueqCandidate10AuthorizationStatus(str, Enum):
+    PENDING = "PENDING_CANDIDATE10_QUALIFICATION"
+    AUTHORIZED = "AUTHORIZED_CURRENT_CANDIDATE10"
+    WRONG_KEY = "WRONG_CANDIDATE10_KEY"
+    STALE = "STALE_CANDIDATE10_QUALIFICATION"
+    FAILED = "FAILED_CANDIDATE10_QUALIFICATION"
+    INVALID = "INVALID_CANDIDATE10_QUALIFICATION"
+    UNSUPPORTED = "UNSUPPORTED_CANDIDATE10_SCOPE"
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingAccelerationCueqCandidate10QualificationRecord:
+    """Content-addressed evidence and reducer result for one exact C10 key.
+
+    The full raw realization remains in the immutable evidence artifacts named
+    by ``evidence_manifest``. This record binds those artifacts, the exact
+    reviewed method/risk/law instance, the DEF.001 key, and the independently
+    recomputable reducer summary. Legacy Rev86 realization records are a
+    separate schema and cannot be interpreted as this record.
+    """
+
+    key: TrainingAccelerationCueqCandidate10Key
+    status: str
+    candidate_identity_json: str
+    risk_instance_json: str
+    evidence_manifest_json: str
+    assessment_json: str
+
+    def __post_init__(self) -> None:
+        if self.status not in {"PASS", "FAIL", "INCONCLUSIVE"}:
+            raise TrainingDataInputError("Candidate-10 qualification status is unsupported.")
+        for field_name in (
+            "candidate_identity_json", "risk_instance_json",
+            "evidence_manifest_json", "assessment_json",
+        ):
+            raw = str(getattr(self, field_name))
+            try:
+                decoded = json.loads(raw)
+            except (TypeError, ValueError) as exc:
+                raise TrainingDataInputError(
+                    f"Candidate-10 {field_name} must be canonical JSON."
+                ) from exc
+            if not isinstance(decoded, Mapping) or canonical_json(decoded) != raw:
+                raise TrainingDataInputError(
+                    f"Candidate-10 {field_name} must be a canonical JSON object."
+                )
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        key: TrainingAccelerationCueqCandidate10Key,
+        status: str,
+        candidate_identity: Mapping[str, Any],
+        risk_instance: Mapping[str, Any],
+        evidence_manifest: Mapping[str, Any],
+        assessment: Mapping[str, Any],
+    ) -> "TrainingAccelerationCueqCandidate10QualificationRecord":
+        return cls(
+            key=key,
+            status=str(status),
+            candidate_identity_json=canonical_json(dict(candidate_identity)),
+            risk_instance_json=canonical_json(dict(risk_instance)),
+            evidence_manifest_json=canonical_json(dict(evidence_manifest)),
+            assessment_json=canonical_json(dict(assessment)),
+        )
+
+    @property
+    def candidate_identity(self) -> dict[str, Any]:
+        return json.loads(self.candidate_identity_json)
+
+    @property
+    def risk_instance(self) -> dict[str, Any]:
+        return json.loads(self.risk_instance_json)
+
+    @property
+    def evidence_manifest(self) -> dict[str, Any]:
+        return json.loads(self.evidence_manifest_json)
+
+    @property
+    def assessment(self) -> dict[str, Any]:
+        return json.loads(self.assessment_json)
+
+    @property
+    def content_digest(self) -> str:
+        return digest(self._payload())
+
+    def _payload(self) -> dict[str, Any]:
+        return {
+            "schema": TRAINING_ACCELERATION_CUEQ_C10_RECORD_SCHEMA,
+            "key": self.key.to_dict(),
+            "status": self.status,
+            "candidate_identity": self.candidate_identity,
+            "risk_instance": self.risk_instance,
+            "evidence_manifest": self.evidence_manifest,
+            "evidence_manifest_digest": digest(self.evidence_manifest),
+            "assessment": self.assessment,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self._payload(), "content_digest": self.content_digest}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "TrainingAccelerationCueqCandidate10QualificationRecord":
+        if payload.get("schema") != TRAINING_ACCELERATION_CUEQ_C10_RECORD_SCHEMA:
+            raise TrainingDataSerializationError(
+                "Unsupported Candidate-10 TRAIN2 qualification-record schema."
+            )
+        result = cls.create(
+            key=TrainingAccelerationCueqCandidate10Key.from_dict(payload["key"]),
+            status=str(payload["status"]),
+            candidate_identity=payload["candidate_identity"],
+            risk_instance=payload["risk_instance"],
+            evidence_manifest=payload["evidence_manifest"],
+            assessment=payload["assessment"],
+        )
+        if payload.get("evidence_manifest_digest") != digest(result.evidence_manifest):
+            raise TrainingDataSerializationError(
+                "Candidate-10 evidence-manifest digest mismatch."
+            )
+        if payload.get("content_digest") not in (None, result.content_digest):
+            raise TrainingDataSerializationError(
+                "Candidate-10 TRAIN2 qualification-record digest mismatch."
+            )
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingAccelerationCueqCandidate10Authorization:
+    status: TrainingAccelerationCueqCandidate10AuthorizationStatus
+    key_digest: str | None
+    record_digest: str | None
+    reason: str
+
+    @property
+    def authorized(self) -> bool:
+        return self.status is TrainingAccelerationCueqCandidate10AuthorizationStatus.AUTHORIZED
+
+
+def resolve_training_acceleration_cueq_candidate10_authorization(
+    *,
+    key: TrainingAccelerationCueqCandidate10Key | None,
+    record_payload: Mapping[str, Any] | None,
+) -> TrainingAccelerationCueqCandidate10Authorization:
+    """Resolve current Candidate-10 authority without running qualification.
+
+    This is shared by observational doctor and consequential TRAIN2 admission.
+    It deliberately ignores legacy acceleration-realization/parity records.
+    """
+
+    if key is None:
+        return TrainingAccelerationCueqCandidate10Authorization(
+            TrainingAccelerationCueqCandidate10AuthorizationStatus.PENDING,
+            None,
+            None,
+            "no exact current Candidate-10 TRAIN2 key is resolvable",
+        )
+    coords = key.coordinates
+    if coords.get("d") != "float32":
+        return TrainingAccelerationCueqCandidate10Authorization(
+            TrainingAccelerationCueqCandidate10AuthorizationStatus.UNSUPPORTED,
+            key.key_digest,
+            None,
+            "Candidate-10 authorizes only FP32 CuEq TRAIN2",
+        )
+    if record_payload is None:
+        return TrainingAccelerationCueqCandidate10Authorization(
+            TrainingAccelerationCueqCandidate10AuthorizationStatus.PENDING,
+            key.key_digest,
+            None,
+            "Candidate-10 qualification has not been performed for this exact key",
+        )
+    try:
+        record = TrainingAccelerationCueqCandidate10QualificationRecord.from_dict(record_payload)
+    except (KeyError, TypeError, ValueError, TrainingDataInputError, TrainingDataSerializationError) as exc:
+        return TrainingAccelerationCueqCandidate10Authorization(
+            TrainingAccelerationCueqCandidate10AuthorizationStatus.INVALID,
+            key.key_digest,
+            None,
+            f"stored Candidate-10 qualification record is invalid: {exc}",
+        )
+
+    record_digest = record.content_digest
+    if record.key.key_digest != key.key_digest:
+        return TrainingAccelerationCueqCandidate10Authorization(
+            TrainingAccelerationCueqCandidate10AuthorizationStatus.WRONG_KEY,
+            key.key_digest,
+            record_digest,
+            "stored Candidate-10 qualification is bound to a different DEF.001 key",
+        )
+    expected_method = {
+        "candidate_commit": CUEQ_C10_CANDIDATE_COMMIT,
+        "candidate_blob": CUEQ_C10_CANDIDATE_BLOB,
+        "accepted_parent_kernel": CUEQ_C10_ACCEPTED_PARENT_KERNEL,
+        "accepted_parent_source": CUEQ_C10_ACCEPTED_PARENT_SOURCE,
+        "risk_binding_blob": CUEQ_C10_RISK_BINDING_BLOB,
+        "law_binding_blob": CUEQ_C10_LAW_BINDING_BLOB,
+    }
+    key_method = coords.get("m")
+    risk = coords.get("R")
+    if (
+        record.candidate_identity != expected_method
+        or key_method != expected_method
+        or record.risk_instance != CUEQ_C10_RISK_INSTANCE
+        or not isinstance(risk, Mapping)
+        or risk.get("eta_NI") != 0.09
+        or risk.get("q_cat") != 0.09
+        or risk.get("n") != 300
+        or not isinstance(risk.get("Q"), Mapping)
+        or risk["Q"].get("ratified_law_role_binding_blob") != CUEQ_C10_LAW_BINDING_BLOB
+    ):
+        return TrainingAccelerationCueqCandidate10Authorization(
+            TrainingAccelerationCueqCandidate10AuthorizationStatus.STALE,
+            key.key_digest,
+            record_digest,
+            "stored Candidate-10 qualification does not bind the current reviewed method and ratified instance",
+        )
+    if record.status != "PASS" or not _candidate10_assessment_passes(record.assessment):
+        return TrainingAccelerationCueqCandidate10Authorization(
+            TrainingAccelerationCueqCandidate10AuthorizationStatus.FAILED,
+            key.key_digest,
+            record_digest,
+            "Candidate-10 Stage-C assessment is not a complete PASS",
+        )
+    if not _candidate10_evidence_manifest_complete(record.evidence_manifest):
+        return TrainingAccelerationCueqCandidate10Authorization(
+            TrainingAccelerationCueqCandidate10AuthorizationStatus.INVALID,
+            key.key_digest,
+            record_digest,
+            "Candidate-10 evidence manifest is incomplete",
+        )
+    return TrainingAccelerationCueqCandidate10Authorization(
+        TrainingAccelerationCueqCandidate10AuthorizationStatus.AUTHORIZED,
+        key.key_digest,
+        record_digest,
+        "exact current Candidate-10 key has a complete passing Stage-C record",
+    )
+
+
+def training_acceleration_candidate10_launch_failure(
+    optimizer_policy: Any,
+) -> str | None:
+    """Return the fail-closed reason before a consequential CuEq TRAIN2 launch.
+
+    Optimizer policies are also constructed by diagnostic/planning owners that
+    do not launch MACE. Those owners may carry a pending CuEq policy. The
+    production trainer calls this predicate immediately before process launch;
+    only a digest produced by the canonical exact-key resolver can pass.
+    """
+
+    acceleration_policy = getattr(optimizer_policy, "acceleration_policy", None)
+    backend = getattr(acceleration_policy, "backend", None)
+    if backend is None or getattr(backend, "value", backend) != "cueq":
+        return None
+    if str(getattr(optimizer_policy, "default_dtype", "")) != "float32":
+        return "Candidate-10 supports FP32 CuEq TRAIN2 only; FP64 remains fail-closed"
+    if getattr(optimizer_policy, "acceleration_realization_digest", None) is None:
+        return (
+            "CuEq TRAIN2 launch is blocked until an exact current Candidate-10 "
+            "record authorizes this key"
+        )
+    if (
+        getattr(optimizer_policy, "resolved_acceleration_kernel_mode", None)
+        != MaceAccelerationKernelMode.CUEQ_PURE.value
+    ):
+        return "Candidate-10 authorization does not bind the pure-CuEq TRAIN2 kernel"
+    return None
+
+
+def _candidate10_assessment_passes(assessment: Mapping[str, Any]) -> bool:
+    required = {
+        "triplet_count", "valid_triplet_count", "reference_materiality_events",
+        "candidate_materiality_events", "reference_materiality_cp_upper",
+        "candidate_materiality_cp_upper", "score_max_worse_count",
+        "score_max_cp_upper", "score_sigma_worse_count", "score_sigma_cp_upper",
+        "exact_scientific_decisions_equal",
+        "production_start_law_passed", "adversaries_passed", "same_key_retry",
+    }
+    if not required.issubset(assessment):
+        return False
+    try:
+        count_fields = (
+            "triplet_count", "valid_triplet_count", "reference_materiality_events",
+            "candidate_materiality_events", "score_max_worse_count",
+            "score_sigma_worse_count",
+        )
+        if any(type(assessment[name]) is not int for name in count_fields):
+            return False
+        if any(not 0 <= int(assessment[name]) <= 300 for name in count_fields[2:]):
+            return False
+        from scipy.stats import beta
+
+        alpha = CUEQ_C10_RISK_INSTANCE["alpha"]
+        zero_event_upper = 1.0 - alpha ** (1.0 / 300.0)
+        def cp_upper(successes: int) -> float:
+            return 1.0 if successes == 300 else float(
+                beta.ppf(1.0 - alpha, successes + 1, 300 - successes)
+            )
+
+        score_max_upper = cp_upper(int(assessment["score_max_worse_count"]))
+        score_sigma_upper = cp_upper(int(assessment["score_sigma_worse_count"]))
+        for name, expected in (
+            ("reference_materiality_cp_upper", zero_event_upper),
+            ("candidate_materiality_cp_upper", zero_event_upper),
+            ("score_max_cp_upper", score_max_upper),
+            ("score_sigma_cp_upper", score_sigma_upper),
+        ):
+            if abs(float(assessment[name]) - expected) > 1.0e-12:
+                return False
+        return bool(
+            assessment["triplet_count"] == 300
+            and assessment["valid_triplet_count"] == 300
+            and assessment["reference_materiality_events"] == 0
+            and assessment["candidate_materiality_events"] == 0
+            and zero_event_upper <= 0.09
+            and score_max_upper <= 0.59
+            and score_sigma_upper <= 0.59
+            and assessment["exact_scientific_decisions_equal"] is True
+            and assessment["production_start_law_passed"] is True
+            and assessment["adversaries_passed"] is True
+            and assessment["same_key_retry"] is False
+        )
+    except (TypeError, ValueError):
+        return False
+
+
+def _candidate10_evidence_manifest_complete(manifest: Mapping[str, Any]) -> bool:
+    required = {
+        "preflight", "production_law", "runtime", "triplets", "production_start_fixture",
+        "materiality", "systematic_scores", "scientific_decisions", "adversaries",
+        "independent_reducer_recheck",
+    }
+    if not required.issubset(manifest):
+        return False
+    triplets = manifest.get("triplets")
+    if not isinstance(triplets, list) or len(triplets) != 300:
+        return False
+    for index, item in enumerate(triplets, start=1):
+        if (
+            not isinstance(item, Mapping)
+            or type(item.get("triplet_index")) is not int
+            or item.get("triplet_index") != index
+        ):
+            return False
+        try:
+            validate_digest(str(item.get("content_digest", "")), name="triplet content_digest")
+        except TrainingDataInputError:
+            return False
+    for field_name in required - {"triplets"}:
+        value = manifest[field_name]
+        if not isinstance(value, Mapping) or not value:
+            return False
+    return True
+
 
 @dataclass(frozen=True, slots=True)
 class TrainingAccelerationCueqCandidate10Key:

@@ -1,0 +1,63 @@
+{
+  "schema": "mdstats.mlff-cueq-candidate10-doctor-repair-acceptance.v1",
+  "workplan": "workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md#section-40",
+  "scope": "routine-doctor preparation readiness only; not Candidate-10 qualification",
+  "accepted_at_utc": "2026-09-25T18:22:52Z",
+  "command": "conda run -n mace ../../../../90_scripts/mdstats/tools/mdstats-mlff-campaign.py --config campaign.toml doctor",
+  "working_directory": "/home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32",
+  "exit_status": 0,
+  "log": {
+    "path": "/home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32/doctor.log",
+    "sha256": "5c05f2d142ef72308573dc7fa8e3b6bd7adb7301faf3606f22fed34a7c7b1fa8"
+  },
+  "campaign": {
+    "config_path": "/home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32/campaign.toml",
+    "config_sha256": "b9069db0ac6008c8c9f7ceae1b4ed1337852018ea18a6d34b25a156cca10693d",
+    "source_backend": "e3nn",
+    "training_backend": "cueq",
+    "only_cueq": false,
+    "require_available": true,
+    "store_path": "/home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32/mlff-campaign/.mdstats/campaign.sqlite3",
+    "store_sha256_at_acceptance": "f15f5786bc8f5e4477c0a1b976be789a3f82a02e8cfc4878446571b1ac1fc9ad"
+  },
+  "target": {
+    "gpu": "NVIDIA GeForce RTX 3090",
+    "driver": "580.159.03",
+    "memory_mib_total": 24576,
+    "memory_mib_free_at_capture": 23606,
+    "torch": "2.13.0+cu126",
+    "cuda": "12.6",
+    "mace": "0.3.16",
+    "e3nn": "0.4.4",
+    "cueq": "0.10.0"
+  },
+  "doctor": {
+    "passed": true,
+    "failures": [],
+    "cueq_runtime_capability": "available; kernel=cueq_pure",
+    "candidate10_authorization": {
+      "status": "PENDING_CANDIDATE10_QUALIFICATION",
+      "authorized": false,
+      "key_digest": null,
+      "record_digest": null,
+      "reason": "no exact current Candidate-10 TRAIN2 key is resolvable"
+    },
+    "preparation_readiness": "PASS",
+    "legacy_noise_normalized_authorization_consulted": false,
+    "legacy_training_realization_authorization_consulted": false,
+    "candidate10_qualification_records_in_store": 0,
+    "candidate10_training_trajectory_launched": false
+  },
+  "preserved_historical_evidence": {
+    "noise_normalized_parity_digest": "b1d59fba351ba360216ec582211bc152f550206dcf6872662673754165df69fb",
+    "noise_normalized_parity_passed": false,
+    "failure": "descriptor_max_abs=1.860e-06>1.000e-06",
+    "classification": "historical Rev86 diagnostic; not Candidate-10 authorization"
+  },
+  "repository_acceptance": {
+    "focused_tests": "43 passed, 60 warnings, 0 skipped",
+    "py_compile": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "decision": "Section 40.7 doctor gate passed. Preparation may proceed. Exact-key preflight and Candidate-10 Stage C remain unrun and unauthorized."
+}
