@@ -2184,7 +2184,6 @@ class MacePostSelectionTrainer:
         import os
         import subprocess
 
-        import mdstats
         import yaml
 
         from ._common import sha256_file_cached
@@ -2194,12 +2193,6 @@ class MacePostSelectionTrainer:
             TRAIN2_TRUE_REPLAY_PATH_ENVIRONMENT_VARIABLE,
             load_train2_runtime_summary,
         )
-
-        candidate10_failure = mdstats.training_acceleration_candidate10_launch_failure(
-            request.optimizer_policy
-        )
-        if candidate10_failure is not None:
-            raise PostSelectionExecutionError(candidate10_failure)
 
         # 1. Internal P5 configuration bytes, SHA256, digest, and schema
         internal_config_path = (

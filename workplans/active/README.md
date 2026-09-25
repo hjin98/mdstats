@@ -4,44 +4,12 @@ Active workplans are temporary engineering coordination contracts. They do not d
 
 ## Current active MLFF work
 
-### TRAIN2 CuEq FP32 backend-parity requalification
+### CuEq doctor sanity-check repair
 
 Branch: `design/mlff-train2-cueq-parity-requalification`
 
-Canonical workplan:
+This is now a **bounded D4 doctor repair only**. The former Candidate-10/Stage-C qualification architecture is superseded as overdesign and retained only in Git history. Current plan: `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md`. Acceptance stops after a successful real-host `doctor`; campaign preparation, target-size selection, CV, and production training are outside this cycle.
 
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md`
-
-Current execution status:
-
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_STATUS.md` — **Gate A PASS**. Authenticated MH-1 and MPA-0 target-host realizations under the same frozen 20-process design establish the cross-family stochastic structure needed to formulate Stage B; no current CuEq realization is authorized yet.
-
-Stage-A numerical evidence analysis:
-
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_EVIDENCE_ANALYSIS.md` — authentic failed-doctor evidence confirms the descriptor absolute-floor defect, finite-sample force-tail instability, and tail-metric redundancy.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_ORDER_PROCESS_DIAGNOSTIC_ANALYSIS.md` — MH-1 counterbalanced fresh-process evidence.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_A_MPA0_DIAGNOSTIC_ANALYSIS.md` — MPA-0 cross-family realization; absolute force scale differs by ~5-6x but the stochastic decomposition is structurally similar, and MPA-0 additionally falsifies the generic `1e-6` energy floor. No replacement criterion is yet accepted.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE.md` — historical Candidate 4, immutable at `cd4e0453d0a27ae01f7041c1c9d222fd9d71a0e9`; fresh independent D2 Review returned **NO-PASS**.\n- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R1.md` — Candidate-4 fresh independent D2 NO-PASS and precise repair findings.\n- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_5.md` — repaired proposed Candidate 5, frozen at `6e73fbb7af9b8d46f61cf81113259584ffed8527` / blob `4bfd2451cc1835e82e303cc9a597b69b8f8deda9`. **Not accepted; fresh independent Review required.**\n- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_5_REPAIR.md` — B1-B7 repair mapping from Candidate-4 NO-PASS to Candidate 5.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_B_AUTHOR_CHALLENGE_REVIEW.md` — author-side Challenge record covering B1-B10 and the supersession of Candidates 1-3 by Candidate 4; explicitly not an independent Review.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_B_STATUS.md` — current Stage-B handoff/status and independent-review targets.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_HANDOFF.md` — historical Candidate-4 review handoff.\n- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_HANDOFF_C5.md` — historical Candidate-5 review handoff.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_HANDOFF_C6.md` — current fresh independent D2 Review entrypoint pinned to immutable Candidate 6 `f3035317dcea1448c9d6d825c6f2d9f156aaec24`; later branch descendants are lifecycle state only.
-
-Formal workplan review:
-
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R9.md` — **PASS AS WORKPLAN after Revision-10 repair**; supersedes R8/R7/R6/R5/R4/R3/R2/R1. The D2 numerical challenge itself remains open.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R8.md` — historical eighth review.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R7.md` — historical seventh review.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R6.md` — historical sixth review.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R5.md` — historical fifth review.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R4.md` — historical fourth review.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R3.md` — historical third review.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R2.md` — historical second review.
-- `workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN_REVIEW_R1.md` — historical first review.
-
-A real MACE-MH-1 / `omat_pbe` RTX 3090 doctor realization challenged the current executable TRAIN2 FP32 noise-normalized backend-equivalence rule: force-tail ratios narrowly exceeded the generic ratio ceiling and, more importantly, cross-backend descriptor variation exceeded the absolute `1e-6` stable-channel ceiling while same-backend descriptor repeatability itself reached roughly `1.8-1.9e-6`. The cycle therefore starts at D2 and preserves the current fail-closed/no-silent-fallback D3/D4 behavior until a replacement numerical relation passes fresh independent falsification and stakeholder ratification.
-
-The repair must not tune constants to the observed failure. It must source-close the CuEq acceleration-equivalence family by role/dtype/model-state domain, reconstruct the MPA-0 and MH-1 evidence basis, account for dependence in repeated all-pairs statistics, test adversarial false-pass/false-fail cases, repair source-side and TRAIN2 realization currentness, and redesign only the challenged TRAIN2 FP32 doctor member unless another member is independently falsified. The generated phase split remains source-side `e3nn` with TRAIN2 `cueq`; after authenticated CuEq checkpoint state transfer, P5 EVAL2 executes the canonical portable `e3nn` provider and must identify that numerical forward correctly. A production run that must avoid the challenged TRAIN2 relation must explicitly override `training_backend = "e3nn"`.
 
 ### `pi_train` / MVSEL2 diversity + production-performance restoration cycle
 

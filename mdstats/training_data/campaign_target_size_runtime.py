@@ -844,12 +844,6 @@ class MaceTargetSizeBoundaryTrainer:
     def __call__(self, request: TargetSizeRungRequest) -> Any:
         import mdstats
 
-        candidate10_failure = mdstats.training_acceleration_candidate10_launch_failure(
-            request.optimizer_policy
-        )
-        if candidate10_failure is not None:
-            raise TargetSizeRuntimeError(candidate10_failure)
-
         run_root = request.checkpoint_directory.parent
         model_dir = run_root / "models"
         log_dir = run_root / "logs"

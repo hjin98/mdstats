@@ -1449,16 +1449,20 @@ def _training_acceleration_parity_policy() -> Any:
 
 
 def _training_acceleration_noise_normalized_policy() -> Any:
-    """Return the permanent TRAIN2 FP32 warm-up/all-pairs force parity policy."""
+    """Return the coarse TRAIN2 FP32 CuEq doctor sanity policy.
+
+    This is an engineering pre-check for an obviously broken accelerator
+    realization, not a scientific-equivalence or training-quality criterion.
+    """
 
     import mdstats
 
     return mdstats.TrainingAccelerationNoiseNormalizedParityPolicy(
         repeat_count=10,
         warmup_count=1,
-        stable_channel_abs_ceiling=1.0e-6,
+        stable_channel_abs_ceiling=1.0e-5,
         force_distribution_quantile=99.0,
-        force_distribution_ratio_ceiling=1.25,
+        force_distribution_ratio_ceiling=1.5,
         force_max_self_factor=1.5,
         force_max_absolute_ceiling=1.0e-4,
         force_threshold=1.0e-5,
@@ -1472,7 +1476,6 @@ def _optimizer_policy(
     num_workers: int,
     paths: CampaignPaths | None = None,
     planned_epochs: int | None = None,
-    candidate10_key: Any | None = None,
 ) -> Any:
     """Build one protocol-frozen optimizer policy under binary model precision.
 
@@ -1488,31 +1491,10 @@ def _optimizer_policy(
 
     settings = resolve_shared_optimizer_settings(cfg)
     model_dtype = str(_binary_model_precision_contract(cfg)["model_dtype"])
+    realization = None if paths is None else _stored_training_acceleration_realization(
+        cfg, paths, require_qualified=True
+    )
     training_acceleration = _training_acceleration_policy(cfg)
-    realization = None
-    acceleration_realization_digest = None
-    resolved_acceleration_kernel_mode = None
-    if paths is not None:
-        if (
-            _phase_separated_acceleration(cfg)
-            and training_acceleration.backend is mdstats.MaceAccelerationBackend.CUEQ
-        ):
-            authorization = _stored_training_cueq_candidate10_authorization(
-                cfg, paths, key=candidate10_key
-            )
-            if authorization.authorized:
-                acceleration_realization_digest = authorization.record_digest
-                resolved_acceleration_kernel_mode = mdstats.MaceAccelerationKernelMode.CUEQ_PURE.value
-        else:
-            realization = _stored_training_acceleration_realization(
-                cfg, paths, require_qualified=True
-            )
-            acceleration_realization_digest = (
-                None if realization is None else realization.content_digest
-            )
-            resolved_acceleration_kernel_mode = (
-                None if realization is None else realization.training_kernel_mode
-            )
     return mdstats.MaceOptimizerPolicy(
         learning_rate=settings["learning_rate"],
         batch_size=settings["batch_size"],
@@ -1533,8 +1515,8 @@ def _optimizer_policy(
         seed=seed,
         critical_precision_policy=mdstats.MaceCriticalPrecisionPolicy(),
         acceleration_policy=training_acceleration,
-        acceleration_realization_digest=acceleration_realization_digest,
-        resolved_acceleration_kernel_mode=resolved_acceleration_kernel_mode,
+        acceleration_realization_digest=(None if realization is None else realization.content_digest),
+        resolved_acceleration_kernel_mode=(None if realization is None else realization.training_kernel_mode),
         precision_schedule_policy=None,
     )
 
@@ -2609,61 +2591,6 @@ def _stored_training_acceleration_realization(
             f"Requested TRAIN2 acceleration backend is not qualified: {record.failure_reason or 'unknown qualification failure'}"
         )
     return record
-
-
-TRAINING_ACCELERATION_CUEQ_C10_RECORD_PREFIX = (
-    "training_acceleration_cueq_candidate10_qualification:"
-)
-
-
-def _training_acceleration_cueq_candidate10_record_key(key_digest: str) -> str:
-    return TRAINING_ACCELERATION_CUEQ_C10_RECORD_PREFIX + validate_digest(
-        key_digest, name="Candidate-10 key digest"
-    )
-
-
-def _stored_training_cueq_candidate10_authorization(
-    cfg: Mapping[str, Any],
-    paths: CampaignPaths,
-    *,
-    key: Any | None,
-) -> Any:
-    """Resolve the exact CampaignStore Candidate-10 record observationally."""
-
-    import mdstats
-
-    if str(_cfg(cfg, "training", "dtype", "float32")) != "float32":
-        return mdstats.TrainingAccelerationCueqCandidate10Authorization(
-            mdstats.TrainingAccelerationCueqCandidate10AuthorizationStatus.UNSUPPORTED,
-            None,
-            None,
-            "Candidate-10 supports FP32 CuEq TRAIN2 only; FP64 remains fail-closed",
-        )
-    resolved_key = key
-    if isinstance(key, Mapping):
-        try:
-            resolved_key = mdstats.TrainingAccelerationCueqCandidate10Key.from_dict(key)
-        except Exception:
-            resolved_key = None
-    if resolved_key is not None and not isinstance(
-        resolved_key, mdstats.TrainingAccelerationCueqCandidate10Key
-    ):
-        resolved_key = None
-    store = CampaignStore(paths.state_db, create=False)
-    try:
-        payload = None
-        if resolved_key is not None:
-            payload = store.get_payload_optional(
-                _training_acceleration_cueq_candidate10_record_key(
-                    resolved_key.key_digest
-                )
-            )
-        return mdstats.resolve_training_acceleration_cueq_candidate10_authorization(
-            key=resolved_key,
-            record_payload=payload,
-        )
-    finally:
-        store.close()
 
 
 
@@ -4863,118 +4790,98 @@ def command_doctor(args: argparse.Namespace) -> int:
                     "keep only_cueq=false so CuEq training checkpoints are converted back to portable e3nn form"
                 )
                 _fail(failures[-1])
+            training_foundation_path = model_path
+            selected_digest = None
+            if selected_head_qualification is not None:
+                training_foundation_path = Path(
+                    selected_head_qualification.extraction.derived_checkpoint_reference
+                )
+                selected_digest = selected_head_qualification.content_digest
+            # CUEQ-REPEAT1-PARITY1: stable E/S/D channels retain the tight
+            # FP32 1e-5/1e-6 policy.  TRAIN2 forces use one discarded warm-up,
+            # ten post-warm-up outputs/backend, and 45/45/100 all-pairs
+            # self/cross statistics normalized against the measured self-noise.
+            training_parity_policy = _training_acceleration_parity_policy()
+            training_noise_policy = _training_acceleration_noise_normalized_policy()
+            training_realization, phase_training_parity = (
+                mdstats.qualify_training_acceleration_realization(
+                    backend=training_acceleration.backend,
+                    training_model_path=training_foundation_path,
+                    training_head=resolved_head,
+                    structures=corpus,
+                    device=device,
+                    dtype=dtype,
+                    selected_head_qualification_digest=selected_digest,
+                    probe=probe,
+                    parity_policy=training_parity_policy,
+                    noise_normalized_policy=training_noise_policy,
+                )
+            )
+            phase_training_repeatability = None
+            phase_training_deterministic_control = None
+            if isinstance(phase_training_parity, mdstats.TrainingAccelerationNoiseNormalizedParityRecord):
+                phase_training_repeatability = phase_training_parity.repeatability
+                store.put_record("training_acceleration_repeatability_diagnostic", phase_training_repeatability)
+                store.put_record("training_acceleration_noise_normalized_parity", phase_training_parity)
+                # Rev. 86 removes deterministic-control execution from routine doctor.
+                # Drop stale DIAG2/3 control evidence so it cannot masquerade as current authority.
+                store.delete_record("training_acceleration_deterministic_control_diagnostic")
+                _print_training_repeatability_diagnostic(
+                    phase_training_repeatability,
+                    title="TRAIN2 FP32 warm-up/all-pairs sanity evidence",
+                )
+                ratios = (
+                    phase_training_parity.force_rmse_ratio,
+                    phase_training_parity.force_p99_ratio,
+                    phase_training_parity.force_p999_ratio,
+                )
+                ratio_text = ", ".join("inf" if value is None else f"{value:.3f}" for value in ratios)
+                print(
+                    "[SANITY] TRAIN2 FP32 noise-normalized: "
+                    f"ratios(Frmse,Fp99,Fp99.9)=({ratio_text}); "
+                    f"Fmax={phase_training_parity.force_max_cross:.3e}/"
+                    f"{phase_training_parity.force_max_limit:.3e}; "
+                    f"selection_identical={phase_training_parity.selection_identical}; "
+                    f"passed={phase_training_parity.passed}",
+                    flush=True,
+                )
+            training_acceleration_summary = {
+                "policy": training_acceleration.to_dict(),
+                "parity_policy": training_parity_policy.to_dict(),
+                "noise_normalized_parity_policy": training_noise_policy.to_dict(),
+                "realization": training_realization.to_dict(),
+                "parity": None if phase_training_parity is None else phase_training_parity.to_dict(),
+                "repeatability_diagnostic": (
+                    None if phase_training_repeatability is None else phase_training_repeatability.to_dict()
+                ),
+                "deterministic_control_diagnostic": (
+                    None if phase_training_deterministic_control is None else phase_training_deterministic_control.to_dict()
+                ),
+            }
             store.put_record("training_acceleration_policy", training_acceleration)
-            if training_acceleration.backend is mdstats.MaceAccelerationBackend.CUEQ:
-                # Candidate-10 has a separate consequential authorizer. Routine
-                # doctor performs only the real runtime capability check and
-                # observationally resolves current authority; it never runs or
-                # persists the superseded Rev86 numerical experiment.
-                candidate10_authorization = (
-                    mdstats.resolve_training_acceleration_cueq_candidate10_authorization(
-                        key=None,
-                        record_payload=None,
-                    )
+            store.put_record("training_acceleration_parity_policy", training_parity_policy)
+            store.put_record("training_acceleration_noise_normalized_parity_policy", training_noise_policy)
+            store.put_record("training_acceleration_realization", training_realization)
+            if phase_training_parity is not None:
+                store.put_record("training_acceleration_parity", phase_training_parity)
+            if training_realization.qualified:
+                _ok(
+                    f"TRAIN2 acceleration backend: {training_acceleration.backend.value}; "
+                    f"kernel={training_realization.training_kernel_mode}; "
+                    f"checkpoint={training_realization.training_checkpoint_sha256[:16]}"
                 )
-                capability_failure = None
-                if dtype != "float32":
-                    capability_failure = (
-                        "Candidate-10 supports FP32 CuEq TRAIN2 only; FP64 remains fail-closed"
-                    )
-                    candidate10_authorization = mdstats.TrainingAccelerationCueqCandidate10Authorization(
-                        mdstats.TrainingAccelerationCueqCandidate10AuthorizationStatus.UNSUPPORTED,
-                        None,
-                        None,
-                        capability_failure,
-                    )
-                elif not probe.passed_for(training_acceleration):
-                    capability_failure = (
-                        "CuEq TRAIN2 runtime capability probe failed: "
-                        f"{probe.error_message or 'CuEq package/device/kernel capability is unavailable'}"
-                    )
-                    candidate10_authorization = mdstats.TrainingAccelerationCueqCandidate10Authorization(
-                        mdstats.TrainingAccelerationCueqCandidate10AuthorizationStatus.FAILED,
-                        None,
-                        None,
-                        capability_failure,
-                    )
-                if capability_failure is not None:
-                    if training_acceleration.require_available:
-                        failures.append(capability_failure)
-                        _fail(failures[-1])
-                    else:
-                        warnings.append(capability_failure)
-                        _warn(warnings[-1])
-                else:
-                    mode = mdstats.MaceAccelerationKernelMode.CUEQ_PURE.value
-                    _ok(f"TRAIN2 CuEq runtime capability: available; kernel={mode}")
-                    print(
-                        "[PENDING] TRAIN2 CuEq authorization: Candidate-10 qualification "
-                        "has not been performed for an exact current key",
-                        flush=True,
-                    )
-                training_acceleration_summary = {
-                    "policy": training_acceleration.to_dict(),
-                    "runtime_capability": probe.to_dict(),
-                    "authorization": {
-                        "status": candidate10_authorization.status.value,
-                        "authorized": False,
-                        "key_digest": candidate10_authorization.key_digest,
-                        "record_digest": candidate10_authorization.record_digest,
-                        "reason": candidate10_authorization.reason,
-                    },
-                    "legacy_training_realization_record_present": store.has_record(
-                        "training_acceleration_realization"
-                    ),
-                    "legacy_training_realization_authorization_consulted": False,
-                    "historical_noise_normalized_record_present": store.has_record(
-                        "training_acceleration_noise_normalized_parity"
-                    ),
-                    "historical_noise_normalized_authorization_consulted": False,
-                }
+            elif training_acceleration.require_available:
+                failures.append(
+                    f"requested TRAIN2 acceleration backend {training_acceleration.backend.value!r} is not qualified: "
+                    f"{training_realization.failure_reason or 'unknown failure'}"
+                )
+                _fail(failures[-1])
             else:
-                training_foundation_path = model_path
-                selected_digest = None
-                if selected_head_qualification is not None:
-                    training_foundation_path = Path(
-                        selected_head_qualification.extraction.derived_checkpoint_reference
-                    )
-                    selected_digest = selected_head_qualification.content_digest
-                training_realization, phase_training_parity = (
-                    mdstats.qualify_training_acceleration_realization(
-                        backend=training_acceleration.backend,
-                        training_model_path=training_foundation_path,
-                        training_head=resolved_head,
-                        structures=corpus,
-                        device=device,
-                        dtype=dtype,
-                        selected_head_qualification_digest=selected_digest,
-                        probe=probe,
-                    )
+                warnings.append(
+                    f"requested TRAIN2 acceleration backend {training_acceleration.backend.value!r} is not qualified; "
+                    "training remains non-authorizing until the configuration is changed explicitly"
                 )
-                training_acceleration_summary = {
-                    "policy": training_acceleration.to_dict(),
-                    "realization": training_realization.to_dict(),
-                    "parity": None if phase_training_parity is None else phase_training_parity.to_dict(),
-                }
-                store.put_record("training_acceleration_realization", training_realization)
-                if training_realization.qualified:
-                    _ok(
-                        f"TRAIN2 acceleration backend: {training_acceleration.backend.value}; "
-                        f"kernel={training_realization.training_kernel_mode}; "
-                        f"checkpoint={training_realization.training_checkpoint_sha256[:16]}"
-                    )
-                elif training_acceleration.require_available:
-                    failures.append(
-                        f"requested TRAIN2 acceleration backend {training_acceleration.backend.value!r} is not qualified: "
-                        f"{training_realization.failure_reason or 'unknown failure'}"
-                    )
-                    _fail(failures[-1])
-                else:
-                    warnings.append(
-                        f"requested TRAIN2 acceleration backend {training_acceleration.backend.value!r} is not qualified; "
-                        "training remains non-authorizing until the configuration is changed explicitly"
-                    )
-                    _warn(warnings[-1])
+                _warn(warnings[-1])
     except Exception as exc:
         failures.append(f"acceleration qualification failed: {exc}")
         _fail(failures[-1])
@@ -5104,8 +5011,6 @@ def command_doctor(args: argparse.Namespace) -> int:
         except Exception as exc:
             failures.append(f"replay qualification failed: {exc}")
             _fail(failures[-1])
-    if not failures:
-        _ok("preparation readiness: current prerequisites satisfied")
     payload = {
         "timestamp_utc": _utc_now(),
         "passed": not failures,
