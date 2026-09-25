@@ -87,3 +87,15 @@ Candidate 7 preserves:
 No Candidate-6 Stage-C outcome was used in this repair.
 
 Candidate 7 remains proposed until immutable freeze, fresh independent Review PASS, exact stakeholder ratification, and fresh Stage-C qualification.
+
+
+## Pre-freeze author-side falsification refinements
+
+Before immutable handoff, an additional author-side pass found and repaired two Candidate-7 draft defects:
+
+1. the comparison key originally named K as if one backend/kernel realization were common to both sides. K is now explicitly the ordered pair (K_R,K_C), with the accepted e3nn realization and proposed CuEq realization separately bound while their upstream semantic inputs remain common;
+2. one global RMS over the entire portable state could be diluted by an unrelated very large unchanged tensor. S_rms is now computed within fixed canonical semantic blocks and maximized over blocks/boundaries, while S_max remains the global rare-coordinate guard.
+
+The same pass clarified that E-consumer comparison in the TRAIN2 relation evaluates reference and projected-candidate states through the same portable e3nn provider. Transient CuEq-versus-mapped-e3nn evaluator arithmetic remains a separate completed-state projection relation.
+
+These are author-side semantic repairs made before immutable Candidate-7 Review freeze; no Candidate-7 Stage-C outcome exists.

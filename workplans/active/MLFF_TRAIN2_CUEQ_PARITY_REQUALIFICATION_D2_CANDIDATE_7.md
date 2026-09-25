@@ -55,11 +55,11 @@ where:
 - E is the exact role-specific downstream continuous-consumer population and reduction identity that the completed TRAIN2 product can feed, including common-monitor and EVAL2 geometry/membership where applicable;
 - O is the exact accepted objective/head/property-mask identity;
 - H is the exact optimizer-update horizon plus checkpoint/monitor schedule;
-- K is the resolved backend/kernel realization;
-- rho is arithmetic-relevant runtime, hardware, determinism, TF32/matmul, library, and device identity; and
+- K=(K_R,K_C) is the exact ordered reference/candidate backend-kernel pair, with K_R the accepted e3nn realization and K_C the proposed pure-CuEq realization;
+- rho binds the common runtime/hardware context plus every arithmetic-relevant backend-specific runtime, determinism, TF32/matmul, library, and device coordinate needed to interpret K_R and K_C; and
 - m is the immutable Candidate-7 method identity.
 
-A qualification applies only to its exact bound key. Another corpus, seed, horizon, objective, initial state, topology, consumer population, runtime, device class, backend realization, or material arithmetic state is another key.
+A qualification applies only to its exact bound key. K is deliberately the ordered comparison pair rather than one backend pretending to be common input. Another corpus, seed, horizon, objective, initial state, topology, consumer population, runtime, device class, reference/candidate kernel pair, or material arithmetic state is another key.
 
 E is observation-only for backend qualification. Its held-out labels or metrics cannot feed training, checkpoint choice, target membership, or any other accepted upstream scientific decision.
 
@@ -87,7 +87,7 @@ The final state is not exempt from observation: there is always a portable-state
 
 ### D2.CUEQ7.DEF.003 — common numerical inputs
 
-Reference e3nn and candidate CuEq trajectories begin from identical upstream-owned numerical inputs:
+Reference e3nn and candidate CuEq trajectories begin from identical upstream-owned semantic numerical inputs. Backend-native representations may differ only through the explicitly bound K pair:
 
 - architecture/head topology and authenticated initial model;
 - target/replay lineage and label mode;
@@ -158,7 +158,7 @@ Pure integer/bool/string/discrete inventory compares exactly.
 
 ### D2.CUEQ7.DEF.008 — live and EMA state boundaries
 
-The live portable state is observed at k=0 and after each optimizer update k=1,...,U.
+The live portable state is observed at k=0 and after each optimizer update k=1,...,U. When a protected E consumer is evaluated for the training-equivalence relation, both reference and projected candidate states are evaluated by the same portable e3nn provider; transient CuEq-versus-e3nn evaluator arithmetic is owned separately by the completed-state projection relation.
 
 When EMA is enabled, the complete portable EMA state is observed after every accepted EMA mutation and at every checkpoint boundary at which EMA can be consumed.
 
@@ -294,33 +294,35 @@ The trace contains exact semantic identity and boundary identity for every compo
 
 ### D2.CUEQ7.DEF.014 — rare and broad discrepancy scores
 
-For protected-component ULP distances z_i at observation boundary k, define
+At each observation boundary k, partition protected floating components into canonical semantic blocks B(k): each portable parameter/buffer/forward-affecting state item is one block; each optimizer-consumed loss family is one block; and each role-effective continuous-consumer family/reduction is one block. A block identity is fixed before outcomes and cannot be subdivided or merged to improve a score.
 
-$$
-M(k)=\max_i z_i,
-$$
+For ULP distances z_i in block b, define
 
-and, when the boundary contains at least one floating component,
+$
+M_b(k)=\max_{i\in b} z_i,
+$
 
-$$
-R(k)=\sqrt{\frac1{n_k}\sum_{i=1}^{n_k}z_i^2}.
-$$
+and
+
+$
+R_b(k)=\sqrt{\frac1{|b|}\sum_{i\in b}z_i^2}.
+$
 
 For a complete realization pair,
 
-$$
-S_{\max}=\max_k M(k),
+$
+S_{\max}=\max_{k,b} M_b(k),
 \qquad
-S_{\rm rms}=\max_k R(k).
-$$
+S_{\rm rms}=\max_{k,b} R_b(k).
+$
 
 The authorizing continuous score vector is exactly
 
-$$
+$
 S=(S_{\max},S_{\rm rms}).
-$$
+$
 
-S_max protects rare single-coordinate errors. S_rms protects broad low-amplitude displacement. Neither can rescue failure of exact inventory or exact scientific decisions.
+S_max protects rare single-coordinate errors. The block-balanced S_rms protects broad low-amplitude displacement without allowing a very large unrelated unchanged tensor to dilute a smaller semantic block. Neither can rescue failure of exact inventory or exact scientific decisions.
 
 ## 8. Independent triplet design
 
@@ -698,7 +700,7 @@ No Candidate-7 threshold, score family, process count, consumer set, or oracle i
 | Review-R3 issue | Candidate-7 treatment |
 |---|---|
 | final-step hidden state invisible to finite W | complete portable live/EMA state observed after every mutation, including final state, plus exact E consumers |
-| finite W cannot protect downstream continuous EVAL2 | E is exact key material and its role-effective continuous consumer outputs are protected |
+| finite W cannot protect downstream continuous EVAL2 | E is exact key material and its role-effective continuous consumer outputs are protected through the portable e3nn provider at the actual consumer boundary |
 | rare reference maximum mints universal tolerance | sample maximum demoted to tail-only guard; systematic equivalence uses worse-probability relation |
 | reference 0/M vs candidate M/2 | p_worse approximately 0.90 and fails p_max=0.60 |
 | noisy reference silently widens tolerance | reference decision-margin adequacy can fail independently; noise cannot change p_max |
