@@ -1,12 +1,12 @@
 ---
 kind: abstraction-concretization-change-plan
 protocol_version: 6.4.0
-status: active-serious-challenge
+status: active
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 34
+revision: 35
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_10_PREFLIGHT_TOOL_READY_AWAITING_TARGET_HOST_KEY_FREEZE
+workplan_review_status: CANDIDATE_10_IMPLEMENTER_CONTINUATION_AUTHORIZED_PREFLIGHT_STAGE_C_D3_D4_PENDING
 workplan_review_basis: db2ed47e8c999cb61507803610c72c0fa7ffaaf7
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
@@ -24,6 +24,8 @@ repair_safe_train2_backend: e3nn
 # MLFF TRAIN2 CuEq FP32 backend-parity requalification — D2 -> D3/D4 workplan
 
 ## 0. Disposition and Serious Challenge
+
+**REVISION-35 CURRENT LIFECYCLE:** the opening Serious Challenge below is retained as historical problem provenance, but it is no longer the current lifecycle disposition. Immutable Candidate 10 passed fresh independent D2 Review R7, the stakeholder accepted the reviewed family, and the exact `0.09 / 0.09 / 300` risk instance plus law/role binding are now frozen. **No current SERIOUS CHALLENGE to accepted D1/D2 parent authority is active.** The workplan remains open only because target-host key freeze, Candidate-10 Stage-C realization, dependent D3/D4 reconciliation, and assembled acceptance remain incomplete. The stakeholder has now authorized the implementer to carry those remaining stages through completion without another routine confirmation gate, subject to the stop/reopen conditions in Section 36.
 
 **OPEN — SERIOUS CHALLENGE to the current executable TRAIN2 FP32 backend-equivalence rule, including its missing accepted-D2 source closure and its numerical adequacy.**
 
@@ -1654,3 +1656,311 @@ Focused local structural verification before commit:
 The exact Candidate-10 replay relation is explicitly bound to the accepted-parent `30 meV/Å` true-reference hard budget. The branch's current `75 / 75 / 50 meV/Å` assessment values descend from an unratified material D2 renewal and are recorded only as D4 observations; Stage C remains governed by accepted parent `45 / 45 / 30 meV/Å` plus Candidate 10.
 
 Stage C remains blocked on the resulting target-host preflight JSON. No qualification trajectory has been run.
+
+
+## 36. Revision-35 implementer continuation contract — complete the remaining Candidate-10 lifecycle
+
+### 36.1 Authority, precedence, and continuation authorization
+
+This section is the current implementation handoff for the remainder of this workplan.
+
+The implementer MUST start from the exact current branch and reconstruct authority from the immutable records rather than from older stage prose:
+
+- Candidate 10 semantic target: \`db2ed47e8c999cb61507803610c72c0fa7ffaaf7\`;
+- Candidate-10 blob: \`7843a41172d25c231d4c589aebc0214ddec42bd1\`;
+- independent Review R7: \`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R7.md\`;
+- stakeholder family acceptance: \`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_STAKEHOLDER_ACCEPTANCE_C10.md\`;
+- exact risk binding: \`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_C10_INSTANCE_RISK_BINDING.md\`;
+- exact law/role binding: \`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_C10_INSTANCE_LAW_BINDING.md\`;
+- target-host preflight handoff: \`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_C_PREFLIGHT_HANDOFF.md\`.
+
+Where Sections 5 or earlier candidate-era prose conflicts with Candidate 10 or Sections 31-36, the later Candidate-10 lifecycle state controls. In particular, superseded 4-cell/5-process, 20-process, 101-triplet, sample-maximum, block-RMS, Candidate-7/Candidate-8, or fixed-order descriptions MUST NOT be executed as Candidate-10 qualification.
+
+The exact accepted instance is:
+
+\[
+\eta_{\rm NI}=0.09,\qquad q_{\rm cat}=0.09,\qquad n=300,
+\]
+
+with \(\alpha=0.0125\), simultaneous confidence target \(0.95\), and projection evaluator \(n_{\rm eval}=300\) using the same \(\eta_{\rm NI},q_{\rm cat}\).
+
+The exact first qualification production law is **one active governed training process per GPU**. Existing adaptive multi-job CuEq TRAIN2 concurrency is outside this Candidate-10 instance and MUST NOT be authorized by a Candidate-10 record.
+
+The stakeholder's current instruction authorizes the implementer to continue automatically through target-host preflight validation, Stage C, D3/D4 concretization, affected acceptance, documentation/currentness reconciliation, and workplan closure **after every preceding gate passes exactly**. No additional routine stakeholder confirmation is required. This continuation authorization does not authorize changing D1/D2 semantics, risk coordinates, sample counts, source relations, consumer populations, failure semantics, production/evaluator laws, or the immutable Candidate-10 target.
+
+The implementer MUST stop and reopen at the earliest owner if:
+
+1. target-host preflight cannot bind an exact Candidate-10 key;
+2. any required Stage-C child/evaluator realization is invalid, terminal, contradictory, or fails;
+3. the structural production-equivalent joint child law cannot be established;
+4. any Candidate-10 adversary exposes a false-pass route;
+5. accepted D1/D2 authority advances and materially changes a bound Candidate-10 source relation or key coordinate before promotion;
+6. implementation requires a semantic choice not already fixed by Candidate 10/risk/law binding;
+7. a material D3 architecture conflict makes the accepted D2 contract impossible to concretize; or
+8. a Serious Challenge becomes active.
+
+No failed same-key realization may be redrawn, replaced, reassigned, retried until pass, or hidden behind a new evidence artifact.
+
+### 36.2 Implementation strategy and forbidden architecture
+
+Implement the remainder by changing/reusing the existing owners. Do not build a parallel parity subsystem around the current one.
+
+Canonical surfaces to inspect and preserve/reconcile include at least:
+
+- \`mdstats/training_data/acceleration.py\` — acceleration qualification/parity numerical owner;
+- \`mdstats/training_data/_campaign_cli_core.py\` — doctor/runtime admission and stored realization exposure;
+- \`mdstats/training_data/accelerator_runtime_freeze.py\` and \`mace_runtime_freeze.py\` — runtime/dependency identity;
+- \`mdstats/training_data/train2_runtime.py\` and the existing MACE TRAIN2 execution owners — real training execution;
+- \`mdstats/training_data/post_selection_identity.py\` — training/assessment identity projection;
+- \`mdstats/training_data/campaign_post_selection_runtime.py\` and existing P5 checkpoint/provider owners — post-selection/EVAL2 realization identity;
+- existing CampaignStore parity/policy/realization persistence/currentness owners;
+- existing production scheduler/resource owner;
+- existing dependency-native CuEq -> portable-e3nn mapper and selected-checkpoint/provider reconstruction owners.
+
+Forbidden unless an accepted owner independently requires them:
+
+- a second acceleration/parity registry;
+- a second CampaignStore/currentness database;
+- a second TRAIN2 trainer;
+- a second production scheduler;
+- a wrapper that bypasses the real MACE/P5 owner whose behavior is being qualified;
+- a duplicate checkpoint/provider reconstruction algorithm;
+- a private source of threshold/materiality semantics;
+- a retry broker or evidence aggregator that can convert failed same-key evidence into a later pass;
+- a Candidate-10-specific model-family tolerance map;
+- silent e3nn fallback;
+- production concurrency under a single-process Candidate-10 record.
+
+Prefer removal/rewiring/replacement of superseded Rev86/noise-normalized machinery over stacking Candidate 10 beside it.
+
+### 36.3 Repository-only work that may proceed before target-host evidence
+
+Before target-host Stage-C output exists, the implementer SHALL complete all non-outcome-dependent D3/D4 preparation that can be falsified locally:
+
+1. independently review and harden \`tools/run_mlff_cueq_c10_stage_c_preflight.py\`; preserve its observational/pre-output character;
+2. add/repair focused tests proving dirty-repo, candidate-blob, model/checkpoint, runtime/device, competing-process, missing-CampaignStore, wrong-lineage, and overwrite attempts fail closed;
+3. implement the Candidate-10 qualification specification in the existing acceleration/training ownership graph without enabling production authorization yet;
+4. implement one durable, content-addressed Candidate-10 qualification record representation satisfying D2.CUEQ10.DEF.033; historical Candidate-8/9/Rev86 records remain readable history but cannot authorize Candidate 10;
+5. implement exact canonical consumer-trace construction from the bound role-effective \(E\), with trace identity/cardinality frozen before outcomes and no unowned continuous metric admitted;
+6. implement exact IEEE finite-rank/ULP distance and exact-integer \(S_\Sigma\), plus \(S_{\max}\), from Candidate-10 D2.CUEQ10.DEF.012-014;
+7. implement exact one-sided Clopper-Pearson reduction for the four statements with \(\alpha=0.0125\); do not substitute a normal/Wilson approximation or a hard-coded success-count shortcut;
+8. implement exact scientific-decision comparison as a separate hard gate that cannot be rescued by stochastic scores;
+9. implement the pre-assignment assignment owner using an unbiased uniform draw over all six \(S_3\) permutations only **after** the triplet's \(\Lambda_p\) freeze; assignment entropy and realized permutation are evidence-realization identity, not method-key coordinates;
+10. implement terminal/no-retry semantics before launching any expensive child;
+11. implement the cross-child mutable-owner census required by D2.CUEQ10.DEF.015 and make unresolved mutable residue a pre-arithmetic failure;
+12. implement the independent structural/coefficient projection oracle without sharing the production mapper's inventory, correspondence, k-range, key-enumeration, projection-matrix, \`get_kmax_pairs\`, or \`symmetric_contraction_proj\` semantic owners;
+13. implement evaluator qualification as a distinct Candidate-10 relation with its own renewal/start-law evidence while reusing common generic statistical primitives where semantics are identical;
+14. implement currentness predicates so every material key coordinate in D2.CUEQ10.DEF.001 / DEF.033 can stale a Candidate-10 record;
+15. add all Candidate-10 synthetic/adversarial tests from D2.CUEQ10 Section 18 before real Stage-C execution, especially R5 assignment, R6 \`0.20,0,0\` slot-risk transport, cross-child residue, failure/no-redraw, final-step hidden consumer, rare severe candidate event, tensor repartition, wrong coefficient, structural projection corruption, evaluator transport, and structural-failure-not-rescued-by-evaluator-agreement;
+16. preserve FP64 CuEq TRAIN2 and source/DATA6 CuEq as fail-closed unsupported scopes under Candidate 10;
+17. preserve the post-projection numerical provider identity as portable \`e3nn\`;
+18. run focused and stage-local affected regression after each coherent executable stage.
+
+Repository-only tests may prove implementation semantics and negative guards. They MUST NOT be reported as target-host Candidate-10 qualification.
+
+### 36.4 Target-host preflight ingestion and exact-key freeze
+
+The first target-host step is the already-prepared observational command in Section 35.
+
+If the implementer is operating on the stakeholder RTX 3090 host, the implementer may run it directly. Otherwise the exact JSON supplied from that host is a required external evidence input; it may not be synthesized or reconstructed from repository defaults.
+
+Before accepting the preflight artifact:
+
+1. recompute its canonical content digest;
+2. authenticate the clean repository/source/candidate blobs;
+3. authenticate MH-1 source, MH-1 selected-head checkpoint and selected-head qualification, and MPA-0 checkpoint identities;
+4. authenticate exact CampaignStore generation, selected bindings/memberships, common monitor, replay lineage, CV/final plans/positions as applicable;
+5. authenticate exact model dtype, objective, optimizer, learning-rate schedule, scheduler, EMA, horizon, checkpoint cadence, loader/sampler/shuffle/batch/drop-last/seed/head layout;
+6. authenticate RTX 3090 device identity, GPU UUID, driver, Torch/MACE/e3nn/CUDA/CuEq distributions/build/source identities and arithmetic-relevant flags;
+7. authenticate no competing governed GPU compute process at the preflight boundary;
+8. bind exact production/evaluator mapper and kernel-source identities;
+9. bind the exact cache/scratch/isolation policy used by \(\mathcal W_{\rm pre},\mathcal W_R,\mathcal W_C\);
+10. bind exact accepted-parent materiality relations: current Candidate-10 instance uses accepted-parent foundation defaults \(45/45/30\ {\rm meV/\AA}\) for CV checkpoint/CV outer/production checkpoint force-RMSE and the accepted \(30\ {\rm meV/\AA}\) true-reference replay hard budget unless the accepted authority itself has formally advanced before execution.
+
+The current branch's \`75/75/50\` and replay \`50/100\` assessment-policy renewal is not Candidate-10 authority while that D2 renewal remains unaccepted. If that renewal becomes accepted before Stage C, do not silently substitute it: recompose the Candidate-10 source relations onto the new accepted parent and obtain whatever fresh D2 lifecycle action material overlap requires.
+
+A valid preflight artifact freezes one or more exact Candidate-10 keys. Because role-effective \(E\), horizon and policy coordinates belong to \(A\), CV and production are distinct keys whenever their bound coordinates differ. Likewise MH-1 and MPA-0 are distinct keys. One passing key never authorizes another.
+
+### 36.5 Stage-C TRAIN2 realization executor
+
+For every exact TRAIN2 key intended for production use, execute the ratified \(n=300\) independent triplets. The current full intended scope is the frozen MH-1/omat_pbe and MPA-0/default FP32 families across each distinct CV/production key that the generated campaign intends to authorize. Do not collapse keys merely because they share source code or a model family.
+
+For each triplet:
+
+1. execute and durably record \(\mathcal W_{\rm pre}\);
+2. freeze \(\Lambda_p\) and all scientific/training/key inputs before assignment;
+3. draw exactly one unbiased uniform permutation of \(R1,R2,C\);
+4. launch each child as a fresh OS process in assigned order;
+5. immediately before governed arithmetic, execute and authenticate backend-specific \(\mathcal W_R\) or \(\mathcal W_C\);
+6. establish the required conditional joint product-law ownership/isolation evidence; marginal similarity is insufficient;
+7. reconstruct the same authenticated \(\theta_0,q_0,D,O,H\) for all three labels;
+8. execute the full accepted TRAIN2 horizon with the real accepted loader/exposure/trainer path;
+9. allow no governed sibling overlap;
+10. capture every required portable-state boundary, role-effective continuous consumer trace, exact discrete decision trace, runtime/start-law evidence, and completion/failure identity;
+11. compare \(R1/R2\) and \(R1/C\) using source-owned \(\mathcal R_e\), \(S_{\max}\), and exact-integer \(S_\Sigma\);
+12. mark any materiality relation violation or exact-decision difference as immediate failure;
+13. treat child startup failure, OOM, timeout, crash, unsupported runtime, nonfinite governed execution, inability to establish production-equivalent renewal, or post-output infrastructure failure according to the predeclared terminal/inconclusive semantics—never as a discarded trial;
+14. never redraw assignment or replace/retry the triplet under the same key.
+
+An actual production-start fixture MUST invoke the same \(\mathcal W_C\) and prove that an ordinary CuEq launch authenticates membership in the exact \(P_C^{\rm prod}\) law represented by the Stage-C children.
+
+The implementation must durably preserve raw per-triplet evidence so the final reducer can be independently recomputed without rerunning training.
+
+### 36.6 Stage-C TRAIN2 reducer and PASS criteria
+
+For each exact key, the authorizing assessment MUST be derived only after all required valid triplets exist.
+
+A TRAIN2 key passes only if all of the following hold:
+
+1. all required triplets satisfy the predeclared execution/failure contract;
+2. zero \(C_p^R\) reference materiality events occur;
+3. zero \(C_p^C\) candidate materiality events occur;
+4. the exact one-sided zero-event Clopper-Pearson bounds at \(\alpha=0.0125\) are each \(\le q_{\rm cat}=0.09\);
+5. for both \(j\in\{\max,\Sigma\}\), the exact one-sided Clopper-Pearson upper bound \(U_j\) for \(X_j=\sum_p B_{p,j}\) is \(\le 0.5+\eta_{\rm NI}=0.59\);
+6. every governed discrete scientific consequence agrees exactly between \(R1\) and \(C\);
+7. all Candidate-10 synthetic/adversarial acceptance tests are green against the assembled reducer/executor;
+8. the actual production-start fixture authenticates the same \(P_C^{\rm prod}\) law;
+9. the qualification record binds the exact Candidate-10 key and complete evidence realization;
+10. no hidden retry/aggregation path can make a failed key current.
+
+Compute the confidence bounds from the exact definition; do not derive acceptance from rounded percentages or a separately tuned count threshold.
+
+A key that fails or becomes inconclusive does not authorize CuEq. Preserve its evidence and stop dependent authorization. Do not switch to e3nn silently; the explicit e3nn repair-time route remains a separate operator choice.
+
+### 36.7 Completed-state projection and evaluator qualification
+
+For every completed-state/projection key that will be consumed:
+
+1. authenticate the exact completed CuEq state from a passing Candidate-10 TRAIN2 realization;
+2. snapshot it immutably;
+3. run the independent complete-inventory/correspondence/coefficient oracle first;
+4. require exact inventory/cardinality reconciliation, semantic \(A^\ast\), correctly rounded learned-dtype coefficients, and exact equality of production coefficients to the certified coefficients;
+5. fail immediately on omission, duplication, permutation, wrong k-range, quiescent forward-affecting state, ill-conditioned/non-unique transform, or coefficient mismatch;
+6. only after structural success, execute the dependency-native production projection;
+7. prove source-state non-mutation;
+8. execute the separate \(n_{\rm eval}=300\) evaluator triplets under their exact production/evaluation-equivalent per-child laws and \(\mathcal Q_{\rm eval}\);
+9. apply the same \(\eta_{\rm NI}=0.09\), \(q_{\rm cat}=0.09\), \(\alpha=0.0125\), source-owned \(\mathcal R_e\), no-retry semantics, systematic comparison and zero-event materiality-risk rules;
+10. execute the evaluator R6 slot-mixture transport adversary;
+11. preserve structural failure as dominant even if numerical evaluator outputs happen to agree;
+12. record the post-projection numerical provider as \`e3nn\`, with CuEq retained only as TRAIN2-state provenance.
+
+A projection/evaluator pass is exact-state/key scoped unless Candidate-10 identity proves otherwise. Do not generalize one completed-state evaluator record across another materially different completed-state identity.
+
+### 36.8 Stage-C evidence assessment and D2 lifecycle advancement
+
+After the complete required target-host realization:
+
+1. create a durable Stage-C evidence assessment identifying every exact TRAIN2 and evaluator key, raw artifact digest, reducer result, adversarial result, failure/inconclusive state, and applicability boundary;
+2. independently recompute enough of the reducer from raw evidence to detect common-mode serializer/reducer defects;
+3. verify no Candidate-10 method coordinate was changed after output inspection;
+4. perform a bounded Challenge pass against Candidate 10 and the accepted parent;
+5. if any required key fails, preserve the evidence and reopen at the earliest owner; do not proceed to D3/D4 authorization;
+6. if every required key passes, record the exact Candidate-10 Stage-C PASS and promote the already-reviewed/stakeholder-ratified exact instance through the project's normal D2 lifecycle record.
+
+Revision 35 supplies the stakeholder continuation authorization for this already-ratified exact instance. A clean Stage-C PASS therefore authorizes the implementer to proceed to the dependent D3/D4 handoff without another routine user confirmation. It does not authorize any semantic amendment.
+
+### 36.9 Stage-D D3 reconciliation before D4 product mutation
+
+After exact Stage-C PASS, use the \`software-design\` role to reconstruct current accepted D3 and issue the minimum D3 -> D4 contract necessary to preserve Candidate 10.
+
+The D3 reconciliation MUST cover at least:
+
+1. one canonical Candidate-10 qualification-record owner and its CampaignStore/currentness relationship;
+2. exact realization-key/currentness propagation into source-side and TRAIN2 stored acceleration realizations;
+3. routine-doctor resolution/authentication of the current Candidate-10 record plus cheap real reachability witness;
+4. production admission proving the exact \(\mathcal W_C/P_C^{\rm prod}\) law;
+5. resource/concurrency architecture enforcing one active governed CuEq TRAIN2 job per GPU for this first Candidate-10 law;
+6. explicit non-authorization of adaptive concurrent CuEq TRAIN2 until separately qualified;
+7. projection structural/evaluator qualification ownership;
+8. P5 checkpoint authentication -> projection -> portable-e3nn EVAL2 identity;
+9. stale-evidence behavior after any bound Candidate-10 key coordinate changes;
+10. historical readability without historical authorization;
+11. interaction with CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 without turning those distinct claims into universal parity prerequisites;
+12. re-resolution of the unrelated replay/threshold renewal and any other accepted-authority movement before D4 edits.
+
+If those requirements can be expressed by rewiring existing owners, do so. If preserving Candidate 10 requires a materially new persistence, concurrency, resource, deployment or ownership abstraction, that is a D3 design decision and must be reviewed at D3 before implementation rather than smuggled into D4.
+
+### 36.10 Stage-D D4 implementation obligations
+
+After the D3 contract is accepted/current for this branch, use the \`software-implementation\` role and modify the existing owners directly.
+
+Required D4 outcomes include:
+
+1. replace/remove the superseded TRAIN2 FP32 Rev86/noise-normalized authorizer so exactly one current Candidate-10 numerical owner exists;
+2. preserve historical record deserialization but make Candidate-8/9/Rev86 and stale Candidate-10 records incapable of consequential authorization;
+3. make source-side and TRAIN2 stored-realization consequential reuse authenticate current accepted parity method/record identity and exact runtime/model applicability;
+4. make an old \`qualified=true\` record fail currentness after method/risk/key/law/runtime changes;
+5. expose Candidate-10 method, exact applicability, evidence cardinality, record digest and fail reason in doctor diagnostics without letting doctor recreate qualification;
+6. keep generated source/DATA6/pseudolabel execution \`e3nn\`;
+7. keep generated FP32 TRAIN2 \`cueq\` only when an exact applicable Candidate-10 record passes currentness;
+8. keep FP64 CuEq TRAIN2 fail closed;
+9. enforce single-active-governed-CuEq-job-per-GPU production scope under the first Candidate-10 record;
+10. correct P5 EVAL2 numerical-provider identity so authenticated CuEq TRAIN2 checkpoint/state provenance projects to portable state but EVAL2 forward identity is \`e3nn\`;
+11. stale/recompute old falsely CuEq-labeled EVAL2 measurements and dependent assessments naturally through existing evidence/currentness owners;
+12. do not retrain otherwise-authenticated TRAIN2 roots solely because the EVAL2 provider identity is corrected;
+13. reconcile role thresholds/replay retention to the exact accepted authority resolved at Stage D; if accepted authority is still the Candidate-10 parent, D4 must not silently use the unratified \`75/75/50\` or \`50/100\` renewal as Candidate-10 authority;
+14. regenerate/rebind mutable FINAL-GPU1/preflight descendants whose currentness legitimately depends on the changed parity method; never edit release-pinned historical evidence in place;
+15. update user-facing status/configuration/specification surfaces so there is no claim that one Candidate-10 key authorizes another corpus, role, model family, runtime, state, concurrent law or evaluator;
+16. remove obsolete duplicate criterion machinery instead of leaving two authorizers reachable.
+
+### 36.11 Required D4 evidence
+
+After each material executable stage, run focused and stage-local affected regression. Before final implementation acceptance, run the assembled affected surface.
+
+At minimum cover:
+
+- Candidate-10 rank/score/reducer/Clopper-Pearson exact-oracle tests;
+- assignment and no-conditioning R5 fixtures;
+- R6 slot-mixture production/evaluator transport fixtures;
+- cross-child isolation/residue and no-retry/failure fixtures;
+- record schema/currentness/backward-readability/negative-authorization tests;
+- doctor current-record and stale-record tests through the real owner path;
+- source-side and TRAIN2 realization currentness tests;
+- exact production admission/concurrency tests proving a Candidate-10 single-process record cannot admit overlapping CuEq jobs;
+- FP64 TRAIN2 and source/DATA6 CuEq fail-closed tests;
+- complete trained-state/projection structural-oracle tests;
+- wrong coefficient/inventory/k-range/non-state_dict forward-state tests;
+- P5 checkpoint-authentication -> projection -> e3nn EVAL2 identity and stale-measurement tests;
+- optimizer/training identity and restart/reuse tests affected by currentness rewiring;
+- CUEQ-PHASE1/PERF-CERT1/FINAL-GPU1 impact tests;
+- MH-1/MPA-0/foundation/head resolution tests;
+- campaign lifecycle/status/currentness tests;
+- complete affected CPU regression;
+- target-host real-owner smoke proving the accepted Candidate-10 record is consumed by doctor/production admission exactly as designed;
+- package/import/static/documentation checks required by the repository.
+
+A required target-host check that does not execute is unavailable, not PASS. Do not count CPU-only tests as GPU/CuEq qualification.
+
+### 36.12 Documentation, dependency, evidence, and history closure
+
+After executable acceptance:
+
+1. promote/reconcile the accepted Candidate-10 relation into the current D2 owner without overwriting unrelated unratified proposals by path precedence;
+2. update the current D3 architecture owner and D4 specification index so exactly one current numerical owner is discoverable;
+3. update training/campaign user guidance for exact-key qualification, stale/current doctor behavior, FP32-only CuEq TRAIN2 scope, single-job production law, and e3nn EVAL2 provider identity;
+4. preserve Candidate 1-9, Rev83-86, Stage-A diagnostics, R1-R7 Reviews and all failed evidence as immutable history;
+5. mark materially stale old parity/currentness evidence as historical/stale-dependent rather than deleting it;
+6. update dependency/currentness views for the Candidate-10 record, stored realizations, optimizer/training identity, checkpoint projection/EVAL2 identity and release preflight descendants;
+7. reconcile Project Engineering Memory only where this cycle adds or changes a qualifying evidence-backed failure/success lesson;
+8. run documentation builder/registry checks for any changed publication inputs.
+
+### 36.13 Final closure criteria
+
+The workplan may close only when all of the following are true:
+
+1. exact target-host preflight identity is durably frozen;
+2. every required Candidate-10 TRAIN2 key intended for authorization has a valid Stage-C PASS;
+3. every required completed-state projection/evaluator key has a valid Stage-C PASS;
+4. all mandatory Candidate-10 adversaries reject the false-pass constructions they are designed to catch;
+5. D2 lifecycle state is advanced from reviewed/ratified candidate instance to accepted-current only on the exact passing scope;
+6. D3 current architecture preserves the accepted Candidate-10 contract;
+7. D4 contains one canonical authorizer and no reachable superseded competing authorizer;
+8. doctor, stored realization, production admission, scheduler/resource scope, projection and EVAL2 currentness agree;
+9. affected regression and real-boundary integration are green with no unauthorized skip standing in for required target-host evidence;
+10. documentation/dependency/history impact is reconciled;
+11. no active Serious Challenge or unresolved blocking issue remains.
+
+If only a subset of exact keys passes, close or authorize only that exact subset if the accepted lifecycle permits partial scope; do not generalize the pass to failed, unrun or different keys. Otherwise keep the workplan open with exact blocking key identities and evidence.
+
+The final implementation report MUST lead with any unavailable/failed target-host evidence or Serious Challenge, then state the exact authorized key scope, D3/D4 changes, tests actually executed, preserved historical evidence, and remaining non-authorized scopes (including concurrent CuEq TRAIN2 unless separately qualified).
+
