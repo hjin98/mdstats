@@ -25,7 +25,7 @@ repair_safe_train2_backend: e3nn
 
 ## 0. Disposition and Serious Challenge
 
-**REVISION-37 CURRENT LIFECYCLE:** the opening Serious Challenge below is retained as historical problem provenance, but it is no longer the current lifecycle disposition. Immutable Candidate 10 passed fresh independent D2 Review R7, the stakeholder accepted the reviewed family, and the exact `0.09 / 0.09 / 300` risk instance plus law/role binding are now frozen. **No current SERIOUS CHALLENGE to accepted D1/D2 parent authority is active.** The existing acceleration owner now provides canonical DEF.001 key encoding, and the preflight projects role/model-specific keys from the current P5 plan owners while binding the ratified law/risk records, execution-owner source identities, replay bytes, and existing authenticated target ExtXYZ transport receipts. It fails closed when a target transport receipt is absent. The key remains unfrozen because this environment cannot access the stakeholder RTX 3090 runtime or live CampaignStore and no exact campaign/model inputs or target preflight JSON were supplied. Section 36.1 stop condition 1 is active; Stage C, dependent D3/D4 reconciliation, assembled acceptance, and closure remain incomplete. The stakeholder's continuation authorization remains subject to the stop/reopen conditions in Section 36.
+**REVISION-39 CURRENT LIFECYCLE:** the opening Serious Challenge below is retained as historical problem provenance, but it is no longer the current lifecycle disposition. Immutable Candidate 10 passed fresh independent D2 Review R7, the stakeholder accepted the reviewed family, and the exact `0.09 / 0.09 / 300` risk instance plus law/role binding are now frozen. **No current SERIOUS CHALLENGE to accepted D1/D2 parent authority is active.** The existing acceleration owner provides canonical DEF.001 key encoding, and the preflight projects role/model-specific keys from the current P5 plan owners while binding the ratified law/risk records, execution-owner source identities, replay bytes, and existing authenticated target ExtXYZ transport receipts. Host GPU access is available to the task through the approved host-access command path: the RTX 3090 and expected runtime checks passed. The read-only preflight then found that the target MH-1 CampaignStore still holds retired target-size selection state; the current owner rejects that state and requires a destructive `prepare` cutover before it can resolve selected contexts. No external workspace mutation was authorized or performed. Thus the preflight still cannot bind an exact key and Section 36.1 stop condition 1 is active. No Stage-C child/evaluator, dependent D3/D4 reconciliation, assembled acceptance, or closure is claimed. Keep this workplan active and resume only from a current, owner-authenticated CampaignStore/P5 state; the stakeholder's continuation authorization remains subject to the stop/reopen conditions in Section 36.
 
 **OPEN — SERIOUS CHALLENGE to the current executable TRAIN2 FP32 backend-equivalence rule, including its missing accepted-D2 source closure and its numerical adequacy.**
 
@@ -1682,9 +1682,37 @@ These verify projection and fail-closed control behavior only. No target-host ke
 
 ### 38.2 Target-host preflight gate remains unavailable
 
+The contemporaneous sandbox diagnosis and missing-input assessment below are superseded by Revision 39. They remain as the historical account of the first default-sandbox attempt.
+
 The direct RTX precheck on this host returned exit status 9: `nvidia-smi` could not communicate with an NVIDIA driver. This host therefore cannot establish the ratified RTX 3090 device/runtime identity. The exact stakeholder campaign TOML, locked MPA-0 checkpoint, live CampaignStore, current P5 materialization receipts/ExtXYZ bytes, and target-host preflight JSON were not supplied. The collector now refuses to publish a key if the required current P5 target transport receipt is absent; it will not synthesize that SHA or materialize a replacement in the observational preflight.
 
 No exact Candidate-10 key is frozen. No Stage-C child or evaluator was launched, no Stage-C evidence assessment exists, and no D3/D4 dependent reconciliation or assembled acceptance is claimed. Section 36.1 stop condition 1 remains active at exact-key freeze. Keep this workplan active and resume on the stakeholder RTX 3090 host after supplying the exact campaign/model inputs and authenticatable current P5 transport artifacts.
+
+## 39. Revision-38 implementer execution update — host GPU access restored; target CampaignStore is retired
+
+### 39.1 Host GPU and runtime preflight
+
+The earlier default-sandbox `nvidia-smi` failure was an execution-namespace limitation, not absence of the workstation GPU. Running `nvidia-smi -L` through the approved host-access command path returned `GPU 0: NVIDIA GeForce RTX 3090 (UUID: GPU-34efd0de-a197-3f99-e185-4430895a49c9)`. The Candidate-10 collector was then run under `conda run -n mace` with host GPU access. It passed `collect_git` and `collect_runtime` and advanced into campaign resolution. Thus the collector authenticated the requested branch/candidate ancestry, RTX 3090 / compute capability 8.6, DEP1 and the frozen runtime family, Torch CUDA visibility, and no competing selected-GPU compute process. No Candidate-10 trajectory was started.
+
+### 39.2 Read-only target CampaignStore gate
+
+The exact target configuration and locked MPA-0 model were found at:
+
+- `/home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32/campaign.toml`;
+- `/home/samjin/QE/lammps-proj/zeolite/01_models/mace-mpa-0-medium.model`.
+
+The executed command was:
+
+```bash
+conda run -n mace python tools/run_mlff_cueq_c10_stage_c_preflight.py \
+  --config /home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32/campaign.toml \
+  --mpa0-model /home/samjin/QE/lammps-proj/zeolite/01_models/mace-mpa-0-medium.model \
+  --output qualification/mlff-cueq-c10/stage-c-preflight.json
+```
+
+The preflight failed in `build_post_selection_contexts` at `require_current_target_size_runtime` with `TargetSizeCutoverError`: the live CampaignStore still contains retired target-size selection state and has not been converted to the current target-size architecture. The error directs the caller to `prepare`, which performs a one-time destructive cutover, quarantines the retired records, and rebuilds authority from source inputs. That mutation is outside this observational preflight and the repository boundary; it was not run. The old state was not reinterpreted, copied into a new owner, or used to infer a Candidate-10 key.
+
+The failure occurred before manifest publication. No preflight JSON or output directory was created, no exact key was frozen, and no Stage-C child/evaluator or D3/D4 dependent work began. This is the explicit Section 36.1 stop condition 1: the read-only target-host preflight cannot bind an exact Candidate-10 key from the current CampaignStore. Continue only when the campaign owner supplies a current, authenticated CampaignStore and current P5 materialization receipts/ExtXYZ artifacts, or performs the normal authoritative migration outside this repository task and provides its resulting read-only state. Keep the workplan active.
 
 
 ## 36. Revision-35 implementer continuation contract — complete the remaining Candidate-10 lifecycle
