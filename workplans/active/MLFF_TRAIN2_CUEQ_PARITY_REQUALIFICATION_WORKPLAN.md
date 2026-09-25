@@ -4,9 +4,9 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 26
+revision: 27
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_9_INDEPENDENT_NO_PASS_CANDIDATE_10_REQUIRED
+workplan_review_status: CANDIDATE_10_AUTHORED_PREFREEZE_CHALLENGE_COMPLETE
 workplan_review_basis: d288d0f931b36e0304a91312915b9785e07dbe3c
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
@@ -1443,4 +1443,35 @@ The exact R6 counterexample uses an admissible \(q_{\rm cat}=0.08\). If candidat
 14. Keep D3/D4 blocked until a future immutable D2 candidate passes independent Review, receives exact stakeholder instance ratification, and subsequently passes fresh Stage-C qualification.
 
 No Candidate-9 Stage-C evidence is authorized.
+
+## 29. Candidate-10 author repair of Review R6 production-population transport
+
+Candidate 10 is authored at:
+
+\`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_10.md\`.
+
+Its repair record is:
+
+\`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_10_REPAIR.md\`.
+
+The repair is deliberately reductive at the renewal owner. Candidate 10 does not add a post-hoc correction for the Candidate-9 launch-slot mixture. Instead, every qualification child is independently renewed and authenticated immediately before governed arithmetic to the same production-equivalent child execution law used by the corresponding real production/reference role.
+
+Exact repair obligations now are:
+
+1. preserve immutable Candidate 9 and every R6-passed surface;
+2. retain R5 pre-assignment randomization solely as the systematic-comparison design;
+3. bind \(\mathcal W_{\rm pre},\mathcal W_R,\mathcal W_C\);
+4. require every reference child in every slot to execute under one \(P_R^{\rm prod}\);
+5. require every CuEq child in every slot to execute under one \(P_C^{\rm prod}\);
+6. require ordinary production CuEq to execute the identical \(\mathcal W_C\);
+7. prove cross-child cache/residency/thermal/global/process state is reset/fixed, independently regenerated, immutable, or isolated;
+8. forbid sibling interference not present in production;
+9. define \(q_{\rm cat}\) on the production-equivalent pair laws, not the randomized launch mixture;
+10. apply the same transport rule to projection evaluator;
+11. include the R6 \(0.20,0,0\) slot-mixture adversary as mandatory Stage-C falsification;
+12. fail closed when production-equivalent child execution law cannot be established;
+13. use no Candidate-9 outcome to choose this repair or its risk coordinates; and
+14. keep Stage C and D3/D4 blocked pending immutable freeze, fresh independent Review PASS, and stakeholder instance ratification.
+
+Author-side Challenge found no reason to alter the accepted parent or any previously passed consumer/materiality/ULP/projection/scope surface.
 
