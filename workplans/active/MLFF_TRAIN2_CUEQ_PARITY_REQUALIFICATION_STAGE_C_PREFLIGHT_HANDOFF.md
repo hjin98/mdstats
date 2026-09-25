@@ -40,3 +40,25 @@ The preflight must occur before any Candidate-10 \(R1/R2/C\) child output exists
 The resulting JSON must be content-addressed and committed/uploaded as the Stage-C preflight artifact. Only after its exact key is reviewed against the Candidate-10 risk/law binding may the 300-triplet Stage-C realization begin.
 
 Because this environment has no access to the stakeholder RTX 3090 host or its live CampaignStore, target-host preflight is the first unavailable real-owner boundary.
+
+
+## Executable preflight
+
+The repository-owned observational collector is:
+
+`tools/run_mlff_cueq_c10_stage_c_preflight.py`
+
+It must be run from a clean checkout of this branch in the target `mace` environment, while the selected RTX 3090 has no other compute process. It validates the reviewed Candidate-10 blob, the ratified `0.09 / 0.09 / 300` risk binding, locked MH-1/selected-head/MPA-0 bytes, the Stage-A runtime family, current CampaignStore lineage, current selected membership/common monitor, and the exact accepted-parent `45 / 45 / 30 meV/Å` role thresholds plus `30 meV/Å` replay hard budget.
+
+The branch currently carries an unratified assessment-policy renewal with generated `75 / 75 / 50 meV/Å` values. The collector records those D4 values as observations but does not treat them as Candidate-10 authority; their reconciliation remains Stage D.
+
+Run:
+
+```bash
+conda run -n mace python tools/run_mlff_cueq_c10_stage_c_preflight.py \
+  --config /ABSOLUTE/PATH/TO/campaign.toml \
+  --mpa0-model /ABSOLUTE/PATH/TO/mace-mpa-0-medium.model \
+  --output /ABSOLUTE/PATH/TO/mlff_cueq_c10_stage_c_preflight.json
+```
+
+The output JSON is the next required evidence input. Do not launch Candidate-10 triplets before it is reviewed and bound.
