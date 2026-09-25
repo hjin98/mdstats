@@ -9,8 +9,8 @@ baseline_commit: c82388122cc3e72921a2f7a07d906b9527c4e229
 implementation_branch: fix/mlff-p5-train2-mh1-selected-head-routing
 scope: P5 TRAIN2/EVAL2 reconstruction routing of the doctor-qualified training-foundation checkpoint for foundation-backed MLFF campaigns
 earliest_affected_domain: D4 implementation/concretization under accepted phase-separated source/training realization architecture
-review_disposition: revision-1 closure under review
-workplan_review_revision: 1
+review_disposition: PASS AS WORKPLAN
+workplan_review_revision: 2
 serious_challenge: none
 ---
 
@@ -120,7 +120,20 @@ For phase-separated TRAIN2, the exact checkpoint used to launch or reconstruct T
 
 For non-phase-separated modes where the accepted training realization legitimately equals the source checkpoint, existing semantics may collapse to one file. The implementation must preserve those modes without manufacturing selected-head requirements where none apply.
 
-### 3.3 Minimality constraint
+### 3.3 One invocation-scoped execution binding
+
+Resolve the authenticated TRAIN2 construction foundation **once per P5 invocation/context** and reuse that same resolved binding for:
+
+- real TRAIN2 launch;
+- candidate/outer-evaluation provider reconstruction;
+- publication/model-product provider reconstruction;
+- any restart/currentness operation that reconstructs current TRAIN2 execution authority.
+
+Do not let each consumer independently reopen campaign state and reinterpret the record. The exact transient representation is delegated (for example, an execution-only field/object on the resolved post-selection context), but it must carry enough information to authenticate the current training-realization digest, checkpoint locator/SHA, and selected-head qualification ancestry.
+
+Source-only operations such as foundation residual evaluation and replay-foundation baseline evaluation must continue to use the scientific source binding, not this TRAIN2 execution binding.
+
+### 3.4 Minimality constraint
 
 Prefer rewiring existing P5 execution context/request authentication to carry the already-existing training-realization checkpoint binding. Do not add a second persistent record or duplicate the training realization inside P5 materialization. If a small transient execution object/fields are needed to carry the existing record to the trainer/provider boundary, they are delegated D4 plumbing, not new authority.
 
@@ -293,8 +306,8 @@ Expected disposition:
 
 ### Stage A — wiring and authentication
 
-1. Resolve one authenticated current TRAIN2 construction-foundation binding from existing training-realization + selected-head-qualification authority, including full source->extraction->training-checkpoint ancestry.
-2. Carry that same transient binding through P5 execution and TRAIN2 reconstruction without replacing the scientific source identity.
+1. Resolve one invocation-scoped authenticated current TRAIN2 construction-foundation binding from existing training-realization + selected-head-qualification authority, including full source->extraction->training-checkpoint ancestry.
+2. Carry that exact same transient binding through P5 execution and TRAIN2 reconstruction without replacing the scientific source identity; do not independently re-resolve it in sibling consumers.
 3. Split trainer authentication of source lineage from training-checkpoint bytes.
 4. Inject the training checkpoint into the real MACE launch.
 
@@ -353,7 +366,7 @@ This workplan is ready for Implementation only when independent workplan review 
 - real acceptance crosses the failing P5 owner/consumer boundary;
 - no unnecessary upstream redesign or new durable machinery is required.
 
-Current workplan-review verdict: **PENDING REVISION-1 RECHECK**.
+Current workplan-review verdict: **PASS AS WORKPLAN**.
 
 ## 12. Workplan review pass 1
 
@@ -365,3 +378,20 @@ The first independent workplan review found four material omissions in the initi
 4. **Source-only consumer ambiguity — CLOSED IN O4/tests.** Foundation-residual/source-side preparation must continue to use the scientific source realization; the training checkpoint is only for TRAIN2 construction/reconstruction.
 
 No upstream scientific/numerical/architectural contradiction was found. The remaining review task is a fresh recheck of Revision 1 against the actual call graph and accepted evidence.
+
+
+## 13. Workplan review pass 2 and final recheck
+
+Pass 2 re-derived the current call graph and found one remaining coordination weakness: Revision 1 required the correct record at every consumer but did not require those consumers to share one resolved invocation-scoped binding. Independent re-resolution would preserve the same duplicated-construction risk highlighted by PEM FF-001 and could allow launch/reconstruction drift if campaign state changed between reads.
+
+That gap is now closed in Section 3 and Stage A: one authenticated TRAIN2 construction-foundation binding is resolved once and reused by the entire P5 invocation. This is transient D4 plumbing over the existing persistent owner, not a new authority record.
+
+The final recheck then classified current `context.method_policies.foundation_model` uses:
+
+- **must remain source-owned:** replay foundation baseline identity/provider and foundation-residual/source evaluation;
+- **must switch to the invocation-scoped TRAIN2 binding:** real TRAIN2 launch and all `authenticate_post_selection_provider` / TRAIN2-shell reconstruction paths in `campaign_post_selection_runtime.py` and `post_selection_model_products.py`;
+- **tests encoding the conflation:** update only where they currently use the same fixture path for both roles.
+
+No additional materially affected production caller, upstream authority conflict, required new persistent state, or new numerical/scientific obligation was found.
+
+**Final workplan review disposition: PASS AS WORKPLAN.** Implementation may proceed under the bounded D4 plan. A later implementation Review must still re-derive the final affected surface from the assembled diff and may reopen this plan if implementation exposes a real omitted owner.
