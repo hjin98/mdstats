@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 24
+revision: 25
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_9_PREFREEZE_AUTHORITY_AND_RENEWAL_CHALLENGE_CLOSED_AWAITING_FREEZE
-workplan_review_basis: 4fc493d53b225a36682937e0c8d6659619adc5db
+workplan_review_status: CANDIDATE_9_FROZEN_AWAITING_FRESH_INDEPENDENT_REVIEW
+workplan_review_basis: d288d0f931b36e0304a91312915b9785e07dbe3c
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -1371,4 +1371,33 @@ Before immutable freeze, the assembled Candidate-9 challenge pass removed a stal
 These are included in the semantic Candidate-9 target before freeze. No Stage-C evidence exists.
 
 The final prefreeze challenge additionally requires owner-based renewal evidence: statistical stationarity/autocorrelation diagnostics are falsification aids only and cannot by themselves establish the common independent triplet law.
+
+## 27. Candidate-9 immutable Review freeze
+
+Candidate 9 is frozen for fresh independent D2 Review at:
+
+\`d288d0f931b36e0304a91312915b9785e07dbe3c\`
+
+with Candidate-9 blob:
+
+\`7fbe754c60fab953453586619c8ecb21d8a2b9cc\`.
+
+The prefreeze author states
+
+- \`2a5317558cf3d32455617e5f07efa97c31ef0afe\`; and
+- \`4fc493d53b225a36682937e0c8d6659619adc5db\`
+
+are historical authoring state only and are not Review targets.
+
+Candidate 9 preserves Candidate 8's R5-passed consumer/materiality/ULP/projection/scope repairs and replaces only the blocked stochastic conditioning semantics. Its authorizing randomization theorem is now pre-assignment and marginal over the uniform \(R1/R2/C\) assignment; its exact Binomial/Clopper-Pearson claims are available only under the prospectively bound owner-based renewal/common-law contract.
+
+Candidate 9 is a parameterized D2 method family. The semantic family is frozen; no Stage-C instance exists yet. Exact stakeholder ratification after independent PASS must bind \(\eta_{\rm NI}\), \(q_{\rm cat}\), \(n\), exact \(E\), every accepted materiality source \(\mathcal R_e\), and exact design/renewal policy \(\mathcal Q\).
+
+The fresh independent handoff is:
+
+\`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_HANDOFF_C9.md\`.
+
+No Candidate-9 Stage-C evidence may run before fresh independent Review PASS plus exact stakeholder instance ratification.
+
+No D2-to-D3/D4 handoff exists.
 

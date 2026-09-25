@@ -1,10 +1,12 @@
 ---
 kind: D2-candidate-repair-record
 protocol_version: 6.4.0
-status: CANDIDATE_9_PREFREEZE_CHALLENGE_CLOSED_AWAITING_FREEZE
+status: FROZEN_FOR_FRESH_INDEPENDENT_REVIEW
 workplan: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md
 repairs_review: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R5.md
 superseded_candidate: c6e18ccfce62d47e96dde80600558522c62c28ef
+immutable_candidate_commit: d288d0f931b36e0304a91312915b9785e07dbe3c
+immutable_candidate_blob: 7fbe754c60fab953453586619c8ecb21d8a2b9cc
 accepted_parent_d2_kernel: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_parent_d2_source: a4824d28775164aa942fd29fa97ee0957eb87e6f
 date: 2026-09-25
@@ -128,4 +130,18 @@ The same pass made two clarifications explicit rather than leaving them implicit
 No Candidate-9 Stage-C evidence exists.
 
 The final prefreeze challenge also makes renewal evidence non-circular: a nonsignificant stationarity/autocorrelation test cannot establish independence. Stage C must carry an owner-based census showing each known cross-triplet mutable owner is reset/fixed, immutable in \(\rho\), or independently randomized; statistical diagnostics may only falsify that structural claim.
+
+## 10. Immutable Candidate-9 Review freeze
+
+The final Candidate-9 semantic Review target is:
+
+\`d288d0f931b36e0304a91312915b9785e07dbe3c\`
+
+with Candidate-9 blob:
+
+\`7fbe754c60fab953453586619c8ecb21d8a2b9cc\`.
+
+The earlier authoring commits \`2a5317558cf3d32455617e5f07efa97c31ef0afe\` and \`4fc493d53b225a36682937e0c8d6659619adc5db\` are historical prefreeze drafts only.
+
+No Candidate-9 Stage-C evidence exists. Any later semantic repair requires Candidate 10 or later.
 
