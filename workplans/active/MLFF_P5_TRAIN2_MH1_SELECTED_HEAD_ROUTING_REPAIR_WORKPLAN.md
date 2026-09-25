@@ -9,7 +9,8 @@ baseline_commit: c82388122cc3e72921a2f7a07d906b9527c4e229
 implementation_branch: fix/mlff-p5-train2-mh1-selected-head-routing
 scope: P5 TRAIN2/EVAL2 reconstruction routing of the doctor-qualified training-foundation checkpoint for foundation-backed MLFF campaigns
 earliest_affected_domain: D4 implementation/concretization under accepted phase-separated source/training realization architecture
-review_disposition: workplan review pending
+review_disposition: revision-1 closure under review
+workplan_review_revision: 1
 serious_challenge: none
 ---
 
@@ -133,7 +134,10 @@ For a phase-separated foundation-backed P5 invocation:
 - require it to be qualified under the current runtime/policy exactly as existing preparation/optimizer intake does;
 - authenticate `training_checkpoint_reference` exists and its SHA-256 equals `training_checkpoint_sha256`;
 - require its `selected_head_qualification_digest` when the source foundation is genuinely multi-head and selected-head qualification is required;
+- when that digest is required, load the current stored selected-head qualification and require exact digest equality, then re-authenticate that qualification's extraction against the current source `FoundationPotentialIdentity`: source potential/content digest, raw source checkpoint SHA-256, and source head must all match, and the extraction's derived checkpoint SHA-256 must equal the training-realization checkpoint SHA-256;
 - preserve the record's content digest already bound by optimizer policy and reject disagreement between the optimizer's realization digest and the checkpoint binding carried to execution.
+
+This ancestry check closes the otherwise possible stale-record hole: a byte-valid training checkpoint from another source/head/campaign generation must not become current merely because a `TrainingAccelerationRealizationRecord` exists.
 
 Do not silently fall back to the raw scientific source checkpoint when this record is required but missing/stale.
 
@@ -164,12 +168,15 @@ The internal immutable P5 MACE configuration remains path-independent. Runtime p
 
 Every P5 call that reconstructs the TRAIN2 architecture/state through `authenticate_train2_checkpoint_provider` or equivalent must receive the **same authenticated TRAIN2 construction checkpoint** used by launch.
 
-This includes at minimum:
+Current affected consumers include at minimum:
 
-- checkpoint-candidate assessment during CV/final production;
-- representative provider reconstruction;
-- publication/model-product reconstruction;
-- continuation/restart authentication paths that rebuild the MACE shell from the materialized P5 configuration.
+- the real TRAIN2 launch request built in `campaign_post_selection_runtime.py`;
+- checkpoint-candidate assessment paths in `campaign_post_selection_runtime.py` that call `authenticate_post_selection_provider(...)`;
+- `post_selection_model_products.py` representative/publication reconstruction;
+- direct P5/MH-1 publication integration callers that rebuild the provider;
+- any continuation/restart path that re-projects a dependency-facing MACE executable payload or rebuilds the MACE shell from the materialized P5 configuration.
+
+The final implementation review must re-run repository search over `authenticate_post_selection_provider`, `authenticate_train2_checkpoint_provider`, `build_mace_model_from_configuration`, and current uses of `context.method_policies.foundation_model`; this list is an initial affected surface, not permission to stop at these named sites.
 
 This obligation does **not** change the post-training portable/e3nn evaluation policy. It ensures that the shell used to authenticate TRAIN2 state is reconstructed from the same qualified starting checkpoint before the existing CuEq->portable projection/evaluation path runs.
 
@@ -185,7 +192,14 @@ The only permitted dependency is the already-qualified selected-head artifact an
 
 A failed P5 attempt that produced materialization but no accepted gradient-update evidence must be restartable after this repair without deleting unrelated campaign authority.
 
-Because the immutable P5 MACE configuration is path-independent, changing the runtime foundation locator to the correct selected-head checkpoint should not require rewriting accepted method/materialization identity. Existing TRAIN2 continuation evidence may be reused only if its recorded realization/checkpoint ancestry authenticates under the corrected construction foundation; otherwise existing fail-closed currentness/restart machinery must reject/recompute it.
+Because the immutable P5 MACE configuration is path-independent, changing the runtime foundation locator to the correct selected-head checkpoint must not rewrite accepted method/materialization identity.
+
+However, a failed launch can leave **execution-local** dependency-facing payload/evidence that contains the old raw-source locator. The implementation must classify this separately from immutable materialization:
+
+- accepted TRAIN2 progress/evidence remains immutable and reusable only if its execution authority and training-foundation ancestry authenticate under the corrected current owner;
+- zero-update or otherwise unaccepted execution-local launch payload/evidence carrying the obsolete raw-source locator may be reclaimed/recreated only through the existing run-root activity lease/recovery owner;
+- another live process remains protected from destructive reconciliation;
+- locator correction must not delete accepted checkpoints merely to make the retry green.
 
 Do not add a migration state machine or mutate historical accepted evidence in place.
 
@@ -219,12 +233,14 @@ Required assertions:
 4. Trainer authentication rejects tampered training checkpoint bytes.
 5. Missing/unqualified/stale required training realization fails closed before MACE launch.
 6. Wrong training-realization digest or selected-head qualification binding fails closed.
-7. Raw source checkpoint is not used as an implicit fallback.
-8. Scratch P5 remains foundation-free.
-9. A supported non-phase-separated foundation path remains unchanged.
-10. TRAIN2 provider reconstruction receives the training checkpoint, not the source checkpoint.
-11. Source-only consumers continue to receive the scientific source foundation where applicable.
-12. A same-workspace retry after a zero-update launch failure can proceed through existing restart ownership without manual deletion solely because the runtime locator is corrected.
+7. A selected-head qualification whose source potential digest, raw source SHA, source head, or derived checkpoint SHA disagrees with the current source/training realization fails closed.
+8. Raw source checkpoint is not used as an implicit fallback.
+9. Scratch P5 remains foundation-free.
+10. A supported non-phase-separated foundation path remains unchanged.
+11. TRAIN2 provider reconstruction receives the training checkpoint, not the source checkpoint.
+12. Source-only consumers continue to receive the scientific source foundation where applicable, including foundation-residual/source-evaluation preparation.
+13. A same-workspace retry after a zero-update launch failure can proceed through existing restart ownership without manual deletion solely because the runtime locator is corrected.
+14. Stale unaccepted execution-local payload/evidence carrying the raw-source locator is reconciled under the existing activity lease, while accepted/current progress is never destructively rewritten.
 
 ### 5.2 Affected regression
 
@@ -277,8 +293,8 @@ Expected disposition:
 
 ### Stage A — wiring and authentication
 
-1. Resolve the authenticated current TRAIN2 construction foundation from existing training-realization authority.
-2. Carry it through P5 execution without replacing the scientific source identity.
+1. Resolve one authenticated current TRAIN2 construction-foundation binding from existing training-realization + selected-head-qualification authority, including full source->extraction->training-checkpoint ancestry.
+2. Carry that same transient binding through P5 execution and TRAIN2 reconstruction without replacing the scientific source identity.
 3. Split trainer authentication of source lineage from training-checkpoint bytes.
 4. Inject the training checkpoint into the real MACE launch.
 
@@ -337,4 +353,15 @@ This workplan is ready for Implementation only when independent workplan review 
 - real acceptance crosses the failing P5 owner/consumer boundary;
 - no unnecessary upstream redesign or new durable machinery is required.
 
-Current workplan-review verdict: **PENDING**.
+Current workplan-review verdict: **PENDING REVISION-1 RECHECK**.
+
+## 12. Workplan review pass 1
+
+The first independent workplan review found four material omissions in the initial draft; all are incorporated above:
+
+1. **Stale ancestry gap — CLOSED IN O1/O2.** Checking only the training checkpoint SHA and qualification digest was insufficient. The plan now requires the current qualification to bind back to the current source potential digest, raw source SHA, source head, and the same derived checkpoint SHA.
+2. **Reconstruction-surface gap — CLOSED IN O4.** A launch-only repair would still leave current provider/publication reconstruction using the raw source locator. The plan now names the known reconstruction consumers and requires a final call-site re-derivation.
+3. **Restart execution-local evidence gap — CLOSED IN O6.** Materialization is path-independent, but a failed launch can leave dependency-facing executable evidence with the obsolete locator. The plan now distinguishes immutable accepted progress from reclaimable zero-update execution-local residue under the existing lease.
+4. **Source-only consumer ambiguity — CLOSED IN O4/tests.** Foundation-residual/source-side preparation must continue to use the scientific source realization; the training checkpoint is only for TRAIN2 construction/reconstruction.
+
+No upstream scientific/numerical/architectural contradiction was found. The remaining review task is a fresh recheck of Revision 1 against the actual call graph and accepted evidence.
