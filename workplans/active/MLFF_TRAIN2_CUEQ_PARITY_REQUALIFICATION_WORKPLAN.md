@@ -4,9 +4,9 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 31
+revision: 32
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_10_METHOD_FAMILY_ACCEPTED_AWAITING_EXACT_INSTANCE_BINDING
+workplan_review_status: CANDIDATE_10_RISK_COORDINATES_BOUND_AWAITING_EXACT_LAW_BINDING
 workplan_review_basis: db2ed47e8c999cb61507803610c72c0fa7ffaaf7
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
@@ -1578,3 +1578,30 @@ Therefore the current gate is narrowed to exact instance binding:
 - bind corresponding projection/evaluator coordinates.
 
 Stage C remains blocked only on this exact instance ratification. D3/D4 remain blocked pending fresh Stage-C PASS.
+
+
+## 33. Candidate-10 prospective risk-instance binding
+
+Following stakeholder delegation to select an appropriate prospective value, the exact Candidate-10 Stage-C risk coordinates are now bound in:
+
+workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_C10_INSTANCE_RISK_BINDING.md.
+
+The ratified instance coordinates are:
+
+\[
+\eta_{\rm NI}=0.09,
+\qquad
+q_{\rm cat}=0.09,
+\qquad
+n=300.
+\]
+
+The projection evaluator uses the same \(\eta_{\rm NI}\) and \(q_{\rm cat}\) with \(n_{\rm eval}=300\).
+
+This is an instance binding only. It does not alter the immutable Candidate-10 family or create a generated family default.
+
+The materiality-only minimum \(n=47\) is intentionally rejected as the default evidence budget because it leaves the separate exact Clopper-Pearson systematic noninferiority statement severely underpowered near \(p=0.5\). At \(n=300\), one systematic family has approximately 0.8067 pass probability at the worst-case exact-exchangeability boundary \(p=0.5\), while the required zero materiality events imply exact one-sided bound \(Q\approx0.01450\), substantially stronger than the ratified 0.09 ceiling.
+
+The remaining Stage-C gate is exact law/role binding: \(E\), all source-owned \(\mathcal R_e\), \(\mathcal Q\), \(\mathcal W_{\rm pre/R/C}\), \(P_R^{\rm prod},P_C^{\rm prod}\), evaluator production laws/projection-oracle instance identity, and exact MH-1/MPA-0 scientific/runtime keys.
+
+Stage C remains blocked until those remaining coordinates are durably bound before Candidate-10 execution.
