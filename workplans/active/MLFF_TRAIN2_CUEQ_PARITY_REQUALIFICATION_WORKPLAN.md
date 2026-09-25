@@ -4,9 +4,9 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 18
+revision: 19
 reviewed_date: 2026-09-25
-workplan_review_status: REOPENED_AFTER_CANDIDATE_7_INDEPENDENT_NO_PASS
+workplan_review_status: CANDIDATE_8_AUTHOR_REPAIR_COMPLETE_PENDING_FREEZE
 workplan_review_basis: 309e5221f9869e6767ae642f1dd0c435ba397ef9
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
@@ -1153,3 +1153,36 @@ The next semantic candidate MUST be Candidate 8 or later and MUST, before a new 
 12. require exact stakeholder ratification of that passing immutable candidate before any Stage-C qualification, with D3/D4 remaining blocked until then.
 
 No D2-to-D3/D4 handoff exists while these blockers remain.
+
+
+## 23. Candidate-8 author repair after independent Review R4
+
+Independent Review R4 at \`309e5221f9869e6767ae642f1dd0c435ba397ef9\` returned NO-PASS for immutable Candidate 7 with no SERIOUS CHALLENGE to accepted parent D1/D2.
+
+Candidate 8 is the proposed semantic repair:
+
+\`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_8.md\`.
+
+Its repair record is:
+
+\`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_8_REPAIR.md\`.
+
+The repair contract is:
+
+1. remove the unsupported \`Gamma -> eta -> p_max\` derivation;
+2. expose \(\eta_{\rm NI}\) and \(q_{\rm cat}\) as explicit stakeholder-ratified method coordinates with no defaults and bind exact \(n\) prospectively;
+3. require \(0\le\eta_{\rm NI}\le q_{\rm cat}<0.10\), with the strict \(0.10\) ceiling serving only to exclude the known 10%-material-instability R3 adversary from the admissible family;
+4. replace the fixed six-launch cycle with independent uniform qualification-only permutation draws so exact binomial inference has a declared i.i.d. nuisance-mixture population;
+5. define source-owned materiality/equivalence relation \(\mathcal R_e\) for every governed continuous consumer and fail closed when none exists;
+6. replace reference/sample-maximum tail semantics with explicit zero-event reference/candidate population-risk bounds no larger than ratified \(q_{\rm cat}\);
+7. choose the complete-actual-consumer R3 closure path and stop treating raw parameter ULP magnitude as scientific materiality;
+8. replace block RMS with exact non-dilutable ULP mass \(S_{\Sigma}\);
+9. retain \(S_{\max}\) for rare coordinates;
+10. define semantic projection matrix \(A^\ast\) independently from accepted representation equations;
+11. require production coefficients to equal the correctly rounded semantic coefficients exactly before output error is evaluated;
+12. propagate only learned-dtype accumulation plus certified coefficient-rounding error;
+13. keep structural oracle failure dominant over evaluator agreement;
+14. preserve accepted loader/restart/source-DATA6/FP64/doctor/e3nn-EVAL2 closures; and
+15. freeze Candidate 8 before fresh independent Review.
+
+No Candidate-8 Stage-C evidence exists. Stage C and D3/D4 remain blocked.
