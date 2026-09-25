@@ -4,9 +4,9 @@ protocol_version: 6.4.0
 status: active
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 36
+revision: 40
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_10_IMPLEMENTER_CONTINUATION_AUTHORIZED_PREFLIGHT_STAGE_C_D3_D4_PENDING
+workplan_review_status: CANDIDATE_10_DOCTOR_BOOTSTRAP_REPAIR_REQUIRED_BEFORE_PREPARE
 workplan_review_basis: db2ed47e8c999cb61507803610c72c0fa7ffaaf7
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
@@ -25,7 +25,15 @@ repair_safe_train2_backend: e3nn
 
 ## 0. Disposition and Serious Challenge
 
-**REVISION-39 CURRENT LIFECYCLE:** the opening Serious Challenge below is retained as historical problem provenance, but it is no longer the current lifecycle disposition. Immutable Candidate 10 passed fresh independent D2 Review R7, the stakeholder accepted the reviewed family, and the exact `0.09 / 0.09 / 300` risk instance plus law/role binding are now frozen. **No current SERIOUS CHALLENGE to accepted D1/D2 parent authority is active.** The existing acceleration owner provides canonical DEF.001 key encoding, and the preflight projects role/model-specific keys from the current P5 plan owners while binding the ratified law/risk records, execution-owner source identities, replay bytes, and existing authenticated target ExtXYZ transport receipts. Host GPU access is available to the task through the approved host-access command path: the RTX 3090 and expected runtime checks passed. The read-only preflight then found that the target MH-1 CampaignStore still holds retired target-size selection state; the current owner rejects that state and requires a destructive `prepare` cutover before it can resolve selected contexts. No external workspace mutation was authorized or performed. Thus the preflight still cannot bind an exact key and Section 36.1 stop condition 1 is active. No Stage-C child/evaluator, dependent D3/D4 reconciliation, assembled acceptance, or closure is claimed. Keep this workplan active and resume only from a current, owner-authenticated CampaignStore/P5 state; the stakeholder's continuation authorization remains subject to the stop/reopen conditions in Section 36.
+**REVISION-40 CURRENT LIFECYCLE:** the opening Serious Challenge below is retained as historical problem provenance, but it is no longer the current lifecycle disposition. Immutable Candidate 10 passed fresh independent D2 Review R7, the stakeholder accepted the reviewed family, and the exact 0.09 / 0.09 / 300 risk instance plus law/role binding are frozen. **No current SERIOUS CHALLENGE to accepted D1/D2 parent authority is active.**
+
+The stakeholder restarted from a fresh campaign and exposed an earlier D4 bootstrap blocker than the retired-CampaignStore issue recorded in Revision 39. Routine doctor still executes the superseded Rev86 TRAIN2 FP32 noise-normalized parity authorizer. On the fresh campaign, source/DATA6 e3nn, selected-head extraction, CUDA/runtime/dependencies, replay prerequisites, and resources all passed, but doctor ran the old warm-up/all-pairs TRAIN2 parity rule and failed solely because descriptor_max_abs=1.860e-06 exceeded the historical 1.000e-06 ceiling. That result is **not Candidate-10 qualification evidence and must not gate preparation**.
+
+The immediate repair owner is D4 routine-doctor / TRAIN2 admission separation in mdstats/training_data/_campaign_cli_core.py and the existing acceleration/currentness owners. **Do not work around this defect by switching the intended campaign to training_backend="e3nn", weakening the Rev86 threshold, setting require_available=false, retrying until pass, or advancing to prepare while the stale doctor gate remains consequential.**
+
+Before any new prepare run, repair routine doctor so it performs source/runtime/capability/reachability validation, reports CuEq TRAIN2 authorization as Candidate-10 pending when no exact current Candidate-10 record can yet exist, and returns success for preparation when all preparation-owned prerequisites pass. Actual CuEq TRAIN2 execution must remain fail-closed until an exact current Candidate-10 record authorizes the concrete key. Rev86/noise-normalized parity may remain readable historical evidence but must cease to be a routine-doctor authorizer or a prerequisite for preparation.
+
+The previous target CampaignStore cutover blocker is superseded for the fresh campaign. After the doctor repair is implemented and verified on the fresh campaign, continue the normal fresh lifecycle through prepare, exact-key construction, Stage C, and the remaining Section 36 continuation contract.
 
 **OPEN — SERIOUS CHALLENGE to the current executable TRAIN2 FP32 backend-equivalence rule, including its missing accepted-D2 source closure and its numerical adequacy.**
 
@@ -2044,3 +2052,174 @@ The collector can gather selected context/runtime observations but does not mate
 This execution environment is also not the stakeholder RTX 3090 host: `nvidia-smi` cannot communicate with an NVIDIA driver. The exact target campaign configuration, live CampaignStore, locked model/checkpoint inputs, and target-host preflight JSON are not supplied here. Per the Section-C preflight handoff, those values cannot be reconstructed from repository defaults or synthesized.
 
 No exact Candidate-10 key is frozen, no Stage-C child or evaluator was launched, and no Stage-C evidence assessment exists. Section 36.1 stop condition 1 is active: the current collector cannot bind the exact key, and the required target-host values are unavailable here. Stop at the preflight/key owner. Resume after that owner emits and verifies the exact key on the stakeholder host, then authenticate the resulting preflight JSON under Section 36.4; preserve this workplan as active until the remaining gates actually pass.
+
+
+## 40. Revision-40 immediate repair — remove the stale Rev86 doctor bootstrap gate before prepare
+
+### 40.1 Observed current defect
+
+A fresh campaign using the intended phase-separated acceleration configuration:
+
+~~~
+[acceleration]
+backend = "e3nn"
+training_backend = "cueq"
+only_cueq = false
+require_available = true
+~~~
+
+reaches routine doctor successfully through foundation/model/head configuration, learned-model precision, source/replay path validation, MACE/Torch/e3nn/runtime compatibility, accelerator availability, selected-head extraction/qualification, source/DATA6 e3nn acceleration realization, DATA6 descriptor-capacity probe, GPU/resource checks, and replay prerequisite validation.
+
+Doctor then still executes the historical Rev86 TRAIN2 warm-up/all-pairs noise-normalized parity gate. The observed fresh-campaign realization had all reported force-distribution ratios and discrete selection checks inside the old rule except the stable descriptor absolute guard:
+
+~~~
+cross descriptor max = 1.860e-06
+Rev86 descriptor ceiling = 1.000e-06
+~~~
+
+and therefore failed the requested TRAIN2 cueq backend. This is the obsolete executable rule whose replacement motivated this workplan. It is not evidence against Candidate 10.
+
+### 40.2 Root cause in the current D4 owner
+
+Routine doctor in mdstats/training_data/_campaign_cli_core.py still performs all of the following for phase-separated TRAIN2:
+
+1. builds the Rev86 stable-channel and noise-normalized policies;
+2. calls mdstats.qualify_training_acceleration_realization(...);
+3. stores training_acceleration_noise_normalized_parity;
+4. stores/rebinds historical training_acceleration_parity_policy, training_acceleration_noise_normalized_parity_policy, training_acceleration_realization, and training_acceleration_parity;
+5. prints the old evidence as authorizing; and
+6. appends a fatal doctor failure whenever that historical realization has qualified=False and require_available=true.
+
+That path is incompatible with the already-ratified Candidate-10 lifecycle. Candidate 10 delegates routine doctor only current-record authentication plus cheap runtime/reachability checks. It does not authorize routine doctor to recreate the qualification experiment, estimate parity risk, or make Rev86 evidence consequential.
+
+### 40.3 Required behavioral split
+
+Repair the existing doctor/admission owners so three propositions are separate.
+
+#### A. Preparation/runtime readiness
+
+Routine doctor MUST still fail on genuine preparation/runtime blockers, including unavailable requested source backend, unavailable CuEq runtime capability when the configured future TRAIN2 backend is CuEq, incompatible runtime/dependency/device identity, failed selected-head extraction/authentication, invalid source/replay inputs, unsupported precision/scope, only_cueq=true where portable e3nn state is required, insufficient resources where the existing owner makes them doctor-blocking, and other current preparation-owned prerequisites.
+
+These checks do not authorize CuEq TRAIN2.
+
+#### B. Candidate-10 TRAIN2 authorization state
+
+For phase-separated training_backend="cueq":
+
+- if no exact current Candidate-10 qualification can yet be resolved because the campaign has not reached the bound post-selection/key state, doctor MUST report a distinct non-authorizing state such as PENDING_CANDIDATE10_QUALIFICATION;
+- that pending state MUST NOT make routine doctor fail solely because CuEq TRAIN2 is not yet authorized;
+- doctor MUST NOT run the Rev86 warm-up/all-pairs qualification to replace the missing Candidate-10 record;
+- doctor MUST NOT create a new Candidate-10 qualification record;
+- doctor MUST NOT infer Candidate-10 PASS from capability/reachability;
+- if a current exact Candidate-10 record exists, doctor may authenticate it and report its exact scope/currentness;
+- a stale or wrong-key Candidate-10 record MUST never be reported as current authorization.
+
+#### C. Consequential TRAIN2 admission
+
+Any operation that can actually launch CuEq TRAIN2 MUST remain fail-closed unless the exact current Candidate-10 record authorizes that exact DEF.001 key.
+
+Preparation is not such an operation. The current preparation identity explicitly excludes acceleration.training_backend; only the source/DATA6 acceleration backend is preparation-owned. Therefore prepare MUST NOT require a Candidate-10 TRAIN2 authorization record merely because the configured future TRAIN2 backend is CuEq.
+
+This is not a fallback to e3nn TRAIN2. The intended campaign remains training_backend="cueq" while its TRAIN2 authorization state is pending.
+
+### 40.4 Required code-owner changes
+
+Implement the repair at the existing owners; do not add a bootstrap bypass wrapper.
+
+At minimum:
+
+1. remove the Rev86/noise-normalized qualification call from the consequential routine-doctor path for current phase-separated Candidate-10 campaigns;
+2. stop labelling Rev86 diagnostic output as authorizing in current routine doctor;
+3. stop writing/rebinding Rev86 records as current TRAIN2 authorization during routine doctor;
+4. preserve historical Rev86 record deserialization/readability where required, but classify it as historical/non-authorizing;
+5. introduce or reuse one explicit Candidate-10 authorization-state resolver in the existing acceleration/currentness ownership graph;
+6. make doctor consume that resolver observationally;
+7. make actual TRAIN2 launch/admission consume the same resolver consequentially;
+8. make prepare depend only on its existing preparation-owned projection and source/runtime prerequisites, not the pending TRAIN2 Candidate-10 authorization;
+9. preserve current e3nn source/DATA6 behavior;
+10. preserve FP64 CuEq TRAIN2 fail-closed behavior and all other Candidate-10 scope restrictions;
+11. do not change Candidate-10 D2 semantics, risk coordinates, source relations, or the intended CuEq training backend.
+
+If the current stored training_acceleration_realization type cannot represent a non-authorizing capability/pending state without semantic ambiguity, do not overload qualified=False to mean both historical parity failed and Candidate-10 not yet run. Reuse or minimally refactor the existing authority/currentness representation so capability, pending qualification, current authorization, stale authorization, and explicit failure remain distinguishable.
+
+### 40.5 Required doctor UX
+
+For a fresh intended campaign with source e3nn and future TRAIN2 CuEq, before Stage C, doctor should end with behavior equivalent to:
+
+~~~
+[PASS] source/DATA6 acceleration backend: e3nn ...
+[PASS] TRAIN2 CuEq runtime capability: available; kernel=cueq_pure ...
+[PENDING] TRAIN2 CuEq authorization: Candidate-10 qualification has not yet been performed for an exact current key
+[PASS] preparation readiness: current prerequisites satisfied
+~~~
+
+Exact wording and prefix are delegated D4 presentation, but routine doctor MUST NOT print the old Rev86 relation as current authorizing parity and MUST NOT finish with "Fix every [FAIL] item before continuing" solely because Candidate-10 qualification is pending.
+
+After a current Candidate-10 record exists, doctor should report that record's exact current key/digest and authorization scope rather than rerunning Stage C.
+
+### 40.6 Mandatory regression and negative tests
+
+Update or remove superseded tests instead of preserving Rev86 behavior merely to keep them green.
+
+At minimum add or change tests proving:
+
+1. generated fresh configuration still defaults to source e3nn and TRAIN2 cueq;
+2. routine doctor with valid CuEq capability but no Candidate-10 record returns preparation-ready success and reports Candidate-10 authorization pending;
+3. a synthetic Rev86 descriptor failure such as 1.860e-06 > 1.000e-06 cannot make current routine doctor fail or authorize;
+4. routine doctor does not call the expensive Rev86 TRAIN2 qualification owner for the current Candidate-10 path;
+5. routine doctor does not persist/rebind Rev86 parity as current authorization;
+6. prepare remains reachable with intended training_backend="cueq" while Candidate-10 authorization is pending;
+7. actual CuEq TRAIN2 launch remains blocked with a clear Candidate-10-current-record error while authorization is pending;
+8. an exact current Candidate-10 record authorizes only its exact key;
+9. stale/wrong-key Candidate-10 evidence does not authorize TRAIN2;
+10. historical Rev86 records remain readable but non-authorizing;
+11. source/DATA6 e3nn doctor behavior is unchanged;
+12. require_available=true still fails when CuEq itself is genuinely unavailable or incompatible, distinguishing capability failure from pending qualification;
+13. assembled P5 execution tests cannot inject a legacy TrainingAccelerationRealizationRecord(qualified=True) as sufficient current CuEq authorization after Candidate-10 ownership becomes consequential;
+14. doctor/currentness and TRAIN2 admission resolve through the same canonical Candidate-10 owner so they cannot disagree about current authorization.
+
+Specifically inspect and reconcile at least:
+
+- tests/test_mlff_cueq_train_default1.py;
+- tests/test_mlff_cueq_train_noise_normalized_parity.py;
+- tests/test_mlff_cueq_train_noise_normalized_parity_specification.py;
+- tests/test_mlff_mace_execution_semantics_assembled.py;
+- Candidate-10 preflight/currentness tests added on this branch; and
+- any CLI doctor/prepare tests reached by _campaign_cli_core.py.
+
+Rev86 numerical tests may remain as historical-method tests if they still have value, but they must no longer prove current doctor authorization.
+
+### 40.7 Real-host acceptance before resuming the lifecycle
+
+After repository regression is green, rerun the same fresh campaign with the intended configuration unchanged:
+
+~~~
+backend = "e3nn"
+training_backend = "cueq"
+~~~
+
+Run routine doctor on the RTX 3090.
+
+Acceptance for this repair requires:
+
+1. all genuine source/runtime/capability checks pass;
+2. no Rev86/noise-normalized result is consequential;
+3. no FAIL is emitted solely because Candidate-10 Stage C has not yet occurred;
+4. CuEq TRAIN2 is visibly pending/not-yet-authorized;
+5. doctor exits successfully for preparation readiness; and
+6. no CuEq TRAIN2 trajectory is launched by doctor.
+
+Only after this real-host doctor acceptance may the fresh campaign proceed to prepare.
+
+Then continue Section 36: construct current campaign/post-selection/key state, freeze the exact Candidate-10 preflight key, run Stage C, and only after exact Candidate-10 PASS permit consequential CuEq TRAIN2 admission.
+
+### 40.8 Superseded workaround and blocker state
+
+The previously suggested workaround of changing the fresh campaign to training_backend="e3nn" is explicitly rejected for this lifecycle. It would bypass the defective owner instead of repairing it and would obscure verification that the intended CuEq campaign can bootstrap correctly.
+
+The Revision-39 retired-CampaignStore blocker applies only to the old live campaign generation. The stakeholder's fresh campaign supersedes that operational blocker.
+
+**Current immediate blocker:** stale Rev86 routine-doctor authorizer.
+
+**Next action:** repair and verify doctor/actual-TRAIN2 admission separation per this section. Do not run prepare until this repair passes on the fresh campaign.
+
