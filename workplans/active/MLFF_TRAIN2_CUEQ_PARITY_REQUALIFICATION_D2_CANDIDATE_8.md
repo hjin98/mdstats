@@ -301,9 +301,9 @@ For the scalar adversary \(A^\ast=1,\widehat A=100,x=1\), coefficient qualificat
 
 ### D2.CUEQ8.DEF.012 — finite rank
 
-Candidate 8 supports the learned-model IEEE binary dtype d explicitly bound by A. Candidate 8 currently proposes CuEq TRAIN2 only for binary32.
+Candidate 8 defines the rank separately for every exact IEEE binary dtype that occurs in an authorizing consumer trace or projection comparison. CuEq TRAIN2 acceleration itself remains proposed only for learned-model binary32; accepted binary64 control/reduction quantities may nevertheless appear as binary64 consumer coordinates and are ranked in binary64, never coerced to binary32.
 
-Let w be the storage width, s=2^(w-1) the sign mask, and b_d(x) the unsigned IEEE bit-pattern integer of finite x in exact dtype d.
+For one exact coordinate dtype d, let w be its storage width, s=2^(w-1) the sign mask, and b_d(x) the unsigned IEEE bit-pattern integer of finite x in exact dtype d.
 
 Define
 
@@ -449,6 +449,17 @@ that says when two values are numerically/materially interchangeable for that co
 Historical D4 tolerances, Candidate outcomes, ULP counts, sample maxima, Huber transition scales, or convenience constants cannot create \(\mathcal R_e\).
 
 If a governed continuous consumer has no source-available \(\mathcal R_e\), Candidate-8 qualification for that role is undefined and fails closed.
+
+For the current accepted parent, the source registry is explicit rather than inferred from implementation:
+
+- target checkpoint/monitor force-RMSE admissibility uses accepted D2.CUEQ8 parent import D2.DEF.058 with the exact role-specific \(\tau_{CV}\) or \(\tau_{prod}\) boundary semantics;
+- replay-retention admissibility uses the exact shared checkpoint constraint \(S(c)\) imported by accepted D2.DEF.057, including its authenticated true-reference replay relation;
+- CV outer evaluation uses accepted D2.DEF.059 and exact \(\theta_{CV}\) boundary semantics;
+- representative/checkpoint ordering uses the exact accepted target-side ranking/practical-equivalence owner imported by D2.IMP.CV / D2.IMP.MONITOR;
+- exact-tie, lexicographic, and role-threshold guards retain their accepted owner semantics; and
+- a reported continuous metric that is not consumed by one of these accepted relations is not silently promoted into an authorizing Candidate-8 channel.
+
+This registry may be extended only by another already accepted parent relation; D4 behavior cannot extend it by existence.
 
 ### D2.CUEQ8.DEF.018 — decision geometry as a source relation
 
