@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 22
+revision: 23
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_9_AUTHORED_AWAITING_IMMUTABLE_FREEZE
-workplan_review_basis: 1b618ad2aa16ca04d2c1cbc7ba20b0c437ba8ede
+workplan_review_status: CANDIDATE_9_PREFREEZE_CHALLENGE_CLOSED_AWAITING_IMMUTABLE_FREEZE
+workplan_review_basis: 2a5317558cf3d32455617e5f07efa97c31ef0afe
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -1360,4 +1360,13 @@ The repair contract is:
 12. freeze Candidate 9 before fresh independent Review.
 
 No Candidate-9 Stage-C evidence exists. Stage C and D3/D4 remain blocked.
+
+### Candidate-9 prefreeze author-side correction
+
+Before immutable freeze, the assembled Candidate-9 challenge pass removed a stale duplicated Candidate-8 closing tail and made two already-required implications explicit:
+
+- post-assignment stochastic state that can correlate triplets must be independently regenerated under the renewal contract or represented in the renewal state; otherwise the Candidate-9 i.i.d. model fails closed;
+- \(\eta_{\rm NI}\) is a qualification-comparison probability under the randomized design and cannot stand in for \(q_{\rm cat}\).
+
+These are included in the semantic Candidate-9 target before freeze. No Stage-C evidence exists.
 

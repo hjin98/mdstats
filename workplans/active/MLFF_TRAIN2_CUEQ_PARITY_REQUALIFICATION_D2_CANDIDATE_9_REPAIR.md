@@ -1,7 +1,7 @@
 ---
 kind: D2-candidate-repair-record
 protocol_version: 6.4.0
-status: CANDIDATE_9_AUTHORED_AWAITING_FREEZE
+status: CANDIDATE_9_PREFREEZE_CHALLENGE_CLOSED_AWAITING_FREEZE
 workplan: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md
 repairs_review: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R5.md
 superseded_candidate: c6e18ccfce62d47e96dde80600558522c62c28ef
@@ -115,3 +115,15 @@ Candidate 9 is proposed only.
 No Candidate-9 Stage-C evidence may run before immutable freeze, fresh independent D2 Review PASS, and exact stakeholder ratification of the reviewed method instance.
 
 No D2-to-D3/D4 handoff exists yet.
+
+## 9. Prefreeze author-side challenge correction
+
+A first author-side pass over the assembled Candidate-9 text found and removed a stale duplicate Candidate-8 closing tail that survived the mechanical base-copy step. The semantic candidate was not frozen before this correction.
+
+The same pass made two clarifications explicit rather than leaving them implicit:
+
+1. any post-assignment stochastic owner capable of correlating triplets must be regenerated independently under \(\mathcal W\) or represented in the renewal state; otherwise the i.i.d. applicability condition fails; and
+2. \(\eta_{\rm NI}\) governs the qualification-comparison strict-worse probability under \(\mathcal Q\), not production catastrophic-event probability and never substitutes for \(q_{\rm cat}\).
+
+No Candidate-9 Stage-C evidence exists.
+

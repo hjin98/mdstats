@@ -440,6 +440,8 @@ P_\Lambda
 
 for one prospectively declared common fresh-start law \(P_\Lambda\), independently of qualification assignment entropy. A deterministic identical renewal state is the degenerate special case.
 
+All post-assignment stochastic state capable of correlating triplets must either be regenerated independently under \(\mathcal W\) or be represented inside the pre-assignment renewal state. A shared mutable RNG stream, evolving accelerator cache/state, or other cross-triplet stochastic owner outside this model violates the Candidate-9 applicability contract.
+
 This is a method applicability condition, not an empirical tolerance. If the target host cannot establish the common independent renewal law strongly enough for the exact qualification claim, Candidate-9 qualification fails closed. Candidate 9 defines no post-hoc stratified, Poisson-binomial, martingale, or enlarged-tolerance fallback.
 
 After \(\Lambda_p\) is fixed, draw
@@ -590,7 +592,7 @@ Candidate 9 preserves Candidate 8's removal of the Candidate-7 derivation
 
 There is no such derivation.
 
-Instead, \(\eta_{\rm NI}\) is an explicit stakeholder-ratified D2 method coordinate with no default. Its meaning is exactly the allowed excess **marginal fresh-renewal-process strict-worse probability**, above the exact-exchangeability baseline, for the candidate consumer-score realization relative to reference self.
+Instead, \(\eta_{\rm NI}\) is an explicit stakeholder-ratified D2 method coordinate with no default. Its meaning is exactly the allowed excess **marginal fresh-renewal-process strict-worse probability**, above the exact-exchangeability baseline, for the candidate consumer-score realization relative to reference self. This is a qualification-comparison probability under \(\mathcal Q\); it is not a production catastrophic-event probability and cannot substitute for \(q_{\rm cat}\).
 
 Define
 
@@ -858,7 +860,7 @@ Routine doctor may only:
 1. authenticate an exact current accepted Candidate-9 qualification record applicable to the requested realization; and
 2. execute a cheap real finite forward/backward reachability witness under the requested current state.
 
-Routine doctor cannot estimate or change the ratified risk tuple, triplet count, score definitions, source-owned materiality relations, projection bounds, or oracle identities; authorize another key; retry until pass; revive stale Candidate-7/Candidate-6/Rev86 evidence; authorize source/DATA6 CuEq; or authorize a mid-run backend switch.
+Routine doctor cannot estimate or change the ratified risk tuple, triplet count, score definitions, source-owned materiality relations, projection bounds, or oracle identities; authorize another key; retry until pass; revive stale Candidate-8/Candidate-7/Candidate-6/Rev86 evidence; authorize source/DATA6 CuEq; or authorize a mid-run backend switch.
 
 ## 18. Candidate-9 Stage-C obligations
 
@@ -973,26 +975,5 @@ All Candidate-8 consumer closure, source-owned materiality, ULP/score, complete-
 No Candidate-9 Stage-C result exists.
 
 Candidate 9 must now be frozen immutably and subjected to a genuinely fresh independent D2 Review. A fresh Review must challenge the renewal/common-law applicability condition, the pre-assignment label-swap proof, the separation of randomization-policy identity from realized assignments, failure/no-retry semantics, and verify that the previously passed Candidate-8 surfaces remain preserved.
-
-No D2-to-D3/D4 handoff exists before independent PASS, exact stakeholder ratification, and subsequent fresh Stage-C qualification.
-
-
-
-Author-side falsification after the R4 repair found no remaining known D2 false-pass route inside the declared Candidate-9 family.
-
-The most important change is conceptual: Candidate 9 no longer asks an unowned ULP magnitude on model parameters to stand in for scientific materiality. The complete portable state remains structurally accountable, while actual continuous adequacy is defined only at consumers whose accepted owner provides a relation.
-
-The two risk quantities that cannot be derived from mathematics alone are exposed rather than hidden:
-
-- \(\eta_{\rm NI}\) is a stakeholder numerical-noninferiority risk choice;
-- \(q_{\rm cat}\) is a stakeholder population materiality-risk choice.
-
-Neither has a default, neither is inferred from \(\Gamma\), confidence, machine epsilon, or observed CuEq behavior, and both are part of the exact qualification key.
-
-The projection repair is intentionally strict. Correctly rounded semantic coefficients are required before learned-dtype accumulation error is considered. If pinned MACE 0.3.16 cannot satisfy that relation, Candidate 9 fails Stage C rather than widening the coefficient allowance.
-
-No Candidate-9 Stage-C result exists.
-
-Candidate 9 must now be frozen immutably and subjected to a genuinely fresh independent D2 Review. A fresh Review must challenge the parameterized-risk ownership itself, the i.i.d. launch-mixture argument, source availability of every \(\mathcal R_e\), the consumer-set closure, and the independent semantic definition/correct rounding of \(A^\ast\).
 
 No D2-to-D3/D4 handoff exists before independent PASS, exact stakeholder ratification, and subsequent fresh Stage-C qualification.
