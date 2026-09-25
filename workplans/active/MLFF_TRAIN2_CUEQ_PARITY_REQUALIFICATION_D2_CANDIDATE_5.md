@@ -701,9 +701,9 @@ If this is false, the result is `INSUFFICIENT_REFERENCE_RESOLUTION` for that ens
 
 After candidate observations exist, define \(SE_{C,e,h,c}\) by the same formula over candidate process means and require
 
-$
+$$
 SE_{C,e,h,c}\le\epsilon_{c,32}/2.
-$
+$$
 
 If that condition is false, the ensemble is non-authorizing with result `INSUFFICIENT_CANDIDATE_RESOLUTION`. Candidate noise cannot be converted into permission to increase process count after inspecting the outcome.
 
