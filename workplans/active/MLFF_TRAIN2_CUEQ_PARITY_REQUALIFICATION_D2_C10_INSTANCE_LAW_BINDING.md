@@ -142,7 +142,17 @@ If the exact live campaign explicitly configures another already-accepted outer 
 
 ### Shared checkpoint/replay constraints
 
-Every quantity consumed by \(S(c)\) uses the exact accepted relation imported by D2.DEF.057 and the current authenticated replay lineage. Missing, stale or incompatible true-reference replay evidence fails closed.
+Every quantity consumed by \(S(c)\) uses the exact accepted relation imported by D2.DEF.057 and the current authenticated replay lineage.
+
+For replay-enabled foundation adaptation, this exact Candidate-10 instance binds the accepted-parent replay-retention hard budget
+
+\[
+\Delta_{\rm replay}\le 0.030\ {\rm eV/\AA}
+\]
+
+(`30 meV/Å`) against authenticated true-reference/DFT replay evidence. Equality passes; no Candidate observation, newer unratified warning/hard policy, or historical D4 threshold can widen this accepted-parent relation.
+
+The accepted-parent shared checkpoint constraint requires finite required metrics and carries no additional physical-gate tuple in the current realization (`required_physical_gates = ()`). Missing, stale or incompatible true-reference replay evidence fails closed.
 
 ### Ordering and ties
 
