@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 19
+revision: 20
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_8_AUTHOR_REPAIR_COMPLETE_PENDING_FREEZE
-workplan_review_basis: 309e5221f9869e6767ae642f1dd0c435ba397ef9
+workplan_review_status: CANDIDATE_8_FROZEN_AWAITING_FRESH_INDEPENDENT_REVIEW
+workplan_review_basis: c6e18ccfce62d47e96dde80600558522c62c28ef
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -1186,3 +1186,31 @@ The repair contract is:
 15. freeze Candidate 8 before fresh independent Review.
 
 No Candidate-8 Stage-C evidence exists. Stage C and D3/D4 remain blocked.
+
+
+## 24. Candidate-8 immutable Review freeze
+
+Candidate 8 is frozen for fresh independent D2 Review at:
+
+\`c6e18ccfce62d47e96dde80600558522c62c28ef\`
+
+with Candidate-8 blob:
+
+\`60598fa33048df16f9cc41e6adf761dd952aa28f\`.
+
+The pre-freeze author drafts
+
+- \`07c273a4e5ec382ed84204af73bd97fe08f5cd34\`; and
+- \`d3f4cbbadbf86553361be756c31e372478a338de\`
+
+are historical authoring state only and are not Review targets.
+
+Candidate 8 is a parameterized D2 method family. The semantic family is frozen; no Stage-C instance exists yet. Exact stakeholder ratification after independent PASS must bind \(\eta_{\rm NI}\), \(q_{\rm cat}\), \(n\), exact \(E\), and every accepted materiality source \(\mathcal R_e\) before Stage C.
+
+The fresh independent handoff is:
+
+\`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_HANDOFF_C8.md\`.
+
+No Candidate-8 Stage-C evidence may run before fresh independent Review PASS plus exact stakeholder instance ratification.
+
+No D2-to-D3/D4 handoff exists.
