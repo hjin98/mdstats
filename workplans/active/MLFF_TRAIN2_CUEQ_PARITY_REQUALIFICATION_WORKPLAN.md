@@ -4,9 +4,9 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 29
+revision: 30
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_10_FROZEN_AWAITING_FRESH_INDEPENDENT_REVIEW
+workplan_review_status: CANDIDATE_10_REVIEW_PASS_AWAITING_STAKEHOLDER_INSTANCE_RATIFICATION
 workplan_review_basis: db2ed47e8c999cb61507803610c72c0fa7ffaaf7
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
@@ -1517,3 +1517,38 @@ No Candidate-10 Stage-C evidence may run before fresh independent Review PASS pl
 
 No D2-to-D3/D4 handoff exists.
 
+
+## 31. Candidate-10 fresh independent Review PASS
+
+Fresh independent Protocol-6.4 D2 Review R7 of immutable Candidate 10:
+
+db2ed47e8c999cb61507803610c72c0fa7ffaaf7
+
+with Candidate-10 blob:
+
+7843a41172d25c231d4c589aebc0214ddec42bd1
+
+is recorded at:
+
+workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R7.md.
+
+The Review disposition is:
+
+**PASS AS D2 CANDIDATE FAMILY FOR STAKEHOLDER INSTANCE RATIFICATION AND STAGE-C TESTING**
+
+**SERIOUS CHALLENGE to accepted D1/D2 parent authority: NO**
+
+The Review independently verified immutable identity/lifecycle state, reconstructed the accepted parent source, re-ran the R6 $0.20,0,0$ slot-mixture adversary and its post-start/cache/concurrency variants, re-derived the R5 assignment theorem and finite-sample model, revisited source-owned materiality and complete-consumer closure, rechecked IEEE ULP and score semantics, re-inspected pinned MACE 0.3.16 projection ownership, and re-ran the complete R1-R6 regression surface.
+
+Two conservative features were explicitly adjudicated rather than silently ignored:
+
+1. the full three-child product law is stronger than the minimum pairwise independence needed by the separate materiality propositions, but its extra strength can only reject additional keys and does not create a false authorization;
+2. the strict distance-to-threshold/order-gap guards are conservative sufficient qualification conditions layered on exact accepted decision/source relations and do not widen a source-owned tolerance.
+
+Candidate 10 remains immutable and is not yet accepted project authority.
+
+The next gate is **stakeholder ratification of one exact reviewed Candidate-10 method instance**. The ratified instance must bind exact $\eta_{\rm NI}$, $q_{\rm cat}$, $n$, exact $E$, every source-owned $\mathcal R_e$, $\mathcal Q$, $\mathcal W_{\rm pre}$, $\mathcal W_R$, $\mathcal W_C$, $P_R^{\rm prod}$, $P_C^{\rm prod}$, and the corresponding projection/evaluator instance coordinates.
+
+No Candidate-10 Stage-C evidence may run before that exact stakeholder instance ratification.
+
+D3/D4 remain blocked until fresh Candidate-10 Stage C passes and the later lifecycle contract authorizes handoff.
