@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 17
+revision: 18
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_7_FROZEN_AWAITING_FRESH_INDEPENDENT_REVIEW
-workplan_review_basis: 499b1269590db7c8636b32e6c2dd5cebb05ac602
+workplan_review_status: REOPENED_AFTER_CANDIDATE_7_INDEPENDENT_NO_PASS
+workplan_review_basis: 309e5221f9869e6767ae642f1dd0c435ba397ef9
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -1078,3 +1078,78 @@ No Candidate-7 Stage-C evidence may run before a fresh independent Review PASS a
 No D2-to-D3/D4 handoff exists yet.
 
 Any semantic repair discovered by that Review creates Candidate 8 or later.
+
+
+## 22. Candidate-7 independent NO-PASS and Candidate-8-or-later repair obligations
+
+Fresh independent Protocol-6.4 D2 Review R4 of immutable Candidate 7
+
+\`499b1269590db7c8636b32e6c2dd5cebb05ac602\`
+
+with frozen Candidate-7 blob
+
+\`d5e1c72d6cb4c35027e0f43f502f0da48819af3d\`
+
+returned **NO-PASS** with **no SERIOUS CHALLENGE to accepted D1/D2 parent authority**.
+
+The independent Review record is:
+
+\`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R4.md\`
+
+at lifecycle commit:
+
+\`309e5221f9869e6767ae642f1dd0c435ba397ef9\`.
+
+Candidate 7 remains immutable historical candidate state and MUST NOT be edited, reinterpreted, or continued under the same candidate identity. No Candidate-7 Stage-C qualification may run, and no Candidate-7 CuEq outcome may be used to formulate or tune its replacement.
+
+Review R4 confirms that Candidate 7 closes important Candidate-6 defects:
+
+- final-step portable-state observability is complete in the proposed scope;
+- complete forward-affecting inventory includes ordinary state such as \`avg_num_neighbors\`;
+- latent optimizer handling is narrowed correctly to realized-horizon consequences rather than invalid cross-basis state equality;
+- the IEEE binary32 ULP rank is unambiguous across signed zero/subnormals/normals;
+- explicit production/oracle semantic-owner sharing exposed by R3 is prohibited;
+- generic source/DATA6 CuEq remains outside authority;
+- FP64 CuEq TRAIN2 remains fail-closed;
+- same-backend restart remains distinct from forbidden cross-backend restart; and
+- EVAL2 remains e3nn after completed-state projection.
+
+However, Review R4 found five blocking D2 defects in the replacement relation:
+
+1. **Unjustified stochastic noninferiority margin.** The derivation \(\Gamma=0.90\Rightarrow\eta=0.10\Rightarrow p_{\max}=0.60\) repurposes Candidate-6's reference-content target as a sign-test noninferiority slack without a source-closed theorem or accepted scientific/numerical warrant. The \(1/2\) exchangeability baseline is meaningful; the added \(0.10\) is not derived.
+
+2. **Inference/model mismatch across launch-order strata.** The six fixed launch permutations are prospectively counterbalanced, but Stage-A evidence shows order/process effects are material. If the Bernoulli worse probabilities vary by schedule stratum, the sum is Poisson-binomial rather than Binomial(101,p), so ordinary Clopper-Pearson is not exact. Candidate 8 must either qualify one material order per exact key, explicitly randomize a nuisance population, or use a confidence construction valid for the actual stratified design.
+
+3. **Continuous reference adequacy and candidate catastrophic-tail population risk are not closed.** Threshold/order margins protect discrete decision stability but permit arbitrarily large decision-stable continuous self noise. The sample maximum is only an observed-sample tail guard and gives no candidate-tail population guarantee; rare severe candidate failures can be missed with high probability.
+
+4. **Semantic-block RMS remains representation/dimension sensitive.** One serialized tensor per block prevents cross-tensor dilution but not dilution inside one very large state item. The partition must be derived from accepted representation/forward semantics or replaced by another non-dilutable consequence relation; outcome-selected block splitting is forbidden.
+
+5. **Floating projection coefficient error self-authorizes.** The current bound includes the full observed term \(|\widehat A-A^\ast||x|\) on the allowed side. A grossly wrong production matrix can therefore pass if it is evaluated accurately. Candidate 8 must bind an exact independent semantic owner for \(A^\ast\), derive a prospective coefficient-construction error bound, require \(\widehat A\) to satisfy that bound, and propagate only the justified bound rather than the full observed coefficient error.
+
+The exact Clopper-Pearson arithmetic itself was independently verified for a genuine Binomial(101,p) model:
+
+- \(X=50\): one-sided \(\alpha_j=0.025\) upper bound \(0.5963569324904932<0.60\);
+- \(X=51\): upper bound \(0.6059600394771283>0.60\).
+
+Bonferroni across the two score families is valid if each underlying per-family confidence statement is valid. The arithmetic does not repair the design/model mismatch above.
+
+The Review-R3 adversary \(\Pr(S_{RR}=0)=0.90\), \(\Pr(S_{RR}=M)=0.10\), \(S_{RC}=M/2\) is rejected by Candidate 7's sign rule under the intended binomial model; this successful adversary closure does not validate the unsupported \(0.60\) margin generally.
+
+### Candidate-8-or-later mandatory repair contract
+
+The next semantic candidate MUST be Candidate 8 or later and MUST, before a new immutable freeze:
+
+1. preserve Candidate 7 unchanged as historical evidence;
+2. preserve exact-realization scope, complete accepted TRAIN2 horizon, complete live/EMA portable-state observation, exact E currentness/leakage restrictions, exact scientific-decision equality, same-backend restart, source/DATA6 e3nn narrowing, FP64 TRAIN2 fail-closed behavior, e3nn EVAL2 identity, and routine-doctor non-authorizing role unless separately falsified;
+3. derive the candidate stochastic noninferiority/equivalence proposition from accepted D2 consequence semantics and remove any unsupported relabeling of \(\Gamma\);
+4. make launch-order/randomization/stratification part of an explicit population model and use an exact/valid confidence procedure for that model;
+5. define continuous reference adequacy and catastrophic candidate-tail severity/probability semantics prospectively, or replace sampling authority with a structural bound that rules out the relevant tail mechanism;
+6. define semantic blocks from accepted representation mathematics/forward ownership, or replace \(S_{\rm rms}\) with a source-closed non-dilutable broad-displacement relation;
+7. bind an exact independent semantic source for every nontrivial projection transform \(A^\ast\), derive a prospective coefficient-construction error budget including conditioning/pseudoinverse/rounding semantics, require production coefficients to satisfy it, and ensure wrong matrices cannot pass by self-allowance;
+8. restate completed-state projection evaluator qualification under the repaired stochastic/tail relation;
+9. preserve structural-oracle failure as dominant: evaluator agreement may never rescue inventory/correspondence/transform failure;
+10. keep the repair prospective: no Candidate-7 Stage-C outcome may select margins, blocks, process counts, tail policy, transform bounds, randomization law, or repair form;
+11. freeze a new immutable Candidate 8 or later and perform a genuinely fresh independent D2 Review; and
+12. require exact stakeholder ratification of that passing immutable candidate before any Stage-C qualification, with D3/D4 remaining blocked until then.
+
+No D2-to-D3/D4 handoff exists while these blockers remain.
