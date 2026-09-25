@@ -25,7 +25,7 @@ repair_safe_train2_backend: e3nn
 
 ## 0. Disposition and Serious Challenge
 
-**REVISION-36 CURRENT LIFECYCLE:** the opening Serious Challenge below is retained as historical problem provenance, but it is no longer the current lifecycle disposition. Immutable Candidate 10 passed fresh independent D2 Review R7, the stakeholder accepted the reviewed family, and the exact `0.09 / 0.09 / 300` risk instance plus law/role binding are now frozen. **No current SERIOUS CHALLENGE to accepted D1/D2 parent authority is active.** Repository-only preflight collector hardening and its focused negative tests are complete. The exact target-host key remains unfrozen: this environment cannot access the stakeholder RTX 3090 runtime or live CampaignStore, and the current collector does not serialize the exact Candidate-10 realization key. Section 36.1 stop condition 1 is active; Stage C, dependent D3/D4 reconciliation, assembled acceptance, and closure remain incomplete. The stakeholder's continuation authorization remains subject to the stop/reopen conditions in Section 36.
+**REVISION-37 CURRENT LIFECYCLE:** the opening Serious Challenge below is retained as historical problem provenance, but it is no longer the current lifecycle disposition. Immutable Candidate 10 passed fresh independent D2 Review R7, the stakeholder accepted the reviewed family, and the exact `0.09 / 0.09 / 300` risk instance plus law/role binding are now frozen. **No current SERIOUS CHALLENGE to accepted D1/D2 parent authority is active.** The existing acceleration owner now provides canonical DEF.001 key encoding, and the preflight projects role/model-specific keys from the current P5 plan owners while binding the ratified law/risk records, execution-owner source identities, replay bytes, and existing authenticated target ExtXYZ transport receipts. It fails closed when a target transport receipt is absent. The key remains unfrozen because this environment cannot access the stakeholder RTX 3090 runtime or live CampaignStore and no exact campaign/model inputs or target preflight JSON were supplied. Section 36.1 stop condition 1 is active; Stage C, dependent D3/D4 reconciliation, assembled acceptance, and closure remain incomplete. The stakeholder's continuation authorization remains subject to the stop/reopen conditions in Section 36.
 
 **OPEN — SERIOUS CHALLENGE to the current executable TRAIN2 FP32 backend-equivalence rule, including its missing accepted-D2 source closure and its numerical adequacy.**
 
@@ -1656,6 +1656,35 @@ Focused local structural verification before commit:
 The exact Candidate-10 replay relation is explicitly bound to the accepted-parent `30 meV/Å` true-reference hard budget. The branch's current `75 / 75 / 50 meV/Å` assessment values descend from an unratified material D2 renewal and are recorded only as D4 observations; Stage C remains governed by accepted parent `45 / 45 / 30 meV/Å` plus Candidate 10.
 
 Stage C remains blocked on the resulting target-host preflight JSON. No qualification trajectory has been run.
+
+
+## 38. Revision-37 implementer execution update — exact-key projection repair and target-host gate
+
+### 38.1 Exact-key projection repair
+
+The previous projection attempt was not executable: it referenced accepted-parent identities that `collect_git()` did not return, used a map for the ordered kernel pair, omitted explicit replay and target transport byte identities, and included a guessed prewarm value. The repair:
+
+- adds the canonical immutable DEF.001 key value to the existing `mdstats.training_data.acceleration` owner and uses it for preflight key digest validation;
+- verifies the exact accepted-parent commits and the frozen Candidate-10 risk/law binding blobs before projection;
+- records the reference/candidate kernel pair in order and binds the current TRAIN2 execution-owner source modules into (Q);
+- derives replay source/transport SHA-256 identities through the existing P5 replay resolver and confirms the plans bind that exact lineage;
+- reads existing P5 target-training and common-monitor ExtXYZ materializations through the current validation owner, authenticates their memberships and bytes, and refuses to create transport files during this observational preflight; and
+- removes the final-production role’s unratified D4 CV policy digests from its Candidate-10 membership coordinate and does not assign a guessed prewarm value.
+
+The focused local checks on 2026-09-25 are:
+
+- `conda run -n mace python -m pytest -q tests/test_mlff_cueq_c10_stage_c_preflight.py` — **19 passed**, one temporary-fixture `VelocityReconstructionWarning`;
+- `conda run -n mace python -m py_compile mdstats/training_data/acceleration.py tools/run_mlff_cueq_c10_stage_c_preflight.py tests/test_mlff_cueq_c10_stage_c_preflight.py` — **PASS**;
+- preflight CLI `--help` import/construction — **PASS**; and
+- `git diff --check` — **PASS**.
+
+These verify projection and fail-closed control behavior only. No target-host key or Candidate-10 qualification was produced.
+
+### 38.2 Target-host preflight gate remains unavailable
+
+The direct RTX precheck on this host returned exit status 9: `nvidia-smi` could not communicate with an NVIDIA driver. This host therefore cannot establish the ratified RTX 3090 device/runtime identity. The exact stakeholder campaign TOML, locked MPA-0 checkpoint, live CampaignStore, current P5 materialization receipts/ExtXYZ bytes, and target-host preflight JSON were not supplied. The collector now refuses to publish a key if the required current P5 target transport receipt is absent; it will not synthesize that SHA or materialize a replacement in the observational preflight.
+
+No exact Candidate-10 key is frozen. No Stage-C child or evaluator was launched, no Stage-C evidence assessment exists, and no D3/D4 dependent reconciliation or assembled acceptance is claimed. Section 36.1 stop condition 1 remains active at exact-key freeze. Keep this workplan active and resume on the stakeholder RTX 3090 host after supplying the exact campaign/model inputs and authenticatable current P5 transport artifacts.
 
 
 ## 36. Revision-35 implementer continuation contract — complete the remaining Candidate-10 lifecycle

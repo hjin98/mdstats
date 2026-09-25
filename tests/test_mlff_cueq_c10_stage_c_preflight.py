@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 import shutil
 import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -55,6 +56,58 @@ def test_risk_binding_is_frozen_instance_choice():
     }
 
 
+def test_git_identity_contains_the_accepted_parent_and_ratified_bindings(monkeypatch, tmp_path):
+    blobs = {
+        "workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_10.md": m.CANDIDATE_BLOB,
+        "workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_C10_INSTANCE_RISK_BINDING.md": m.RISK_BINDING_BLOB,
+        "workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_C10_INSTANCE_LAW_BINDING.md": m.LAW_BINDING_BLOB,
+    }
+    monkeypatch.setattr(
+        m,
+        "_run",
+        lambda argv, *, cwd=None: {
+            ("git", "rev-parse", "--show-toplevel"): str(tmp_path),
+            ("git", "status", "--porcelain=v1", "--untracked-files=all"): "",
+            ("git", "branch", "--show-current"): m.EXPECTED_BRANCH,
+            ("git", "rev-parse", "HEAD"): "head-commit",
+        }[tuple(argv)],
+    )
+    monkeypatch.setattr(m, "_git_hash", lambda _repo, path: blobs[path])
+    monkeypatch.setattr(m, "_require_candidate_ancestor", lambda *_args: None)
+    monkeypatch.setattr(m, "_require_exact_commit", lambda *_args: None)
+
+    identity = m.collect_git(str(tmp_path))
+    assert identity["accepted_parent_kernel"] == m.ACCEPTED_PARENT_KERNEL
+    assert identity["accepted_parent_source"] == m.ACCEPTED_PARENT_SOURCE
+    assert identity["candidate_commit"] == m.CANDIDATE_COMMIT
+    assert identity["risk_binding_blob"] == m.RISK_BINDING_BLOB
+    assert identity["law_binding_blob"] == m.LAW_BINDING_BLOB
+
+
+def test_git_identity_rejects_a_changed_ratified_law_binding(monkeypatch, tmp_path):
+    blobs = {
+        "workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_10.md": m.CANDIDATE_BLOB,
+        "workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_C10_INSTANCE_RISK_BINDING.md": m.RISK_BINDING_BLOB,
+        "workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_C10_INSTANCE_LAW_BINDING.md": "0" * 40,
+    }
+    monkeypatch.setattr(
+        m,
+        "_run",
+        lambda argv, *, cwd=None: {
+            ("git", "rev-parse", "--show-toplevel"): str(tmp_path),
+            ("git", "status", "--porcelain=v1", "--untracked-files=all"): "",
+            ("git", "branch", "--show-current"): m.EXPECTED_BRANCH,
+            ("git", "rev-parse", "HEAD"): "head-commit",
+        }[tuple(argv)],
+    )
+    monkeypatch.setattr(m, "_git_hash", lambda _repo, path: blobs[path])
+    monkeypatch.setattr(m, "_require_candidate_ancestor", lambda *_args: None)
+    monkeypatch.setattr(m, "_require_exact_commit", lambda *_args: None)
+
+    with pytest.raises(RuntimeError, match="law/role binding mismatch"):
+        m.collect_git(str(tmp_path))
+
+
 def _git_repo(tmp_path: Path, *, candidate_bytes: bytes | None = None) -> Path:
     repo = tmp_path / "repo"
     candidate = (
@@ -67,6 +120,14 @@ def _git_repo(tmp_path: Path, *, candidate_bytes: bytes | None = None) -> Path:
         shutil.copyfile(source, candidate)
     else:
         candidate.write_bytes(candidate_bytes)
+    for name in (
+        "MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_C10_INSTANCE_RISK_BINDING.md",
+        "MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_C10_INSTANCE_LAW_BINDING.md",
+    ):
+        shutil.copyfile(
+            MODULE_PATH.parents[1] / "workplans/active" / name,
+            repo / "workplans/active" / name,
+        )
     subprocess.run(
         ["git", "init", "--initial-branch", m.EXPECTED_BRANCH],
         cwd=repo,
@@ -108,6 +169,7 @@ def test_collect_git_accepts_only_clean_requested_branch_and_exact_candidate(
 ):
     repo = _git_repo(tmp_path)
     monkeypatch.setattr(m, "CANDIDATE_COMMIT", _head(repo))
+    monkeypatch.setattr(m, "_require_exact_commit", lambda *_args: None)
     record = m.collect_git(str(repo))
     assert record["branch"] == m.EXPECTED_BRANCH
     assert record["candidate_blob"] == m.CANDIDATE_BLOB
@@ -216,13 +278,19 @@ def test_manifest_digest_verification_covers_all_fields():
 def _manifest_with_exact_key():
     coordinates = {
         "d": "float32",
-        "theta_0": {"sha256": "a" * 64},
+        "theta_0": {"model_family": "mace_mh_1", "sha256": "a" * 64},
         "q_0": {"sha256": "b" * 64},
-        "D": {"sha256": "c" * 64},
-        "E": {"sha256": "d" * 64},
+        "D": {
+            "selected_binding": {"content_digest": "c" * 64},
+            "sha256": "c" * 64,
+        },
+        "E": {"role": "cv", "sha256": "d" * 64},
         "O": {"sha256": "e" * 64},
         "H": {"sha256": "f" * 64},
-        "K": ["e3nn", "cueq_pure"],
+        "K": [
+            {"kernel": "e3nn", "calculator_kwargs": {"enable_cueq": False, "enable_oeq": False}},
+            {"kernel": "cueq_pure", "calculator_kwargs": {"enable_cueq": True, "enable_oeq": False}},
+        ],
         "rho": {"sha256": "1" * 64},
         "m": {"sha256": "2" * 64},
         "R": {"sha256": "3" * 64},
@@ -241,6 +309,27 @@ def test_preflight_publication_requires_exact_candidate10_key_coordinates():
 
     payload = _manifest_with_exact_key()
     m._require_exact_train2_keys(payload)
+    m._require_candidate10_key_coverage(
+        payload,
+        [
+            {
+                "model_family": "mace_mh_1",
+                "role": "cv",
+                "selected_binding_digest": "c" * 64,
+            }
+        ],
+    )
+    with pytest.raises(RuntimeError, match="coverage is incomplete"):
+        m._require_candidate10_key_coverage(
+            payload,
+            [
+                {
+                    "model_family": "mace_mpa_0",
+                    "role": "final_production",
+                    "selected_binding_digest": "c" * 64,
+                }
+            ],
+        )
     key = payload["candidate10"]["exact_train2_keys"][0]
     with pytest.raises(RuntimeError, match="digest mismatch"):
         m._require_exact_train2_keys(
@@ -255,11 +344,28 @@ def test_preflight_publication_requires_exact_candidate10_key_coordinates():
         m._require_exact_train2_keys(
             {"candidate10": {"exact_train2_keys": [{"key_digest": "0" * 64}]}}
         )
-
     with pytest.raises(RuntimeError, match="Duplicate exact Candidate-10 TRAIN2 key"):
         m._require_exact_train2_keys(
             {"candidate10": {"exact_train2_keys": [key, dict(key)]}}
         )
+
+
+def test_target_key_projection_requires_existing_authenticated_extxyz(tmp_path: Path):
+    binding = SimpleNamespace(campaign_generation=3)
+    context = SimpleNamespace(
+        paths=SimpleNamespace(internal=tmp_path),
+        selected=SimpleNamespace(binding=binding),
+        method_policies=SimpleNamespace(extxyz=object()),
+    )
+    trajectory = {"content_digest": "a" * 64}
+    with pytest.raises(RuntimeError, match="cannot bind the exact target ExtXYZ transport"):
+        m._target_transport_identity(
+            context,
+            trajectory=trajectory,
+            training_frame_uids=("frame-1",),
+            monitor_frame_uids=("frame-2",),
+        )
+    assert not (tmp_path / "post-selection" / "g3" / "runs" / ("a" * 64)).exists()
 
 
 def test_campaign_store_missing_or_unselected_lineage_fails_closed(tmp_path: Path):

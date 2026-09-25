@@ -28,6 +28,7 @@ from .mace_compatibility import mace_runtime_warning_handled
 from ._common import (
     TrainingDataInputError,
     TrainingDataSerializationError,
+    canonical_json,
     digest,
     validate_digest,
     sha256_file_cached,
@@ -45,6 +46,108 @@ TRAINING_ACCELERATION_REPEATABILITY_DIAGNOSTIC_LEGACY_SCHEMA = "mdstats.training
 TRAINING_ACCELERATION_DETERMINISTIC_CONTROL_DIAGNOSTIC_SCHEMA = "mdstats.training-acceleration-deterministic-control-diagnostic.v1"
 TRAINING_ACCELERATION_NOISE_NORMALIZED_PARITY_POLICY_SCHEMA = "mdstats.training-acceleration-noise-normalized-parity-policy.v1"
 TRAINING_ACCELERATION_NOISE_NORMALIZED_PARITY_RECORD_SCHEMA = "mdstats.training-acceleration-noise-normalized-parity-record.v1"
+TRAINING_ACCELERATION_CUEQ_C10_KEY_COORDINATES = (
+    "d",
+    "theta_0",
+    "q_0",
+    "D",
+    "E",
+    "O",
+    "H",
+    "K",
+    "rho",
+    "m",
+    "R",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingAccelerationCueqCandidate10Key:
+    """Canonical immutable encoding of the Candidate-10 DEF.001 key.
+
+    This value identifies one exact qualification applicability. It is not a
+    qualification result and cannot authorize a backend. The nested coordinate
+    payload is retained as canonical JSON so callers cannot mutate a key after
+    its digest has been computed.
+    """
+
+    canonical_coordinates_json: str
+
+    def __post_init__(self) -> None:
+        try:
+            coordinates = json.loads(str(self.canonical_coordinates_json))
+        except (TypeError, ValueError) as exc:
+            raise TrainingDataInputError(
+                "Candidate-10 TRAIN2 key coordinates must be canonical JSON."
+            ) from exc
+        if not isinstance(coordinates, Mapping):
+            raise TrainingDataInputError(
+                "Candidate-10 TRAIN2 key coordinates must be a JSON object."
+            )
+        expected = set(TRAINING_ACCELERATION_CUEQ_C10_KEY_COORDINATES)
+        if set(coordinates) != expected:
+            raise TrainingDataInputError(
+                "Candidate-10 TRAIN2 key must contain exactly the DEF.001 coordinates: "
+                + ", ".join(TRAINING_ACCELERATION_CUEQ_C10_KEY_COORDINATES)
+            )
+        if coordinates["d"] != "float32":
+            raise TrainingDataInputError(
+                "Candidate-10 CuEq TRAIN2 key is defined only for float32."
+            )
+        for name in TRAINING_ACCELERATION_CUEQ_C10_KEY_COORDINATES[1:]:
+            value = coordinates[name]
+            if not isinstance(value, (Mapping, list)) or not value:
+                raise TrainingDataInputError(
+                    f"Candidate-10 TRAIN2 key coordinate {name} must be a non-empty structured identity."
+                )
+        if canonical_json(coordinates) != self.canonical_coordinates_json:
+            raise TrainingDataInputError(
+                "Candidate-10 TRAIN2 key coordinates are not in canonical JSON form."
+            )
+
+    @classmethod
+    def from_coordinates(
+        cls, coordinates: Mapping[str, Any]
+    ) -> "TrainingAccelerationCueqCandidate10Key":
+        if not isinstance(coordinates, Mapping):
+            raise TrainingDataInputError(
+                "Candidate-10 TRAIN2 key coordinates must be a mapping."
+            )
+        return cls(canonical_json(dict(coordinates)))
+
+    @property
+    def coordinates(self) -> dict[str, Any]:
+        return json.loads(self.canonical_coordinates_json)
+
+    @property
+    def key_digest(self) -> str:
+        return digest(self.coordinates)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**self.coordinates, "key_digest": self.key_digest}
+
+    @classmethod
+    def from_dict(
+        cls, payload: Mapping[str, Any]
+    ) -> "TrainingAccelerationCueqCandidate10Key":
+        expected = set(TRAINING_ACCELERATION_CUEQ_C10_KEY_COORDINATES) | {
+            "key_digest"
+        }
+        if not isinstance(payload, Mapping) or set(payload) != expected:
+            raise TrainingDataSerializationError(
+                "Candidate-10 TRAIN2 key record does not contain the exact DEF.001 coordinates and key_digest."
+            )
+        result = cls.from_coordinates(
+            {
+                name: payload[name]
+                for name in TRAINING_ACCELERATION_CUEQ_C10_KEY_COORDINATES
+            }
+        )
+        if str(payload["key_digest"]) != result.key_digest:
+            raise TrainingDataSerializationError(
+                "Candidate-10 TRAIN2 key digest mismatch."
+            )
+        return result
 
 
 class MaceAccelerationBackend(str, Enum):
