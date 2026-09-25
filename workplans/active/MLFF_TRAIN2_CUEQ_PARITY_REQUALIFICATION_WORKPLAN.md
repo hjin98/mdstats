@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 15
-reviewed_date: 2026-09-24
-workplan_review_status: PASS_AS_WORKPLAN_AFTER_STAGE_B_FINAL_AUTHOR_READINESS_REPAIR
-workplan_review_basis: 08e2fcc53128a2a0b197a673453437e5f584f4cc
+revision: 16
+reviewed_date: 2026-09-25
+workplan_review_status: REOPENED_AFTER_CANDIDATE_6_INDEPENDENT_NO_PASS
+workplan_review_basis: ffa521096376bcee66c3ebe867022613c476243d
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -979,3 +979,59 @@ Candidate 6 remains **proposed, not accepted**.
 No Candidate-6 Stage-C evidence may run before a fresh independent Review passes and the exact passing immutable candidate receives stakeholder ratification.
 
 No D2-to-D3/D4 handoff exists yet.
+
+
+## 20. Candidate-6 independent NO-PASS and Candidate-7 repair obligations
+
+Fresh independent Protocol-6.4 D2 Review R3 of immutable Candidate 6
+
+`f3035317dcea1448c9d6d825c6f2d9f156aaec24`
+
+with frozen Candidate-6 blob
+
+`f2596ef7bb0f146e6a6ec3b0af44ffcf8b96764a`
+
+returned **NO-PASS** with **no SERIOUS CHALLENGE to accepted D1/D2 parent authority**.
+
+The independent Review record is:
+
+`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R3.md`
+
+at lifecycle commit:
+
+`ffa521096376bcee66c3ebe867022613c476243d`.
+
+Candidate 6 remains immutable historical candidate state and MUST NOT be edited, reinterpreted, or continued under the same candidate identity. No Candidate-6 Stage-C qualification may run, and no Candidate-6 CuEq outcome may be used to formulate or tune its replacement.
+
+Review R3 found four blocking D2 defects:
+
+1. **Incomplete authorizing consequence / final-state false-pass route.** The loss/live/EMA/RMS score set is not injective over the completed portable training state or the downstream continuous EVAL2/monitor consequences Candidate 6 claims to protect. A final-step state defect can remain invisible on the finite witness corpus and exact discrete decisions, survive a correct CuEq-to-e3nn projection, and alter a held-out EVAL2 configuration.
+
+2. **Reference-maximum envelope is not a backend-equivalence relation.** A rare but decision-stable e3nn self excursion can set a large sample-maximum tolerance and allow a systematically shifted candidate distribution to pass. The replacement must separate reference numerical adequacy from candidate equivalence and must reject the explicit reference (0/M) mixture versus candidate constant (M/2) adversary without tuning from Candidate outcomes.
+
+3. **ULP ordering is not uniquely defined around signed zero.** Candidate 6 does not normatively define one exact finite-value IEEE rank map after collapsing signed zero. Candidate 7 must define the exact rank/distance function and boundary fixtures for signed zero, subnormals, normal/subnormal transition, exponent boundaries, dtype identity, NaN, and infinity.
+
+4. **Projection-oracle independence is under-specified against the actual pinned MACE converters.** Excluding only the primary mapper and its generated mapping table still allows the oracle to share key-correspondence, pair-enumeration, `get_kmax_pairs`, or projection-matrix semantic owners. Candidate 7 must independently derive source/destination inventories and semantic correspondences, include forward-affecting non-`state_dict` state such as `avg_num_neighbors` where applicable, reconcile exact inventory cardinality, and reject common-mode omission/permutation/contraction defects.
+
+The Review also found one finite-sample derivation correction that MUST be repaired in Candidate 7:
+
+- the reference-side cardinalities remain valid: (n_{ref}=44) is conservative for (J=4), (Gamma=0.90), (Kappa=0.95), and (n_P=36) is sufficient for (J_P=2);
+- the Candidate-6 prose does **not** obtain its joint candidate-process claim by applying the same per-family Bonferroni argument;
+- because every Candidate-6 confirmation process already requires all four families to pass simultaneously, zero occurrences of the joint event “any family exceeds” in 44 independent candidate processes gives the correct exact one-sided 95% process-level bound and does not itself require a larger (n_C);
+- reference-calibration confidence and candidate-confirmation confidence remain separate inferential statements and MUST NOT be silently combined into a single 95% joint guarantee.
+
+### Candidate-7 mandatory repair contract
+
+The next semantic candidate MUST be Candidate 7 or later and MUST, before a new immutable freeze:
+
+1. preserve the exact-realization narrowing, complete accepted TRAIN2 horizon, same-backend restart semantics, FP64 CuEq TRAIN2 fail-closed behavior, source/DATA6 e3nn narrowing, and routine-doctor non-authorizing role unless separately falsified;
+2. protect the completed live/EMA state or the complete actual downstream continuous consumer domain in a common portable coordinate strongly enough that a final-step hidden-state difference cannot authorize EVAL2/publication;
+3. replace sample-maximum containment as the substantive definition of backend equivalence with a predeclared reference-adequacy plus candidate-comparison construction that rejects systematic candidate shifts while retaining explicit finite-sample semantics;
+4. define an exact unambiguous IEEE ULP rank/distance primitive;
+5. strengthen the projection structural oracle so it shares no semantic inventory/correspondence/pair-enumeration/projection owner with the production mapper and accounts for all forward-affecting state;
+6. correct the candidate-side finite-sample statement using the joint process-level exceedance event or another independently derived replacement relation;
+7. carry forward exact scientific-decision equality as a hard condition that cannot be rescued by stochastic numerical acceptance;
+8. remain prospective: no Candidate-6 Stage-C outcome may select thresholds, witnesses, process counts, score families, or repair form; and
+9. undergo a new genuinely fresh independent D2 Review after immutable freeze and then exact stakeholder ratification before any Stage-C evidence is run.
+
+No D3/D4 implementation handoff exists while these D2 blockers remain.
