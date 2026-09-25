@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 23
+revision: 24
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_9_PREFREEZE_CHALLENGE_CLOSED_AWAITING_IMMUTABLE_FREEZE
-workplan_review_basis: 2a5317558cf3d32455617e5f07efa97c31ef0afe
+workplan_review_status: CANDIDATE_9_PREFREEZE_AUTHORITY_AND_RENEWAL_CHALLENGE_CLOSED_AWAITING_FREEZE
+workplan_review_basis: 4fc493d53b225a36682937e0c8d6659619adc5db
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -1369,4 +1369,6 @@ Before immutable freeze, the assembled Candidate-9 challenge pass removed a stal
 - \(\eta_{\rm NI}\) is a qualification-comparison probability under the randomized design and cannot stand in for \(q_{\rm cat}\).
 
 These are included in the semantic Candidate-9 target before freeze. No Stage-C evidence exists.
+
+The final prefreeze challenge additionally requires owner-based renewal evidence: statistical stationarity/autocorrelation diagnostics are falsification aids only and cannot by themselves establish the common independent triplet law.
 

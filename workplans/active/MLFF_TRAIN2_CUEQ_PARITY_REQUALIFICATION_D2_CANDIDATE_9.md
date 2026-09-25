@@ -440,6 +440,8 @@ P_\Lambda
 
 for one prospectively declared common fresh-start law \(P_\Lambda\), independently of qualification assignment entropy. A deterministic identical renewal state is the degenerate special case.
 
+The applicability justification for this common independent law MUST be owner-based, not a goodness-of-fit shortcut. The qualification record must census every known cross-triplet mutable owner in mdstats/MACE/Torch/CUDA/runtime scope and show that each is either reset/fixed by \(\mathcal W\), immutable in \(\rho\), or driven by an independent qualification-only entropy source. Predeclared run-index/order/autocorrelation diagnostics may falsify the claimed renewal law; failure to detect dependence cannot by itself prove i.i.d. sampling.
+
 All post-assignment stochastic state capable of correlating triplets must either be regenerated independently under \(\mathcal W\) or be represented inside the pre-assignment renewal state. A shared mutable RNG stream, evolving accelerator cache/state, or other cross-triplet stochastic owner outside this model violates the Candidate-9 applicability contract.
 
 This is a method applicability condition, not an empirical tolerance. If the target host cannot establish the common independent renewal law strongly enough for the exact qualification claim, Candidate-9 qualification fails closed. Candidate 9 defines no post-hoc stratified, Poisson-binomial, martingale, or enlarged-tolerance fallback.
@@ -875,7 +877,7 @@ Stage C must then realize, at minimum:
 2. MPA-0-medium / default FP32 exact qualification key;
 3. complete accepted TRAIN2 horizon for every valid triplet child;
 4. the predeclared \(n\) triplets under the exact renewal/start-state contract \(\mathcal W\);
-5. evidence that \(\mathcal W\) establishes one common independent pre-assignment nuisance law for the exact target-host qualification population, or fail closed before Binomial authorization;
+5. an owner-based renewal proof record that censuses every known cross-triplet mutable state owner and shows it is reset/fixed, immutable in \(\rho\), or independently randomized, plus predeclared run-index/order/autocorrelation diagnostics used only to falsify the common-law claim; if this basis fails, close qualification before Binomial authorization;
 6. one design-entropy/precommitment record fixed before the first governed child output;
 7. independent uniform six-permutation label assignments drawn only after each \(\Lambda_p\) is frozen;
 8. exact source-owner resolution for every \(\mathcal R_e\);

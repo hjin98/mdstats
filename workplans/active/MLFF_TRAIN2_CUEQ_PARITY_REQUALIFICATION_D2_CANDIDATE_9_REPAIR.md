@@ -127,3 +127,5 @@ The same pass made two clarifications explicit rather than leaving them implicit
 
 No Candidate-9 Stage-C evidence exists.
 
+The final prefreeze challenge also makes renewal evidence non-circular: a nonsignificant stationarity/autocorrelation test cannot establish independence. Stage C must carry an owner-based census showing each known cross-triplet mutable owner is reset/fixed, immutable in \(\rho\), or independently randomized; statistical diagnostics may only falsify that structural claim.
+
