@@ -9,8 +9,9 @@ candidate: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE
 candidate_repair_record: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_5_REPAIR.md
 candidate4_independent_review: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R1.md
 independent_review_handoff: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_HANDOFF_C5.md
-immutable_candidate_commit: be57964c15ed24e30372de407534efd8173d6bc5
-immutable_candidate_blob: db0f59e0f9fb81462a18aa6e607ee9deded19c89
+immutable_candidate_commit: 6e73fbb7af9b8d46f61cf81113259584ffed8527
+immutable_candidate_blob: 4bfd2451cc1835e82e303cc9a597b69b8f8deda9
+representation_correction_of_candidate5: be57964c15ed24e30372de407534efd8173d6bc5
 stage_C_state: BLOCKED_PENDING_FRESH_D2_REVIEW_AND_RATIFICATION
 D3_D4_state: BLOCKED_PENDING_D2_ACCEPTANCE
 ---
@@ -23,11 +24,11 @@ Immutable Candidate 4 `cd4e0453d0a27ae01f7041c1c9d222fd9d71a0e9` received fresh 
 
 Candidate 5 is the author-side repair and is frozen at:
 
-`be57964c15ed24e30372de407534efd8173d6bc5`
+`6e73fbb7af9b8d46f61cf81113259584ffed8527`
 
 with canonical blob:
 
-`db0f59e0f9fb81462a18aa6e607ee9deded19c89`.
+`4bfd2451cc1835e82e303cc9a597b69b8f8deda9`.
 
 Candidate 5 repairs the independent Review blockers by:
 

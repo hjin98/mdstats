@@ -6,8 +6,8 @@ workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 branch: design/mlff-train2-cueq-parity-requalification
 accepted_D2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_D2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
-immutable_D2_candidate: be57964c15ed24e30372de407534efd8173d6bc5
-D2_candidate_blob: db0f59e0f9fb81462a18aa6e607ee9deded19c89
+immutable_D2_candidate: 6e73fbb7af9b8d46f61cf81113259584ffed8527
+D2_candidate_blob: 4bfd2451cc1835e82e303cc9a597b69b8f8deda9
 superseded_candidate4: cd4e0453d0a27ae01f7041c1c9d222fd9d71a0e9
 candidate4_review: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R1.md
 candidate5_repair_record: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_CANDIDATE_5_REPAIR.md
@@ -22,11 +22,11 @@ D3_D4_state: BLOCKED_PENDING_D2_ACCEPTANCE
 
 Perform a genuinely fresh Protocol-6.4 numerical-method Review of immutable Candidate 5:
 
-`be57964c15ed24e30372de407534efd8173d6bc5`
+`6e73fbb7af9b8d46f61cf81113259584ffed8527`
 
 Canonical Candidate-5 blob:
 
-`db0f59e0f9fb81462a18aa6e607ee9deded19c89`
+`4bfd2451cc1835e82e303cc9a597b69b8f8deda9`
 
 Candidate file:
 
@@ -43,6 +43,8 @@ and exact accepted D2 source target:
 Do **not** substitute the mutable branch head for Candidate 5. Later descendants are lifecycle coordination only.
 
 Candidate 4 is historical and already received NO-PASS. Do not re-review Candidate 4 as if it were current.
+
+The earlier Candidate-5 author target `be57964c15ed24e30372de407534efd8173d6bc5` contained two renderer-sensitive single-dollar display delimiters around an otherwise unchanged inequality. It is historical representation only. The immutable target above is the representation-corrected, semantically unchanged Candidate-5 target.
 
 ## 2. Independence
 
@@ -339,7 +341,7 @@ Return:
 - evidence/currentness impacts; and
 - D2 -> D3 handoff implications if PASS.
 
-Do not mutate `be57964c15ed24e30372de407534efd8173d6bc5` and continue calling it the same reviewed candidate.
+Do not mutate `6e73fbb7af9b8d46f61cf81113259584ffed8527` and continue calling it the same reviewed candidate.
 
 Any semantic repair creates a new candidate identity.
 

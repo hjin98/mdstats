@@ -5,9 +5,10 @@ status: AUTHOR_REPAIR_COMPLETE_AWAITING_FRESH_INDEPENDENT_REVIEW
 workplan: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md
 review_basis: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R1.md
 superseded_candidate: cd4e0453d0a27ae01f7041c1c9d222fd9d71a0e9
-replacement_candidate: be57964c15ed24e30372de407534efd8173d6bc5
-replacement_candidate_blob: db0f59e0f9fb81462a18aa6e607ee9deded19c89
+replacement_candidate: 6e73fbb7af9b8d46f61cf81113259584ffed8527
+replacement_candidate_blob: 4bfd2451cc1835e82e303cc9a597b69b8f8deda9
 date: 2026-09-24
+representation_correction_of_candidate5: be57964c15ed24e30372de407534efd8173d6bc5
 ---
 
 # Candidate-5 D2 repair record
@@ -127,3 +128,8 @@ Fresh Candidate-5 Stage-C evidence remains blocked until:
 3. an unchanged candidate/method identity.
 
 No D3/D4 implementation is authorized by this repair.
+
+
+## Representation correction
+
+The first frozen Candidate-5 representation at `be57964c15ed24e30372de407534efd8173d6bc5` contained two single-dollar display delimiters around the candidate-resolution inequality. The correction to `6e73fbb7af9b8d46f61cf81113259584ffed8527` changes only display delimiters. The mathematical expression, numerical budget, acceptance logic, scope, and all B1-B7 repairs are unchanged.

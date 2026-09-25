@@ -896,11 +896,11 @@ The blocking owner remained D2. The Review identified seven material defects:
 
 Candidate 5 repairs those blockers and is frozen at immutable semantic target:
 
-`be57964c15ed24e30372de407534efd8173d6bc5`
+`6e73fbb7af9b8d46f61cf81113259584ffed8527`
 
 with canonical blob:
 
-`db0f59e0f9fb81462a18aa6e607ee9deded19c89`.
+`4bfd2451cc1835e82e303cc9a597b69b8f8deda9`.
 
 The Candidate-5 repair record is:
 
@@ -924,4 +924,21 @@ Material Candidate-5 changes include:
 
 This repair does **not** authorize Candidate 5, CuEq TRAIN2, Stage C, or D3/D4 implementation.
 
-The next gate is a genuinely fresh independent D2 Review pinned to `be57964c15ed24e30372de407534efd8173d6bc5`. Any semantic repair discovered by that Review creates a new candidate identity. Candidate-5 Stage-C evidence may begin only after Review PASS and stakeholder ratification of the exact passing candidate.
+The next gate is a genuinely fresh independent D2 Review pinned to `6e73fbb7af9b8d46f61cf81113259584ffed8527`. Any semantic repair discovered by that Review creates a new candidate identity. Candidate-5 Stage-C evidence may begin only after Review PASS and stakeholder ratification of the exact passing candidate.
+
+
+## 18. Candidate-5 representation-only correction
+
+After the author-side Candidate-5 repair was frozen, a renderer check found two remaining single-dollar display-math delimiters around the candidate-resolution inequality. The underlying equation, threshold, scope, state semantics, stochastic relation, and every acceptance decision were unchanged.
+
+The representation-only correction produced final immutable Candidate-5 Review target:
+
+`6e73fbb7af9b8d46f61cf81113259584ffed8527`
+
+with canonical blob:
+
+`4bfd2451cc1835e82e303cc9a597b69b8f8deda9`.
+
+The pre-correction Candidate-5 commit `be57964c15ed24e30372de407534efd8173d6bc5` / blob `db0f59e0f9fb81462a18aa6e607ee9deded19c89` is historical only and must not be used as the fresh Review target.
+
+No Stage-C evidence was run between the two representations.
