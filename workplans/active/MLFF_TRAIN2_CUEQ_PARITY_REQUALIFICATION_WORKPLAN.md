@@ -4,9 +4,9 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 25
+revision: 26
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_9_FROZEN_AWAITING_FRESH_INDEPENDENT_REVIEW
+workplan_review_status: CANDIDATE_9_INDEPENDENT_NO_PASS_CANDIDATE_10_REQUIRED
 workplan_review_basis: d288d0f931b36e0304a91312915b9785e07dbe3c
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
@@ -1400,4 +1400,47 @@ The fresh independent handoff is:
 No Candidate-9 Stage-C evidence may run before fresh independent Review PASS plus exact stakeholder instance ratification.
 
 No D2-to-D3/D4 handoff exists.
+
+## 28. Candidate-9 independent NO-PASS and Candidate-10 production-population repair obligation
+
+Fresh independent Protocol-6.4 D2 Review R6 of immutable Candidate 9
+
+\`d288d0f931b36e0304a91312915b9785e07dbe3c\`
+
+with frozen Candidate-9 blob
+
+\`7fbe754c60fab953453586619c8ecb21d8a2b9cc\`
+
+returned **NO-PASS** with **no SERIOUS CHALLENGE to accepted parent D1/D2 authority**.
+
+The independent Review record is:
+
+\`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R6.md\`.
+
+Review R6 confirms that Candidate 9 correctly closes Review R5's fixed-stratum conditional-exchangeability defect. The pre-assignment label-swap theorem, uniform assignment marginalization, separation of prospective \(\mathcal Q\) from realized assignments, owner-based \(\mathcal W\) common-law requirement, and exact Binomial/Clopper-Pearson inference are coherent for the randomized qualification population.
+
+One new blocking D2 defect remains: **production-population transport**.
+
+Candidate 9 defines candidate materiality risk over a qualification-only uniform mixture of the three launch slots after one triplet renewal boundary. A passing record is then allowed to authorize an ordinary single CuEq production launch merely because its pre-assignment production-start predicates belong to the \(\mathcal W\) envelope. That does not prove that the actual production child-start law equals the randomized candidate slot-mixture law.
+
+The exact R6 counterexample uses an admissible \(q_{\rm cat}=0.08\). If candidate materiality probabilities by qualification slot are \(0.20,0,0\), uniform assignment gives qualification risk \(0.066\overline6<0.08\), while an ordinary single cold/fresh production launch corresponding to slot 1 has risk \(0.20>0.08\). The qualification population proposition can be true and can pass exact finite-sample confidence, yet the authorized production proposition is false.
+
+### Candidate-10 mandatory repair contract
+
+1. Preserve Candidate 9 unchanged as immutable historical candidate state and preserve all C9 surfaces R6 found adequate unless independently falsified.
+2. Define the exact production CuEq child-start probability law \(P_{\rm prod}\) at the boundary immediately before TRAIN2 arithmetic begins.
+3. Define the exact candidate-start law induced by qualification renewal, launch slots and assignment.
+4. Prove prospectively that the \(q_{\rm cat}\) materiality-event law used for qualification is identical to, or conservatively dominates, the actual production-start event law.
+5. Do not treat membership in the pre-assignment renewal envelope as sufficient transport when earlier qualification children can change cache/residency/thermal/other ambient state before a later candidate child starts.
+6. Prefer reduction at the renewal owner: make every qualification child begin from an independently renewed/authenticated production-equivalent state before label-dependent arithmetic, if that can be established on the target host.
+7. If slot-specific state cannot be eliminated, either bind production to the same prospective slot-mixture law or define a separately reviewed per-stratum/worst-case materiality inference with valid simultaneous confidence and prospectively fixed sample allocation.
+8. Never average a high-risk production-relevant stratum with lower-risk qualification-only strata to meet \(q_{\rm cat}\).
+9. The R5 marginal assignment theorem may remain the systematic-comparison owner for \(\eta_{\rm NI}\), but it cannot itself transport catastrophic-tail risk to production.
+10. Apply the same actual-start population-transport rule to the projection evaluator wherever evaluator \(q_{\rm cat}\) authorizes a fixed real evaluator/projection regime.
+11. Add a mandatory Stage-C adversary with slot risks \(0.20,0,0\), mixture risk below a bound such as \(q_{\rm cat}=0.08\), and production using the high-risk slot; authorization must fail.
+12. Do not run Candidate-9 Stage C and do not use Candidate-9 outcomes to choose Candidate-10 transport semantics, risk values, sample allocation, renewal policy or estimator.
+13. Freeze any semantic repair as Candidate 10 or later and perform a fresh independent D2 Review.
+14. Keep D3/D4 blocked until a future immutable D2 candidate passes independent Review, receives exact stakeholder instance ratification, and subsequently passes fresh Stage-C qualification.
+
+No Candidate-9 Stage-C evidence is authorized.
 
