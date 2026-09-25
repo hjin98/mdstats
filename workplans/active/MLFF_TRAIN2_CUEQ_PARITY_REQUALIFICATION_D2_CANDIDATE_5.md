@@ -80,6 +80,31 @@ Reference e3nn and candidate pure-CuEq observations compare only when all non-ba
 
 Backend/kernel realization is the deliberate independent variable. Any mismatch outside that variable is typed evidence failure, not numerical disagreement.
 
+### D2.CUEQ5.DEF.002A — TRAIN2 physical numerical budget declaration
+
+For later TRAIN2 definitions, let the accepted property residual scales be
+
+$
+\delta_E=0.01\ \mathrm{eV/atom},
+\qquad
+\delta_F=0.01\ \mathrm{eV/\mathring A},
+\qquad
+\delta_S=0.01\ \mathrm{eV/\mathring A^3}.
+$
+
+Let \(u_d\) be machine epsilon for learned-model dtype \(d\).
+
+Candidate 5 proposes the fixed physical numerical budget
+
+$
+\epsilon_{c,d}=\delta_c\sqrt{u_d},
+\qquad c\in\{E,F,S\}.
+$
+
+This declaration makes \(\epsilon_{c,d}\) source-available before later transfer, transition, stochastic, and outlier predicates use it.
+
+Its numerical rationale and FP32 resolved value are stated in D2.CUEQ5.DEF.013. The declaration is a proposed D2 method coordinate, not an accepted theorem and not Candidate-outcome fitted.
+
 ## 3. Proposed source/DATA6 sibling relations
 
 Candidate 5 does **not** describe these relations as already accepted D2 authority. It proposes them for source closure because historical operational behavior alone cannot promote itself into D2.
@@ -189,6 +214,8 @@ A transfer that drops a quiescent tensor still fails structural completeness eve
 
 At least one nontrivial state for every claimed topology must also be checked by a state-transfer route that is independent of \(P_C\)'s implementation and mapping-table generator.
 
+The same independence requirement applies to the optimizer-state transfer used by D2.CUEQ5.DEF.011-012: at least one nontrivial state must receive an independently implemented inventory/value check of optimizer state keyed by canonical portable parameter identity. A second check that calls the same optimizer-state mapper or consumes the same generated mapping table is correlated evidence, not an independent oracle.
+
 It may use pinned-MACE conversion only if that route does **not** call the same transfer owner or derive its state mapping from the same generated source.
 
 If no independent route exists, the claimed anti-common-mode check is unavailable rather than silently counted twice.
@@ -252,45 +279,30 @@ The action probe is measurement-only. It never mutates the live qualification tr
 
 ## 7. Physical numerical scale for TRAIN2
 
-### D2.CUEQ5.DEF.013 — precision-scaled property materiality coordinate
+### D2.CUEQ5.DEF.013 — precision-scaled property materiality rationale
 
 TRAIN2 does not reuse the source-calculator `rtol/atol` relation on update centroids.
 
-Let the accepted property robust-loss transition scales be
+D2.CUEQ5.DEF.002A declares
 
-$$
-\delta_E=0.01\ \mathrm{eV/atom},
-$$
+$
+\epsilon_{c,d}=\delta_c\sqrt{u_d}.
+$
 
-$$
-\delta_F=0.01\ \mathrm{eV/\mathring A},
-$$
-
-$$
-\delta_S=0.01\ \mathrm{eV/\mathring A^3}.
-$$
-
-Let \(u_d\) be machine epsilon for learned-model dtype \(d\). Define the new proposed D2 numerical materiality scale
-
-$$
-\epsilon_{c,d}=\delta_c\sqrt{u_d},
-\qquad c\in\{E,F,S\}.
-$$
+The construction uses the accepted property-residual scale only as a dimensional reference and scales it by \(\sqrt{u_d}\), so the proposed numerical budget vanishes under precision refinement and remains far below the robust-loss transition itself.
 
 For FP32, \(u_{32}=2^{-23}\), giving approximately
 
-$$
+$
 \epsilon_{E,32}=\epsilon_{F,32}=\epsilon_{S,32}
 \text{ numerically }3.45\times10^{-6}
-$$
+$
 
 in their respective physical units.
 
 For FP64 source calculations this formula is informative only; FP64 TRAIN2 is not authorized by Candidate 5.
 
-The role of \(\delta_c\) here is **not** to act as a backend-discrepancy ceiling. It supplies the accepted property residual scale, while \(\sqrt{u_d}\) makes the numerical materiality budget vanish with arithmetic precision and remain many orders below the loss-transition scale.
-
-This is a new proposed fixed D2 coordinate, chosen without Candidate-5 Stage-C CuEq outcomes. Independent Review must adjudicate its adequacy.
+The relation is a **proposed precision-scaled materiality heuristic**, not a theorem of floating-point error propagation. It is fixed before Candidate-5 Stage-C CuEq outcomes and must be independently challenged for adequacy.
 
 ### D2.CUEQ5.DEF.014 — no near-zero relative-tolerance escape
 
@@ -399,7 +411,26 @@ This bounded adaptation is qualification-only evidence. It is not inserted into 
 
 ### D2.CUEQ5.DEF.016B — coherent-drift growth guard
 
-For ensemble \(e\), order cell \(h\), channel \(c\), and checkpoint \(k\in K_H\), let
+For ensemble \(e\), order cell \(h\), channel \(c\), checkpoint \(k\in K_H\), fresh process \(p\), and nested repeat \(r\), let retained physical observation be \(x_{b,e,h,p,r,c}(k)\).
+
+Define the process mean
+
+$
+\bar x_{b,e,h,p,c}(k)
+=
+\frac{1}{R}\sum_{r=1}^{R}x_{b,e,h,p,r,c}(k),
+\qquad R=3,
+$
+
+and the cell centroid
+
+$
+\mu_{b,e,h,c}(k)
+=
+\frac{1}{5}\sum_{p=1}^{5}\bar x_{b,e,h,p,c}(k).
+$
+
+Then define
 
 $
 d_{e,h,c}(k)
@@ -407,7 +438,7 @@ d_{e,h,c}(k)
 \mu_{C,e,h,c}(k)-\mu_{R,e,h,c}(k)
 $
 
-be the process-level backend-centroid difference in portable physical function.
+as the process-level backend-centroid difference in portable physical function.
 
 Every observed horizon must satisfy
 
@@ -579,20 +610,20 @@ The two-ensemble rule is a classification-stability guard for the new transition
 
 For governed vector channel \(c\), let
 
-$$
+$
 x_{b,e,h,p,r,c}\in\mathbb R^{m_c}
-$$
+$
 
 be retained observation for backend \(b\), ensemble \(e\), order cell \(h\), fresh process \(p\), and nested repeat \(r\).
 
-Define the process mean
+The process mean is the same canonical reduction introduced in D2.CUEQ5.DEF.016B:
 
-$$
+$
 \bar x_{b,e,h,p,c}
 =
 \frac{1}{R}\sum_{r=1}^{R}x_{b,e,h,p,r,c},
 \qquad R=3.
-$$
+$
 
 All primary centroid and between-process stochastic statistics use \(\bar x\), not the 60 nested observations as if they were independent.
 
@@ -645,6 +676,24 @@ B_{e,c}\le\epsilon_{c,32}
 $$
 
 Cell-conditioned guards prevent opposite order-conditioned backend shifts from cancelling globally.
+
+### D2.CUEQ5.DEF.023A — reference-only resolution sufficiency
+
+Before candidate values are used for an authorizing decision, each ensemble/cell/channel must demonstrate that the fixed reference process design can resolve the claimed persistent-bias budget.
+
+Let \(SE_{R,e,h,c}\) be the root-mean-square over components of the ordinary standard error of the five reference process means in that cell.
+
+Require
+
+$
+SE_{R,e,h,c}\le\epsilon_{c,32}/2.
+$
+
+If this is false, the result is `INSUFFICIENT_REFERENCE_RESOLUTION` for that ensemble/cell/channel, not PASS and not a candidate FAIL.
+
+This is a design-resolution condition, not a normality-based confidence claim. It prevents five processes from authorizing a bias scale that the reference experiment itself cannot resolve.
+
+A larger-process qualification may be designed later only as a new predeclared qualification instance before its CuEq outcomes are inspected; it is not an outcome-selected retry.
 
 ### D2.CUEQ5.DEF.024 — between-process stochastic non-degradation
 
@@ -763,17 +812,23 @@ Non-finite values remain unconditional failure.
 
 ## 14. Robust-loss branch consequence
 
-### D2.CUEQ5.DEF.027 — objective-branch identity
+### D2.CUEQ5.DEF.027 — robust-objective consequence
 
-Because a tiny numerical perturbation can alter the robust objective if a residual lies near its Huber transition, Candidate 5 protects the actual optimizer consequence directly.
+Property masks and property availability are exact common inputs.
 
-For every retained real TRAIN2 exposure:
+The implementation's internal label for which algebraic Huber branch evaluates a residual is **not** an independent TRAIN2 hard gate. Huber loss and its residual derivative are continuous at the transition, and an otherwise harmless floating-point straddle must not become a second numerical authority.
 
-- property masks must be exact;
-- the set of residual components on each side of the Huber transition must be identical between backends **unless** both backends remain within \(\epsilon_{c,32}\) of the transition and the resulting per-component gradient contribution satisfies the Candidate-5 physical numerical envelope; and
-- the process must record the optimizer-consumed scalar loss and per-property loss contributions as diagnostics.
+The protected consequence is the accepted TRAIN2 state transition already measured by:
 
-The Huber value `0.01` is therefore used where it actually owns semantics: robust-loss branch behavior. It is not reused as a generic catastrophic backend tolerance.
+- live portable physical-function displacement;
+- EMA physical-function displacement;
+- optimizer-action probes;
+- exact discrete state; and
+- recurrence-horizon coherent-drift guards.
+
+The optimizer-consumed scalar loss and per-property loss contributions remain mandatory finite diagnostics and counterexample instrumentation. A near-transition perturbation passes or fails only through its governed transition consequence, not through branch-name identity alone.
+
+The Huber value `0.01` therefore supplies the accepted property residual scale used in D2.CUEQ5.DEF.002A; it is not a direct backend-discrepancy ceiling.
 
 ## 15. TRAIN2 descriptors are not an authorizing channel
 
@@ -909,7 +964,7 @@ At minimum it must attempt to falsify:
 19. reference-only long-horizon resolution too weak for the proposed bias budget — must return INSUFFICIENT_REFERENCE_RESOLUTION, not PASS;
 20. descriptor-only drift with preserved TRAIN2 physical consequence — must not fail TRAIN2 solely for that descriptor drift;
 21. source/DATA6 descriptor/FPS drift that changes selection — must fail the source relation;
-22. Huber-branch mismatch near the transition;
+22. near-transition Huber straddle with unchanged governed transition — branch identity alone must not fail; a straddle that changes the governed transition beyond Candidate-5 bounds must fail;
 23. zero-reference-variance cases;
 24. stale qualification after runtime/source/configuration/method/state-class change;
 25. a formally different but numerically trivial state anchor; and
