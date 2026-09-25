@@ -4,9 +4,9 @@ protocol_version: 6.4.0
 status: active
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 41
+revision: 42
 reviewed_date: 2026-09-25
-workplan_review_status: DOCTOR_BOOTSTRAP_REPAIR_ACCEPTED_PREPARE_PENDING
+workplan_review_status: SECTION36_1_STOP_EXACT_CANDIDATE10_KEY_NOT_BINDABLE
 workplan_review_basis: db2ed47e8c999cb61507803610c72c0fa7ffaaf7
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
@@ -25,7 +25,7 @@ repair_safe_train2_backend: cueq
 
 ## 0. Disposition and Serious Challenge
 
-**REVISION-41 CURRENT LIFECYCLE:** the opening Serious Challenge below is retained as historical problem provenance, but it is no longer the current lifecycle disposition. Immutable Candidate 10 passed fresh independent D2 Review R7, the stakeholder accepted the reviewed family, and the exact 0.09 / 0.09 / 300 risk instance plus law/role binding are frozen. **No current SERIOUS CHALLENGE to accepted D1/D2 parent authority is active.** The Revision-40 doctor bootstrap repair passed focused regression and real RTX 3090 doctor acceptance with intended `backend="e3nn"` / `training_backend="cueq"`; Candidate-10 remains pending until exact-key Stage C. The next authorized gate is campaign preparation, followed by exact-key preflight.
+**REVISION-42 CURRENT LIFECYCLE:** the opening Serious Challenge below is retained as historical problem provenance, but it is no longer the current lifecycle disposition. Immutable Candidate 10 passed fresh independent D2 Review R7, the stakeholder accepted the reviewed family, and the exact 0.09 / 0.09 / 300 risk instance plus law/role binding are frozen. **No current SERIOUS CHALLENGE to accepted D1/D2 parent authority is active.** The Revision-40 doctor repair passed focused regression and real RTX 3090 acceptance with intended `backend="e3nn"` / `training_backend="cueq"`; the fresh campaign then completed preparation. Exact-key target-host preflight now stops because generation 1 has no provisional or frozen target-size design. Section 36.1 stop condition 1 is active; keep this workplan open and launch no Candidate-10 child/evaluator.
 
 The stakeholder restarted from a fresh campaign and exposed an earlier D4 bootstrap blocker than the retired-CampaignStore issue recorded in Revision 39. Routine doctor still executes the superseded Rev86 TRAIN2 FP32 noise-normalized parity authorizer. On the fresh campaign, source/DATA6 e3nn, selected-head extraction, CUDA/runtime/dependencies, replay prerequisites, and resources all passed, but doctor ran the old warm-up/all-pairs TRAIN2 parity rule and failed solely because descriptor_max_abs=1.860e-06 exceeded the historical 1.000e-06 ceiling. That result is **not Candidate-10 qualification evidence and must not gate preparation**.
 
@@ -2258,3 +2258,26 @@ Section 40.7 now passes, so the next operation is the existing campaign `prepare
 ### 41.3 Remaining lifecycle state
 
 Target-host doctor is accepted; exact-key target-host preflight, Stage-C children/evaluators, Candidate-10 reducer PASS, assembled acceptance, and D3/D4 currentness closure are **not** complete. No Candidate-10 authorization scope is granted. Continue automatically only through gates that pass. At the first Section-36.1 stop condition, preserve the exact key, campaign state, and evidence boundary; do not retry any failed same-key realization. Keep this workplan active until all Section-36.10 closure requirements are actually satisfied.
+
+
+## 42. Revision-42 implementer execution update — prepare accepted; exact-key preflight stop
+
+### 42.1 Fresh campaign preparation accepted
+
+The Section-40 real-host doctor gate passed, and the exact reviewed campaign manifest was approved before plain preparation. The intended phase-separated config remained `backend="e3nn"`, `training_backend="cueq"`, `only_cueq=false`, `require_available=true`.
+
+The manifest review covered 27 VASP sources, including six filename-derived strain candidates whose geometry verification all passed. Two K trajectories had recoverable trailing-XML truncation: `LTA_K.700K.init` yielded 1,379 complete ionic steps and `LTA_K.800K.init` yielded 1,354; both warnings remain explicit in the manifest and source assessment. The manifest file SHA-256 is `591f2c4a21cf39d08f0ce55b4a2e7cc23a37bd4f3984fab819fab97e189bb918`, content digest `42e41d03dceec4ec7503eb4c176759d5b0a648abd7910b7c02b0fa9f4d148df8`.
+
+The approved plain `prepare` command exited 0. Doctor and prepare stages are both COMPLETE; current target-size generation 1 is `authorities_bound`, with aggregate digest `c31f724da6bef69740d8aa9d5b0deadbc3179e7579684ba1cfcdad3f1c55e666`, experiment-definition digest `7416e462720b1de46c1f744a74ec8b23771ca946709056418e8b6b254e8a5d60`, and no provisional entries. P2 built the 33,984-frame target order and qualified ladder `[512, 1024, 2048, 4096, 8192, 16384]`; P3 common preparation completed. True-DFT replay preparation bound a deterministic 10,000/2,000 train/monitor split at digest `56449b7d3fbaed1ef8330bc342c28ba24433467074a2e9bb6b448cc018a12be1`. The full captured `prepare.log` is external campaign evidence with SHA-256 `fef3fd6110ca6bb069944f6da87752a60efc6685e0c6bdf72826264694afe45a`; the campaign-store SHA-256 after prepare is `815c4a4a25c68b82a69bf20e33667f64daa8910e6b58063bf3dfc7205108d62d`.
+
+### 42.2 Exact-key preflight cannot bind the current key
+
+The read-only preflight was run on the target RTX 3090 with clean repository HEAD `9e78c5e71bcbf3bbbfa873ed23df1f61fbf48e38`, using the locked MPA-0 model SHA-256 `75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638`. It reached the existing P5 context/current-design owner and exited 1 before exact-key construction or manifest publication. Exact error:
+
+~~~
+TargetSizeSelectionError: No frozen target-size design exists for this campaign generation. `cross-validate` is the admission boundary that freezes the current provisional design; run it before any other post-selection work.
+~~~
+
+The current CampaignStore confirms generation 1 lifecycle `authorities_bound`, `provisional_entries=[]`, and `frozen_entries=null`; no target selection, CV plan, final-production plan, or post-selection record exists. The preflight produced no JSON at `qualification/mlff-cueq-c10/target-host-preflight.json`; no Candidate-10 TRAIN2 child, projection evaluator, or same-key realization was started. CampaignStore SHA-256 remained `815c4a4a25c68b82a69bf20e33667f64daa8910e6b58063bf3dfc7205108d62d` across the read-only preflight. Captured failure log: `/tmp/mlff-cueq-c10-target-preflight.log`, SHA-256 `2d624e021c3a5ad572294ac17ff8d840de34f524f48da255980c9cdb96afa72d`. Compact evidence is `qualification/mlff-cueq-c10/target-host-preflight-blocked.json`.
+
+This is Section 36.1 stop condition 1: target-host preflight cannot yet bind the exact Candidate-10 key because the fresh campaign has no provisional target-size selection for `cross-validate` to freeze. The configured qualified-size ladder does not select an individual N. Do not invent N, run the optional training diagnostic, change TRAIN2 to e3nn, or launch training to manufacture the missing state. Resume only from the authoritative target-size selection owner after an exact current provisional design exists and its training/admission path does not bypass Candidate-10. Keep the workplan active; Stage C, D3/D4 promotion, assembled acceptance, documentation/history closure, and archiving remain incomplete.

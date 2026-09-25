@@ -1,0 +1,57 @@
+{
+  "schema": "mdstats.mlff-cueq-candidate10-target-host-preflight-blocked.v1",
+  "workplan": "workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md#section-42",
+  "status": "BLOCKED_SECTION_36_1_1_EXACT_KEY_NOT_BINDABLE",
+  "qualification_scope": "blocker evidence only; no Candidate-10 qualification or authorization",
+  "preflight": {
+    "command": "conda run -n mace python /home/samjin/QE/lammps-proj/zeolite/90_scripts/mdstats/tools/run_mlff_cueq_c10_stage_c_preflight.py --config /home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32/campaign.toml --mpa0-model /home/samjin/QE/lammps-proj/zeolite/01_models/mace-mpa-0-medium.model --output /home/samjin/QE/lammps-proj/zeolite/90_scripts/mdstats/qualification/mlff-cueq-c10/target-host-preflight.json",
+    "exit_status": 1,
+    "failure_owner": "mdstats.training_data.campaign_target_size_selection.resolve_frozen_target_design",
+    "error": "No frozen target-size design exists for this campaign generation. `cross-validate` is the admission boundary that freezes the current provisional design; run it before any other post-selection work.",
+    "exact_key_constructed": false,
+    "manifest_published": false,
+    "output_path_present": false,
+    "candidate10_training_child_started": false,
+    "projection_evaluator_started": false,
+    "same_key_realization_started": false,
+    "log_path": "/tmp/mlff-cueq-c10-target-preflight.log",
+    "log_sha256": "2d624e021c3a5ad572294ac17ff8d840de34f524f48da255980c9cdb96afa72d"
+  },
+  "repository": {
+    "branch": "design/mlff-train2-cueq-parity-requalification",
+    "head_before_preflight": "9e78c5e71bcbf3bbbfa873ed23df1f61fbf48e38",
+    "working_tree_clean_before_preflight": true
+  },
+  "campaign": {
+    "config_path": "/home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32/campaign.toml",
+    "config_sha256": "b9069db0ac6008c8c9f7ceae1b4ed1337852018ea18a6d34b25a156cca10693d",
+    "manifest_path": "/home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32/mlff-campaign/campaign-manifest.json",
+    "manifest_sha256": "591f2c4a21cf39d08f0ce55b4a2e7cc23a37bd4f3984fab819fab97e189bb918",
+    "manifest_content_digest": "42e41d03dceec4ec7503eb4c176759d5b0a648abd7910b7c02b0fa9f4d148df8",
+    "approved_manifest_digest": "42e41d03dceec4ec7503eb4c176759d5b0a648abd7910b7c02b0fa9f4d148df8",
+    "prepare_exit_status": 0,
+    "prepare_log_sha256": "fef3fd6110ca6bb069944f6da87752a60efc6685e0c6bdf72826264694afe45a",
+    "campaign_store_sha256": "815c4a4a25c68b82a69bf20e33667f64daa8910e6b58063bf3dfc7205108d62d",
+    "doctor_stage": "COMPLETE",
+    "prepare_stage": "COMPLETE",
+    "target_size_generation": 1,
+    "target_size_lifecycle": "authorities_bound",
+    "target_size_aggregate_digest": "c31f724da6bef69740d8aa9d5b0deadbc3179e7579684ba1cfcdad3f1c55e666",
+    "target_size_experiment_digest": "7416e462720b1de46c1f744a74ec8b23771ca946709056418e8b6b254e8a5d60",
+    "provisional_target_size_entries": [],
+    "frozen_target_size_entries": null,
+    "target_size_ladder": [512, 1024, 2048, 4096, 8192, 16384],
+    "p2_target_order_frame_count": 33984,
+    "replay_split_digest": "56449b7d3fbaed1ef8330bc342c28ba24433467074a2e9bb6b448cc018a12be1",
+    "replay_train_configurations": 10000,
+    "replay_monitor_configurations": 2000,
+    "cv_plan_present": false,
+    "final_production_plan_present": false,
+    "post_selection_records_present": false
+  },
+  "locked_model": {
+    "mpa0_model_path": "/home/samjin/QE/lammps-proj/zeolite/01_models/mace-mpa-0-medium.model",
+    "sha256": "75428afe3a1d7d8062e19bcaabd5c433623cabf308242ec9fb493e38604fb638"
+  },
+  "disposition": "Section 36.1 stop condition 1 is active. No exact Candidate-10 key is frozen; no Stage-C child/evaluator was run and no authorization is granted. Resume only after the authoritative target-size selection owner supplies a current provisional design that can be frozen without bypassing Candidate-10 admission."
+}
