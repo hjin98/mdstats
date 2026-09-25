@@ -1,7 +1,7 @@
 ---
 kind: D2-candidate-repair-record
 protocol_version: 6.4.0
-status: PREFREEZE_CHALLENGE_COMPLETE
+status: FROZEN_AWAITING_FRESH_INDEPENDENT_REVIEW
 workplan: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_WORKPLAN.md
 superseded_candidate: d288d0f931b36e0304a91312915b9785e07dbe3c
 superseded_review: workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_R6.md
@@ -76,3 +76,22 @@ No Candidate-10 Stage-C evidence exists. D3/D4 remain blocked.
 ## 9. Freeze state
 
 Candidate 10 is ready to be frozen immutably. Any post-freeze semantic repair requires Candidate 11 or later.
+
+## 10. Immutable Candidate-10 Review freeze
+
+Final Candidate-10 semantic Review target:
+
+\`db2ed47e8c999cb61507803610c72c0fa7ffaaf7\`
+
+Candidate-10 blob:
+
+\`7843a41172d25c231d4c589aebc0214ddec42bd1\`.
+
+The earlier authoring commit
+
+\`bd49e53a9b066a7d5a8f29cb45fdabfdd152e8f7\`
+
+is historical prefreeze state only. The final prefreeze correction strengthened per-child marginal transport into the full conditional joint product law.
+
+No Candidate-10 Stage-C evidence exists. Any later semantic repair requires Candidate 11 or later.
+

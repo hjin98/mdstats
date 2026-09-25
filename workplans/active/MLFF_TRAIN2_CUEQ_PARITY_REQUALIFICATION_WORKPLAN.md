@@ -4,10 +4,10 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 28
+revision: 29
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_10_PREFREEZE_JOINT_LAW_CORRECTED
-workplan_review_basis: d288d0f931b36e0304a91312915b9785e07dbe3c
+workplan_review_status: CANDIDATE_10_FROZEN_AWAITING_FRESH_INDEPENDENT_REVIEW
+workplan_review_basis: db2ed47e8c999cb61507803610c72c0fa7ffaaf7
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
 branch: design/mlff-train2-cueq-parity-requalification
@@ -1486,4 +1486,34 @@ P_R^{\rm prod}\otimes P_R^{\rm prod}\otimes P_C^{\rm prod}.
 This prevents hidden shared entropy or another cross-child owner from coupling otherwise correct marginals and silently changing the pairwise materiality-event distribution. Marginal start-law equality alone is not sufficient qualification evidence.
 
 No Candidate-10 Stage-C evidence exists.
+
+## 30. Candidate-10 immutable Review freeze
+
+Candidate 10 is frozen for fresh independent D2 Review at:
+
+\`db2ed47e8c999cb61507803610c72c0fa7ffaaf7\`
+
+with Candidate-10 blob:
+
+\`7843a41172d25c231d4c589aebc0214ddec42bd1\`.
+
+The earlier Candidate-10 authoring state
+
+\`bd49e53a9b066a7d5a8f29cb45fdabfdd152e8f7\`
+
+is prefreeze history only.
+
+Final Candidate 10 closes Review R6 at the production/evaluator child-law owner by requiring exact per-child production-equivalent renewal and the conditional joint product law
+
+\[
+P_R^{\rm prod}\otimes P_R^{\rm prod}\otimes P_C^{\rm prod}.
+\]
+
+The fresh independent handoff is:
+
+\`workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_D2_INDEPENDENT_REVIEW_HANDOFF_C10.md\`.
+
+No Candidate-10 Stage-C evidence may run before fresh independent Review PASS plus exact stakeholder instance ratification.
+
+No D2-to-D3/D4 handoff exists.
 
