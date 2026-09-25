@@ -4,9 +4,9 @@ protocol_version: 6.4.0
 status: active-serious-challenge
 workplan_id: MLFF-TRAIN2-CUEQ-PARITY-REQUALIFICATION
 created_date: 2026-09-24
-revision: 33
+revision: 34
 reviewed_date: 2026-09-25
-workplan_review_status: CANDIDATE_10_LAW_BOUND_AWAITING_TARGET_HOST_KEY_FREEZE
+workplan_review_status: CANDIDATE_10_PREFLIGHT_TOOL_READY_AWAITING_TARGET_HOST_KEY_FREEZE
 workplan_review_basis: db2ed47e8c999cb61507803610c72c0fa7ffaaf7
 accepted_d1_d2_baseline: a759e81aa1b4c70c8fb513c569ddce57e99cbdb2
 accepted_d1_d2_source_target: a4824d28775164aa942fd29fa97ee0957eb87e6f
@@ -1633,3 +1633,24 @@ All remaining unknowns are live exact-key values owned by the stakeholder target
 workplans/active/MLFF_TRAIN2_CUEQ_PARITY_REQUALIFICATION_STAGE_C_PREFLIGHT_HANDOFF.md.
 
 Stage C remains blocked only on that target-host key freeze. No Candidate-10 training output may be generated before it.
+
+
+## 35. Candidate-10 executable target-host preflight
+
+The target-host identity freeze is now executable through:
+
+`tools/run_mlff_cueq_c10_stage_c_preflight.py`.
+
+The tool is observational and executes no Candidate-10 `R1/R2/C` training trajectory. It fails closed on a dirty repository, reviewed-candidate blob mismatch, locked foundation/checkpoint mismatch, CUEQ-DEP1/runtime-family mismatch, non-RTX-3090 target, active competing compute process on the selected GPU, absent frozen post-selection context, or missing/stale campaign lineage required to construct the key.
+
+It reuses the existing CUEQ-DEP1 runtime-freeze owner rather than introducing another dependency registry and additionally binds the projection converter source files Candidate 10 requires.
+
+Focused local structural verification before commit:
+
+- Python syntax compilation: PASS;
+- CLI construction/import path: PASS in repository layout;
+- focused pure tests: `4 passed`.
+
+The exact Candidate-10 replay relation is explicitly bound to the accepted-parent `30 meV/Å` true-reference hard budget. The branch's current `75 / 75 / 50 meV/Å` assessment values descend from an unratified material D2 renewal and are recorded only as D4 observations; Stage C remains governed by accepted parent `45 / 45 / 30 meV/Å` plus Candidate 10.
+
+Stage C remains blocked on the resulting target-host preflight JSON. No qualification trajectory has been run.
