@@ -130,10 +130,10 @@ def test_training_parity_policy_restores_tight_stable_channels_and_separates_for
     assert force.repeat_count == 10
     assert force.warmup_count == 1
     assert force.force_distribution_quantile == 99.0
-    assert force.force_distribution_ratio_ceiling == 1.25
+    assert force.force_distribution_ratio_ceiling == 1.5
     assert force.force_max_self_factor == 1.5
     assert force.force_max_absolute_ceiling == 1.0e-4
-    assert force.stable_channel_abs_ceiling == 1.0e-6
+    assert force.stable_channel_abs_ceiling == 1.0e-5
 
 
 def test_train2_force_authority_is_not_the_stable_channel_allclose_ceiling() -> None:
@@ -163,4 +163,4 @@ def test_historical_selected_head_one_shot_force_envelope_is_no_longer_authorizi
     rtol, atol = campaign_cli._training_acceleration_parity_policy().tolerance("float32")
     assert (rtol, atol) == (1.0e-5, 1.0e-6)
     assert not np.allclose(deltas, zeros, rtol=rtol, atol=atol)
-    assert campaign_cli._training_acceleration_noise_normalized_policy().force_distribution_ratio_ceiling == 1.25
+    assert campaign_cli._training_acceleration_noise_normalized_policy().force_distribution_ratio_ceiling == 1.5

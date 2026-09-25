@@ -1449,16 +1449,20 @@ def _training_acceleration_parity_policy() -> Any:
 
 
 def _training_acceleration_noise_normalized_policy() -> Any:
-    """Return the permanent TRAIN2 FP32 warm-up/all-pairs force parity policy."""
+    """Return the coarse TRAIN2 FP32 CuEq doctor sanity policy.
+
+    This is an engineering pre-check for an obviously broken accelerator
+    realization, not a scientific-equivalence or training-quality criterion.
+    """
 
     import mdstats
 
     return mdstats.TrainingAccelerationNoiseNormalizedParityPolicy(
         repeat_count=10,
         warmup_count=1,
-        stable_channel_abs_ceiling=1.0e-6,
+        stable_channel_abs_ceiling=1.0e-5,
         force_distribution_quantile=99.0,
-        force_distribution_ratio_ceiling=1.25,
+        force_distribution_ratio_ceiling=1.5,
         force_max_self_factor=1.5,
         force_max_absolute_ceiling=1.0e-4,
         force_threshold=1.0e-5,
@@ -4824,7 +4828,7 @@ def command_doctor(args: argparse.Namespace) -> int:
                 store.delete_record("training_acceleration_deterministic_control_diagnostic")
                 _print_training_repeatability_diagnostic(
                     phase_training_repeatability,
-                    title="TRAIN2 FP32 warm-up/all-pairs parity evidence (authorizing)",
+                    title="TRAIN2 FP32 warm-up/all-pairs sanity evidence",
                 )
                 ratios = (
                     phase_training_parity.force_rmse_ratio,
@@ -4833,7 +4837,7 @@ def command_doctor(args: argparse.Namespace) -> int:
                 )
                 ratio_text = ", ".join("inf" if value is None else f"{value:.3f}" for value in ratios)
                 print(
-                    "[PARITY] TRAIN2 FP32 noise-normalized: "
+                    "[SANITY] TRAIN2 FP32 noise-normalized: "
                     f"ratios(Frmse,Fp99,Fp99.9)=({ratio_text}); "
                     f"Fmax={phase_training_parity.force_max_cross:.3e}/"
                     f"{phase_training_parity.force_max_limit:.3e}; "

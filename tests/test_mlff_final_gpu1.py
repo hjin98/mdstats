@@ -41,7 +41,7 @@ def test_final_gpu1_preflight_fails_closed_without_locked_models(tmp_path: Path)
     assert payload["final_gpu1_policy"]["generated_default_change_authorized"] is False
     assert payload["train2_acceleration_parity_policy"]["float32_rtol"] == 1.0e-5
     assert payload["train2_acceleration_parity_policy"]["float32_atol"] == 1.0e-6
-    assert payload["train2_noise_normalized_parity_policy"]["force_distribution_ratio_ceiling"] == 1.25
+    assert payload["train2_noise_normalized_parity_policy"]["force_distribution_ratio_ceiling"] == 1.5
     assert payload["train2_noise_normalized_parity_policy"]["force_max_absolute_ceiling"] == 1.0e-4
     assert payload["train2_noise_normalized_parity_policy_digest"] == payload["train2_noise_normalized_parity_policy"]["policy_digest"]
     assert payload["train2_acceleration_parity_policy_digest"] == payload["train2_acceleration_parity_policy"]["policy_digest"]

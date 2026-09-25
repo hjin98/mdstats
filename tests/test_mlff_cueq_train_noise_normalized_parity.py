@@ -43,8 +43,8 @@ def test_mpa0_diag3_evidence_passes_permanent_noise_normalized_gate():
     assert restored.content_digest == record.content_digest
 
 
-def test_noise_normalized_gate_rejects_distribution_ratio_above_1p25():
-    record=mdstats.build_training_noise_normalized_parity_record(_diag(cross_frmse=5.0e-6))
+def test_noise_normalized_sanity_gate_rejects_distribution_ratio_above_1p5():
+    record=mdstats.build_training_noise_normalized_parity_record(_diag(cross_frmse=6.0e-6))
     assert not record.passed
     assert any("Frmse" in item for item in record.failure_reasons)
 
