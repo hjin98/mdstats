@@ -2,7 +2,7 @@
 kind: implementation-workplan
 workplan_id: CODE-MLFF-P5-TRAIN2-MH1-SELECTED-HEAD-ROUTING-REPAIR
 protocol_version: 6.4.0
-status: review-reopened
+status: closed
 created_date: 2026-09-25
 baseline_branch: main
 baseline_commit: c82388122cc3e72921a2f7a07d906b9527c4e229
@@ -12,7 +12,7 @@ earliest_affected_domain: D4 implementation/concretization under accepted phase-
 review_disposition: PASS AS WORKPLAN
 workplan_review_revision: 2
 serious_challenge: none
-implementation_review_verdict: CODE-PASS-E1-BOUNDARY-RECORDED-CLOSURE-REVIEW-PENDING
+implementation_review_verdict: PASS
 implementation_base: 7143f36b02f26a6c3fb1ded95445ea36477f10a2
 ---
 
@@ -684,3 +684,53 @@ evaluate_post_selection_run_candidates advanced through the real epoch-0 candida
 The exception is from parsing the TRUE_DFT replay-monitor reference stress labels in the subsequent replay EVAL2 measurement. It is downstream of provider authentication and checkpoint-monitor evaluation. Because that replay measurement failed, the candidate assessor did not return/publish an Eval2CheckpointRecord, representative, replay metric, or fold acceptance. Therefore this evidence proves the requested selected-head TRAIN2 checkpoint-to-provider/checkpoint-monitor reconstruction proposition; it does not claim a complete replay-inclusive candidate assessment or any CV acceptance.
 
 No product code or external source/trajectory input was modified. No full CV or production qualification was run. Section 19 records the earlier sandbox-only preflight and is superseded for runtime availability by this elevated RTX 3090 execution. Keep the workplan open for a fresh D4 closure Review to assess this E1 boundary evidence and the separate replay-monitor stress-label observation; do not expand this task into full qualification.
+
+
+## 21. Final independent D4 closure Review
+
+**Reviewed product-code candidate:** `467018ae309a679fbdaadbe80f9d47805344831b`  
+**E1 evidence descendant:** `2541bff60f28b9106341119107d50235930abe71`  
+**Verdict:** **PASS / CLOSE**  
+**Serious Challenge:** **NONE**
+
+The selected-head routing repair satisfies the accepted workplan.
+
+### 21.1 E1 acceptance — PASS
+
+The real RTX 3090/CUDA/CuEq execution produced and authenticated one durable MH-1 TRAIN2 epoch checkpoint under the unchanged 10-epoch runtime plan. The ordinary P5 checkpoint-provider path then reconstructed that checkpoint using `context.train2_foundation_path`, which resolved to the doctor-qualified selected-head `omat_pbe` checkpoint rather than the raw six-head source checkpoint.
+
+The target checkpoint-monitor evaluation completed after provider authentication. No new `remove_pt_head` call on the raw source, state-dict size mismatch, or MACE architecture mismatch occurred. This closes the exact owner/consumer boundary that motivated E1.
+
+The temporary controller stopped after epoch 0 only to bound evidence cost; it did not alter the accepted method, epoch budget, optimizer, runtime plan, checkpoint policy, or source/training identities. No full CV or production qualification is required for this repair.
+
+### 21.2 Separate downstream replay observation — NOT A BLOCKER TO THIS WORKPLAN
+
+After the selected-head provider/checkpoint-monitor boundary succeeded, the subsequent TRUE_DFT replay-monitor metric failed with:
+
+```text
+TrainingDataInputError: Reference stress labels must contain six Voigt components.
+```
+
+This is a distinct downstream replay representation defect, not evidence against the selected-head routing repair.
+
+Current code already shows the mismatch independently of this branch:
+
+- `inspect_replay_extxyz(...)` accepts replay stress with either 6 or 9 components;
+- true-label replay rendering preserves a valid 6- or 9-component source stress;
+- `EvaluationDatasetView` requires exactly 6 Voigt components.
+
+Therefore a valid 9-component replay stress can pass replay-artifact authentication and later fail evaluation-view construction. That defect predates and is semantically independent of the source-vs-TRAIN2 checkpoint routing fixed here. It should be handled in a separate bounded replay-stress representation repair if campaign progression requires it; do not reopen this workplan or couple the fix to MH-1 extraction/routing.
+
+### 21.3 Final disposition
+
+- Source scientific identity: preserved.
+- TRAIN2 selected-head foundation routing: PASS.
+- Invocation-scoped training-realization ownership: PASS.
+- Real MH-1 durable checkpoint reconstruction: PASS.
+- D1/D2/D3 changes: NONE.
+- New compatibility machinery: NONE.
+- Long production GPU qualification: still deferred.
+- PEM: no new family/count required for this closeout.
+- Workplan: **CLOSED PASS**.
+
+Archive this workplan. Any repair for the replay stress 6-vs-9 representation mismatch is a new, separate D4 cycle.
