@@ -2,7 +2,7 @@
 kind: implementation-workplan
 workplan_id: CODE-MLFF-P5-TRAIN2-MH1-SELECTED-HEAD-ROUTING-REPAIR
 protocol_version: 6.4.0
-status: implemented-awaiting-d4-review
+status: review-reopened
 created_date: 2026-09-25
 baseline_branch: main
 baseline_commit: c82388122cc3e72921a2f7a07d906b9527c4e229
@@ -12,6 +12,7 @@ earliest_affected_domain: D4 implementation/concretization under accepted phase-
 review_disposition: PASS AS WORKPLAN
 workplan_review_revision: 2
 serious_challenge: none
+implementation_review_verdict: NO-PASS
 implementation_base: 7143f36b02f26a6c3fb1ded95445ea36477f10a2
 ---
 
@@ -449,3 +450,67 @@ Runtime: RTX 3090, PyTorch 2.13.0+cu126, mace-torch 0.3.16, TRAIN2 `cueq_pure`. 
 - PEM FF-001: this is another affected surface of the same known duplicated-construction mechanism (launch vs reconstruction foundation), repaired by one shared invocation binding; no independent recurrence → no new PEM family or count.
 - Documentation: no current architecture/specification prose routes P5 TRAIN2 to the raw source; no permanent doc or PDF change.
 - Disposition: **implementation complete; ready for D4 Review.** Archive on accepted closeout once §14.3 pending evidence is either run or explicitly risk-accepted.
+
+
+## 15. Independent D4 implementation Review — reopen
+
+**Reviewed candidate:** `a74ed1ca373da2815e5d9f528305eca9c066e95e`  
+**Verdict:** **NO-PASS / bounded D4 repair required**  
+**Serious Challenge:** **NONE**
+
+The implementation correctly separates the raw scientific source foundation from the selected-head TRAIN2 construction checkpoint at the principal launch and reconstruction boundaries. The new selected-head ancestry checks, trainer-side source/training authentication split, provider routing, source-only consumer preservation, and focused distinct-file tests are directionally conforming.
+
+One implementation blocker and one required evidence closure item remain.
+
+### B1 — BLOCKER: the invocation-scoped TRAIN2 realization is still re-resolved by optimizer-policy construction
+
+The reviewed workplan Section 3.3 requires one authenticated TRAIN2 construction binding to be resolved once per P5 invocation and reused by sibling TRAIN2 consumers. Candidate `a74ed1ca373da2815e5d9f528305eca9c066e95e` does resolve `PostSelectionContext.train2_foundation_realization` once, but `campaign_post_selection_runtime._optimizer_policy_for()` still calls:
+
+```python
+_optimizer_policy(..., paths=context.paths, ...)
+```
+
+and `_campaign_cli_core._optimizer_policy()` therefore calls `_stored_training_acceleration_realization(...)` again. This independently reopens campaign state for every optimizer/evaluation-policy construction.
+
+The later trainer check
+
+```text
+request.training_realization.content_digest
+    == optimizer_policy.acceleration_realization_digest
+```
+
+is a useful fail-closed guard, but it does not satisfy the one-snapshot contract: a state change between context resolution and a later optimizer-policy read produces a runtime disagreement instead of making every consumer descend from the same invocation binding. Repeated evaluation-model-state resolution also traverses this reread path.
+
+**Required repair — keep it small:**
+
+1. Preserve `_optimizer_policy` as the single optimizer-policy constructor.
+2. Add the minimum delegated input needed for P5 to supply an already-resolved training realization **without reopening CampaignStore**. Prefer an optional resolved-realization argument/sentinel over a second optimizer constructor.
+3. In `_optimizer_policy_for(context,...)`, when the invocation carries `context.train2_foundation_realization`, pass that exact object to the canonical optimizer-policy constructor. Preserve existing resolution for unaffected/non-phase-separated callers.
+4. Assert the resulting policy's `acceleration_realization_digest` and `resolved_acceleration_kernel_mode` descend from that exact carried realization.
+5. Add a regression that mutates/replaces the stored `training_acceleration_realization` after `PostSelectionContext` construction and proves the same invocation continues to use its frozen binding rather than rereading the store. A fresh invocation may observe the new current state and must re-authenticate normally.
+
+Do **not** add another context record, cache, wrapper, or fallback.
+
+### E1 — REQUIRED ACCEPTANCE EVIDENCE: exact real-MH-1 reconstruction boundary remains unexecuted
+
+The bounded RTX 3090 run materially improves confidence: MACE launched from the doctor-produced selected-head checkpoint with `foundation_head=omat_pbe`, avoided the old `remove_pt_head` mismatch, and reached real gradient updates.
+
+However, the workplan's real-owner acceptance also requires the repaired path to cross the **TRAIN2 checkpoint -> independent reconstruction** boundary on real MH-1. The run was deliberately stopped before the first durable epoch checkpoint, so that exact proposition remains unexecuted.
+
+After B1 is repaired and focused/affected regression is green, run only the minimum real-MH-1 continuation needed to:
+
+1. produce one durable TRAIN2 epoch checkpoint;
+2. invoke the ordinary P5 provider reconstruction/EVAL2 authentication on that checkpoint;
+3. confirm reconstruction uses the same selected-head training checkpoint and does not re-enter raw-source head removal or architecture mismatch.
+
+A complete multi-fold/full-production qualification is **not** required for this repair. Stop once this owner/consumer boundary is proven. Long production qualification remains deferred.
+
+### Non-blocking review observations
+
+- The new dependency from `campaign_post_selection_runtime` to the existing CLI-core realization helpers is not a new circular-import defect: those imports are function-local and the runtime already depended on CLI-core policy/path helpers. Do not refactor modules solely for this repair.
+- The reported 10 affected-suite failures are pre-existing/stale-test failures rather than evidence of this candidate's routing defect; they should not be repaired inside this narrow cycle unless the B1 delta directly touches them.
+- Same-workspace recovery is adequately covered by the assembled owner-level retry test for this cycle; the inability to reuse an externally relocated scratch copy does not establish a product defect.
+
+### Reopen disposition
+
+Repair B1, rerun the new routing suite plus directly affected regression, and obtain E1. Then request a fresh D4 Review. No D1/D2/D3 redesign, tolerance change, new compatibility mechanism, or broader qualification campaign is authorized.
