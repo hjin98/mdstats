@@ -2,7 +2,7 @@
 kind: implementation-workplan
 workplan_id: CODE-MLFF-P5-TRAIN2-MH1-SELECTED-HEAD-ROUTING-REPAIR
 protocol_version: 6.4.0
-status: active
+status: implemented-awaiting-d4-review
 created_date: 2026-09-25
 baseline_branch: main
 baseline_commit: c82388122cc3e72921a2f7a07d906b9527c4e229
@@ -12,6 +12,7 @@ earliest_affected_domain: D4 implementation/concretization under accepted phase-
 review_disposition: PASS AS WORKPLAN
 workplan_review_revision: 2
 serious_challenge: none
+implementation_base: 7143f36b02f26a6c3fb1ded95445ea36477f10a2
 ---
 
 # MLFF P5 TRAIN2 MH-1 selected-head routing repair workplan
@@ -395,3 +396,56 @@ The final recheck then classified current `context.method_policies.foundation_mo
 No additional materially affected production caller, upstream authority conflict, required new persistent state, or new numerical/scientific obligation was found.
 
 **Final workplan review disposition: PASS AS WORKPLAN.** Implementation may proceed under the bounded D4 plan. A later implementation Review must still re-derive the final affected surface from the assembled diff and may reopen this plan if implementation exposes a real omitted owner.
+
+
+## 14. Implementation record (D4)
+
+Implemented on `fix/mlff-p5-train2-mh1-selected-head-routing` over reviewed head `7143f36b`. No Serious Challenge; no D1/D2/D3 or D4-specification mutation. No new persistent record, extractor, shim, wrapper, or fallback.
+
+### 14.1 Concretization
+
+| Obligation | Concretization |
+|---|---|
+| O1 | `_campaign_cli_core._current_train2_foundation_realization(cfg, paths, potential)` — one small owner-local resolver beside the existing doctor/realization owners. Phase-separated + foundation-backed only; otherwise `None` (collapsed/scratch semantics unchanged). Reuses `_stored_training_acceleration_realization(require_qualified=True)` (missing / runtime-incompatible / unqualified / byte-changed) and `_selected_head_qualification_matches`. Multi-head source: requires the realization's `selected_head_qualification_digest`, the stored qualification with that exact digest, lineage to the current source potential digest / raw SHA / head, and `derived_checkpoint_sha256 == training_checkpoint_sha256`. Single-head source: the realization must be the source checkpoint itself (no digest, SHA equal). |
+| O1 / §3.3 | Resolved **once** in `build_post_selection_contexts` and carried as the execution-only field `PostSelectionContext.train2_foundation_realization`; `PostSelectionContext.train2_foundation_path` projects it (source locator only when TRAIN2 is not phase-separated; raises rather than falling back when phase-separated and unresolved). |
+| O2 / O7 | `MacePostSelectionTrainer` step 5 now checks the source head against the scientific source identity, then authenticates the construction checkpoint either against the source SHA (no realization) or against the carried realization: qualified, `content_digest == optimizer_policy.acceleration_realization_digest`, reference path == launch path, bytes == `training_checkpoint_sha256`. Diagnostics name "scientific source foundation" vs "TRAIN2 construction checkpoint / training realization" distinctly. A request carrying a realization counts as foundation-backed (scratch cannot smuggle one). |
+| O3 | `PostSelectionRungRequest` gains execution-only `training_realization`; both P5 launch sites pass `context.train2_foundation_path` + `context.train2_foundation_realization`. Immutable P5 MACE config stays path-free. |
+| O4 | All three `authenticate_post_selection_provider` call sites (checkpoint-candidate assessment, outer evaluation, `post_selection_model_products` publication/representative) use `context.train2_foundation_path`. Final re-derivation over `authenticate_post_selection_provider`, `authenticate_train2_checkpoint_provider`, `build_mace_model_from_configuration`, `method_policies.foundation_model`: remaining production `foundation_model` uses are source-only (replay-baseline identity guard, `build_post_selection_foundation_baseline_provider`, `resolve_foundation_residual_inputs`); P3 target-size `authenticate_train2_checkpoint_provider` callers are foundation-free. |
+| O5 | No P5/TRAIN2/EVAL2 module references `extract_mace_selected_foundation_head` (structurally asserted). |
+| O6 | No code change required: execution evidence and materialization never bind the locator; `mace_run_config.yaml` is rewritten per launch. A zero-update failure's stale raw-source payload is recreated on retry through the existing run owner; materialization bytes are preserved. |
+
+Test-only reconciliation: `test_mlff_mh1_publication_integration.py` MH-1-shaped foundation/campaign builders lifted to module helpers for reuse; TRAIN2 reconstruction callers in it and in `test_mlff_mace_execution_semantics_assembled.py` now use `context.train2_foundation_path`; the CUDA CuEq fixture's spurious `selected_head_qualification_digest="b"*64` on a single-head source (the conflation this repair rejects) is now `None`; r8's expected source-SHA diagnostic string updated.
+
+### 14.2 Evidence
+
+Focused (`tests/test_mlff_p5_train2_foundation_routing.py`, distinct source/training files and SHAs throughout):
+
+- owner resolver: happy path; missing / unqualified / byte-tampered realization; absent or wrong qualification digest; missing qualification; qualification lineage mismatch on source potential digest, raw SHA, head; derived-SHA mismatch; raw source never accepted as TRAIN2 checkpoint; single-head collapsed mode; non-phase-separated and scratch return `None`; context projection refuses fallback (§5.1 items 5–10);
+- assembled real-owner P5 CV run (real MACE training, CPU) over a three-head MH-1-shaped source with checkpoints produced by the real doctor owners (`_qualify_selected_head_training_foundation` + `qualify_training_acceleration_realization`): a pre-repair-shaped zero-update failure writes a raw-source `mace_run_config.yaml`; same-workspace retry succeeds without deletion, materialization bytes unchanged; launch requests carry source identity + selected-head path + realization; executable config `foundation_model` = selected-head checkpoint, `foundation_head=omat_pbe`; `completed_updates > 0`; every TRAIN2 provider reconstruction used the selected-head checkpoint; residual inputs and replay baseline stayed on the raw source (§5.1 items 1–3, 11–14);
+- mutation check: re-routing the launch to the raw source makes the assembled test fail on the request-path assertion;
+- structural: every production `authenticate_post_selection_provider` (3) and `PostSelectionRungRequest` site uses the invocation binding; no EXTRACT1 in P5 modules.
+
+- real trainer rejection matrix, driven with mutated copies of the captured real launch request (rejected before any subprocess): tampered training-checkpoint bytes; realization dropped (selected-head SHA ≠ source SHA); raw-source path under the realization; optimizer realization-digest mismatch; unqualified realization (§5.1 items 4–6, 8).
+
+The r8 pre-launch harness (`test_claims_21_to_29…`) is **pre-existing broken** at `7143f36b` (stale `PostSelectionMethodIdentity` / `PostSelectionMaterialization` constructors) and was not used; only its expected diagnostic string was updated.
+
+Affected regression (17 files directly exercising the changed symbols: new routing suite, MH-1 publication integration, assembled execution semantics, downstream integration closure, TRAIN2/EVAL2 CuEq realization parity (CUDA cases ran on the RTX 3090), model publication acceptance, replay P5 execution recovery, restoration method owners, P5 r6/r7/r8/r10/r11 guards, execution semantics, executable config, CUEQ-TRAIN-DEFAULT1, EXTRACT1), `-n 16`: **239 passed, 10 failed, 3 skipped in 23 min**. All 10 failures reproduce at base `7143f36b` and are unrelated: 8 × `test_mlff_target_size_p5_r11_guards.py` (monkeypatches the removed `select_cv_fold_representative`), r8 `test_claims_21_to_29…` (stale constructors), and `test_extract1_stock_success_self_disables_architecture_shim` (order-dependent process-global torch default-dtype leak; reproduced at base by replaying the same worker's test sequence). **New failures: 0.** The 3 skips are gated on a locked real MH-1 path/CUDA-only cases outside the changed boundary.
+
+A broader 64-file grep-derived run was attempted first and abandoned after stalling at 93 % for hours with no per-test ids; it yields no attributable evidence and is not claimed.
+
+### 14.3 Bounded real MH-1 acceptance (§5.3)
+
+Runtime: RTX 3090, PyTorch 2.13.0+cu126, mace-torch 0.3.16, TRAIN2 `cueq_pure`. Executed in a disposable scratch copy of `05_mace_training/LTA/mh1/FP32` (external campaign untouched); the stored realization references the doctor artifact `…/foundation-selected-head/mace_mh_1-omat_pbe.model` (`training_checkpoint_sha256 e8f90826a78b549d…`, qualification digest `f158457777259402…`).
+
+- The copy first refused the pre-repair failed run's materialization because it binds the original workspace's absolute `output_directory` — a relocation property of the copy, not of this repair; the zero-update run root was removed **in the scratch copy only** and `cross-validate` rerun.
+- MACE log: `Using foundation model …/foundation-selected-head/mace_mh_1-omat_pbe.model as initial checkpoint`; parsed `foundation_head='omat_pbe'`, `multiheads_finetuning=True`, `enable_cueq=True`. No `remove_pt_head` / state-dict size-mismatch.
+- Execution reached epoch-0 gradient updates: 247/51,670 updates (~5.7 update/s once warm) before a deliberate SIGINT; the run ended `status=cancelled` cleanly.
+- **PENDING:** real-MH-1 reconstruction of a durable TRAIN2 epoch checkpoint (needs ≥1 epoch = 5,167 updates) and the full previously-failing CV path. Reconstruction from the selected-head checkpoint is proven on the MH-1-shaped real-MACE fixture, not yet on real MH-1. Long production-scale qualification remains deferred.
+
+### 14.4 Residual risk / closeout
+
+- r8 pre-launch trainer harness is stale at base (pre-existing; out of scope). Recommended follow-up: repair it rather than add a parallel harness.
+- Same-workspace retry in the *real* MH-1 workspace is expected to proceed (materialization `output_directory` matches there) but was not executed, per the read-only boundary.
+- PEM FF-001: this is another affected surface of the same known duplicated-construction mechanism (launch vs reconstruction foundation), repaired by one shared invocation binding; no independent recurrence → no new PEM family or count.
+- Documentation: no current architecture/specification prose routes P5 TRAIN2 to the raw source; no permanent doc or PDF change.
+- Disposition: **implementation complete; ready for D4 Review.** Archive on accepted closeout once §14.3 pending evidence is either run or explicitly risk-accepted.

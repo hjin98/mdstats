@@ -2673,6 +2673,55 @@ def _qualify_selected_head_training_foundation(
     return qualification
 
 
+def _current_train2_foundation_realization(
+    cfg: Mapping[str, Any],
+    paths: CampaignPaths,
+    potential: Any | None,
+) -> Any | None:
+    """Return the doctor-frozen realization whose checkpoint constructs TRAIN2.
+
+    ``None`` means TRAIN2 is not phase-separated (or foundation-free) and is
+    constructed from the scientific source checkpoint itself.  Otherwise the
+    stored realization must be current, qualified, byte-exact, and descend from
+    ``potential``: a genuinely multi-head source requires the current EXTRACT1
+    qualification that derived exactly this checkpoint, and a single-head
+    source requires the realization to be the source checkpoint itself.
+    """
+
+    import mdstats
+
+    if potential is None or not _phase_separated_acceleration(cfg):
+        return None
+    record = _stored_training_acceleration_realization(cfg, paths, require_qualified=True)
+    if len(tuple(potential.available_heads)) > 1:
+        qualification = CampaignStore(paths.state_db).get_record_optional(
+            "selected_head_qualification", mdstats.MaceSelectedHeadQualificationRecord
+        )
+        if (
+            record.selected_head_qualification_digest is None
+            or qualification is None
+            or qualification.content_digest != record.selected_head_qualification_digest
+            or not _selected_head_qualification_matches(potential, qualification)
+            or qualification.extraction.derived_checkpoint_sha256
+            != record.training_checkpoint_sha256
+        ):
+            raise CampaignCliError(
+                "TRAIN2 construction checkpoint does not descend from the current "
+                "selected-head qualification of the scientific source foundation "
+                f"({potential.foundation_head}). Run `doctor` under the intended runtime."
+            )
+    elif (
+        record.selected_head_qualification_digest is not None
+        or record.training_checkpoint_sha256 != potential.sha256
+    ):
+        raise CampaignCliError(
+            "TRAIN2 construction checkpoint of a single-head scientific source "
+            "foundation must be that source checkpoint. Run `doctor` under the "
+            "intended runtime."
+        )
+    return record
+
+
 
 
 def _foundation_inference_identity(

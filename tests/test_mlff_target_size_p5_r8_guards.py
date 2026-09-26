@@ -712,7 +712,7 @@ exit 0
     foundation_file.write_bytes(b"TAMPERED_FOUNDATION")
     with pytest.raises(PostSelectionExecutionError) as exc_info:
         trainer(base_request)
-    assert "Foundation model file SHA256 does not match" in str(exc_info.value)
+    assert "TRAIN2 construction checkpoint SHA256 does not match the scientific source" in str(exc_info.value)
     assert not wrapper_invocation_file.exists()
     foundation_file.write_bytes(b"FOUNDATION_MODEL_DATA")  # restore
 

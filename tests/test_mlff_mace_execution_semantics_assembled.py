@@ -274,9 +274,9 @@ def test_p5_real_nonreplay_reconstructs_default_head_and_authenticates_eval2(
         assert config_payload["E0s"]
         # The immutable configuration never carries the runtime locator; both
         # the launch projection and EVAL2 reconstruction receive the currently
-        # authenticated one from the resolved method policy.
+        # authenticated TRAIN2 construction checkpoint of the invocation.
         assert "foundation_model" not in config_payload
-        foundation_locator = context.method_policies.foundation_model
+        foundation_locator = context.train2_foundation_path
         executable = post_selection_mace_run_configuration(
             config_payload, foundation_model_path=foundation_locator
         )
@@ -318,7 +318,7 @@ def test_p5_real_nonreplay_reconstructs_default_head_and_authenticates_eval2(
             ),
             allow_forward_override=False,
             checkpoint_epoch=summary.raw_checkpoint_epoch,
-            foundation_model_path=context.method_policies.foundation_model,
+            foundation_model_path=context.train2_foundation_path,
         )
         assert tuple(str(value) for value in provider.model.heads) == ("Default",)
         assert (
@@ -586,7 +586,7 @@ legacy_normalized = true
         assert "foundation_model" not in config_payload
         executable = post_selection_mace_run_configuration(
             config_payload,
-            foundation_model_path=context.method_policies.foundation_model,
+            foundation_model_path=context.train2_foundation_path,
         )
         assert executable["force_mh_ft_lr"] is True
         assert executable["real_pt_data_ratio_threshold"] == 0.0
@@ -613,7 +613,7 @@ legacy_normalized = true
             evaluation_model_state=EVALUATION_MODEL_STATE_EMA,
             allow_forward_override=False,
             checkpoint_epoch=earliest_epoch,
-            foundation_model_path=context.method_policies.foundation_model,
+            foundation_model_path=context.train2_foundation_path,
         )
         assert earlier_provider.model is not None
         assert earlier_digest
@@ -637,7 +637,7 @@ legacy_normalized = true
                     evaluation_model_state=EVALUATION_MODEL_STATE_LIVE,
                     allow_forward_override=allow_forward_override,
                     checkpoint_epoch=earliest_epoch,
-                    foundation_model_path=context.method_policies.foundation_model,
+                    foundation_model_path=context.train2_foundation_path,
                 )
 
         boundary_path = checkpoint_root / f"train2_runtime_epoch-{earliest_epoch}.json"
@@ -659,7 +659,7 @@ legacy_normalized = true
                     evaluation_model_state=EVALUATION_MODEL_STATE_EMA,
                     allow_forward_override=False,
                     checkpoint_epoch=earliest_epoch,
-                    foundation_model_path=context.method_policies.foundation_model,
+                    foundation_model_path=context.train2_foundation_path,
                 )
         finally:
             boundary_path.write_bytes(boundary_bytes)
@@ -681,7 +681,7 @@ legacy_normalized = true
                     evaluation_model_state=EVALUATION_MODEL_STATE_EMA,
                     allow_forward_override=False,
                     checkpoint_epoch=earliest_epoch,
-                    foundation_model_path=context.method_policies.foundation_model,
+                    foundation_model_path=context.train2_foundation_path,
                 )
         finally:
             earliest_checkpoint.write_bytes(raw_checkpoint_bytes)
@@ -998,7 +998,7 @@ require_available = true
                         dtype="float32",
                         training_checkpoint_reference=str(foundation),
                         training_checkpoint_sha256=cli._sha256(foundation),
-                        selected_head_qualification_digest="b" * 64,
+                        selected_head_qualification_digest=None,
                         mace_version="0.3.16",
                         cueq_versions=(("cuequivariance", "fixture"),),
                         training_parity_record_digest="c" * 64,
