@@ -349,6 +349,57 @@ def test_phase_separated_mh1_p5_trains_and_reconstructs_from_selected_head(
         assert _sha256(derived) != source.sha256
         assert mdstats.inspect_mace_foundation(derived).available_heads == ("omat_pbe",)
 
+        # The optimizer policy descends from the same invocation snapshot as
+        # launch/reconstruction even if CampaignStore changes afterwards. A
+        # newly constructed invocation authenticates and binds the new current
+        # realization normally.
+        frozen_realization = context.train2_foundation_realization
+        replacement_checkpoint = derived.with_name(
+            "next-invocation-selected-head.model"
+        )
+        shutil.copyfile(derived, replacement_checkpoint)
+        replacement_realization = replace(
+            frozen_realization,
+            training_checkpoint_reference=str(replacement_checkpoint),
+        )
+        store.put_record("training_acceleration_realization", replacement_realization)
+        try:
+            frozen_policy = runtime._optimizer_policy_for(
+                context, seed=0, planned_epochs=1
+            )
+            assert context.train2_foundation_path == derived
+            assert (
+                frozen_policy.acceleration_realization_digest
+                == frozen_realization.content_digest
+            )
+            assert (
+                frozen_policy.resolved_acceleration_kernel_mode
+                == frozen_realization.training_kernel_mode
+            )
+
+            fresh_context = runtime.build_post_selection_context(
+                cfg,
+                paths,
+                store,
+                trainer=context.trainer,
+                inference_evaluator=assembled.PostSelectionHarness().evaluate,
+            )
+            assert fresh_context.train2_foundation_realization == replacement_realization
+            assert fresh_context.train2_foundation_path == replacement_checkpoint
+            fresh_policy = runtime._optimizer_policy_for(
+                fresh_context, seed=0, planned_epochs=1
+            )
+            assert (
+                fresh_policy.acceleration_realization_digest
+                == replacement_realization.content_digest
+            )
+            assert (
+                fresh_policy.resolved_acceleration_kernel_mode
+                == replacement_realization.training_kernel_mode
+            )
+        finally:
+            store.put_record("training_acceleration_realization", frozen_realization)
+
         resolution = assembled._resolve_post_selection_replay_resolution(context)
         cv_plan = assembled.build_post_selection_cv_plan(
             context.selected,

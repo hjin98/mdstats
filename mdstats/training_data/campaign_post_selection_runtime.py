@@ -626,13 +626,28 @@ def _optimizer_policy_for(
 ) -> Any:
     from ._campaign_cli_core import _cfg, _optimizer_policy
 
+    realization = context.train2_foundation_realization
+    resolved_realization = (
+        {}
+        if realization is None
+        else {"resolved_training_acceleration_realization": realization}
+    )
     policy = _optimizer_policy(
         context.cfg,
         seed=int(seed),
         num_workers=int(_cfg(context.cfg, "training", "num_workers", 0)),
         paths=context.paths,
         planned_epochs=int(planned_epochs),
+        **resolved_realization,
     )
+    if realization is not None and (
+        policy.acceleration_realization_digest != realization.content_digest
+        or policy.resolved_acceleration_kernel_mode != realization.training_kernel_mode
+    ):
+        raise PostSelectionError(
+            "Optimizer policy did not preserve the invocation's resolved TRAIN2 "
+            "acceleration realization and kernel mode."
+        )
     if hasattr(policy, "acceleration_policy") and policy.acceleration_policy is not None:
         if policy.acceleration_policy.backend.value != context.method.acceleration_backend:
             raise PostSelectionError(

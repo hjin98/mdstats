@@ -1476,6 +1476,7 @@ def _optimizer_policy(
     num_workers: int,
     paths: CampaignPaths | None = None,
     planned_epochs: int | None = None,
+    resolved_training_acceleration_realization: Any | None = None,
 ) -> Any:
     """Build one protocol-frozen optimizer policy under binary model precision.
 
@@ -1484,16 +1485,20 @@ def _optimizer_policy(
     learned-model dtype from the one binary precision contract, so the method
     P5 identity claims and the method this policy executes cannot drift apart.
     Only the genuinely role-local inputs -- optimizer seed, worker count, and
-    the role's planned epoch budget -- are supplied by the caller.
+    the role's planned epoch budget -- are supplied by the caller. P5 may also
+    supply its invocation-resolved TRAIN2 realization so sibling consumers
+    share that snapshot; otherwise ``paths`` resolves the current stored record.
     """
 
     import mdstats
 
     settings = resolve_shared_optimizer_settings(cfg)
     model_dtype = str(_binary_model_precision_contract(cfg)["model_dtype"])
-    realization = None if paths is None else _stored_training_acceleration_realization(
-        cfg, paths, require_qualified=True
-    )
+    realization = resolved_training_acceleration_realization
+    if realization is None and paths is not None:
+        realization = _stored_training_acceleration_realization(
+            cfg, paths, require_qualified=True
+        )
     training_acceleration = _training_acceleration_policy(cfg)
     return mdstats.MaceOptimizerPolicy(
         learning_rate=settings["learning_rate"],

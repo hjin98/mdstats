@@ -514,3 +514,31 @@ A complete multi-fold/full-production qualification is **not** required for this
 ### Reopen disposition
 
 Repair B1, rerun the new routing suite plus directly affected regression, and obtain E1. Then request a fresh D4 Review. No D1/D2/D3 redesign, tolerance change, new compatibility mechanism, or broader qualification campaign is authorized.
+
+
+## 16. Reopened implementation continuation — B1 repaired, E1 pending
+
+**Reopen base:** `e0b04a5998b0c505559c5335997e81f8efa61c4b`
+**Scope:** D4 blocker B1 only; no D1/D2/D3 change or Serious Challenge.
+
+### 16.1 B1 implementation
+
+- `_campaign_cli_core._optimizer_policy` remains the canonical optimizer-policy constructor and now accepts optional `resolved_training_acceleration_realization`. When supplied, it builds policy realization fields from that exact record without reopening `CampaignStore`; callers that omit it keep the existing stored-record resolution.
+- `campaign_post_selection_runtime._optimizer_policy_for` supplies `context.train2_foundation_realization` when present and checks that the returned policy's realization digest and resolved kernel mode equal that carried record. A context without a resolved realization retains the prior constructor call behavior.
+- No additional context record, cache, wrapper, fallback, or optimizer constructor was added.
+- The regression is in `test_phase_separated_mh1_p5_trains_and_reconstructs_from_selected_head` in `tests/test_mlff_p5_train2_foundation_routing.py`. After building a real P5 context, it replaces the stored realization with a same-byte checkpoint at a different locator. The existing context retains the original path and its optimizer policy retains the original digest/kernel; a newly built context resolves and binds the replacement path/digest/kernel. The stored fixture record is restored before the assembled P5 run continues.
+
+### 16.2 Focused and directly affected regression
+
+Executed serially in Conda environment `mace` (one concurrent test job):
+
+1. `conda run -n mace python -m pytest -q -ra tests/test_mlff_p5_train2_foundation_routing.py tests/test_mlff_target_size_canonical_optimizer_settings.py tests/test_mlff_cueq_train_default1.py` — **110 passed**, 458 warnings, 63.69 seconds. Includes the distinct-source/selected-head routing suite, assembled P5 launch/provider reconstruction, and the new invocation-snapshot/fresh-resolution regression.
+2. `conda run -n mace python -m pytest -q -ra tests/test_mlff_target_size_optimizer_normalization.py tests/test_mlff_production_global_train_scheduler.py` — **103 passed**, 6,738 warnings, 546.23 seconds.
+
+These are focused fixture/regression evidence. They do not constitute the real-MH-1 E1 checkpoint evidence or production qualification.
+
+### 16.3 E1 environment boundary
+
+E1 was **not executed** in this session. Preflight command `conda run -n mace python -c 'import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.device_count())'` returned PyTorch `2.13.0+cu126`, CUDA unavailable, and device count `0`; `nvidia-smi` could not communicate with the NVIDIA driver. Inspection of `/home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32/campaign.toml` confirmed `training.device = "cuda"` and TRAIN2 `training_backend = "cueq"`. The run-root inventory under `.mdstats/post-selection/g1/runs/cfe00a1420621581b00539cd64e9cf648edcb1b3efc2aab45e8e2ed64f1037c8` contains materialization/log files but no durable epoch checkpoint. The available log remains the prior raw-source `remove_pt_head()` failure; it cannot establish post-repair checkpoint reconstruction.
+
+The external campaign and trajectory inputs remained read-only. No real-MH-1 epoch checkpoint was produced and no ordinary provider/EVAL2 reconstruction was attempted on a real-MH-1 checkpoint. E1 remains required on the intended CUDA/CuEq runtime. Keep this workplan reopened and defer fresh D4 Review until E1 is completed; long production qualification remains out of scope.
