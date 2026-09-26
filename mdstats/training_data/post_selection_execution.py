@@ -1563,8 +1563,14 @@ class PostSelectionRungRequest:
     checkpoint_directory: Path
     optimizer_policy: Any
     start_epoch: int = 0
+    # ``foundation_identity`` is the scientific source foundation (content,
+    # family, selected head).  ``foundation_model_path`` is the TRAIN2
+    # construction checkpoint: the source checkpoint itself, or, under a
+    # phase-separated TRAIN2 realization, ``training_realization``'s exact
+    # (for multi-head sources, selected-head) checkpoint.
     foundation_identity: Any | None = None
     foundation_model_path: Path | None = None
+    training_realization: Any | None = None
     replay_train_artifact: Any | None = None
     replay_train_path: Path | None = None
     replay_monitor_artifact: Any | None = None
@@ -2344,6 +2350,7 @@ class MacePostSelectionTrainer:
         request_has_foundation = (
             request.foundation_identity is not None
             or request.foundation_model_path is not None
+            or request.training_realization is not None
         )
         if internal_has_foundation != request_has_foundation:
             raise PostSelectionExecutionError(
@@ -2357,22 +2364,46 @@ class MacePostSelectionTrainer:
                     "Non-scratch training requires canonical foundation identity and path in request."
                 )
             # 5. The locator is a runtime address, so it is re-authenticated
-            # here rather than compared against a stored pathname: the bytes and
-            # the selected head reached through the current locator are what the
-            # frozen method actually bound.
+            # here rather than compared against a stored pathname.  The source
+            # head is what the frozen method bound; the bytes reached through
+            # the locator must be the TRAIN2 construction checkpoint, which is
+            # the source checkpoint unless a phase-separated training
+            # realization froze a distinct one.
+            if internal_foundation_head != request.foundation_identity.foundation_head:
+                raise PostSelectionExecutionError(
+                    "Internal config foundation_head does not match the scientific "
+                    "source foundation head."
+                )
             f_path = Path(request.foundation_model_path).resolve()
             if not f_path.is_file():
                 raise PostSelectionExecutionError(
-                    f"Foundation model file is missing: {f_path}"
+                    f"TRAIN2 construction checkpoint is missing: {f_path}"
                 )
-            if sha256_file_cached(f_path) != request.foundation_identity.sha256:
-                raise PostSelectionExecutionError(
-                    "Foundation model file SHA256 does not match canonical foundation identity."
-                )
-            if internal_foundation_head != request.foundation_identity.foundation_head:
-                raise PostSelectionExecutionError(
-                    "Internal config foundation_head does not match request foundation head."
-                )
+            realization = request.training_realization
+            if realization is None:
+                if sha256_file_cached(f_path) != request.foundation_identity.sha256:
+                    raise PostSelectionExecutionError(
+                        "TRAIN2 construction checkpoint SHA256 does not match the "
+                        "scientific source foundation identity."
+                    )
+            else:
+                if (
+                    not realization.qualified
+                    or realization.content_digest
+                    != getattr(request.optimizer_policy, "acceleration_realization_digest", None)
+                ):
+                    raise PostSelectionExecutionError(
+                        "TRAIN2 construction checkpoint realization is unqualified or "
+                        "is not the realization bound by the optimizer policy."
+                    )
+                if (
+                    Path(realization.training_checkpoint_reference).resolve() != f_path
+                    or sha256_file_cached(f_path) != realization.training_checkpoint_sha256
+                ):
+                    raise PostSelectionExecutionError(
+                        "TRAIN2 construction checkpoint bytes do not match the stored "
+                        "TRAIN2 training realization."
+                    )
             authenticated_foundation_path = f_path
 
         # 6. For multihead_replay: replay train path/artifact present and file SHA matches

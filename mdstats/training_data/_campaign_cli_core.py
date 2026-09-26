@@ -1476,6 +1476,7 @@ def _optimizer_policy(
     num_workers: int,
     paths: CampaignPaths | None = None,
     planned_epochs: int | None = None,
+    resolved_training_acceleration_realization: Any | None = None,
 ) -> Any:
     """Build one protocol-frozen optimizer policy under binary model precision.
 
@@ -1484,16 +1485,20 @@ def _optimizer_policy(
     learned-model dtype from the one binary precision contract, so the method
     P5 identity claims and the method this policy executes cannot drift apart.
     Only the genuinely role-local inputs -- optimizer seed, worker count, and
-    the role's planned epoch budget -- are supplied by the caller.
+    the role's planned epoch budget -- are supplied by the caller. P5 may also
+    supply its invocation-resolved TRAIN2 realization so sibling consumers
+    share that snapshot; otherwise ``paths`` resolves the current stored record.
     """
 
     import mdstats
 
     settings = resolve_shared_optimizer_settings(cfg)
     model_dtype = str(_binary_model_precision_contract(cfg)["model_dtype"])
-    realization = None if paths is None else _stored_training_acceleration_realization(
-        cfg, paths, require_qualified=True
-    )
+    realization = resolved_training_acceleration_realization
+    if realization is None and paths is not None:
+        realization = _stored_training_acceleration_realization(
+            cfg, paths, require_qualified=True
+        )
     training_acceleration = _training_acceleration_policy(cfg)
     return mdstats.MaceOptimizerPolicy(
         learning_rate=settings["learning_rate"],
@@ -2671,6 +2676,55 @@ def _qualify_selected_head_training_foundation(
         raise CampaignCliError("Selected-head training foundation failed EXTRACT1 lineage validation.")
     store.put_record("selected_head_qualification", qualification)
     return qualification
+
+
+def _current_train2_foundation_realization(
+    cfg: Mapping[str, Any],
+    paths: CampaignPaths,
+    potential: Any | None,
+) -> Any | None:
+    """Return the doctor-frozen realization whose checkpoint constructs TRAIN2.
+
+    ``None`` means TRAIN2 is not phase-separated (or foundation-free) and is
+    constructed from the scientific source checkpoint itself.  Otherwise the
+    stored realization must be current, qualified, byte-exact, and descend from
+    ``potential``: a genuinely multi-head source requires the current EXTRACT1
+    qualification that derived exactly this checkpoint, and a single-head
+    source requires the realization to be the source checkpoint itself.
+    """
+
+    import mdstats
+
+    if potential is None or not _phase_separated_acceleration(cfg):
+        return None
+    record = _stored_training_acceleration_realization(cfg, paths, require_qualified=True)
+    if len(tuple(potential.available_heads)) > 1:
+        qualification = CampaignStore(paths.state_db).get_record_optional(
+            "selected_head_qualification", mdstats.MaceSelectedHeadQualificationRecord
+        )
+        if (
+            record.selected_head_qualification_digest is None
+            or qualification is None
+            or qualification.content_digest != record.selected_head_qualification_digest
+            or not _selected_head_qualification_matches(potential, qualification)
+            or qualification.extraction.derived_checkpoint_sha256
+            != record.training_checkpoint_sha256
+        ):
+            raise CampaignCliError(
+                "TRAIN2 construction checkpoint does not descend from the current "
+                "selected-head qualification of the scientific source foundation "
+                f"({potential.foundation_head}). Run `doctor` under the intended runtime."
+            )
+    elif (
+        record.selected_head_qualification_digest is not None
+        or record.training_checkpoint_sha256 != potential.sha256
+    ):
+        raise CampaignCliError(
+            "TRAIN2 construction checkpoint of a single-head scientific source "
+            "foundation must be that source checkpoint. Run `doctor` under the "
+            "intended runtime."
+        )
+    return record
 
 
 

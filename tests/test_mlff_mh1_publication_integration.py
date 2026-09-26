@@ -237,64 +237,58 @@ def test_publication_owner_serializes_a_multihead_model_and_preserves_head_order
     assert tuple(reloaded.heads).index(POST_SELECTION_TARGET_HEAD_NAME) == 1
 
 
-def test_mh1_current_post_selection_provider_seam_uses_real_owner_path(
-    tmp_path: Path, monkeypatch
-):
-    """A bounded MH-1-shaped campaign crosses DATA8, TRAIN2 and P5 providers.
-
-    The locked ``mace-mh-1.model`` is not available in this environment, so
-    the fixture creates a genuinely serialized three-source-head MACE model
-    with the MH-1 family topology.  The bounded run still uses the current
-    post-selection materializer, native TRAIN2 state, no-override selected-
-    checkpoint authentication, portable reconstruction, and publication
-    reload owners.
-    """
-
-    import hashlib
-    import json
-    import re
+def write_mh1_shaped_foundation(path: Path) -> None:
+    """Serialize a bounded three-source-head MACE model with MH-1 topology."""
 
     import torch
 
+    # MACE-MH-1's inspected family contract includes the agnostic product
+    # projection and explicit edge irreps; the generic tiny fixture leaves
+    # both at the MPA-0 defaults, so construct only this bounded foundation
+    # with the native MACE constructor.
+    import numpy as np
+    from e3nn import o3
+    from mace import modules, tools
+
+    table = tools.AtomicNumberTable([3, 8])
+    model = modules.ScaleShiftMACE(
+        r_max=4.0,
+        num_bessel=4,
+        num_polynomial_cutoff=3,
+        max_ell=1,
+        interaction_cls=modules.interaction_classes[
+            "RealAgnosticResidualNonLinearInteractionBlock"
+        ],
+        interaction_cls_first=modules.interaction_classes[
+            "RealAgnosticResidualNonLinearInteractionBlock"
+        ],
+        num_interactions=2,
+        num_elements=2,
+        hidden_irreps=o3.Irreps("8x0e + 8x1o"),
+        MLP_irreps=o3.Irreps("4x0e"),
+        gate=torch.nn.functional.silu,
+        atomic_energies=np.zeros((3, 2)),
+        avg_num_neighbors=2.0,
+        atomic_numbers=table.zs,
+        correlation=2,
+        atomic_inter_scale=np.ones(3),
+        atomic_inter_shift=np.zeros(3),
+        use_agnostic_product=True,
+        edge_irreps=o3.Irreps("0e + 1o"),
+        heads=["omat_pbe", "mp_pbe", "spice"],
+    ).to(dtype=torch.float64)
+    torch.save(model, path)
+
+
+def build_mh1_shaped_campaign(
+    tmp_path: Path, monkeypatch, *, extra_config: str = ""
+) -> tuple[Path, Path]:
+    """A selected multihead-replay campaign over the MH-1-shaped foundation.
+
+    Returns ``(config, foundation)``; TRAIN2 launches the real wrapper.
+    """
+
     import tests.test_mlff_mace_execution_semantics_assembled as assembled
-
-    def write_mh1_foundation(path: Path) -> None:
-        # MACE-MH-1's inspected family contract includes the agnostic product
-        # projection and explicit edge irreps; the generic tiny fixture leaves
-        # both at the MPA-0 defaults, so construct only this bounded foundation
-        # with the native MACE constructor.
-        import numpy as np
-        from e3nn import o3
-        from mace import modules, tools
-
-        table = tools.AtomicNumberTable([3, 8])
-        model = modules.ScaleShiftMACE(
-            r_max=4.0,
-            num_bessel=4,
-            num_polynomial_cutoff=3,
-            max_ell=1,
-            interaction_cls=modules.interaction_classes[
-                "RealAgnosticResidualNonLinearInteractionBlock"
-            ],
-            interaction_cls_first=modules.interaction_classes[
-                "RealAgnosticResidualNonLinearInteractionBlock"
-            ],
-            num_interactions=2,
-            num_elements=2,
-            hidden_irreps=o3.Irreps("8x0e + 8x1o"),
-            MLP_irreps=o3.Irreps("4x0e"),
-            gate=torch.nn.functional.silu,
-            atomic_energies=np.zeros((3, 2)),
-            avg_num_neighbors=2.0,
-            atomic_numbers=table.zs,
-            correlation=2,
-            atomic_inter_scale=np.ones(3),
-            atomic_inter_shift=np.zeros(3),
-            use_agnostic_product=True,
-            edge_irreps=o3.Irreps("0e + 1o"),
-            heads=["omat_pbe", "mp_pbe", "spice"],
-        ).to(dtype=torch.float64)
-        torch.save(model, path)
 
     root = tmp_path / "inputs"
     foundation = root / "foundation.model"
@@ -302,7 +296,7 @@ def test_mh1_current_post_selection_provider_seam_uses_real_owner_path(
     pseudo_monitor = root / "replay-pseudo-monitor.extxyz"
     true_root = root / "true-replay"
     foundation.parent.mkdir(parents=True, exist_ok=True)
-    write_mh1_foundation(foundation)
+    write_mh1_shaped_foundation(foundation)
     assembled._write_replay_file(pseudo_train, list(range(60)), energy_offset=0.25)
     assembled._write_replay_file(pseudo_monitor, [60, 61], energy_offset=0.25)
     assembled._write_replay_file(
@@ -359,7 +353,7 @@ require_target_elements = false
 family = "mace_mh_1"
 head = "omat_pbe"
 legacy_normalized = true
-"""
+""" + extra_config
 
     config, _workspace = assembled.build_selected_campaign(
         tmp_path / "campaign",
@@ -371,7 +365,31 @@ legacy_normalized = true
         "_ensure_local_wrappers",
         lambda _paths: {"mdstats-mace-train": assembled.p3_real._wrapper(tmp_path)},
     )
+    return config, foundation
 
+
+def test_mh1_current_post_selection_provider_seam_uses_real_owner_path(
+    tmp_path: Path, monkeypatch
+):
+    """A bounded MH-1-shaped campaign crosses DATA8, TRAIN2 and P5 providers.
+
+    The locked ``mace-mh-1.model`` is not available in this environment, so
+    the fixture creates a genuinely serialized three-source-head MACE model
+    with the MH-1 family topology.  The bounded run still uses the current
+    post-selection materializer, native TRAIN2 state, no-override selected-
+    checkpoint authentication, portable reconstruction, and publication
+    reload owners.
+    """
+
+    import hashlib
+    import json
+    import re
+
+    import torch
+
+    import tests.test_mlff_mace_execution_semantics_assembled as assembled
+
+    config, _foundation = build_mh1_shaped_campaign(tmp_path, monkeypatch)
     cfg, paths, store = assembled.load_context(config)
     provider = None
     try:
@@ -457,7 +475,7 @@ legacy_normalized = true
             evaluation_model_state=EVALUATION_MODEL_STATE_EMA,
             allow_forward_override=False,
             checkpoint_epoch=selected_epoch,
-            foundation_model_path=context.method_policies.foundation_model,
+            foundation_model_path=context.train2_foundation_path,
         )
         assert evaluated_digest
         assert tuple(str(value) for value in provider.model.heads) == (

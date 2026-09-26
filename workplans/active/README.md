@@ -30,6 +30,12 @@ The proposed method restores the final mature multi-view semantics under current
 
 ## Recently closed MLFF work
 
+The P5 TRAIN2 MH-1 selected-head routing repair closed **PASS** under Protocol 6.4. Product-code candidate `467018ae309a679fbdaadbe80f9d47805344831b` passed code Review, and real RTX 3090/CUDA/CuEq E1 evidence at descendant `2541bff60f28b9106341119107d50235930abe71` proved durable MH-1 TRAIN2 checkpoint reconstruction through the ordinary selected-head provider/checkpoint-monitor EVAL2 boundary without raw-source `remove_pt_head` or architecture mismatch. A subsequently exposed replay stress 6-vs-9 representation mismatch is a separate downstream D4 issue and did not block this routing repair.
+
+Final closure record:
+
+- `workplans/archive/MLFF_P5_TRAIN2_MH1_SELECTED_HEAD_ROUTING_REPAIR_WORKPLAN.md`.
+
 The final-production global TRAIN scheduler repair on branch `design/mlff-production-global-train-scheduler-repair` closed **PASS** under Protocol 6.4 at reviewed candidate `62d42da57f948f70bbd50ec338435c3a82b22d49`. Final production now normalizes recovery collection-wide, executes only remaining TRAIN_REQUIRED positions through one existing adaptive TRAIN scheduler wave, and retains serial/fail-fast EVAL2/assessment/publication in frozen selected-size order. Exact CampaignStore collection-signature admission linearization, authenticated restart/reuse, and zero-safe/backoff semantics remain intact. Production-scale RAM/VRAM adequacy is deferred to actual runs and target-hardware GPU qualification to the final release package.
 
 Final closure record:

@@ -124,7 +124,7 @@ def selected_representative_provider(
         summary=summary,
         evaluation_model_state=evaluation_model_state,
         allow_forward_override=bool(allow_forward_override),
-        foundation_model_path=context.method_policies.foundation_model,
+        foundation_model_path=context.train2_foundation_path,
     )
     try:
         yield provider, evaluated_digest

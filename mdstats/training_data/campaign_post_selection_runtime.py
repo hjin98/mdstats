@@ -199,12 +199,39 @@ class PostSelectionContext:
     # Every frozen selected size of this campaign generation.  The common target
     # monitor is separated from all of them, so it never depends on one size.
     governed_selected: tuple[CurrentSelectedTrainingContext, ...] = ()
+    # Execution-only binding resolved once per invocation from the stored
+    # doctor-frozen TRAIN2 realization.  It never replaces the scientific
+    # source identity carried by ``method_policies``.
+    train2_foundation_realization: Any | None = None
     _baseline_replay_cache: dict[str, Any] = field(
         default_factory=dict, repr=False, compare=False
     )
     _common_monitor_cache: dict[str, Any] = field(
         default_factory=dict, repr=False, compare=False
     )
+
+    @property
+    def train2_foundation_path(self) -> Path | None:
+        """The checkpoint that constructs and reconstructs this invocation's TRAIN2.
+
+        Source-only consumers (foundation residuals, replay baselines) keep
+        ``method_policies.foundation_model``; the two coincide only when TRAIN2
+        is not phase-separated.
+        """
+
+        from ._campaign_cli_core import _phase_separated_acceleration
+
+        source = self.method_policies.foundation_model
+        if not source:
+            return None
+        if self.train2_foundation_realization is not None:
+            return Path(self.train2_foundation_realization.training_checkpoint_reference)
+        if _phase_separated_acceleration(self.cfg):
+            raise PostSelectionError(
+                "Phase-separated TRAIN2 has no resolved training realization; the "
+                "scientific source checkpoint is never a TRAIN2 construction fallback."
+            )
+        return Path(source)
 
     def common_target_monitor(self) -> tuple[Any, Any]:
         """Resolve ``(M_mon record, P1 separation evidence)`` for this campaign.
@@ -479,7 +506,11 @@ def build_post_selection_contexts(
     experiment dimension, not one more campaign.
     """
 
-    from ._campaign_cli_core import _cfg, _ensure_local_wrappers
+    from ._campaign_cli_core import (
+        _cfg,
+        _current_train2_foundation_realization,
+        _ensure_local_wrappers,
+    )
 
     selected_contexts = load_current_selected_training_contexts(
         cfg, paths, store, admit=admit
@@ -522,6 +553,9 @@ def build_post_selection_contexts(
         )
     policies = resolve_post_selection_method_policies(cfg, config_dir=paths.config_dir)
     method = resolve_post_selection_method_identity(cfg, policies=policies)
+    train2_foundation_realization = _current_train2_foundation_realization(
+        cfg, paths, policies.foundation_potential_identity
+    )
     configuration = policies.checkpoint_policy_configuration
     for notice in () if configuration is None else configuration.migration_notices:
         print(f"[P5 config] {notice}", flush=True)
@@ -557,6 +591,7 @@ def build_post_selection_contexts(
                 inference_evaluator=inference_evaluator,
                 qualification_case_workers=max(1, int(qualification_case_workers)),
                 governed_selected=tuple(selected_contexts),
+                train2_foundation_realization=train2_foundation_realization,
             )
         )
     return tuple(contexts)
@@ -591,13 +626,28 @@ def _optimizer_policy_for(
 ) -> Any:
     from ._campaign_cli_core import _cfg, _optimizer_policy
 
+    realization = context.train2_foundation_realization
+    resolved_realization = (
+        {}
+        if realization is None
+        else {"resolved_training_acceleration_realization": realization}
+    )
     policy = _optimizer_policy(
         context.cfg,
         seed=int(seed),
         num_workers=int(_cfg(context.cfg, "training", "num_workers", 0)),
         paths=context.paths,
         planned_epochs=int(planned_epochs),
+        **resolved_realization,
     )
+    if realization is not None and (
+        policy.acceleration_realization_digest != realization.content_digest
+        or policy.resolved_acceleration_kernel_mode != realization.training_kernel_mode
+    ):
+        raise PostSelectionError(
+            "Optimizer policy did not preserve the invocation's resolved TRAIN2 "
+            "acceleration realization and kernel mode."
+        )
     if hasattr(policy, "acceleration_policy") and policy.acceleration_policy is not None:
         if policy.acceleration_policy.backend.value != context.method.acceleration_backend:
             raise PostSelectionError(
@@ -1133,7 +1183,7 @@ def evaluate_post_selection_run_candidates(
                 summary=summary,
                 evaluation_model_state=evaluation_model_state,
                 allow_forward_override=context.inference_evaluator is not None,
-                foundation_model_path=context.method_policies.foundation_model,
+                foundation_model_path=context.train2_foundation_path,
             )
             try:
                 if metrics is None:
@@ -2487,11 +2537,8 @@ def _train_post_selection_run(
                 optimizer_policy=optimizer_policy,
                 start_epoch=setup.start_epoch,
                 foundation_identity=context.method_policies.foundation_potential_identity,
-                foundation_model_path=(
-                    Path(context.method_policies.foundation_model)
-                    if context.method_policies.foundation_model
-                    else None
-                ),
+                foundation_model_path=context.train2_foundation_path,
+                training_realization=context.train2_foundation_realization,
                 replay_train_artifact=(
                     replay_resolution.train_artifact
                     if replay_resolution is not None
@@ -2750,7 +2797,7 @@ def _evaluate_held_out_representative(
             summary=sealed.summary,
             evaluation_model_state=evaluation_model_state,
             allow_forward_override=context.inference_evaluator is not None,
-            foundation_model_path=context.method_policies.foundation_model,
+            foundation_model_path=context.train2_foundation_path,
         )
         try:
             metrics = evaluate_post_selection_dataset(
@@ -3495,11 +3542,8 @@ def _complete_legacy_training_root(
                 optimizer_policy=optimizer_policy,
                 start_epoch=start_epoch,
                 foundation_identity=context.method_policies.foundation_potential_identity,
-                foundation_model_path=(
-                    Path(context.method_policies.foundation_model)
-                    if context.method_policies.foundation_model
-                    else None
-                ),
+                foundation_model_path=context.train2_foundation_path,
+                training_realization=context.train2_foundation_realization,
                 replay_train_artifact=(
                     None if replay_resolution is None else replay_resolution.train_artifact
                 ),
