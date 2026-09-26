@@ -12,7 +12,7 @@ earliest_affected_domain: D4 implementation/concretization under accepted phase-
 review_disposition: PASS AS WORKPLAN
 workplan_review_revision: 2
 serious_challenge: none
-implementation_review_verdict: CODE-PASS-E1-PENDING
+implementation_review_verdict: CODE-PASS-E1-BOUNDARY-RECORDED-CLOSURE-REVIEW-PENDING
 implementation_base: 7143f36b02f26a6c3fb1ded95445ea36477f10a2
 ---
 
@@ -647,3 +647,40 @@ If E1 fails, preserve the failure evidence and reopen only the concrete affected
 - No app terminal or alternate remote execution host is attached to this task. No campaign command was run and no external campaign or trajectory file was changed.
 
 This is an environment availability result, not an E1 pass or an E1 training failure. Keep E1 and final closure Review pending until the task runs on the intended CUDA/CuEq host. No product-code change is indicated.
+
+
+## 20. E1 selected-head checkpoint reconstruction boundary — reached
+
+**Product-code candidate:** 467018ae309a679fbdaadbe80f9d47805344831b (unchanged).
+**Execution checkout at start:** fix/mlff-p5-train2-mh1-selected-head-routing at 9160158ac93a80a3fab8f8bde3f1d1383f2d6fbc (workplan-only descendant of the Section 18 handoff).
+**Result:** the first durable TRAIN2 epoch checkpoint was produced from the qualified selected-head foundation, and the ordinary P5 provider/checkpoint-monitor EVAL2 path authenticated and reconstructed it. The accepted epoch budget remained unchanged at 10; execution stopped after epoch 0. A subsequent replay-monitor EVAL2 measurement failed on the campaign replay artifact's stress-label shape, after the selected-head checkpoint reconstruction and target checkpoint-monitor measurement had succeeded. This later replay error is retained as a separate unresolved observation for closure Review; it is not an architecture mismatch or a raw-source head-removal failure.
+
+### 20.1 Exact execution and runtime
+
+The real execution command was:
+
+    MPLCONFIGDIR=/tmp/mlff-p5-e1-mpl conda run --no-capture-output -n mace python -u /tmp/mlff_p5_e1_epoch_boundary.py --config /home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32/campaign.toml
+
+The temporary execution controller used the existing MacePostSelectionTrainer and P5 TRAIN2 owner under the existing run-activity lease. Its stop handle waited for the current frozen runtime plan's continuation validator, epoch-0 boundary summary, checkpoint SHA, and epoch-history row to agree, then cancelled the child. It did not change the method, optimizer, runtime plan, epoch budget, or checkpoint policy. After cancellation it called the existing evaluate_post_selection_run_candidates owner, which calls authenticate_post_selection_provider and evaluate_post_selection_dataset for the checkpoint-monitor role.
+
+- Hardware access was elevated for this execution after the sandbox's initial no-device view. nvidia-smi reported NVIDIA GeForce RTX 3090, driver 580.159.03, CUDA 13.0; during TRAIN2 the child process held approximately 1,318 MiB GPU memory. The mace environment reported PyTorch 2.13.0+cu126, torch.cuda.is_available() == True, one device, and MACE log evidence reported CUDA 12.6, device 0, MACE 0.3.16.
+- The invocation resolved selected-head foundation /home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32/mlff-campaign/.mdstats/foundation-selected-head/mace_mh_1-omat_pbe.model, SHA-256 e8f90826a78b549d22d359424e341d0f7fbbedabb3d70bd9ae12a8fb1db58122, head omat_pbe, selected-head qualification digest f158457777259402c6fa4b39b4deed1ba53d40759958bc03c8e2b8342ccc41b6. The scientific source remains /home/samjin/QE/lammps-proj/zeolite/01_models/mace-mh-1.model.
+- The frozen run was identity cfe00a1420621581b00539cd64e9cf648edcb1b3efc2aab45e8e2ed64f1037c8, fold 1/3, seed 0, selected size 512. Runtime-plan digest 8cc897196258f33099d17c7948ac3d29558f5fdec66aacae3d56fb43a7f5bd0f; training method digest 4b965900388e4a40458c45d2a72f6bc53ff351fd8bbbf8be9a972f1cd1dd4c7c; optimizer-policy digest ae631a907e76cafa0f519b08958141f99bbe86172954f41b57a348d4f90e06da.
+- The emitted materialization/mace_run_config.yaml used that same selected-head path and foundation_head: omat_pbe, with device: cuda, enable_cueq: true, and max_num_epochs: 10. The current MACE log reports the selected-head path as its initial checkpoint and reports CuEq conversion before training. The older raw-source failure remains earlier in the append-only debug log from 2026-09-25; the 2026-09-26 run shows the selected-head path and contains no new remove_pt_head traceback, state-dict size mismatch, or architecture error.
+
+### 20.2 Durable epoch-0 checkpoint
+
+- Exactly one epoch checkpoint exists: checkpoints/post-selection-cfe00a1420621581_run-0_epoch-0.pt, 102,595,111 bytes, SHA-256 cc045448d5689eb9ddeda188632147ed3b3c0757a2bce384df2096818bdc4cd2.
+- train2_runtime.json and train2_runtime_epoch-0.json both authenticate the same content digest 1dd00286f57b526672980da11722eb463868ed5728d68a4e8d52acb65ecc5027 and checkpoint SHA. The authenticated summary records completed_epochs=1, completed_updates=5167, updates_per_epoch=5167, planned_epochs=10, execution_epoch_limit=10, and raw_checkpoint_epoch=0.
+- The summary's MACE model-architecture digest is 21d92601a5dc19041407f46c741a99e4c791282b96e00aeb8a03aa6a925c7416; its MACE execution-evidence digest is 287ab372f5b22561341da37a4101ec8721d7bf21a1f08c4ab36a22a1e5385f79.
+- After the stop, the P5 continuation/materialization preflight authenticated the partial state under the same full 10-epoch plan. read_post_selection_run_completion confirms the run root is unsealed. No epoch-1 checkpoint exists; no second fold/seed, full CV, or production run was started.
+
+### 20.3 Ordinary provider/EVAL2 boundary and remaining observation
+
+evaluate_post_selection_run_candidates advanced through the real epoch-0 candidate. It authenticated the provider from the TRAIN2 checkpoint using the invocation's selected-head context.train2_foundation_path; the checkpoint-monitor evaluate_post_selection_dataset call returned before the next replay-monitor call raised:
+
+    TrainingDataInputError: Reference stress labels must contain six Voigt components.
+
+The exception is from parsing the TRUE_DFT replay-monitor reference stress labels in the subsequent replay EVAL2 measurement. It is downstream of provider authentication and checkpoint-monitor evaluation. Because that replay measurement failed, the candidate assessor did not return/publish an Eval2CheckpointRecord, representative, replay metric, or fold acceptance. Therefore this evidence proves the requested selected-head TRAIN2 checkpoint-to-provider/checkpoint-monitor reconstruction proposition; it does not claim a complete replay-inclusive candidate assessment or any CV acceptance.
+
+No product code or external source/trajectory input was modified. No full CV or production qualification was run. Section 19 records the earlier sandbox-only preflight and is superseded for runtime availability by this elevated RTX 3090 execution. Keep the workplan open for a fresh D4 closure Review to assess this E1 boundary evidence and the separate replay-monitor stress-label observation; do not expand this task into full qualification.
