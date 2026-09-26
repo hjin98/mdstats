@@ -634,3 +634,16 @@ Stop once the first durable checkpoint has crossed the ordinary provider/EVAL2 r
 If E1 succeeds, update this workplan with the exact candidate, runtime, checkpoint/reconstruction evidence, and request final closure Review.
 
 If E1 fails, preserve the failure evidence and reopen only the concrete affected D4 owner. Do not pre-emptively change tolerances, MACE architecture, CuEq policy, EXTRACT1, scheduler policy, or source/training identity semantics.
+
+
+## 19. E1 preflight on handoff checkout — unavailable
+
+**Checkout:** `fix/mlff-p5-train2-mh1-selected-head-routing` at `f6dc154570b95bcf974a722bf15bca6119447e27`.
+**Result:** E1 did not start; this environment is not a usable CUDA/CuEq host.
+
+- `nvidia-smi` failed: `couldn't communicate with the NVIDIA driver`.
+- `conda run -n mace python -c 'import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.device_count()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "no CUDA device")'` returned `2.13.0+cu126`, `False`, `0`, `no CUDA device`.
+- The real campaign remains configured for `training.device = "cuda"` and TRAIN2 `training_backend = "cueq"`. Read-only inventory of run `cfe00a1420621581b00539cd64e9cf648edcb1b3efc2aab45e8e2ed64f1037c8` found only materialization and log files; no checkpoint was available for reconstruction.
+- No app terminal or alternate remote execution host is attached to this task. No campaign command was run and no external campaign or trajectory file was changed.
+
+This is an environment availability result, not an E1 pass or an E1 training failure. Keep E1 and final closure Review pending until the task runs on the intended CUDA/CuEq host. No product-code change is indicated.
