@@ -12,7 +12,7 @@ earliest_affected_domain: D4 implementation/concretization under accepted phase-
 review_disposition: PASS AS WORKPLAN
 workplan_review_revision: 2
 serious_challenge: none
-implementation_review_verdict: NO-PASS-E1-PENDING
+implementation_review_verdict: CODE-PASS-E1-PENDING
 implementation_base: 7143f36b02f26a6c3fb1ded95445ea36477f10a2
 ---
 
@@ -606,3 +606,31 @@ No further implementation change is requested. On the intended CUDA/CuEq host, r
 - Further code repair: **NONE identified**.
 
 After E1 is recorded, a final closure Review should verify only that evidence against candidate `467018ae309a679fbdaadbe80f9d47805344831b` (or a descendant that changes review/evidence artifacts only). Do not restart a broad implementation campaign unless E1 exposes a concrete defect.
+
+
+## 18. Current execution handoff — E1 only
+
+**Current reviewed code candidate:** `467018ae309a679fbdaadbe80f9d47805344831b`  
+**Current coordination descendant:** `06c42c0b9936683c937a174ea222e3222f669fa4`  
+**Code disposition:** **PASS**  
+**Only open acceptance item:** **E1 real-MH-1 durable-checkpoint reconstruction evidence**
+
+No additional product-code change is authorized unless E1 exposes a concrete defect.
+
+### 18.1 Required execution
+
+On the intended CUDA/CuEq host, use the existing real MH-1 campaign and repaired branch to continue only far enough to:
+
+1. produce the first durable TRAIN2 epoch checkpoint from the qualified selected-head `omat_pbe` checkpoint;
+2. allow the ordinary P5 provider/EVAL2 reconstruction path to authenticate and reconstruct that checkpoint;
+3. record evidence that reconstruction uses the same selected-head TRAIN2 foundation and does not invoke raw-source selected-head removal or reproduce the prior architecture/state-dict mismatch.
+
+The evidence must exercise the real production owner path. A fixture, manually reconstructed model, or helper-only probe does not close E1.
+
+### 18.2 Stop condition
+
+Stop once the first durable checkpoint has crossed the ordinary provider/EVAL2 reconstruction boundary successfully. Do **not** continue into full multi-fold CV, final production, long-running GPU qualification, or unrelated cleanup solely for this workplan.
+
+If E1 succeeds, update this workplan with the exact candidate, runtime, checkpoint/reconstruction evidence, and request final closure Review.
+
+If E1 fails, preserve the failure evidence and reopen only the concrete affected D4 owner. Do not pre-emptively change tolerances, MACE architecture, CuEq policy, EXTRACT1, scheduler policy, or source/training identity semantics.
