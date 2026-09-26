@@ -38,7 +38,7 @@ Canonical workplan:
 
 Workplan-level Review is **PASS AS WORKPLAN** under Protocol 6.4. The repair is a bounded D4 integration correction: keep raw multi-head MH-1 + `omat_pbe` as scientific source identity, but route the already doctor-qualified selected-head training checkpoint from `TrainingAccelerationRealizationRecord` to P5 TRAIN2 launch and every reconstruction of that TRAIN2 architecture. No new extractor/shim/fallback or D2/D3 redesign is authorized.
 
-Implementation candidate `a74ed1ca` received **NO-PASS** in independent D4 Review (workplan §15). The source-vs-TRAIN2 routing is largely correct, but P5 optimizer-policy construction still independently rereads the stored TRAIN2 realization instead of reusing the invocation-scoped binding. After that small D4 repair, one bounded real-MH-1 durable-checkpoint reconstruction/EVAL2 authentication remains required; no full production qualification is requested.
+Candidate `467018ae` closes the prior optimizer-policy snapshot blocker and passes the subsequent code-level D4 re-Review (workplan §17). The workplan remains **NO-PASS for closure solely because E1 is unexecuted**: one bounded real-MH-1 durable TRAIN2 checkpoint must cross the ordinary provider/EVAL2 reconstruction boundary on the intended CUDA/CuEq host. No further code repair or full production qualification is requested.
 
 ## Recently closed MLFF work
 

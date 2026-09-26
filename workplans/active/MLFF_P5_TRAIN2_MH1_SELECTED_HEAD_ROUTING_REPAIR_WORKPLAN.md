@@ -12,7 +12,7 @@ earliest_affected_domain: D4 implementation/concretization under accepted phase-
 review_disposition: PASS AS WORKPLAN
 workplan_review_revision: 2
 serious_challenge: none
-implementation_review_verdict: NO-PASS
+implementation_review_verdict: NO-PASS-E1-PENDING
 implementation_base: 7143f36b02f26a6c3fb1ded95445ea36477f10a2
 ---
 
@@ -542,3 +542,67 @@ These are focused fixture/regression evidence. They do not constitute the real-M
 E1 was **not executed** in this session. Preflight command `conda run -n mace python -c 'import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.device_count())'` returned PyTorch `2.13.0+cu126`, CUDA unavailable, and device count `0`; `nvidia-smi` could not communicate with the NVIDIA driver. Inspection of `/home/samjin/QE/lammps-proj/zeolite/05_mace_training/LTA/mh1/FP32/campaign.toml` confirmed `training.device = "cuda"` and TRAIN2 `training_backend = "cueq"`. The run-root inventory under `.mdstats/post-selection/g1/runs/cfe00a1420621581b00539cd64e9cf648edcb1b3efc2aab45e8e2ed64f1037c8` contains materialization/log files but no durable epoch checkpoint. The available log remains the prior raw-source `remove_pt_head()` failure; it cannot establish post-repair checkpoint reconstruction.
 
 The external campaign and trajectory inputs remained read-only. No real-MH-1 epoch checkpoint was produced and no ordinary provider/EVAL2 reconstruction was attempted on a real-MH-1 checkpoint. E1 remains required on the intended CUDA/CuEq runtime. Keep this workplan reopened and defer fresh D4 Review until E1 is completed; long production qualification remains out of scope.
+
+
+## 17. Independent D4 re-Review of reopened implementation
+
+**Reviewed candidate:** `467018ae309a679fbdaadbe80f9d47805344831b`  
+**Review basis:** reopened Section 15 plus the accepted workplan  
+**Verdict:** **NO-PASS FOR CLOSURE — CODE CONFORMS; E1 REQUIRED EVIDENCE PENDING**  
+**Serious Challenge:** **NONE**
+
+### 17.1 B1 recheck — CLOSED
+
+The reopened B1 is repaired without broadening the design.
+
+- `_optimizer_policy(...)` remains the one canonical optimizer-policy constructor.
+- P5 `_optimizer_policy_for(context,...)` now supplies `context.train2_foundation_realization` when that invocation has one.
+- With that argument present, `_optimizer_policy` does not call `_stored_training_acceleration_realization(...)`; therefore sibling P5 policy/evaluation consumers no longer reopen CampaignStore to select a different realization.
+- The returned optimizer policy is checked against the carried realization's exact `content_digest` and `training_kernel_mode`.
+- Callers outside this P5 snapshot path retain the prior stored-record resolution behavior.
+- The regression changes the stored realization after context construction, proves the existing context retains its original TRAIN2 path/digest/kernel, and proves a fresh context resolves the replacement normally.
+
+No second optimizer constructor, durable cache, context record, fallback, or compatibility layer was introduced. This satisfies Section 15 B1 and the workplan's one-invocation/one-binding requirement.
+
+### 17.2 Affected-surface recheck — PASS
+
+The B1 delta is limited to the canonical optimizer constructor's delegated input, P5 policy projection, one regression, and workplan evidence. The previous candidate's accepted routing remains intact:
+
+- scientific source identity remains the raw source checkpoint/head;
+- phase-separated TRAIN2 launch uses the doctor-qualified selected-head checkpoint;
+- all P5 TRAIN2 provider reconstruction paths use `context.train2_foundation_path`;
+- source-only residual/baseline consumers remain on `method_policies.foundation_model`;
+- trainer authentication still separately checks source head identity and TRAIN2 checkpoint realization/bytes;
+- EXTRACT1 remains single-owned.
+
+The reported post-B1 regression is adequate for the code delta: **110 passed** in the focused routing/canonical-optimizer/CuEq-default set and **103 passed** in optimizer-normalization/global-scheduler regression. No new code failure is reported.
+
+### 17.3 Coordination drift — corrected by this Review
+
+Before this Review, `workplans/active/README.md` still described candidate `a74ed1ca` and B1 as open even though `467018ae309a679fbdaadbe80f9d47805344831b` had repaired it. That is stale coordination state, not a product defect. The active index is updated with this Review so it now identifies E1 as the sole blocker.
+
+### 17.4 E1 — SOLE REMAINING BLOCKER
+
+E1 remains unexecuted. The latest implementation session had no usable CUDA device, and the real MH-1 run root still has no post-repair durable epoch checkpoint. Therefore the exact required proposition remains unproven:
+
+```text
+real MH-1 selected-head TRAIN2
+  -> durable epoch checkpoint
+  -> ordinary authenticate_post_selection_provider / EVAL2 reconstruction
+  -> same selected-head construction foundation
+  -> no raw-source remove_pt_head / architecture mismatch
+```
+
+Protocol acceptance cannot convert an unavailable required check into a pass.
+
+No further implementation change is requested. On the intended CUDA/CuEq host, run only far enough to create one durable epoch checkpoint and let the ordinary P5 provider/EVAL2 reconstruction authenticate it. Full multi-fold CV, final production, and long GPU qualification are not required for this repair.
+
+### 17.5 Disposition
+
+- D1/D2/D3: unchanged; no Challenge.
+- D4 code conformance: **PASS on current review evidence**.
+- Required real-owner integration evidence: **INCOMPLETE (E1)**.
+- Overall workplan closure: **NO-PASS / remain open solely for E1**.
+- Further code repair: **NONE identified**.
+
+After E1 is recorded, a final closure Review should verify only that evidence against candidate `467018ae309a679fbdaadbe80f9d47805344831b` (or a descendant that changes review/evidence artifacts only). Do not restart a broad implementation campaign unless E1 exposes a concrete defect.
